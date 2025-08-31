@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  youtube-summarizer-bot:
+    image: youtube-summarizer-bot:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: youtube-summarizer-bot
+    restart: unless-stopped
+    
+    # Environment variables (use .env.nas file in Portainer)
+    environment:
+      - TZ=${TZ:-UTC}
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      
+      # Telegram Bot Configuration
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_ADMIN_USER_ID=${TELEGRAM_ADMIN_USER_ID}
+      
+      # LLM API Keys (choose one or more)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      
+      # LLM Configuration
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.3}
+      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-4000}
+      
+      # Bot Configuration
+      - MAX_VIDEO_DURATION=${MAX_VIDEO_DURATION:-3600}
+      - DOWNLOAD_AUDIO_ONLY=${DOWNLOAD_AUDIO_ONLY:-true}
+      - CACHE_DURATION_HOURS=${CACHE_DURATION_HOURS:-24}
+      
+    # Volume mounts for data persistence
+    volumes:
+      # Application data and cache
+      - youtube-bot-downloads:/app/downloads
+      - youtube-bot-cache:/app/cache
+      - youtube-bot-logs:/app/logs
+      
+      # Optional: Mount config files if you want to customize
+      # - ./config:/app/config:ro
+    
+    # Resource limits for NAS deployment
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    # Security settings
+    user: "1000:1000"  # Run as non-root user
+    read_only: false   # Need write access for downloads/cache
+    
+    # Temporary filesystems for security
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    
+    # No port mapping needed - bot connects outbound to Telegram API
+    # ports: []
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Named volumes for data persistence
+volumes:
+  youtube-bot-downloads:
+    driver: local
+    name: youtube-bot-downloads
+  youtube-bot-cache:
+    driver: local  
+    name: youtube-bot-cache
+  youtube-bot-logs:
+    driver: local
+    name: youtube-bot-logs
+
+# Network configuration (optional)
+networks:
+  default:
+    name: youtube-bot-network

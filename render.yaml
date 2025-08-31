@@ -1,0 +1,56 @@
+# Render Blueprint for YTV2 YouTube Summarizer
+# This file defines the service configuration for Render deployment
+
+services:
+  - type: web
+    name: ytv2-telegram-bot
+    env: docker
+    repo: https://github.com/Astrocyte74/YTV2
+    branch: main
+    dockerfilePath: ./Dockerfile
+    
+    # Health check endpoint
+    healthCheckPath: /health
+    
+    # Environment variables
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"
+      - key: WEB_PORT
+        value: "10000"
+      - key: WEB_BASE_URL
+        fromService:
+          type: web
+          name: ytv2-telegram-bot
+          property: url
+      
+      # These will be set in Render dashboard
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_USER_ID  
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: LLM_SHORTLIST
+        value: "fast"
+      - key: DEFAULT_SUMMARY_TYPE
+        value: "comprehensive"
+      - key: MAX_TRANSCRIPT_LENGTH
+        value: "50000"
+      - key: HTML_REPORT_RETENTION_HOURS
+        value: "168"
+    
+    # Persistent disk for downloads and exports
+    disk:
+      name: ytv2-storage
+      mountPath: /app/data
+      sizeGB: 1
+    
+    # Start command override if needed
+    # startCommand: python telegram_bot.py
