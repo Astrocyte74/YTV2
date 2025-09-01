@@ -2446,6 +2446,8 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
                             
                         # Extract model from HTML content - try multiple patterns
                         model_patterns = [
+                            # Current format with emoji
+                            r'<div class="info-label">🤖 Model:</div>\s*<div class="info-value">([^<]+)</div>',
                             # New info-grid pattern (most recent format)
                             r'<div class="info-label">AI Model</div>\s*<div class="info-value">([^<]+)</div>',
                             # Also try AI Provider pattern for older reports
@@ -6385,7 +6387,6 @@ Please contact the administrator."""
                 f"📄 **HTML Report Generated Successfully!**\n\n" +
                 f"**📁 File:** `{filename}`\n\n" +
                 f"**🔗 Direct URL:** `{report_url}`\n\n" +
-                f"**⏰ Note:** Reports expire after {max(1, int(os.getenv('HTML_REPORT_RETENTION_HOURS', '168')))} hours\n\n" +
                 "**👆 Click the button above to open the report**",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=keyboard,
