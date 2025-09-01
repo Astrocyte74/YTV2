@@ -4562,7 +4562,9 @@ class YouTubeTelegramBot:
         self.exports_dir = Path("/app/exports")
         self.exports_dir.mkdir(exist_ok=True)
         # Configurable HTML report retention (default 7 days, minimum 1 hour)
-        html_ttl_hours = max(1, int(os.getenv('HTML_REPORT_RETENTION_HOURS', '168')))  # 168 hours = 7 days
+        # Parse HTML_REPORT_RETENTION_HOURS and strip any comments
+        html_ttl_raw = os.getenv('HTML_REPORT_RETENTION_HOURS', '168').split('#')[0].strip()
+        html_ttl_hours = max(1, int(html_ttl_raw))  # 168 hours = 7 days
         self.HTML_TTL = html_ttl_hours * 3600
         
         # Web server settings
