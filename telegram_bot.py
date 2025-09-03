@@ -391,8 +391,7 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{ 
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
-            background-attachment: fixed;
+            background: #f8f9fa;
             min-height: 100vh;
             padding: 20px;
         }}
@@ -405,10 +404,10 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
             overflow: visible;
         }}
         .header {{
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            background: #2563eb;
             color: white;
             padding: 25px 30px;
-            border-radius: 20px 20px 0 0;
+            border-radius: 12px 12px 0 0;
             position: sticky;
             top: 0;
             z-index: 100;
@@ -844,7 +843,7 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
         }}
         
         .playlist-info-bar {{
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            background: #ffffff;
             border-bottom: 1px solid #dee2e6;
             padding: 15px 20px;
         }}
@@ -1379,7 +1378,7 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
         .card-thumbnail {{
             width: 100%;
             height: 120px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            background: #e5e7eb;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1443,7 +1442,7 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
             left: 0;
             right: 0;
             height: 4px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            background: #2563eb;
             transform: translateY(-4px);
             transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }}
@@ -1791,7 +1790,8 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: 200px;
+            max-width: 180px;
+            flex-shrink: 1;
         }}
         
         .clickable-title:hover {{
