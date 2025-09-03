@@ -249,7 +249,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def serve_css(self):
         """Serve CSS files"""
         try:
-            css_file = Path(self.path[1:])  # Remove leading slash
+            filename = self.path[1:]  # Remove leading slash
+            css_file = Path('static') / filename
             if css_file.exists():
                 self.send_response(200)
                 self.send_header('Content-type', 'text/css')
@@ -265,7 +266,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def serve_js(self):
         """Serve JavaScript files"""
         try:
-            js_file = Path(self.path[1:])  # Remove leading slash
+            filename = self.path[1:]  # Remove leading slash
+            js_file = Path('static') / filename
             if js_file.exists():
                 self.send_response(200)
                 self.send_header('Content-type', 'application/javascript')
