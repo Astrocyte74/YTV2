@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import socket
+import json
 
 # Load environment variables from .env file and stack.env
 load_dotenv()
@@ -381,9 +382,118 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
             total_reports = len(html_files)
             total_size = sum(f.stat().st_size for f in html_files) / (1024 * 1024)  # MB
             
-            index_html = f"""<!DOCTYPE html>
-<html lang="en">
+            # Load dashboard template and generate modern HTML
+            def load_template(template_name):
+                try:
+                    template_path = Path(template_name)
+                    if template_path.exists():
+                        return template_path.read_text(encoding='utf-8')
+                    else:
+                        logger.error(f"Template not found: {template_name}")
+                        return None
+                except Exception as e:
+                    logger.error(f"Error loading template {template_name}: {e}")
+                    return None
+            
+            # Generate reports data for template
+            reports_data = []
+            for file_path in html_files:
+                try:
+                    # Extract metadata from each report
+                    content = file_path.read_text(encoding='utf-8')
+                    
+                    # Extract title
+                    title_match = re.search(r'<h1[^>]*>([^<]+)</h1>', content)
+                    title = title_match.group(1).strip() if title_match else file_path.stem
+                    
+                    # Extract channel
+                    channel_match = re.search(r'<div class="channel">([^<]+)</div>', content)
+                    channel = channel_match.group(1).strip() if channel_match else "Unknown Channel"
+                    
+                    # Extract model
+                    model_match = re.search(r'<div class="model-badge[^"]*">([^<]+)</div>', content)
+                    model = model_match.group(1).strip() if model_match else "GPT-4"
+                    
+                    # Extract summary preview
+                    summary_match = re.search(r'<div class="content">.*?<p[^>]*>([^<]{0,200})', content, re.DOTALL)
+                    summary_preview = summary_match.group(1).strip()[:150] + "..." if summary_match else "No preview available"
+                    
+                    # Extract thumbnail URL
+                    thumbnail_match = re.search(r'<img[^>]+src="([^"]+)"[^>]*alt="Video thumbnail"', content)
+                    thumbnail_url = thumbnail_match.group(1) if thumbnail_match else ""
+                    
+                    # Get file info
+                    mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                    
+                    reports_data.append({
+                        'filename': file_path.name,
+                        'title': title,
+                        'channel': channel,
+                        'model': model,
+                        'summary_preview': summary_preview,
+                        'thumbnail_url': thumbnail_url,
+                        'created_date': mtime.strftime('%B %d, %Y'),
+                        'created_time': mtime.strftime('%H:%M'),
+                        'timestamp': mtime.timestamp()
+                    })
+                except Exception as e:
+                    logger.warning(f"Error processing report {file_path.name}: {e}")
+            
+            # Load and populate template
+            template_content = load_template('dashboard_template.html')
+            if template_content:
+                # Replace template placeholders
+                index_html = template_content.format(
+                    reports_data=json.dumps(reports_data, ensure_ascii=False),
+                    base_url=base_url or 'https://chief-inspired-lab.ngrok-free.app'
+                )
+            else:
+                # Fallback to simple HTML if template fails  
+                index_html = f"""<!DOCTYPE html>
+<html>
 <head>
+    <title>Template Loading Error</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; padding: 2rem; }}
+        .error {{ color: #dc2626; background: #fef2f2; padding: 1rem; border-radius: 0.5rem; }}
+    </style>
+</head>
+<body>
+    <h1>🚨 Template Loading Error</h1>
+    <div class="error">
+        <p><strong>Could not load dashboard template.</strong></p>
+        <p>Please ensure 'dashboard_template.html' exists in the project directory.</p>
+        <p>Using fallback display - found {len(html_files)} reports.</p>
+    </div>
+    
+    <h2>📊 Available Reports</h2>
+    <ul>"""
+                
+                # Add basic report list as fallback
+                for report in reports_data[:10]:  # Show first 10 only
+                    index_html += f"""
+        <li><a href="/{report['filename']}">{report['title']}</a> - {report['channel']} ({report['model']})</li>"""
+                
+                if len(reports_data) > 10:
+                    index_html += f"""
+        <li><em>... and {len(reports_data) - 10} more reports</em></li>"""
+                
+                index_html += """
+    </ul>
+</body>
+</html>"""
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html; charset=utf-8')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(index_html.encode('utf-8'))
+        
+        except Exception as e:
+            logger.error(f"Error generating index page: {e}")
+            self.send_error(500, "Internal server error")
+    
+    def generate_individual_report_page(self):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YouTube Summary Reports Dashboard</title>
