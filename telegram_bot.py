@@ -388,7 +388,6 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YouTube Summary Reports Dashboard</title>
     <style>
-    <style>
         /* Root Variables - Clean Professional Colors */
         :root {{
             --primary-blue: #0066cc;
