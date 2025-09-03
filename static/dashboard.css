@@ -476,11 +476,15 @@ body {
     cursor: pointer;
     transition: all var(--transition-base);
     box-shadow: var(--shadow-lg);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
 }
 
 .play-button:hover {
     background: var(--white);
-    transform: scale(1.1);
+    transform: translate(-50%, -50%) scale(1.1);
 }
 
 .play-button svg {
@@ -488,6 +492,61 @@ body {
     height: 1.5rem;
     color: var(--primary-600);
     margin-left: 0.125rem;
+}
+
+/* Mini-Play Button for Mini Player */
+.mini-play-button {
+    width: 2.5rem;
+    height: 2.5rem;
+    border: none;
+    border-radius: 50%;
+    background: rgba(138, 43, 226, 0.9);
+    color: var(--white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all var(--transition-base);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 2px 10px rgba(138, 43, 226, 0.3);
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-2);
+    opacity: 0;
+    transform: scale(0.8);
+}
+
+.report-card:hover .mini-play-button {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.mini-play-button:hover {
+    background: var(--primary-500);
+    transform: scale(1.1);
+    box-shadow: 0 4px 20px rgba(138, 43, 226, 0.4);
+}
+
+.mini-play-button svg {
+    width: 1rem;
+    height: 1rem;
+    margin-left: 0.0625rem;
+}
+
+.mini-play-button .mini-icon {
+    position: absolute;
+    top: -0.25rem;
+    right: -0.25rem;
+    font-size: 0.75rem;
+    background: var(--white);
+    border-radius: 50%;
+    width: 1.25rem;
+    height: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .report-content {
@@ -567,13 +626,26 @@ body {
     border-radius: var(--radius-2xl);
     padding: var(--space-4);
     z-index: 200;
-    box-shadow: var(--shadow-2xl);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
     transform: translateY(100%);
-    transition: transform var(--transition-base);
+    transition: all var(--transition-base);
+    opacity: 0;
+    visibility: hidden;
+}
+
+.mini-player.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.mini-player.visible {
+    transform: translateY(0);
 }
 
 .mini-player.show {
     transform: translateY(0);
+    opacity: 1;
+    visibility: visible;
 }
 
 .mini-player-content {

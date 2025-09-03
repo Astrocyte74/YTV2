@@ -83,8 +83,22 @@ function generateReportCard(report) {
         ? `<img src="${report.thumbnail_url}" alt="Video thumbnail" loading="lazy">`
         : `<div class="thumbnail-fallback">📺</div>`;
     
+    // Ensure we have video data for mini-player
+    const videoData = {
+        url: report.url || report.video_url,
+        video_id: report.video_id,
+        title: report.title,
+        channel: report.channel,
+        duration: report.duration || 0,
+        thumbnail_url: report.thumbnail_url
+    };
+    
     return `
-        <div class="report-card" data-title="${report.title}" data-channel="${report.channel}" data-model="${report.model}">
+        <div class="report-card" 
+             data-title="${report.title}" 
+             data-channel="${report.channel}" 
+             data-model="${report.model}"
+             data-video-data='${JSON.stringify(videoData).replace(/'/g, "&#39;")}'>
             <div class="report-thumbnail">
                 ${thumbnailHTML}
                 <div class="report-overlay">
@@ -92,6 +106,12 @@ function generateReportCard(report) {
                         <svg viewBox="0 0 20 20" fill="currentColor">
                             <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.841z" />
                         </svg>
+                    </button>
+                    <button class="mini-play-button" onclick="launchMiniPlayer(this)" title="Play in mini-player">
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.841z" />
+                        </svg>
+                        <span class="mini-icon">🎬</span>
                     </button>
                 </div>
             </div>
@@ -285,10 +305,15 @@ function populateFilters() {
 }
 
 // Mini Player Functions
+let currentVideoData = null;
+let currentVideoElement = null;
+let isPlaying = false;
+
 function setupMiniPlayerControls() {
-    const miniPlayer = document.getElementById('miniPlayer');
     const closePlayer = document.getElementById('closePlayer');
     const playBtn = document.getElementById('playBtn');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
     
     if (closePlayer) {
         closePlayer.addEventListener('click', closeMiniPlayer);
@@ -297,26 +322,248 @@ function setupMiniPlayerControls() {
     if (playBtn) {
         playBtn.addEventListener('click', togglePlayback);
     }
+    
+    if (prevBtn) {
+        prevBtn.addEventListener('click', playPrevious);
+    }
+    
+    if (nextBtn) {
+        nextBtn.addEventListener('click', playNext);
+    }
 }
 
 function showMiniPlayer(videoData) {
     const miniPlayer = document.getElementById('miniPlayer');
-    if (miniPlayer) {
-        miniPlayer.style.display = 'block';
-        // Update mini player content with videoData
+    const titleElement = document.getElementById('miniPlayerTitle');
+    const totalTimeElement = document.getElementById('totalTime');
+    
+    if (!miniPlayer) return;
+    
+    currentVideoData = videoData;
+    
+    // Update mini player content
+    if (titleElement && videoData.title) {
+        titleElement.textContent = videoData.title;
     }
+    
+    if (totalTimeElement && videoData.duration) {
+        totalTimeElement.textContent = formatDuration(videoData.duration);
+    }
+    
+    // Create embedded YouTube player
+    createVideoPlayer(videoData);
+    
+    // Show the mini player
+    miniPlayer.style.display = 'block';
+    miniPlayer.classList.add('active');
+    
+    // Add slide-up animation
+    setTimeout(() => {
+        miniPlayer.classList.add('visible');
+    }, 50);
 }
 
 function closeMiniPlayer() {
     const miniPlayer = document.getElementById('miniPlayer');
+    
     if (miniPlayer) {
-        miniPlayer.style.display = 'none';
+        miniPlayer.classList.remove('visible');
+        
+        setTimeout(() => {
+            miniPlayer.style.display = 'none';
+            miniPlayer.classList.remove('active');
+            
+            // Clean up video element
+            if (currentVideoElement) {
+                currentVideoElement.remove();
+                currentVideoElement = null;
+            }
+            
+            currentVideoData = null;
+            isPlaying = false;
+            updatePlayButton();
+        }, 300);
+    }
+}
+
+function createVideoPlayer(videoData) {
+    // Clean up existing video element
+    if (currentVideoElement) {
+        currentVideoElement.remove();
+    }
+    
+    // Extract video ID from URL
+    const videoId = extractVideoId(videoData.url || videoData.video_id);
+    if (!videoId) return;
+    
+    // Create YouTube iframe for thumbnail/preview
+    // Note: Actual playback would require YouTube API integration
+    // For now, we'll create a preview that opens YouTube in new tab
+    currentVideoElement = document.createElement('div');
+    currentVideoElement.className = 'video-preview';
+    currentVideoElement.innerHTML = `
+        <div class="video-thumbnail" onclick="openVideoInNewTab('${videoData.url}')">
+            <img src="https://img.youtube.com/vi/${videoId}/maxresdefault.jpg" 
+                 alt="Video thumbnail" 
+                 onerror="this.src='https://img.youtube.com/vi/${videoId}/hqdefault.jpg'">
+            <div class="play-overlay">
+                <svg viewBox="0 0 24 24" fill="white" width="48" height="48">
+                    <path d="M8 5v14l11-7z"/>
+                </svg>
+            </div>
+        </div>
+    `;
+    
+    // Append to mini player (hidden for now, just for functionality)
+    const miniPlayer = document.getElementById('miniPlayer');
+    if (miniPlayer) {
+        currentVideoElement.style.display = 'none'; // Hide for minimal design
+        miniPlayer.appendChild(currentVideoElement);
     }
 }
 
 function togglePlayback() {
-    // Implement playback toggle logic
-    console.log('Toggle playback');
+    if (!currentVideoData) return;
+    
+    // For demo purposes, this opens the video in a new tab
+    // Real implementation would integrate with YouTube API
+    const videoId = extractVideoId(currentVideoData.url || currentVideoData.video_id);
+    if (videoId) {
+        openVideoInNewTab(currentVideoData.url);
+        
+        // Simulate playback state for UI feedback
+        isPlaying = !isPlaying;
+        updatePlayButton();
+        
+        if (isPlaying) {
+            startProgressSimulation();
+        }
+    }
+}
+
+function updatePlayButton() {
+    const playBtn = document.getElementById('playBtn');
+    const playIcon = playBtn?.querySelector('.play-icon');
+    const pauseIcon = playBtn?.querySelector('.pause-icon');
+    
+    if (playIcon && pauseIcon) {
+        if (isPlaying) {
+            playIcon.style.display = 'none';
+            pauseIcon.style.display = 'block';
+        } else {
+            playIcon.style.display = 'block';
+            pauseIcon.style.display = 'none';
+        }
+    }
+}
+
+function startProgressSimulation() {
+    // Simulate progress for demo purposes
+    let progress = 0;
+    const duration = currentVideoData?.duration || 300; // fallback to 5 minutes
+    
+    const updateProgress = () => {
+        if (!isPlaying || progress >= duration) {
+            isPlaying = false;
+            updatePlayButton();
+            return;
+        }
+        
+        progress += 1;
+        const progressPercent = (progress / duration) * 100;
+        
+        // Update progress bar
+        const progressFill = document.querySelector('.progress-fill');
+        if (progressFill) {
+            progressFill.style.width = `${progressPercent}%`;
+        }
+        
+        // Update current time display
+        const currentTimeElement = document.getElementById('currentTime');
+        if (currentTimeElement) {
+            currentTimeElement.textContent = formatDuration(progress);
+        }
+        
+        setTimeout(updateProgress, 1000);
+    };
+    
+    if (isPlaying) {
+        updateProgress();
+    }
+}
+
+function playPrevious() {
+    const reports = window.REPORTS_DATA || [];
+    if (!currentVideoData || reports.length <= 1) return;
+    
+    // Find current report index
+    const currentIndex = reports.findIndex(report => 
+        report.url === currentVideoData.url || report.video_id === currentVideoData.video_id
+    );
+    
+    if (currentIndex > 0) {
+        const previousReport = reports[currentIndex - 1];
+        showMiniPlayer(previousReport);
+    } else {
+        // Loop to last report
+        const lastReport = reports[reports.length - 1];
+        showMiniPlayer(lastReport);
+    }
+}
+
+function playNext() {
+    const reports = window.REPORTS_DATA || [];
+    if (!currentVideoData || reports.length <= 1) return;
+    
+    // Find current report index
+    const currentIndex = reports.findIndex(report => 
+        report.url === currentVideoData.url || report.video_id === currentVideoData.video_id
+    );
+    
+    if (currentIndex < reports.length - 1) {
+        const nextReport = reports[currentIndex + 1];
+        showMiniPlayer(nextReport);
+    } else {
+        // Loop to first report
+        const firstReport = reports[0];
+        showMiniPlayer(firstReport);
+    }
+}
+
+function extractVideoId(url) {
+    if (!url) return null;
+    
+    const patterns = [
+        /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+        /^([a-zA-Z0-9_-]{11})$/ // Just video ID
+    ];
+    
+    for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match) return match[1];
+    }
+    
+    return null;
+}
+
+function openVideoInNewTab(url) {
+    if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+    }
+}
+
+function formatDuration(seconds) {
+    if (!seconds || seconds < 0) return '0:00';
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    
+    if (hours > 0) {
+        return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    } else {
+        return `${minutes}:${secs.toString().padStart(2, '0')}`;
+    }
 }
 
 // Utility Functions
@@ -332,9 +579,40 @@ function debounce(func, wait) {
     };
 }
 
+// Launch Mini Player Function
+function launchMiniPlayer(buttonElement) {
+    const card = buttonElement.closest('.report-card');
+    if (!card) return;
+    
+    const videoDataAttr = card.getAttribute('data-video-data');
+    if (!videoDataAttr) return;
+    
+    try {
+        const videoData = JSON.parse(videoDataAttr.replace(/&#39;/g, "'"));
+        showMiniPlayer(videoData);
+    } catch (e) {
+        console.error('Error parsing video data:', e);
+        
+        // Fallback: create video data from card attributes
+        const fallbackVideoData = {
+            title: card.getAttribute('data-title'),
+            channel: card.getAttribute('data-channel'),
+            url: '', // Would need to be provided in the report data
+            duration: 0
+        };
+        
+        if (fallbackVideoData.title) {
+            showMiniPlayer(fallbackVideoData);
+        }
+    }
+}
+
 // Export functions for global access
 window.openReport = openReport;
 window.handleSelectAll = handleSelectAll;
 window.handleDelete = handleDelete;
 window.openFilters = openFilters;
 window.closeFilters = closeFilters;
+window.launchMiniPlayer = launchMiniPlayer;
+window.showMiniPlayer = showMiniPlayer;
+window.closeMiniPlayer = closeMiniPlayer;
