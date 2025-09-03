@@ -1,15 +1,21 @@
-# YouTube Video Summarizer CLI
+# YTV2 - YouTube Video Summarizer Bot
 
-A simple, powerful command-line tool that extracts transcripts from YouTube videos and generates AI-powered summaries using multiple AI providers. Clean, focused, and reliable.
+A modern, modular YouTube video summarizer with AI-powered analysis, featuring a Telegram bot interface and beautiful web dashboard with mini-player functionality.
 
 ## 🌟 Features
 
+- **🤖 Telegram Bot Integration**: Send YouTube URLs via Telegram for instant AI summaries
+- **🌐 Modern Web Dashboard**: Glass morphism UI with interactive mini-player and video navigation
+- **📊 JSON Report System**: Structured data with legacy HTML support and REST API
+- **🎵 Interactive Mini-Player**: Navigate between videos with progress tracking and YouTube integration
+- **⚙️ Modular Architecture**: Clean, maintainable code with separated concerns across modules
+- **🔧 User Customization**: JSON configs for prompts, voices, and settings without code changes
+- **📱 Responsive Design**: Beautiful glass morphism design that works on desktop and mobile
+- **🚀 Dual Operation Modes**: Run with Telegram bot + dashboard or dashboard-only mode
 - **Smart Summarization**: Generate comprehensive, bullet-point, or key-insights summaries
 - **Content Analysis**: Automatic categorization, sentiment analysis, and topic extraction
 - **Multiple Export Formats**: JSON, Markdown, HTML, and PDF outputs
-- **Batch Processing**: Process multiple videos from a file
 - **Multiple AI Providers**: Support for OpenAI GPT, Anthropic Claude, and OpenRouter models
-- **Transcript Extraction**: Automatic extraction using yt-dlp with fallback to video descriptions
 
 ## 🚀 Quick Start
 
@@ -38,6 +44,29 @@ cp .env.template .env
 
 ### Basic Usage
 
+#### Option 1: Telegram Bot + Web Dashboard (Full Featured)
+```bash
+# Set up environment variables
+export TELEGRAM_BOT_TOKEN="your_bot_token_here"
+export TELEGRAM_ALLOWED_USERS="123456789,987654321"  # Comma-separated user IDs
+
+# Run the full system
+python telegram_bot.py
+```
+- Access dashboard at: http://localhost:6452
+- Send YouTube URLs to your Telegram bot
+- Use interactive mini-player and modern UI
+
+#### Option 2: Web Dashboard Only
+```bash
+# Just run the main orchestrator
+python telegram_bot.py
+```
+- Access dashboard at: http://localhost:6452
+- No Telegram configuration required
+- Modern glass morphism UI with mini-player
+
+#### Option 3: Command Line (Legacy)
 ```bash
 # Summarize a single video
 python main.py "https://www.youtube.com/watch?v=your-video-id"

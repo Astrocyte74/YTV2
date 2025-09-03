@@ -221,6 +221,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/':
             self.serve_dashboard()
+        elif self.path == '/status':
+            self.serve_status()
+        elif self.path.startswith('/api/'):
+            self.serve_api()
         elif self.path.endswith('.css'):
             self.serve_css()
         elif self.path.endswith('.js'):
@@ -398,6 +402,225 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error serving report {self.path}: {e}")
             self.send_error(500, "Error serving report")
+    
+    def serve_status(self):
+        """Serve system status endpoint"""
+        try:
+            # Check if Telegram bot is configured
+            telegram_configured = bool(os.getenv('TELEGRAM_BOT_TOKEN'))
+            users_configured = bool(os.getenv('TELEGRAM_ALLOWED_USERS'))
+            
+            # Count reports
+            report_generator = JSONReportGenerator()
+            json_reports = len(report_generator.list_reports())
+            
+            html_reports = 0
+            for report_dir in [Path('./exports'), Path('.')]:
+                if report_dir.exists():
+                    html_reports += len([f for f in report_dir.glob('*.html') 
+                                       if f.name not in ['dashboard_template.html', 'report_template.html']
+                                       and not f.name.startswith('._')])
+            
+            status_data = {
+                "status": "healthy",
+                "timestamp": datetime.now().isoformat(),
+                "services": {
+                    "dashboard": "running",
+                    "telegram_bot": "configured" if telegram_configured and users_configured else "not_configured"
+                },
+                "reports": {
+                    "json_reports": json_reports,
+                    "html_reports": html_reports,
+                    "total_reports": json_reports + html_reports
+                },
+                "configuration": {
+                    "telegram_configured": telegram_configured,
+                    "users_configured": users_configured,
+                    "web_port": os.getenv('WEB_PORT', 6452)
+                }
+            }
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(json.dumps(status_data, indent=2).encode())
+            
+        except Exception as e:
+            logger.error(f"Error serving status: {e}")
+            error_data = {"status": "error", "message": str(e)}
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(error_data).encode())
+    
+    def serve_api(self):
+        """Serve API endpoints"""
+        try:
+            if self.path == '/api/reports':
+                self.serve_api_reports()
+            elif self.path.startswith('/api/reports/'):
+                self.serve_api_report_detail()
+            elif self.path == '/api/config':
+                self.serve_api_config()
+            else:
+                self.send_error(404, "API endpoint not found")
+        except Exception as e:
+            logger.error(f"Error serving API {self.path}: {e}")
+            self.send_error(500, "API error")
+    
+    def serve_api_reports(self):
+        """Serve reports list API endpoint"""
+        try:
+            # Get all reports (JSON preferred, HTML legacy)
+            report_generator = JSONReportGenerator()
+            json_reports = report_generator.list_reports()
+            
+            # Convert to API format
+            api_reports = []
+            for report in json_reports:
+                api_reports.append({
+                    "id": report.get('filename', '').replace('.json', ''),
+                    "filename": report['filename'],
+                    "title": report['title'],
+                    "channel": report['channel'],
+                    "duration": report.get('duration', 0),
+                    "created_date": report['created_date'],
+                    "created_time": report['created_time'],
+                    "timestamp": report['timestamp'],
+                    "type": "json",
+                    "url": report.get('url', ''),
+                    "video_id": report.get('video_id', '')
+                })
+            
+            # Add HTML reports for legacy support
+            html_dirs = [Path('./exports'), Path('.')]
+            for report_dir in html_dirs:
+                if report_dir.exists():
+                    html_files = [f for f in report_dir.glob('*.html') 
+                                if f.name not in ['dashboard_template.html', 'report_template.html']
+                                and not f.name.startswith('._')]
+                    
+                    for html_file in html_files:
+                        try:
+                            metadata = extract_html_report_metadata(html_file)
+                            api_reports.append({
+                                "id": html_file.stem,
+                                "filename": metadata['filename'],
+                                "title": metadata['title'],
+                                "channel": metadata['channel'],
+                                "duration": 0,
+                                "created_date": metadata['created_date'],
+                                "created_time": metadata['created_time'],
+                                "timestamp": metadata['timestamp'],
+                                "type": "html",
+                                "url": "",
+                                "video_id": ""
+                            })
+                        except Exception:
+                            continue
+            
+            # Sort by timestamp (newest first)
+            api_reports.sort(key=lambda x: x['timestamp'], reverse=True)
+            
+            response_data = {
+                "reports": api_reports,
+                "total": len(api_reports),
+                "json_count": len(json_reports),
+                "html_count": len(api_reports) - len(json_reports)
+            }
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data, ensure_ascii=False, indent=2).encode())
+            
+        except Exception as e:
+            logger.error(f"Error serving reports API: {e}")
+            error_data = {"error": "Failed to load reports", "message": str(e)}
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(error_data).encode())
+    
+    def serve_api_report_detail(self):
+        """Serve individual report API endpoint"""
+        # Extract report ID from path
+        report_id = self.path.split('/')[-1]
+        
+        try:
+            # Look for JSON report first
+            json_file = Path('./data/reports') / f"{report_id}.json"
+            if json_file.exists():
+                report_data = json.loads(json_file.read_text())
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(report_data, ensure_ascii=False, indent=2).encode())
+                return
+            
+            # Look for HTML report (legacy)
+            html_dirs = [Path('./exports'), Path('.')]
+            for html_dir in html_dirs:
+                html_file = html_dir / f"{report_id}.html"
+                if html_file.exists():
+                    metadata = extract_html_report_metadata(html_file)
+                    # For HTML reports, we return limited metadata
+                    response_data = {
+                        "type": "html",
+                        "metadata": metadata,
+                        "message": "HTML report - limited API data available"
+                    }
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(response_data, ensure_ascii=False, indent=2).encode())
+                    return
+            
+            # Report not found
+            self.send_error(404, "Report not found")
+            
+        except Exception as e:
+            logger.error(f"Error serving report detail API: {e}")
+            error_data = {"error": "Failed to load report", "message": str(e)}
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(error_data).encode())
+    
+    def serve_api_config(self):
+        """Serve configuration API endpoint"""
+        try:
+            config_data = {
+                "telegram": {
+                    "bot_configured": bool(os.getenv('TELEGRAM_BOT_TOKEN')),
+                    "users_configured": bool(os.getenv('TELEGRAM_ALLOWED_USERS'))
+                },
+                "web": {
+                    "port": int(os.getenv('WEB_PORT', 6452)),
+                    "ngrok_url": os.getenv('NGROK_URL', '')
+                },
+                "directories": {
+                    "json_reports": str(Path('./data/reports').absolute()),
+                    "html_reports": str(Path('./exports').absolute())
+                },
+                "version": "1.0.0"
+            }
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Cache-Control', 'public, max-age=300')  # Cache for 5 minutes
+            self.end_headers()
+            self.wfile.write(json.dumps(config_data, indent=2).encode())
+            
+        except Exception as e:
+            logger.error(f"Error serving config API: {e}")
+            error_data = {"error": "Failed to load configuration", "message": str(e)}
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(error_data).encode())
 
 def start_http_server():
     """Start the HTTP server for dashboard access"""
