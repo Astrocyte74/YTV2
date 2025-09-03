@@ -863,6 +863,93 @@ body {
     outline-offset: 2px;
 }
 
+/* ================================================
+   FILTER DRAWER CONTENT STYLING
+   ================================================ */
+
+.filter-group {
+    margin-bottom: var(--space-8);
+}
+
+.filter-group h4 {
+    font-size: var(--font-size-lg);
+    font-weight: 700;
+    color: var(--gray-800);
+    margin-bottom: var(--space-4);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.filter-options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.filter-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: var(--radius-lg);
+    cursor: pointer;
+    transition: all var(--transition-base);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+}
+
+.filter-option:hover {
+    background: rgba(255, 255, 255, 0.9);
+    transform: translateX(2px);
+}
+
+.filter-option input[type="checkbox"] {
+    width: 1.25rem;
+    height: 1.25rem;
+    accent-color: var(--primary-500);
+    cursor: pointer;
+}
+
+.filter-option span {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--gray-700);
+    flex: 1;
+}
+
+/* Empty state styling */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-20);
+    text-align: center;
+}
+
+.empty-state .empty-icon {
+    font-size: var(--font-size-5xl);
+    margin-bottom: var(--space-4);
+    opacity: 0.7;
+}
+
+.empty-state h3 {
+    font-size: var(--font-size-xl);
+    font-weight: 700;
+    color: var(--white);
+    margin-bottom: var(--space-2);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.empty-state p {
+    font-size: var(--font-size-base);
+    color: rgba(255, 255, 255, 0.8);
+    max-width: 400px;
+}
+
 /* High contrast mode support */
 @media (prefers-contrast: high) {
     :root {
