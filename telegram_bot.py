@@ -429,6 +429,7 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
             background: var(--background-white);
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             min-height: 100vh;
+            overflow-x: hidden;
         }}
         
         .header {{
@@ -598,9 +599,10 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
         
         .report-grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); /* Increased from 350px */
-            gap: 16px; /* Reduced from 20px */
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); /* Fixed auto-fit and reduced min-width */
+            gap: 16px;
             margin-top: 0;
+            width: 100%;
         }}
         
         /* ==========================================
@@ -997,6 +999,7 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
             align-items: center;
             justify-content: space-between;
             margin-bottom: 20px;
+            padding: 12px 0;
         }}
         
         .toolbar-left {{
@@ -1259,6 +1262,23 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
             flex: 1;
             overflow-y: auto;
             padding: 20px;
+        }}
+
+        /* Backdrop for drawer overlay */
+        .backdrop {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }}
+
+        .backdrop.visible {{
+            opacity: 1;
         }}
         
         /* ==========================================
