@@ -388,26 +388,53 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>YouTube Summary Reports Dashboard</title>
     <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-            background: #f8f9fa;
+    <style>
+        /* Root Variables - Clean Professional Colors */
+        :root {{
+            --primary-blue: #0066cc;
+            --secondary-gray: #6b7280;
+            --text-dark: #1f2937;
+            --text-medium: #4b5563;
+            --text-light: #9ca3af;
+            --border-light: #e5e7eb;
+            --border-medium: #d1d5db;
+            --background-white: #ffffff;
+            --background-gray: #f8fafc;
+            --background-light: #f1f5f9;
+            --success-green: #10b981;
+            --danger-red: #ef4444;
+            --warning-orange: #f59e0b;
+        }}
+        
+        /* Base Styles */
+        * {{
+            box-sizing: border-box;
+        }}
+        
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: var(--background-light);
+            color: var(--text-dark);
+            line-height: 1.6;
+        }}
+        
+        /* ==========================================
+           COMPACT HEADER - 40% Smaller
+           ========================================== */
+        .container {{
+            max-width: 1400px;
+            margin: 0 auto;
+            background: var(--background-white);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             min-height: 100vh;
-            padding: 20px;
         }}
-        .container {{ 
-            max-width: 1200px; 
-            margin: 0 auto; 
-            background: white; 
-            border-radius: 20px; 
-            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
-            overflow: visible;
-        }}
+        
         .header {{
-            background: #2563eb;
-            color: white;
-            padding: 25px 30px;
-            border-radius: 12px 12px 0 0;
+            background: var(--background-white);
+            border-bottom: 1px solid var(--border-light);
+            padding: 16px 24px; /* Reduced from 25px 30px */
             position: sticky;
             top: 0;
             z-index: 100;
@@ -418,589 +445,556 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
             align-items: center;
             justify-content: space-between;
             gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
         }}
         
         .header-text {{
-            text-align: center;
-            flex: 1;
+            text-align: left; /* Changed from center */
         }}
         
-        .mini-player-header {{
-            background: rgba(255, 255, 255, 0.15);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            padding: 12px 16px;
-            border-radius: 12px;
-            backdrop-filter: blur(10px);
-            min-width: 300px;
-            max-width: 350px;
-        }}
-        
-        .mini-player-header .clickable-title {{
-            color: white;
-        }}
-        
-        .mini-player-header .clickable-title:hover {{
-            color: #87ceeb;
-        }}
-        
-        .mini-player-header .mini-btn {{
-            background: rgba(255, 255, 255, 0.2);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: white;
-        }}
-        
-        .mini-player-header .mini-btn:hover {{
-            background: rgba(255, 255, 255, 0.3);
-        }}
-        .footer {{
-            border-radius: 0 0 20px 20px;
-        }}
         .header h1 {{
-            font-size: 2em;
-            margin-bottom: 5px;
-            font-weight: 700;
+            font-size: 1.5rem; /* Reduced from 2em */
+            margin: 0 0 4px 0; /* Reduced margin */
+            font-weight: 600; /* Reduced from 700 */
+            color: var(--text-dark);
         }}
+        
         .header p {{
-            font-size: 1.1em;
-            opacity: 0.9;
+            font-size: 0.875rem; /* Reduced from 1.1em */
+            color: var(--text-medium);
+            margin: 0;
         }}
-        .info-tiles {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-            padding: 20px 30px;
-            background: #fafbfc;
-            border-bottom: 1px solid #e9ecef;
+        
+        /* Hide mini player from header - will be moved to footer */
+        .mini-player-header {{
+            display: none !important;
         }}
-        .info-tile {{
-            background: white;
-            padding: 16px 20px;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-            border: 1px solid #f0f1f3;
-            transition: all 0.2s ease;
-        }}
-        .info-tile:hover {{
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            border-color: #e3e6ea;
-        }}
-        .info-tile-icon {{
-            font-size: 1.4em;
-            min-width: 24px;
-            text-align: center;
-        }}
-        .info-tile-content {{
-            display: flex;
-            flex-direction: column;
-        }}
-        .info-tile-value {{
-            font-size: 1.5em;
-            font-weight: 700;
-            color: #1a1d29;
-            line-height: 1.2;
-        }}
-        .info-tile-label {{
-            color: #6c757d;
-            font-size: 0.85em;
-            font-weight: 500;
-        }}
-        .content {{
-            padding: 25px 30px;
-        }}
-        .section-title {{
-            font-size: 1.4em;
-            color: #2a5298;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }}
+        
+        /* ==========================================
+           INTEGRATED SEARCH & CONTROLS BAR
+           ========================================== */
         .controls-bar {{
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 18px 30px;
-            background: rgba(255, 255, 255, 0.95);
-            border-bottom: 1px solid #e9ecef;
-            margin-bottom: 0;
+            background: var(--background-white);
+            border-bottom: 1px solid var(--border-light);
+            padding: 12px 24px; /* Reduced padding */
             position: sticky;
-            top: 0;
-            z-index: 100;
-            backdrop-filter: blur(12px);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            transition: all 0.3s ease;
+            top: 73px; /* Adjust based on header height */
+            z-index: 99;
         }}
-        .controls-bar.scrolled {{
-            background: rgba(255, 255, 255, 0.98);
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-        }}
+        
         .controls-row {{
             display: flex;
             align-items: center;
             gap: 16px;
-            flex-wrap: wrap;
+            max-width: 1400px;
+            margin: 0 auto;
         }}
+        
+        .search-wrapper {{
+            flex: 1;
+            max-width: 400px;
+        }}
+        
         .search-container {{
             position: relative;
-            flex: 1;
-            min-width: 300px;
         }}
+        
         .search-input {{
             width: 100%;
-            padding: 12px 16px 12px 44px;
-            border: 1px solid #e3e6ea;
-            border-radius: 10px;
-            font-size: 15px;
-            background: #fafbfc;
+            padding: 8px 12px 8px 36px; /* Reduced padding */
+            border: 1px solid var(--border-medium);
+            border-radius: 6px; /* Reduced from 10px */
+            font-size: 14px; /* Reduced font size */
+            background: var(--background-white);
             transition: all 0.2s ease;
         }}
-        .search-clear {{
-            position: absolute;
-            right: 12px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            font-size: 18px;
-            color: #6c757d;
-            cursor: pointer;
-            padding: 4px;
-            border-radius: 50%;
-            width: 28px;
-            height: 28px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-        }}
-        .search-clear:hover {{
-            background: #e9ecef;
-            color: #495057;
-        }}
+        
         .search-input:focus {{
             outline: none;
-            border-color: #2a5298;
-            background: white;
-            box-shadow: 0 0 0 3px rgba(42, 82, 152, 0.1);
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
         }}
-        .search-wrapper {{
-            position: relative;
-            flex: 1;
-        }}
+        
         .search-icon {{
             position: absolute;
-            left: 16px;
+            left: 12px;
             top: 50%;
             transform: translateY(-50%);
-            color: #6c757d;
-            font-size: 16px;
-            pointer-events: none;
+            color: var(--text-light);
+            font-size: 14px;
         }}
+        
         .controls-group {{
             display: flex;
             align-items: center;
             gap: 12px;
         }}
+        
         .control-select {{
-            padding: 10px 14px;
-            border: 1px solid #e3e6ea;
-            border-radius: 8px;
-            background: white;
-            font-size: 14px;
-            font-weight: 500;
-            color: #495057;
-            min-width: 120px;
+            padding: 6px 12px; /* Reduced padding */
+            border: 1px solid var(--border-medium);
+            border-radius: 6px;
+            background: var(--background-white);
+            font-size: 13px; /* Reduced font size */
+            color: var(--text-dark);
             cursor: pointer;
-            transition: all 0.2s ease;
-        }}
-        .control-select:hover {{
-            border-color: #2a5298;
-        }}
-        .control-select:focus {{
-            outline: none;
-            border-color: #2a5298;
-            box-shadow: 0 0 0 3px rgba(42, 82, 152, 0.1);
         }}
         
-        /* Filter Chips */
-        .filter-chips {{
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            align-items: center;
-            margin-right: 16px;
-        }}
-        
-        .filter-chip {{
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            color: #495057;
-            padding: 6px 12px;
-            border-radius: 16px;
-            font-size: 0.85em;
+        .btn {{
+            padding: 6px 12px; /* Reduced padding */
+            border-radius: 6px;
+            font-size: 13px; /* Reduced font size */
             font-weight: 500;
             cursor: pointer;
             transition: all 0.2s ease;
-            white-space: nowrap;
-            user-select: none;
+            border: none;
         }}
         
-        .filter-chip:hover {{
-            background: #e9ecef;
-            border-color: #adb5bd;
-            transform: translateY(-1px);
+        .btn-outline {{
+            background: var(--background-white);
+            color: var(--text-dark);
+            border: 1px solid var(--border-medium);
         }}
         
-        .filter-chip.active {{
-            background: #1a73e8;
+        .btn-outline:hover {{
+            background: var(--background-gray);
+            border-color: var(--primary-blue);
+        }}
+        
+        .btn-danger {{
+            background: var(--danger-red);
             color: white;
-            border-color: #1a73e8;
-            box-shadow: 0 2px 4px rgba(26, 115, 232, 0.2);
         }}
         
-        .filter-chip.active:hover {{
-            background: #1557b0;
-            border-color: #1557b0;
+        .btn-danger:hover {{
+            background: #dc2626;
         }}
         
-        /* Enhanced Button States */
-        .btn:disabled {{
-            opacity: 0.5;
+        .btn-danger:disabled {{
+            background: var(--text-light);
             cursor: not-allowed;
-            transform: none !important;
         }}
         
-        .btn-outline:disabled {{
-            background: #f8f9fa;
-            color: #6c757d;
-            border-color: #dee2e6;
+        /* ==========================================
+           IMPROVED GRID LAYOUT - 2-3 Cards Per Row
+           ========================================== */
+        .content {{
+            padding: 20px 24px 120px 24px; /* Added bottom padding for footer player */
+            max-width: 1400px;
+            margin: 0 auto;
         }}
         
-        /* Card Selection Highlighting */
-        .report-card.selected {{
-            border-color: #1a73e8;
-            box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.1);
-            background: rgba(26, 115, 232, 0.02);
+        .reports-container {{
+            margin-top: 0;
         }}
         
-        .report-card.selected::before {{
-            background: #1a73e8;
+        .section-title {{
+            font-size: 1.25rem; /* Reduced from 1.4em */
+            color: var(--text-dark);
+            margin-bottom: 16px; /* Reduced from 20px */
+            font-weight: 600;
+        }}
+        
+        .report-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); /* Increased from 350px */
+            gap: 16px; /* Reduced from 20px */
+            margin-top: 0;
+        }}
+        
+        /* ==========================================
+           CLEAN CARD DESIGN - No Gradients
+           ========================================== */
+        .report-card {{
+            background: var(--background-white);
+            border: 1px solid var(--border-light);
+            border-radius: 12px; /* Reduced from 16px */
+            overflow: hidden;
+            transition: all 0.3s ease;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            height: 320px; /* Fixed height for consistency */
+        }}
+        
+        .report-card:hover {{
+            transform: translateY(-4px); /* Reduced from -10px */
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12); /* Reduced shadow */
+            border-color: var(--border-medium);
+        }}
+        
+        /* Remove the gradient accent bar */
+        .report-card::before {{
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px; /* Reduced from 4px */
+            background: var(--primary-blue); /* Single color, no gradient */
+            transform: translateY(-3px);
+            transition: transform 0.3s ease;
+        }}
+        
+        .report-card:hover::before {{
+            transform: translateY(0);
+        }}
+        
+        .card-thumbnail {{
+            width: 100%;
+            height: 140px; /* Increased from 120px */
+            background: var(--background-gray);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }}
+        
+        .card-thumbnail img {{
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.3s ease;
+        }}
+        
+        .report-card:hover .card-thumbnail img {{
+            transform: scale(1.03); /* Reduced from 1.05 */
+        }}
+        
+        .thumbnail-fallback {{
+            color: var(--text-light);
+            font-size: 2em;
+            cursor: pointer;
+        }}
+        
+        /* Card Controls */
+        .report-checkbox {{
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 10;
+            transform: scale(1.1);
+        }}
+        
+        .card-delete-btn {{
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            z-index: 10;
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            border: none;
+            width: 28px; /* Reduced from larger */
+            height: 28px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            opacity: 0;
+            transition: all 0.2s ease;
+        }}
+        
+        .report-card:hover .card-delete-btn {{
             opacity: 1;
         }}
         
-        /* Export Dropdown */
-        .export-dropdown {{
-            position: relative;
+        .card-delete-btn:hover {{
+            background: var(--danger-red);
+            transform: scale(1.1);
+        }}
+        
+        /* Card Content */
+        .card-content {{
+            padding: 16px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }}
+        
+        .model-badge {{
             display: inline-block;
-        }}
-        
-        .export-dropdown-content {{
-            display: none;
-            position: absolute;
-            right: 0;
-            background-color: white;
-            min-width: 120px;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
-            border-radius: 8px;
-            z-index: 1000;
-            border: 1px solid #e3e6ea;
-            padding: 4px 0;
-        }}
-        
-        .export-dropdown:hover .export-dropdown-content {{
-            display: block;
-        }}
-        
-        .export-dropdown-content button {{
-            background: none;
-            border: none;
-            color: #495057;
-            padding: 8px 16px;
-            text-align: left;
-            width: 100%;
-            cursor: pointer;
-            font-size: 0.9em;
-        }}
-        
-        .export-dropdown-content button:hover {{
-            background-color: #f8f9fa;
-        }}
-        .btn-secondary {{
-            background: #6c757d;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.3s ease;
-        }}
-        .btn-secondary:hover {{
-            background: #5a6268;
-        }}
-        .btn-danger {{
-            background: #dc3545;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.3s ease;
-        }}
-        .btn-danger:hover {{
-            background: #c82333;
-        }}
-        .btn-danger:disabled {{
-            background: #ccc;
-            cursor: not-allowed;
-        }}
-        /* Off-canvas Drawer Styles */
-        .drawer[hidden] {{ 
-            display: none; 
-        }}
-        
-        .drawer {{
-            position: fixed; 
-            top: 0; 
-            left: 0; 
-            bottom: 0; 
-            width: 400px; 
-            max-width: 90vw;
-            background: #fff; 
-            border-right: 1px solid #e5e7eb; 
-            box-shadow: 6px 0 24px rgba(0,0,0,0.12);
-            transform: translateX(-100%); 
-            transition: transform 0.22s ease;
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-        }}
-        
-        .drawer.open {{
-            transform: translateX(0);
-        }}
-        
-        .backdrop {{
-            position: fixed; 
-            top: 0; 
-            left: 0; 
-            right: 0; 
-            bottom: 0; 
-            background: rgba(0,0,0,0.25);
-            z-index: 999;
-        }}
-        
-        .drawer__header {{
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            color: white;
-            padding: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }}
-        
-        .drawer__title {{
-            font-size: 1.2em;
-            font-weight: 600;
-            margin: 0;
-        }}
-        
-        .drawer__actions {{
-            display: flex;
-            gap: 8px;
-        }}
-        
-        .drawer__actions button {{
-            background: rgba(255,255,255,0.1);
-            border: 1px solid rgba(255,255,255,0.2);
-            color: white;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 0.9em;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }}
-        
-        .drawer__actions button:hover {{
-            background: rgba(255,255,255,0.2);
-        }}
-        
-        .drawer__sections {{
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-        }}
-        
-        /* Playlist Drawer Specific Styles */
-        .playlist-content {{
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }}
-        
-        .playlist-info-bar {{
-            background: #ffffff;
-            border-bottom: 1px solid #dee2e6;
-            padding: 15px 20px;
-        }}
-        
-        .now-playing-info {{
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 10px;
-        }}
-        
-        .now-playing-info #drawerNowPlaying {{
-            font-weight: 600;
-            color: #2a5298;
-            font-size: 0.9em;
-        }}
-        
-        .now-playing-info #drawerTrackCounter {{
-            background: #6c757d;
-            color: white;
+            background: var(--background-light);
+            color: var(--text-dark);
             padding: 4px 8px;
             border-radius: 4px;
-            font-size: 0.8em;
+            font-size: 0.75rem;
+            font-weight: 500;
+            margin-bottom: 8px;
+            border: 1px solid var(--border-light);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            align-self: flex-start;
         }}
         
-        .playlist-progress {{
-            height: 4px;
-            background: #e9ecef;
-            border-radius: 2px;
-            overflow: hidden;
+        /* Model badge color variations - subtle, professional */
+        .model-badge.anthropic {{ 
+            background: #fef3c7; 
+            color: #92400e; 
+            border-color: #fcd34d; 
+        }}
+        .model-badge.openai {{ 
+            background: #dbeafe; 
+            color: #1d4ed8; 
+            border-color: #93c5fd; 
+        }}
+        .model-badge.deepseek {{ 
+            background: #d1fae5; 
+            color: #047857; 
+            border-color: #86efac; 
+        }}
+        .model-badge.gemma {{ 
+            background: #e9d5ff; 
+            color: #7c2d12; 
+            border-color: #c4b5fd; 
         }}
         
-        .progress-bar {{
-            height: 100%;
-            background: linear-gradient(90deg, #2a5298, #7c3aed);
-            width: 0%;
-            transition: width 0.3s ease;
-        }}
-        
-        .playlist-tracks {{
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-        }}
-        
-        .playlist-track {{
-            background: white;
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 12px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }}
-        
-        .playlist-track:hover {{
-            border-color: #2a5298;
-            box-shadow: 0 2px 8px rgba(42, 82, 152, 0.1);
-        }}
-        
-        .playlist-track.current {{
-            border-color: #2a5298;
-            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
-        }}
-        
-        .track-header {{
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 10px;
-        }}
-        
-        .track-title {{
+        .report-title {{
+            font-size: 1rem;
             font-weight: 600;
-            color: #1a1d29;
-            font-size: 0.9em;
-            line-height: 1.3;
+            color: var(--text-dark);
+            margin-bottom: 8px;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            flex: 1;
         }}
         
-        .track-duration {{
-            color: #6c757d;
-            font-size: 0.8em;
-        }}
-        
-        .track-meta {{
+        .report-meta {{
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 10px;
-            margin-bottom: 10px;
+            margin-top: auto;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-light);
         }}
         
-        .track-model {{
-            background: #e9ecef;
-            color: #495057;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 0.7em;
+        .report-channel {{
+            font-size: 0.875rem;
+            color: var(--text-medium);
             font-weight: 500;
         }}
         
-        .track-time {{
-            color: #6c757d;
-            font-size: 0.8em;
+        .report-time {{
+            font-size: 0.75rem;
+            color: var(--text-light);
         }}
         
-        .track-controls {{
+        .report-actions {{
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }}
+        
+        .action-btn {{
+            padding: 6px 12px;
+            font-size: 0.75rem;
+            border-radius: 4px;
+            border: 1px solid var(--border-medium);
+            background: var(--background-white);
+            color: var(--text-dark);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+        }}
+        
+        .action-btn:hover {{
+            background: var(--background-gray);
+            border-color: var(--primary-blue);
+            color: var(--primary-blue);
+        }}
+        
+        .action-btn.primary {{
+            background: var(--primary-blue);
+            color: white;
+            border-color: var(--primary-blue);
+        }}
+        
+        .action-btn.primary:hover {{
+            background: #0056b3;
+            border-color: #0056b3;
+        }}
+        
+        /* Audio indicator */
+        .audio-indicator {{
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            background: var(--success-green);
+            color: white;
+            padding: 4px 6px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }}
+        
+        /* Card Selection State */
+        .report-card.selected {{
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.1);
+            background: rgba(0, 102, 204, 0.02);
+        }}
+        
+        /* ==========================================
+           FOOTER MINI-PLAYER (SPOTIFY-STYLE)
+           ========================================== */
+        .mini-player-footer {{
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--background-white);
+            border-top: 1px solid var(--border-light);
+            padding: 12px 24px;
+            z-index: 200;
+            backdrop-filter: blur(8px);
+            background: rgba(255, 255, 255, 0.95);
+        }}
+        
+        .mini-player-container {{
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            align-items: center;
+            gap: 20px;
+        }}
+        
+        .mini-player-info {{
+            min-width: 0; /* Allow shrinking */
+        }}
+        
+        .mini-player-title {{
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-dark);
+            margin: 0 0 4px 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+        
+        .mini-player-meta {{
+            font-size: 0.75rem;
+            color: var(--text-medium);
+            margin: 0;
+        }}
+        
+        .mini-player-controls {{
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 12px;
         }}
         
-        .track-play-btn {{
-            background: #2a5298;
-            color: white;
-            border: none;
-            padding: 6px 10px;
-            border-radius: 4px;
-            font-size: 0.8em;
+        .mini-player-progress {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 200px;
+        }}
+        
+        .mini-timeline {{
+            flex: 1;
+            height: 4px;
+            background: var(--border-light);
+            border-radius: 2px;
             cursor: pointer;
+            appearance: none;
+            outline: none;
+        }}
+        
+        .mini-timeline::-webkit-slider-thumb {{
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            border-radius: 6px;
+            background: var(--primary-blue);
+            cursor: pointer;
+        }}
+        
+        .mini-time-display {{
+            font-size: 0.75rem;
+            color: var(--text-medium);
+            min-width: 80px;
+            text-align: center;
+        }}
+        
+        .mini-btn {{
+            background: none;
+            border: 1px solid var(--border-medium);
+            color: var(--text-dark);
+            padding: 6px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
             transition: all 0.2s ease;
         }}
         
-        .track-play-btn:hover {{
-            background: #1e3c72;
+        .mini-btn:hover {{
+            background: var(--background-gray);
+            border-color: var(--primary-blue);
         }}
         
-        .track-play-btn.playing {{
-            background: #10b981;
+        .mini-btn.primary {{
+            background: var(--primary-blue);
+            color: white;
+            border-color: var(--primary-blue);
         }}
         
-        /* Responsive Design */
-        @media (max-width: 768px) {{
-            .drawer {{
-                width: 100vw;
-                max-width: 100vw;
-            }}
-            
-            .playlist-track {{
-                padding: 12px;
-            }}
-            
-            .track-header {{
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 5px;
-            }}
-            
-            .track-meta {{
-                flex-wrap: wrap;
-            }}
+        .mini-btn.primary:hover {{
+            background: #0056b3;
         }}
         
-        /* Toolbar with chips */
+        .mini-btn.close {{
+            background: none;
+            border: none;
+            color: var(--text-light);
+            padding: 4px;
+        }}
+        
+        .mini-btn.close:hover {{
+            color: var(--text-dark);
+        }}
+        
+        /* Hide mini player when not active */
+        .mini-player-footer[hidden] {{
+            display: none;
+        }}
+        
+        /* ==========================================
+           BULK ACTIONS (SHOW ONLY WHEN ITEMS SELECTED)
+           ========================================== */
+        .bulk-actions {{
+            position: fixed;
+            bottom: 80px; /* Above mini player */
+            right: 24px;
+            background: var(--background-white);
+            border: 1px solid var(--border-medium);
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+            display: none; /* Hidden by default */
+            gap: 8px;
+            z-index: 150;
+        }}
+        
+        .bulk-actions.show {{
+            display: flex;
+        }}
+        
+        .bulk-actions .btn {{
+            font-size: 0.875rem;
+            padding: 8px 16px;
+        }}
+        
+        /* ==========================================
+           IMPROVED FILTER DRAWER
+           ========================================== */
         .toolbar {{
-            display: flex; 
-            gap: 1rem; 
-            align-items: center; 
+            display: flex;
+            align-items: center;
             justify-content: space-between;
             margin-bottom: 20px;
         }}
@@ -1012,62 +1006,25 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
         }}
         
         #btnFilters {{
-            background: #1a73e8;
+            background: var(--primary-blue);
             color: white;
             border: none;
-            padding: 10px 16px;
-            border-radius: 8px;
+            padding: 8px 16px;
+            border-radius: 6px;
             font-weight: 500;
             cursor: pointer;
-            transition: all 0.2s ease;
-            position: relative;
+            font-size: 0.875rem;
         }}
         
         #btnFilters:hover {{
-            background: #1557b0;
-        }}
-        
-        #btnFilters[aria-expanded="true"] {{
-            background: #1557b0;
+            background: #0056b3;
         }}
         
         .filter-badge {{
             position: absolute;
             top: -6px;
             right: -6px;
-            background: #dc3545;
-            color: white;
-            border-radius: 10px;
-            padding: 2px 6px;
-            font-size: 0.7em;
-            font-weight: 600;
-        }}
-        
-        #btnPlaylist {{
-            background: #7c3aed;
-            color: white;
-            border: none;
-            padding: 10px 16px;
-            border-radius: 8px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            position: relative;
-        }}
-        
-        #btnPlaylist:hover {{
-            background: #6d28d9;
-        }}
-        
-        #btnPlaylist[aria-expanded="true"] {{
-            background: #6d28d9;
-        }}
-        
-        .playlist-badge {{
-            position: absolute;
-            top: -6px;
-            right: -6px;
-            background: #10b981;
+            background: var(--danger-red);
             color: white;
             border-radius: 10px;
             padding: 2px 6px;
@@ -1076,1124 +1033,347 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
         }}
         
         .chips {{
-            display: flex; 
-            gap: 0.5rem; 
+            display: flex;
+            gap: 8px;
             flex-wrap: wrap;
             align-items: center;
         }}
         
         .chip {{
-            background: #eef2ff; 
-            border: 1px solid #dbeafe;
-            border-radius: 16px; 
-            padding: 4px 8px; 
-            display: inline-flex; 
-            gap: 6px; 
+            background: var(--background-light);
+            border: 1px solid var(--border-medium);
+            border-radius: 16px;
+            padding: 4px 8px;
+            display: inline-flex;
+            gap: 6px;
             align-items: center;
-            font-size: 0.85em;
-            color: #1e40af;
+            font-size: 0.75rem;
+            color: var(--text-dark);
         }}
         
         .chip button {{
             background: none;
             border: none;
-            color: #6b7280;
+            color: var(--text-light);
             cursor: pointer;
             padding: 0;
             margin: 0;
-            font-size: 1.1em;
-            line-height: 1;
+            font-size: 1em;
         }}
         
         .chip button:hover {{
-            color: #dc3545;
+            color: var(--danger-red);
         }}
         
-        #clearAllChips {{
-            background: #f3f4f6;
-            border: 1px solid #d1d5db;
-            color: #6b7280;
-            padding: 4px 8px;
-            border-radius: 16px;
-            font-size: 0.85em;
-            cursor: pointer;
-        }}
-        
-        #clearAllChips:hover {{
-            background: #e5e7eb;
-        }}
-        
-        /* Collapsible groups */
-        details {{
-            border-bottom: 1px solid #f3f4f6;
-            padding: 16px 0;
-        }}
-        
-        details:last-child {{
-            border-bottom: none;
-        }}
-        
-        summary {{
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 1.05em;
-            color: #1e3c72;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 8px 0;
-            list-style: none;
-        }}
-        
-        summary::-webkit-details-marker {{
-            display: none;
-        }}
-        
-        summary::before {{
-            content: '▶';
-            margin-right: 8px;
-            transition: transform 0.2s ease;
-        }}
-        
-        details[open] summary::before {{
-            transform: rotate(90deg);
-        }}
-        
-        .count {{
-            color: #6b7280;
-            font-weight: 500;
-            margin-left: auto;
-            margin-right: 8px;
-        }}
-        
-        .group-actions {{
-            display: flex;
-            gap: 8px;
-        }}
-        
-        .group-actions button {{
-            font-size: 0.75em;
-            color: #6b7280;
-            background: none;
-            border: none;
-            cursor: pointer;
-            text-decoration: underline;
-        }}
-        
-        .group-actions button:hover {{
-            color: #1e40af;
-        }}
-        
-        .group {{
-            padding-top: 12px;
-        }}
-        
-        .mini-search {{
-            width: 100%; 
-            margin: 8px 0 16px 0;
-            padding: 8px 12px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            font-size: 0.9em;
-        }}
-        
-        .mini-search:focus {{
-            outline: none;
-            border-color: #1a73e8;
-            box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.1);
-        }}
-        
-        .checklist {{
-            max-height: 240px; 
-            overflow-y: auto; 
-            list-style: none; 
-            padding: 0; 
-            margin: 0;
-            border: 1px solid #f3f4f6;
-            border-radius: 6px;
-        }}
-        
-        .checklist li {{
-            padding: 8px 12px;
-            border-bottom: 1px solid #f9fafb;
-        }}
-        
-        .checklist li:last-child {{
-            border-bottom: none;
-        }}
-        
-        .checklist li:hover {{
-            background: #f9fafb;
-        }}
-        
-        .checklist label {{
-            display: flex;
-            align-items: center;
-            cursor: pointer;
-            width: 100%;
-        }}
-        
-        .checklist input[type="checkbox"] {{
-            margin-right: 8px;
-        }}
-        
-        .dim {{
-            color: #6b7280; 
-            font-size: 0.85em;
-            margin-left: auto;
-        }}
-        
-        .reports-container {{
-            /* No sidebar constraint anymore */
-        }}
-        
-        .report-grid {{
-            display: grid;
-            gap: 20px;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-        }}
-        
-        /* Mobile responsive */
-        @media (max-width: 768px) {{
-            .drawer {{
-                width: 100vw;
-                max-width: none;
-            }}
-            
-            .toolbar {{
-                flex-wrap: wrap;
-            }}
-            
-            .chips {{
-                order: 3;
-                width: 100%;
-            }}
-            
-            /* Mobile stats optimization - much more compact */
-            .info-tiles {{
-                padding: 12px 16px;
-                gap: 8px;
-                grid-template-columns: repeat(2, 1fr); /* 2x2 grid on mobile */
-            }}
-            
-            .info-tile {{
-                padding: 10px 12px;
-                gap: 8px;
-                border-radius: 8px;
-            }}
-            
-            .info-tile-icon {{
-                font-size: 1.1em;
-                min-width: 20px;
-            }}
-            
-            .info-tile-value {{
-                font-size: 1.2em;
-                font-weight: 600;
-                line-height: 1.1;
-            }}
-            
-            .info-tile-label {{
-                font-size: 0.75em;
-            }}
-            
-            /* Reduce content padding on mobile */
-            .content {{
-                padding: 16px 20px;
-            }}
-            
-            /* Make report grid more mobile-friendly */
+        /* ==========================================
+           RESPONSIVE DESIGN
+           ========================================== */
+        @media (max-width: 1200px) {{
             .report-grid {{
-                gap: 16px;
-                grid-template-columns: 1fr; /* Single column on mobile */
+                grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            }}
+        }}
+        
+        @media (max-width: 768px) {{
+            .header-content {{
+                flex-direction: column;
+                gap: 12px;
+                text-align: center;
             }}
             
-            /* Compact controls bar */
-            .controls-bar {{
-                padding: 12px 20px;
-                flex-wrap: wrap;
-                gap: 8px;
-            }}
-        }}
-        .report-header {{
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            margin-bottom: 15px;
-            position: relative;
-            padding-right: 30px;
-        }}
-        .card-delete-btn {{
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            background: rgba(220, 53, 69, 0.9);
-            color: white;
-            border: 2px solid white;
-            border-radius: 50%;
-            width: 28px;
-            height: 28px;
-            font-size: 14px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-        }}
-        .report-card:hover .card-delete-btn {{
-            opacity: 1;
-        }}
-        .card-delete-btn:hover {{
-            background: #dc3545;
-            transform: scale(1.1);
-            box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
-        }}
-        @media (max-width: 768px) {{
-            .card-delete-btn {{
-                opacity: 0.8; /* More visible on mobile */
-                width: 32px;
-                height: 32px;
-                font-size: 16px;
-            }}
-        }}
-        .report-checkbox {{
-            margin-top: 2px;
-            transform: scale(1.2);
-        }}
-        .report-card {{
-            background: white;
-            border: 1px solid #e9ecef;
-            border-radius: 16px;
-            padding: 0;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            min-height: 280px;
-        }}
-        .card-thumbnail {{
-            width: 100%;
-            height: 120px;
-            background: #e5e7eb;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 2em;
-            font-weight: 600;
-            position: relative;
-            border-radius: 16px 16px 0 0;
-            overflow: hidden;
-        }}
-        .card-thumbnail img {{
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transition: transform 0.3s ease;
-            cursor: pointer;
-        }}
-        .thumbnail-fallback {{
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 2em;
-            font-weight: 600;
-            cursor: pointer;
-        }}
-        .card-duration {{
-            position: absolute;
-            bottom: 8px;
-            right: 8px;
-            background: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 0.75em;
-            font-weight: 600;
-            backdrop-filter: blur(4px);
-        }}
-        .thumbnail-loading {{
-            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-            background-size: 200% 100%;
-            animation: loading 1.5s infinite;
-        }}
-        @keyframes loading {{
-            0% {{ background-position: 200% 0; }}
-            100% {{ background-position: -200% 0; }}
-        }}
-        .card-content {{
-            padding: 20px;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-        }}
-        .report-card::before {{
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: #2563eb;
-            transform: translateY(-4px);
-            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        }}
-        .report-card:hover {{
-            transform: translateY(-10px);
-            box-shadow: 0 25px 50px rgba(0,0,0,0.15);
-            border-color: #e3e6ea;
-        }}
-        .report-card:hover::before {{
-            transform: translateY(0);
-        }}
-        .report-card:hover .card-thumbnail img {{
-            transform: scale(1.05);
-        }}
-        .model-badge {{
-            display: inline-block;
-            background: #f0f2f5;
-            color: #1a73e8;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 0.75em;
-            font-weight: 600;
-            margin-bottom: 12px;
-            border: 1px solid #e8eaed;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }}
-        .model-badge.anthropic {{ background: #fff2e6; color: #d2691e; border-color: #f4a460; }}
-        .model-badge.openai {{ background: #e6f7ff; color: #1890ff; border-color: #91d5ff; }}
-        .model-badge.deepseek {{ background: #f6ffed; color: #52c41a; border-color: #b7eb8f; }}
-        .model-badge.gemma {{ background: #f9f0ff; color: #722ed1; border-color: #d3adf7; }}
-        .model-badge.llama {{ background: #fff7e6; color: #fa8c16; border-color: #ffd591; }}
-        .model-badge.default {{ background: #f5f5f5; color: #666; border-color: #d9d9d9; }}
-        .report-title {{
-            font-size: 1.2em;
-            font-weight: 700;
-            color: #1a1d29;
-            margin-bottom: 16px;
-            line-height: 1.3;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            min-height: 2.6em;
-            word-break: break-word;
-            cursor: pointer;
-            transition: color 0.2s ease;
-        }}
-        
-        .report-title:hover {{
-            color: #1a73e8;
-        }}
-        .report-metadata {{
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            margin-bottom: 12px;
-            font-size: 0.85em;
-            color: #6c757d;
-            flex-wrap: wrap;
-        }}
-        .report-metadata span {{
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }}
-        .report-preview {{
-            font-size: 0.85em;
-            color: #6b7280;
-            line-height: 1.4;
-            margin-bottom: 16px;
-            flex: 1;
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }}
-        .report-actions {{
-            display: flex;
-            gap: 8px;
-            margin-top: auto;
-            padding-top: 16px;
-        }}
-        .report-actions .btn {{
-            flex: 1;
-            padding: 10px 16px;
-            font-size: 0.85em;
-            min-height: 38px;
-        }}
-        .btn {{
-            flex: 1;
-            padding: 14px 20px;
-            border: none;
-            border-radius: 12px;
-            text-decoration: none;
-            font-weight: 600;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            cursor: pointer;
-            font-size: 0.9em;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 48px;
-            text-align: center;
-        }}
-        .btn-primary {{
-            background: linear-gradient(135deg, #2a5298 0%, #1e3c72 100%);
-            color: white;
-            box-shadow: 0 4px 15px rgba(42, 82, 152, 0.3);
-        }}
-        .btn-primary:hover {{
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(42, 82, 152, 0.4);
-        }}
-        .btn-secondary {{
-            background: #ff0000;
-            color: white;
-            box-shadow: 0 4px 15px rgba(255, 0, 0, 0.3);
-        }}
-        .btn-secondary:hover {{
-            background: #cc0000;
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(255, 0, 0, 0.4);
-        }}
-        .btn-outline {{
-            background: transparent;
-            border: 1px solid #e3e6ea;
-            color: #495057;
-            box-shadow: none;
-        }}
-        .btn-outline:hover {{
-            background: #f8f9fa;
-            border-color: #2a5298;
-            color: #2a5298;
-            transform: none;
-            box-shadow: none;
-        }}
-        .btn-danger {{
-            background: #dc3545;
-            color: white;
-            box-shadow: 0 2px 8px rgba(220, 53, 69, 0.25);
-        }}
-        .btn-danger:hover {{
-            background: #c82333;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(220, 53, 69, 0.35);
-        }}
-        .btn-danger:disabled {{
-            background: #6c757d;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }}
-        .btn-sm {{
-            padding: 8px 16px;
-            font-size: 13px;
-            min-height: 36px;
-        }}
-        .empty-state {{
-            text-align: center;
-            padding: 60px 20px;
-            color: #6c757d;
-        }}
-        .empty-state-icon {{
-            font-size: 4em;
-            margin-bottom: 20px;
-        }}
-        .footer {{
-            background: #f8f9fa;
-            padding: 30px 40px;
-            text-align: center;
-            border-top: 1px solid #e9ecef;
-            color: #6c757d;
-            font-size: 0.9em;
-        }}
-        .refresh-btn {{
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #2a5298;
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 60px;
-            height: 60px;
-            font-size: 1.5em;
-            cursor: pointer;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-            transition: all 0.2s ease;
-        }}
-        .refresh-btn:hover {{
-            background: #1e3c72;
-            transform: scale(1.1);
-        }}
-        @media (max-width: 768px) {{
-            .container {{ margin: 10px; }}
-            .header {{ padding: 20px 15px; }}
-            .header h1 {{ font-size: 1.8em; }}
-            .content, .stats, .footer {{ padding: 15px; }}
-            .management-controls {{ padding: 12px 15px; }}
-            .report-grid {{ grid-template-columns: 1fr; }}
-            .refresh-btn {{ top: 15px; right: 15px; }}
-        }}
-        
-        /* Custom Modal Styles */
-        .modal {{
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(5px);
-            animation: fadeIn 0.3s ease;
-        }}
-        
-        .modal-content {{
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            margin: 20% auto;
-            padding: 30px;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            width: 90%;
-            max-width: 400px;
-            text-align: center;
-            color: white;
-            animation: slideIn 0.3s ease;
-        }}
-        
-        .modal h3 {{
-            margin: 0 0 15px 0;
-            font-size: 1.3em;
-            font-weight: 600;
-        }}
-        
-        .modal p {{
-            margin: 0 0 25px 0;
-            opacity: 0.9;
-            line-height: 1.4;
-        }}
-        
-        .modal-buttons {{
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-        }}
-        
-        .modal-btn {{
-            padding: 12px 25px;
-            border: none;
-            border-radius: 25px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            min-width: 80px;
-        }}
-        
-        .modal-btn-confirm {{
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-        }}
-        
-        .modal-btn-confirm:hover {{
-            background: rgba(255, 255, 255, 0.3);
-            transform: translateY(-2px);
-        }}
-        
-        .modal-btn-cancel {{
-            background: rgba(0, 0, 0, 0.2);
-            color: rgba(255, 255, 255, 0.8);
-            border: 2px solid transparent;
-        }}
-        
-        .modal-btn-cancel:hover {{
-            background: rgba(0, 0, 0, 0.3);
-            transform: translateY(-2px);
-        }}
-        
-        .success-modal .modal-content {{
-            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
-        }}
-        
-        @keyframes fadeIn {{
-            from {{ opacity: 0; }}
-            to {{ opacity: 1; }}
-        }}
-        
-        @keyframes slideIn {{
-            from {{ transform: translateY(-50px); opacity: 0; }}
-            to {{ transform: translateY(0); opacity: 1; }}
-        }}
-        
-        
-        /* Audio player enhancements for playlist */
-        .audio-player.playlist-active {{
-            border: 2px solid #2a5298;
-            box-shadow: 0 0 0 3px rgba(42, 82, 152, 0.1);
-        }}
-        
-        .report-card.now-playing {{
-            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
-            border-color: #2a5298;
-        }}
-        
-        
-        
-        .mini-player-row-1 {{
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 8px;
-        }}
-        
-        .mini-player-row-2 {{
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }}
-        
-        .mini-player-info {{
-            flex: 1;
-            min-width: 0;
-        }}
-        
-        .mini-player-controls-compact {{
-            display: flex;
-            gap: 8px;
-        }}
-        
-        .mini-player-nav {{
-            display: flex;
-            gap: 4px;
-        }}
-        
-        .clickable-title {{
-            font-weight: bold;
-            cursor: pointer;
-            transition: color 0.2s ease;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 180px;
-            flex-shrink: 1;
-        }}
-        
-        .clickable-title:hover {{
-            color: #4dabf7;
-        }}
-        
-        .mini-player-time {{
-            font-size: 0.8em;
-            color: rgba(255, 255, 255, 0.7);
-            margin-top: 2px;
-        }}
-        
-        .mini-btn-small {{
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            font-size: 12px;
-        }}
-        
-        .mini-btn-small:hover {{
-            background: rgba(255, 255, 255, 0.2);
-            transform: scale(1.05);
-        }}
-        
-        .mini-player-track {{
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            min-width: 0;
-        }}
-        
-        .mini-player-title-section {{
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }}
-        
-        .clickable-title {{
-            font-weight: 600;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            font-size: 14px;
-            flex: 1;
-            cursor: pointer;
-            padding: 2px 4px;
-            border-radius: 4px;
-            transition: background-color 0.2s ease;
-        }}
-        
-        .clickable-title:hover {{
-            background: rgba(255, 255, 255, 0.1);
-        }}
-        
-        .dropdown-btn {{
-            background: rgba(255, 255, 255, 0.2);
-            border: none;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-            transition: all 0.2s ease;
-        }}
-        
-        .dropdown-btn:hover {{
-            background: rgba(255, 255, 255, 0.3);
-            transform: scale(1.1);
-        }}
-        
-        .mini-player-timeline {{
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 11px;
-        }}
-        
-        .mini-timeline-container {{
-            flex: 1;
-            position: relative;
-            height: 6px;
-        }}
-        
-        .mini-timeline {{
-            width: 100%;
-            height: 6px;
-            border-radius: 3px;
-            background: rgba(255, 255, 255, 0.2);
-            outline: none;
-            appearance: none;
-            cursor: pointer;
-            position: relative;
-        }}
-        
-        .mini-timeline::-webkit-slider-thumb {{
-            appearance: none;
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            background: #3498db;
-            cursor: pointer;
-            border: 2px solid white;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-        }}
-        
-        .mini-timeline::-moz-range-thumb {{
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            background: #3498db;
-            cursor: pointer;
-            border: 2px solid white;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-        }}
-        
-        .mini-timeline-progress {{
-            position: absolute;
-            top: 0;
-            left: 0;
-            height: 100%;
-            background: #3498db;
-            border-radius: 3px;
-            pointer-events: none;
-            transition: width 0.1s ease;
-        }}
-        
-        .mini-player-controls {{
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }}
-        
-        .mini-btn {{
-            background: rgba(255, 255, 255, 0.2);
-            border: none;
-            color: white;
-            padding: 6px 8px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }}
-        
-        .mini-btn:hover {{
-            background: rgba(255, 255, 255, 0.3);
-            transform: scale(1.05);
-        }}
-        
-        .mini-btn.primary {{
-            background: rgba(255, 255, 255, 0.3);
-            font-weight: bold;
-        }}
-        
-        .mini-btn.primary:hover {{
-            background: rgba(255, 255, 255, 0.4);
-        }}
-        
-        @keyframes slideUp {{
-            from {{ 
-                transform: translateY(100%); 
-                opacity: 0; 
-            }}
-            to {{ 
-                transform: translateY(0); 
-                opacity: 1; 
-            }}
-        }}
-        
-        /* Track Selector Modal */
-        .track-selector-modal {{
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(4px);
-            z-index: 1002;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }}
-        
-        .track-selector-modal[hidden] {{
-            display: none !important;
-        }}
-        
-        .track-selector-content {{
-            background: linear-gradient(135deg, #2c3e50, #34495e);
-            border: 2px solid #3498db;
-            border-radius: 16px;
-            max-width: 500px;
-            width: 100%;
-            max-height: 70vh;
-            overflow: hidden;
-            animation: modalSlideIn 0.3s ease-out;
-        }}
-        
-        .track-selector-header {{
-            padding: 20px 24px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            display: flex;
-            align-items: center;
-            justify-content: between;
-        }}
-        
-        .track-selector-header h3 {{
-            color: white;
-            margin: 0;
-            flex: 1;
-            font-size: 18px;
-        }}
-        
-        .close-btn {{
-            background: rgba(255, 255, 255, 0.2);
-            border: none;
-            color: white;
-            padding: 8px 12px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: all 0.2s ease;
-        }}
-        
-        .close-btn:hover {{
-            background: rgba(255, 255, 255, 0.3);
-            transform: scale(1.05);
-        }}
-        
-        .track-selector-list {{
-            max-height: 400px;
-            overflow-y: auto;
-            padding: 12px;
-        }}
-        
-        .track-selector-item {{
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 8px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }}
-        
-        .track-selector-item:hover {{
-            background: rgba(255, 255, 255, 0.1);
-            border-color: #3498db;
-            transform: translateY(-1px);
-        }}
-        
-        .track-selector-item.active {{
-            background: rgba(52, 152, 219, 0.2);
-            border-color: #3498db;
-        }}
-        
-        .track-info {{
-            flex: 1;
-        }}
-        
-        .track-title {{
-            color: white;
-            font-weight: bold;
-            margin-bottom: 4px;
-        }}
-        
-        .track-subtitle {{
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 0.9em;
-        }}
-        
-        .track-status {{
-            color: #3498db;
-            font-weight: bold;
-            font-size: 16px;
-        }}
-        
-        .track-selector-separator {{
-            height: 1px;
-            background: rgba(255, 255, 255, 0.1);
-            margin: 12px 0;
-            border: none;
-        }}
-        
-        .track-option {{
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 8px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }}
-        
-        .track-option:hover {{
-            background: rgba(255, 255, 255, 0.1);
-            border-color: #3498db;
-            transform: translateY(-1px);
-        }}
-        
-        .track-option.current {{
-            background: rgba(52, 152, 219, 0.2);
-            border-color: #3498db;
-        }}
-        
-        .track-option-content {{
-            flex: 1;
-            min-width: 0;
-        }}
-        
-        .track-option-title {{
-            color: white;
-            font-weight: 600;
-            font-size: 14px;
-            margin-bottom: 4px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }}
-        
-        .track-option-meta {{
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 12px;
-        }}
-        
-        .track-option-icon {{
-            color: #3498db;
-            font-size: 18px;
-        }}
-        
-        @keyframes modalSlideIn {{
-            from {{ 
-                opacity: 0; 
-                transform: scale(0.9) translateY(-20px); 
-            }}
-            to {{ 
-                opacity: 1; 
-                transform: scale(1) translateY(0); 
-            }}
-        }}
-        
-        /* Mobile adjustments for mini player */
-        @media (max-width: 768px) {{
-            .mini-player {{
-                bottom: 80px;
-                right: 12px;
-                left: 12px;
-                min-width: unset;
-                padding: 12px 14px;
-                border-radius: 12px;
-            }}
-            
-            .mini-player-content {{
+            .controls-row {{
+                flex-direction: column;
                 gap: 12px;
             }}
             
-            .mini-player-track {{
-                gap: 4px;
+            .search-wrapper {{
+                max-width: none;
+                width: 100%;
             }}
             
-            .mini-btn {{
-                padding: 6px 8px;
-                font-size: 12px;
-                min-width: 28px;
-                height: 28px;
+            .controls-group {{
+                width: 100%;
+                justify-content: center;
             }}
             
-            .mini-player-track span:first-child {{
-                font-size: 13px;
+            .report-grid {{
+                grid-template-columns: 1fr;
+                gap: 12px;
             }}
             
-            .mini-player-timeline {{
-                gap: 6px;
-                font-size: 10px;
+            .report-card {{
+                height: auto;
             }}
             
-            .mini-timeline::-webkit-slider-thumb {{
-                width: 12px;
-                height: 12px;
+            .mini-player-footer {{
+                padding: 8px 16px;
             }}
             
-            .mini-timeline::-moz-range-thumb {{
-                width: 12px;
-                height: 12px;
+            .mini-player-container {{
+                grid-template-columns: 1fr;
+                gap: 12px;
+                text-align: center;
+            }}
+            
+            .mini-player-progress {{
+                order: -1;
+                min-width: auto;
+            }}
+            
+            .bulk-actions {{
+                position: static;
+                margin: 20px 0;
+                justify-content: center;
             }}
         }}
-    </style>
+        
+        @media (max-width: 480px) {{
+            .content {{
+                padding: 16px 16px 100px 16px;
+            }}
+            
+            .header {{
+                padding: 12px 16px;
+            }}
+            
+            .controls-bar {{
+                padding: 8px 16px;
+            }}
+            
+            .report-card {{
+                height: 280px;
+            }}
+            
+            .card-content {{
+                padding: 12px;
+            }}
+        }}
+        
+        /* ==========================================
+           CLEAN INFO TILES (NO GRADIENTS)
+           ========================================== */
+        .info-tiles {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            padding: 20px 24px;
+            background: var(--background-gray);
+            border-bottom: 1px solid var(--border-light);
+        }}
+        
+        .info-tile {{
+            background: var(--background-white);
+            padding: 16px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border-light);
+        }}
+        
+        .info-tile-icon {{
+            font-size: 1.25rem;
+            min-width: 24px;
+            text-align: center;
+        }}
+        
+        .info-tile-content {{
+            display: flex;
+            flex-direction: column;
+        }}
+        
+        .info-tile-value {{
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-dark);
+            line-height: 1.2;
+        }}
+        
+        .info-tile-label {{
+            color: var(--text-medium);
+            font-size: 0.875rem;
+            font-weight: 500;
+        }}
+        
+        /* ==========================================
+           CLEAN DRAWER STYLES
+           ========================================== */
+        .drawer {{
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 400px;
+            max-width: 90vw;
+            background: var(--background-white);
+            border-right: 1px solid var(--border-light);
+            box-shadow: 6px 0 24px rgba(0, 0, 0, 0.12);
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+        }}
+        
+        .drawer.open {{
+            transform: translateX(0);
+        }}
+        
+        .drawer__header {{
+            background: var(--primary-blue);
+            color: white;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }}
+        
+        .drawer__title {{
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin: 0;
+        }}
+        
+        .drawer__actions {{
+            display: flex;
+            gap: 8px;
+        }}
+        
+        .drawer__actions button {{
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            cursor: pointer;
+        }}
+        
+        .drawer__actions button:hover {{
+            background: rgba(255, 255, 255, 0.2);
+        }}
+        
+        .drawer__sections {{
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }}
+        
+        /* ==========================================
+           MODAL IMPROVEMENTS
+           ========================================== */
+        .modal {{
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+        }}
+        
+        .modal-content {{
+            background: var(--background-white);
+            margin: 20% auto;
+            padding: 24px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        }}
+        
+        .modal h2 {{
+            margin: 0 0 16px 0;
+            color: var(--text-dark);
+            font-size: 1.25rem;
+        }}
+        
+        .modal p {{
+            margin: 0 0 20px 0;
+            color: var(--text-medium);
+        }}
+        
+        .modal-actions {{
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+        }}
+        
+        /* ==========================================
+           UTILITY CLASSES
+           ========================================== */
+        .hidden {{ display: none !important; }}
+        .visible {{ display: block !important; }}
+        
+        .text-center {{ text-align: center; }}
+        .text-left {{ text-align: left; }}
+        .text-right {{ text-align: right; }}
+        
+        .mt-0 {{ margin-top: 0; }}
+        .mt-1 {{ margin-top: 0.25rem; }}
+        .mt-2 {{ margin-top: 0.5rem; }}
+        .mt-4 {{ margin-top: 1rem; }}
+        
+        .mb-0 {{ margin-bottom: 0; }}
+        .mb-1 {{ margin-bottom: 0.25rem; }}
+        .mb-2 {{ margin-bottom: 0.5rem; }}
+        .mb-4 {{ margin-bottom: 1rem; }}
+        
+        .p-0 {{ padding: 0; }}
+        .p-1 {{ padding: 0.25rem; }}
+        .p-2 {{ padding: 0.5rem; }}
+        .p-4 {{ padding: 1rem; }}
+        
+        /* ==========================================
+           PERFORMANCE OPTIMIZATIONS
+           ========================================== */
+        .report-card,
+        .info-tile,
+        .mini-player-footer {{
+            will-change: transform;
+        }}
+        
+        .report-card:hover {{
+            will-change: auto;
+        }}
+        
+        /* Smooth scrolling */
+        html {{
+            scroll-behavior: smooth;
+        }}
+        
+        /* Focus management */
+        .btn:focus,
+        .search-input:focus,
+        .control-select:focus {{
+            outline: 2px solid var(--primary-blue);
+            outline-offset: 2px;
+        }}
+        
+        /* High contrast mode support */
+        @media (prefers-contrast: high) {{
+            :root {{
+                --border-light: #000000;
+                --border-medium: #000000;
+                --text-light: #000000;
+            }}
+        }}
+        
+        /* Reduced motion support */
+        @media (prefers-reduced-motion: reduce) {{
+            *,
+            *::before,
+            *::after {{
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }}
+        }}    </style>
 </head>
 <body>
     <div class="container">
@@ -2204,32 +1384,6 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
                     <p>AI-powered video analysis dashboard</p>
                 </div>
                 
-                <!-- Mini Player in Header -->
-                <div id="miniPlayer" class="mini-player-header" hidden>
-                    <div class="mini-player-row-1">
-                        <div class="mini-player-info">
-                            <span id="miniPlayerTitle" class="clickable-title" title="Click to select track">♪ Ready to play</span>
-                            <div class="mini-player-time">
-                                <span id="miniPlayerCurrentTime">0:00</span> / <span id="miniPlayerDuration">0:00</span>
-                            </div>
-                        </div>
-                        <div class="mini-player-controls-compact">
-                            <button id="miniPlayerPlay" class="mini-btn primary" title="Play/Pause">▶</button>
-                            <button id="miniPlayerDropdown" class="mini-btn" title="Select track">⌄</button>
-                            <button id="miniPlayerClose" class="mini-btn" title="Close">✕</button>
-                        </div>
-                    </div>
-                    <div class="mini-player-row-2">
-                        <div class="mini-timeline-container">
-                            <input type="range" id="miniPlayerRange" class="mini-timeline" min="0" max="100" value="0" step="0.1">
-                            <div class="mini-timeline-progress" id="miniTimelineProgress"></div>
-                        </div>
-                        <div class="mini-player-nav">
-                            <button id="miniPlayerPrev" class="mini-btn-small" title="Previous">⏮</button>
-                            <button id="miniPlayerNext" class="mini-btn-small" title="Next">⏭</button>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
         
@@ -4490,6 +3644,32 @@ class ReportsHTTPHandler(SimpleHTTPRequestHandler):
             playlist.init().catch(console.error);
         }
     </script>
+
+    <!-- Footer Mini-Player (Spotify-Style) -->
+    <div id="miniPlayer" class="mini-player-footer" hidden>
+        <div class="mini-player-container">
+            <div class="mini-player-info">
+                <div id="miniPlayerTitle" class="mini-player-title clickable-title" title="Click to select track">♪ Ready to play</div>
+                <div class="mini-player-meta">
+                    <span id="miniPlayerCurrentTime">0:00</span> / <span id="miniPlayerDuration">0:00</span>
+                </div>
+            </div>
+            <div class="mini-player-progress">
+                <input type="range" id="miniPlayerRange" class="mini-timeline" min="0" max="100" value="0" step="0.1">
+                <div class="mini-time-display">
+                    <span id="miniPlayerCurrentTime2">0:00</span> / <span id="miniPlayerDuration2">0:00</span>
+                </div>
+            </div>
+            <div class="mini-player-controls">
+                <button id="miniPlayerPrev" class="mini-btn" title="Previous">⏮</button>
+                <button id="miniPlayerPlay" class="mini-btn primary" title="Play/Pause">▶</button>
+                <button id="miniPlayerNext" class="mini-btn" title="Next">⏭</button>
+                <button id="miniPlayerDropdown" class="mini-btn" title="Select track">⌄</button>
+                <button id="miniPlayerClose" class="mini-btn close" title="Close">✕</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>"""
             
