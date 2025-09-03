@@ -1,0 +1,368 @@
+"""
+Telegram Bot Handler Module
+
+This module contains the YouTubeTelegramBot class extracted from the monolithic file.
+It handles all Telegram bot interactions without embedded HTML generation.
+"""
+
+import asyncio
+import json
+import logging
+import os
+import re
+from datetime import datetime
+from typing import List, Dict, Any, Optional
+from pathlib import Path
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+from telegram.constants import ParseMode
+
+from youtube_summarizer import YouTubeSummarizer
+from llm_config import llm_config
+
+
+class YouTubeTelegramBot:
+    """Telegram bot for YouTube video summarization."""
+    
+    def __init__(self, token: str, allowed_user_ids: List[int]):
+        """
+        Initialize the Telegram bot.
+        
+        Args:
+            token: Telegram bot token
+            allowed_user_ids: List of user IDs allowed to use the bot
+        """
+        self.token = token
+        self.allowed_user_ids = set(allowed_user_ids)
+        self.application = None
+        self.summarizer = None
+        self.last_video_url = None
+        
+        # YouTube URL regex pattern
+        self.youtube_url_pattern = re.compile(
+            r'(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/|youtube\.com/v/)([a-zA-Z0-9_-]{11})'
+        )
+        
+        # Telegram message length limit
+        self.MAX_MESSAGE_LENGTH = 4096
+        
+        # Cache for URLs
+        self.url_cache = {}
+        self.CACHE_TTL = 3600  # 1 hour TTL for cached URLs
+        
+        # Initialize summarizer
+        try:
+            llm_config.load_environment()
+            self.summarizer = YouTubeSummarizer()
+            logging.info(f"✅ YouTube summarizer initialized with {self.summarizer.llm_provider}/{self.summarizer.model}")
+        except Exception as e:
+            logging.error(f"Failed to initialize YouTubeSummarizer: {e}")
+    
+    def setup_handlers(self):
+        """Set up bot command and message handlers."""
+        if not self.application:
+            return
+            
+        # Command handlers
+        self.application.add_handler(CommandHandler("start", self.start_command))
+        self.application.add_handler(CommandHandler("help", self.help_command))
+        self.application.add_handler(CommandHandler("status", self.status_command))
+        
+        # Message handlers
+        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+        
+        # Callback query handler for inline keyboards
+        self.application.add_handler(CallbackQueryHandler(self.handle_callback_query))
+        
+        # Error handler
+        self.application.add_error_handler(self.error_handler)
+    
+    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /start command."""
+        user_id = update.effective_user.id
+        user_name = update.effective_user.first_name or "Unknown"
+        
+        if not self._is_user_allowed(user_id):
+            await update.message.reply_text("❌ You are not authorized to use this bot.")
+            logging.warning(f"Unauthorized access attempt by user {user_id} ({user_name})")
+            return
+        
+        welcome_message = (
+            f"🎬 Welcome to the YouTube Summarizer Bot, {user_name}!\n\n"
+            "Send me a YouTube URL and I'll provide:\n"
+            "• 🤖 AI-powered summary\n"
+            "• 🎯 Key insights and takeaways\n"
+            "• 📊 Content analysis\n\n"
+            "Use /help for more commands."
+        )
+        
+        await update.message.reply_text(welcome_message)
+        logging.info(f"User {user_id} ({user_name}) started the bot")
+    
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /help command."""
+        user_id = update.effective_user.id
+        
+        if not self._is_user_allowed(user_id):
+            await update.message.reply_text("❌ You are not authorized to use this bot.")
+            return
+        
+        help_message = (
+            "🤖 YouTube Summarizer Bot Commands:\n\n"
+            "/start - Start using the bot\n"
+            "/help - Show this help message\n"
+            "/status - Check bot and API status\n\n"
+            "📝 How to use:\n"
+            "1. Send a YouTube URL\n"
+            "2. Choose summary type\n"
+            "3. Get AI-powered insights\n\n"
+            "Supported formats:\n"
+            "• youtube.com/watch?v=...\n"
+            "• youtu.be/...\n"
+            "• m.youtube.com/..."
+        )
+        
+        await update.message.reply_text(help_message)
+    
+    async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /status command."""
+        user_id = update.effective_user.id
+        
+        if not self._is_user_allowed(user_id):
+            await update.message.reply_text("❌ You are not authorized to use this bot.")
+            return
+        
+        # Check summarizer status
+        summarizer_status = "✅ Ready" if self.summarizer else "❌ Not initialized"
+        
+        # Check LLM configuration
+        try:
+            llm_status = f"✅ {self.summarizer.llm_provider}/{self.summarizer.model}" if self.summarizer else "❌ Not configured"
+        except Exception:
+            llm_status = "❌ LLM not configured"
+        
+        status_message = (
+            "📊 Bot Status:\n\n"
+            f"🤖 Telegram Bot: ✅ Running\n"
+            f"🔍 Summarizer: {summarizer_status}\n"
+            f"🧠 LLM: {llm_status}\n"
+            f"👥 Authorized Users: {len(self.allowed_user_ids)}"
+        )
+        
+        await update.message.reply_text(status_message)
+    
+    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle incoming messages with YouTube URLs."""
+        user_id = update.effective_user.id
+        user_name = update.effective_user.first_name or "Unknown"
+        
+        if not self._is_user_allowed(user_id):
+            await update.message.reply_text("❌ You are not authorized to use this bot.")
+            return
+        
+        message_text = update.message.text.strip()
+        logging.info(f"Received message from {user_name} ({user_id}): {message_text[:100]}...")
+        
+        # Check if message contains YouTube URL
+        youtube_match = self.youtube_url_pattern.search(message_text)
+        
+        if not youtube_match:
+            await update.message.reply_text(
+                "🔍 Please send a YouTube URL to get started.\n\n"
+                "Supported formats:\n"
+                "• https://youtube.com/watch?v=...\n"
+                "• https://youtu.be/...\n"
+                "• https://m.youtube.com/watch?v=..."
+            )
+            return
+        
+        # Extract and clean URL
+        video_url = self._extract_youtube_url(message_text)
+        if not video_url:
+            await update.message.reply_text("❌ Could not extract a valid YouTube URL from your message.")
+            return
+        
+        # Store the URL for potential model switching
+        self.last_video_url = video_url
+        
+        # Send processing message with options
+        keyboard = [
+            [
+                InlineKeyboardButton("📝 Comprehensive", callback_data="summarize_comprehensive"),
+                InlineKeyboardButton("🎯 Key Points", callback_data="summarize_bullet-points")
+            ],
+            [
+                InlineKeyboardButton("💡 Insights", callback_data="summarize_key-insights"),
+                InlineKeyboardButton("📊 Executive", callback_data="summarize_executive_summary")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            f"🎬 Processing YouTube video...\n\n"
+            f"Choose your summary type:",
+            reply_markup=reply_markup
+        )
+    
+    async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle callback queries from inline keyboards."""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = query.from_user.id
+        user_name = query.from_user.first_name or "Unknown"
+        
+        if not self._is_user_allowed(user_id):
+            await query.edit_message_text("❌ You are not authorized to use this bot.")
+            return
+        
+        callback_data = query.data
+        
+        # Handle summary requests
+        if callback_data.startswith("summarize_"):
+            summary_type = callback_data.replace("summarize_", "")
+            await self._process_video_summary(query, summary_type, user_name)
+        else:
+            await query.edit_message_text("❌ Unknown option selected.")
+    
+    async def _process_video_summary(self, query, summary_type: str, user_name: str):
+        """Process video summarization request."""
+        if not self.last_video_url:
+            await query.edit_message_text("❌ No YouTube URL found. Please send a URL first.")
+            return
+        
+        if not self.summarizer:
+            await query.edit_message_text("❌ Summarizer not available. Please try /status for more info.")
+            return
+        
+        # Update message to show processing
+        await query.edit_message_text(f"🔄 Creating {summary_type} summary... This may take a moment.")
+        
+        try:
+            # Process the video
+            logging.info(f"Processing {self.last_video_url} with {summary_type} summary for {user_name}")
+            
+            result = await asyncio.to_thread(
+                self.summarizer.summarize_video,
+                self.last_video_url,
+                summary_type=summary_type,
+                include_analysis=True
+            )
+            
+            if not result:
+                await query.edit_message_text("❌ Failed to process video. Please check the URL and try again.")
+                return
+            
+            # Format and send the response
+            await self._send_formatted_response(query, result, summary_type)
+            
+        except Exception as e:
+            logging.error(f"Error processing video {self.last_video_url}: {e}")
+            await query.edit_message_text(f"❌ Error processing video: {str(e)[:100]}...")
+    
+    async def _send_formatted_response(self, query, result: Dict[str, Any], summary_type: str):
+        """Send formatted summary response."""
+        try:
+            # Get video metadata
+            video_info = result.get('video_info', {})
+            title = video_info.get('title', 'Unknown Title')
+            channel = video_info.get('channel', 'Unknown Channel')
+            duration = video_info.get('duration_formatted', 'Unknown')
+            
+            # Get summary content
+            summary = result.get('summary', 'No summary available')
+            
+            # Truncate if too long for Telegram
+            if len(summary) > 1000:
+                summary = summary[:1000] + "..."
+            
+            # Format response
+            response_parts = [
+                f"🎬 **{self._escape_markdown(title)}**",
+                f"📺 {self._escape_markdown(channel)}",
+                f"⏱️ Duration: {duration}",
+                "",
+                f"📝 **{summary_type.replace('-', ' ').title()} Summary:**",
+                summary
+            ]
+            
+            response_text = "\n".join(response_parts)
+            
+            # Send response
+            await query.edit_message_text(response_text, parse_mode=ParseMode.MARKDOWN)
+            
+            logging.info(f"Successfully sent {summary_type} summary for {title}")
+            
+        except Exception as e:
+            logging.error(f"Error sending formatted response: {e}")
+            await query.edit_message_text("❌ Error formatting response. The summary was generated but couldn't be displayed properly.")
+    
+    def _extract_youtube_url(self, text: str) -> Optional[str]:
+        """Extract YouTube URL from text."""
+        match = self.youtube_url_pattern.search(text)
+        if match:
+            video_id = match.group(1)
+            return f"https://www.youtube.com/watch?v={video_id}"
+        return None
+    
+    def _is_user_allowed(self, user_id: int) -> bool:
+        """Check if user is allowed to use the bot."""
+        return user_id in self.allowed_user_ids
+    
+    def _escape_markdown(self, text: str) -> str:
+        """Escape special characters for Markdown V2."""
+        if not text:
+            return ""
+        
+        # For Markdown, we need to escape these characters
+        escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+        
+        escaped_text = text
+        for char in escape_chars:
+            escaped_text = escaped_text.replace(char, f'\\{char}')
+        
+        return escaped_text
+    
+    async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
+        """Handle errors in the bot."""
+        logging.error(f"Exception while handling an update: {context.error}")
+        
+        # Try to send error message to user if possible
+        try:
+            if isinstance(update, Update) and update.effective_message:
+                await update.effective_message.reply_text(
+                    "❌ An error occurred while processing your request. Please try again."
+                )
+        except Exception:
+            pass  # Don't let error handling cause more errors
+    
+    async def run(self):
+        """Start the bot."""
+        try:
+            self.application = Application.builder().token(self.token).build()
+            self.setup_handlers()
+            
+            logging.info("🚀 Starting Telegram bot...")
+            await self.application.initialize()
+            await self.application.start()
+            await self.application.updater.start_polling()
+            
+            logging.info("✅ Telegram bot is running and listening for messages")
+            
+            # Keep the bot running
+            await self.application.updater.idle()
+            
+        except Exception as e:
+            logging.error(f"Error running bot: {e}")
+            raise
+        finally:
+            if self.application:
+                await self.application.stop()
+    
+    async def stop(self):
+        """Stop the bot."""
+        if self.application:
+            logging.info("🛑 Stopping Telegram bot...")
+            await self.application.stop()
+            logging.info("✅ Telegram bot stopped")
