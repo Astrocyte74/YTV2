@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Telegram Bot for YouTube Video Summarizer
-Integrates with existing YouTubeSummarizer class to provide video summaries via Telegram
-Clean version with external templates - no embedded HTML/CSS
+YouTube Video Summarizer Bot - Main Orchestrator
+Integrates Telegram bot, web dashboard, and modular processing components
+Runs both Telegram bot service and web dashboard HTTP server
 """
 
 import asyncio
@@ -20,6 +20,11 @@ from dotenv import load_dotenv
 import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import socket
+
+# Import our modular components
+from modules.telegram_handler import YouTubeTelegramBot
+from modules.report_generator import JSONReportGenerator
+from youtube_summarizer import YouTubeSummarizer
 
 # Load environment variables from .env file and stack.env
 load_dotenv()
@@ -85,12 +90,87 @@ def load_template(template_name: str) -> Optional[str]:
 
 # Extract report metadata utility
 def extract_report_metadata(file_path: Path) -> Dict:
-    """Extract metadata from HTML report file"""
+    """Extract metadata from HTML or JSON report file"""
     try:
-        # Skip hidden files and non-HTML files
+        # Skip hidden files
         if file_path.name.startswith('.') or file_path.name.startswith('._'):
             raise ValueError(f"Skipping hidden file: {file_path.name}")
             
+        # Handle JSON reports (preferred)
+        if file_path.suffix == '.json':
+            return extract_json_report_metadata(file_path)
+        
+        # Handle HTML reports (legacy)
+        elif file_path.suffix == '.html':
+            return extract_html_report_metadata(file_path)
+        
+        else:
+            raise ValueError(f"Unsupported file type: {file_path.suffix}")
+            
+    except Exception as e:
+        logger.warning(f"Error processing report {file_path.name}: {e}")
+        return {
+            'filename': file_path.name,
+            'title': file_path.stem,
+            'channel': 'Unknown Channel',
+            'model': 'Unknown',
+            'summary_preview': 'Error loading preview',
+            'thumbnail_url': '',
+            'created_date': 'Unknown',
+            'created_time': 'Unknown',
+            'timestamp': 0,
+            'url': '',
+            'video_id': '',
+            'duration': 0
+        }
+
+def extract_json_report_metadata(file_path: Path) -> Dict:
+    """Extract metadata from JSON report file"""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            report = json.load(f)
+        
+        # Extract data from JSON structure
+        video_info = report.get('video', {})
+        summary_info = report.get('summary', {})
+        processing_info = report.get('processing', {})
+        metadata = report.get('metadata', {})
+        
+        # Get file modification time for fallback
+        mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+        
+        # Try to parse generated_at timestamp
+        generated_at = metadata.get('generated_at', '')
+        try:
+            if generated_at:
+                report_time = datetime.fromisoformat(generated_at.replace('Z', '+00:00'))
+            else:
+                report_time = mtime
+        except:
+            report_time = mtime
+        
+        return {
+            'filename': file_path.name,
+            'title': video_info.get('title', 'Unknown Title'),
+            'channel': video_info.get('channel', 'Unknown Channel'),
+            'model': processing_info.get('model', 'Unknown Model'),
+            'summary_preview': (summary_info.get('content', '')[:150] + "...") if summary_info.get('content') else "No preview available",
+            'thumbnail_url': video_info.get('thumbnail', ''),
+            'created_date': report_time.strftime('%B %d, %Y'),
+            'created_time': report_time.strftime('%H:%M'),
+            'timestamp': report_time.timestamp(),
+            'url': video_info.get('url', ''),
+            'video_id': video_info.get('video_id', ''),
+            'duration': video_info.get('duration', 0)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error extracting JSON metadata from {file_path.name}: {e}")
+        raise
+
+def extract_html_report_metadata(file_path: Path) -> Dict:
+    """Extract metadata from HTML report file (legacy support)"""
+    try:
         content = file_path.read_text(encoding='utf-8')
         
         # Extract title
@@ -125,21 +205,15 @@ def extract_report_metadata(file_path: Path) -> Dict:
             'thumbnail_url': thumbnail_url,
             'created_date': mtime.strftime('%B %d, %Y'),
             'created_time': mtime.strftime('%H:%M'),
-            'timestamp': mtime.timestamp()
+            'timestamp': mtime.timestamp(),
+            'url': '',  # HTML reports don't typically store the original URL
+            'video_id': '',
+            'duration': 0
         }
+        
     except Exception as e:
-        logger.warning(f"Error processing report {file_path.name}: {e}")
-        return {
-            'filename': file_path.name,
-            'title': file_path.stem,
-            'channel': 'Unknown Channel',
-            'model': 'Unknown',
-            'summary_preview': 'Error loading preview',
-            'thumbnail_url': '',
-            'created_date': 'Unknown',
-            'created_time': 'Unknown',
-            'timestamp': 0
-        }
+        logger.error(f"Error extracting HTML metadata from {file_path.name}: {e}")
+        raise
 
 class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     """HTTP request handler with modern template system"""
@@ -159,26 +233,43 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def serve_dashboard(self):
         """Serve the modern dashboard using templates"""
         try:
-            # Get report files from both current directory and exports folder
-            report_dirs = [Path('.'), Path('./exports')]
-            html_files = []
+            # Get report files from multiple directories (JSON preferred, HTML legacy)
+            report_dirs = [
+                Path('./data/reports'),  # JSON reports (primary)
+                Path('./exports'),       # HTML reports (legacy)
+                Path('.')               # Current directory (legacy)
+            ]
+            
+            all_report_files = []
             
             for report_dir in report_dirs:
                 if report_dir.exists():
-                    files = [f for f in report_dir.glob('*.html') 
-                               if f.name not in ['dashboard_template.html', 'report_template.html'] 
-                               and not f.name.startswith('._')  # Exclude macOS resource fork files
-                               and not f.name.startswith('.')]  # Exclude other hidden files
-                    html_files.extend(files)
+                    # Get JSON reports (preferred)
+                    json_files = [f for f in report_dir.glob('*.json') 
+                                   if not f.name.startswith('._')
+                                   and not f.name.startswith('.')]
+                    all_report_files.extend(json_files)
+                    
+                    # Get HTML reports (legacy support)
+                    html_files = [f for f in report_dir.glob('*.html') 
+                                   if f.name not in ['dashboard_template.html', 'report_template.html']
+                                   and not f.name.startswith('._')
+                                   and not f.name.startswith('.')]
+                    all_report_files.extend(html_files)
             
-            # Sort all files by modification time
-            html_files = sorted(html_files, key=lambda f: f.stat().st_mtime, reverse=True)
+            # Remove duplicates and sort by modification time (newest first)
+            unique_files = list(set(all_report_files))
+            sorted_files = sorted(unique_files, key=lambda f: f.stat().st_mtime, reverse=True)
             
             # Extract metadata from all reports
             reports_data = []
-            for file_path in html_files:
-                metadata = extract_report_metadata(file_path)
-                reports_data.append(metadata)
+            for file_path in sorted_files:
+                try:
+                    metadata = extract_report_metadata(file_path)
+                    reports_data.append(metadata)
+                except Exception as e:
+                    logger.warning(f"Skipping file {file_path.name}: {e}")
+                    continue
             
             # Load dashboard template
             template_content = load_template('dashboard_template.html')
@@ -341,25 +432,95 @@ def start_http_server():
         logger.error(f"Failed to start HTTP server: {e}")
         return None, None
 
-# Main execution
-if __name__ == "__main__":
+async def main():
+    """Main async function to run both Telegram bot and HTTP server"""
     logger.info("🤖 Starting YouTube Summarizer Bot with Modern Dashboard")
     
-    # Start HTTP server
+    # Start HTTP server in a separate thread
     httpd, port = start_http_server()
     
     if httpd:
-        logger.info(f"✅ Modern Dashboard System Ready!")
-        logger.info(f"🌐 Access dashboard at: http://localhost:{port}")
-        
-        # Keep the server running
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            logger.info("🛑 Shutting down...")
-            if httpd:
-                httpd.shutdown()
+        logger.info(f"🌐 Dashboard server running at: http://localhost:{port}")
     else:
         logger.error("❌ Failed to start HTTP server")
+        return
+    
+    # Initialize and start Telegram bot
+    telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
+    allowed_users_env = os.getenv('TELEGRAM_ALLOWED_USERS', '')
+    
+    if not telegram_token:
+        logger.warning("⚠️  TELEGRAM_BOT_TOKEN not found. Running dashboard-only mode.")
+        logger.info(f"✅ Dashboard-only mode ready at: http://localhost:{port}")
+        
+        try:
+            # Keep dashboard server running
+            while True:
+                await asyncio.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("🛑 Shutting down dashboard...")
+            if httpd:
+                httpd.shutdown()
+        return
+    
+    # Parse allowed users
+    allowed_user_ids = []
+    if allowed_users_env:
+        try:
+            allowed_user_ids = [int(user_id.strip()) for user_id in allowed_users_env.split(',') if user_id.strip()]
+        except ValueError as e:
+            logger.warning(f"Error parsing TELEGRAM_ALLOWED_USERS: {e}")
+    
+    if not allowed_user_ids:
+        logger.warning("⚠️  No allowed users configured. Set TELEGRAM_ALLOWED_USERS environment variable.")
+        logger.info(f"✅ Dashboard-only mode ready at: http://localhost:{port}")
+        
+        try:
+            while True:
+                await asyncio.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("🛑 Shutting down dashboard...")
+            if httpd:
+                httpd.shutdown()
+        return
+    
+    logger.info(f"👥 Telegram bot authorized for {len(allowed_user_ids)} users")
+    
+    # Create and start Telegram bot
+    try:
+        telegram_bot = YouTubeTelegramBot(telegram_token, allowed_user_ids)
+        
+        logger.info("🚀 Starting Telegram bot...")
+        
+        # Run both services concurrently
+        await asyncio.gather(
+            telegram_bot.run(),
+            run_dashboard_monitor(httpd)
+        )
+        
+    except Exception as e:
+        logger.error(f"Error running Telegram bot: {e}")
+        if httpd:
+            httpd.shutdown()
+        raise
+
+async def run_dashboard_monitor(httpd):
+    """Monitor the dashboard server"""
+    try:
+        while True:
+            await asyncio.sleep(1)
+    except asyncio.CancelledError:
+        logger.info("🛑 Shutting down dashboard monitor...")
+        if httpd:
+            httpd.shutdown()
+
+# Main execution
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("🛑 Received shutdown signal")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
         sys.exit(1)
