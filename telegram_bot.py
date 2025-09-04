@@ -500,34 +500,36 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
     <title>{title} - YTV2</title>
     <style>
-      :root {{ --border:#e5e7eb; --bg:#fff; --text:#0f172a; }}
+      :root {{ --border:#e5e7eb; --bg:#fff; --text:#0f172a; --bg-page:#f8fafc; --ring:#e5e7eb; --text-1:#0f172a; --text-2:#334155; --brand:#1d4ed8; }}
       * {{ box-sizing: border-box; }}
-      body {{ margin:0; font-family: Inter, -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; color:var(--text); background:#f8fafc; }}
+      body {{ margin:0; font-family: Inter, -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; color:var(--text); background:var(--bg-page); }}
       .topbar {{ position:sticky; top:0; z-index:40; backdrop-filter:blur(8px); background:rgba(255,255,255,.72); border-bottom:1px solid var(--border); }}
-      .topbar-inner {{ max-width:1024px; margin:0 auto; height:56px; padding:0 16px; display:flex; align-items:center; justify-content:space-between; }}
+      .topbar-inner {{ max-width:1120px; margin:0 auto; height:56px; padding:0 16px; display:flex; align-items:center; justify-content:space-between; }}
       .btn-ghost {{ height:36px; padding:0 12px; border:1px solid #e5e7eb; border-radius:10px; background:#fff; color:#111827; font-size:14px; display:inline-flex; align-items:center; gap:6px; text-decoration:none; }}
       .btn-ghost:hover {{ background:#f9fafb; }}
       .btn-primary {{ height:36px; padding:0 12px; border-radius:10px; background:#111827; color:#fff; font-size:14px; text-decoration:none; display:inline-flex; align-items:center; }}
-      .container {{ max-width:1024px; margin:0 auto; padding:16px; }}
+      .container {{ max-width:1120px; margin:0 auto; padding:16px 20px; }}
       .grid {{ display:grid; grid-template-columns:1fr; gap:16px; }}
-      @media (min-width:768px) {{ .grid {{ grid-template-columns:5fr 7fr; }} }}
-      .thumb {{ aspect-ratio:16/9; border-radius:12px; overflow:hidden; border:1px solid var(--border); background:#fff; }}
+      @media (min-width:768px) {{ .grid {{ grid-template-columns:1fr 1.1fr; }} }}
+      .thumb {{ aspect-ratio:16/9; border-radius:14px; overflow:hidden; border:1px solid var(--ring); background:#fff; }}
       .thumb img {{ width:100%; height:100%; object-fit:cover; display:block; }}
-      .title {{ font-size:20px; line-height:32px; font-weight:600; letter-spacing:-.01em; margin:8px 0 4px; }}
+      .title {{ margin:4px 0 8px; font-weight:700; font-size:22px; line-height:1.25; color:var(--text-1); }}
+      .title.clamp {{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }}
       .facts {{ margin-top:8px; display:flex; flex-wrap:wrap; gap:8px; }}
-      .chip {{ height:30px; padding:0 10px; border:1px solid var(--border); border-radius:10px; background:rgba(255,255,255,.8); display:inline-flex; align-items:center; gap:8px; font-size:13px; }}
-      .chip .label {{ color:#6b7280; font-size:12px; }}
-      .chip .value {{ color:#111827; font-weight:600; }}
+      .chip {{ height:28px; padding:0 10px; border:1px solid var(--ring); border-radius:10px; background:rgba(255,255,255,.9); display:inline-flex; align-items:center; gap:6px; font-size:12.5px; }}
+      .chip .label {{ color:#64748b; font-size:12px; }}
+      .chip .value {{ color:#0f172a; font-weight:600; }}
       .chip.duration {{ background:#e0f2fe; border-color:#bfdbfe; }}
       .chip.views {{ background:#dcfce7; border-color:#bbf7d0; }}
       .chip.date {{ background:#ede9fe; border-color:#ddd6fe; }}
       .chip.model {{ background:#f3f4f6; }}
       .chip.type {{ background:#f3f4f6; }}
-      .divider {{ border-top:2px solid #e0e7ff; margin:12px 0 4px; }}
+      .divider {{ border-top:2px solid #e0e7ff; margin:10px 0 6px; }}
       .icon-badge {{ padding:6px; border-radius:8px; background:#dbeafe; color:#1d4ed8; display:inline-flex; align-items:center; }}
-      .card {{ margin-top:8px; border:1px solid var(--border); border-radius:12px; background:var(--bg); box-shadow:0 1px 2px rgba(0,0,0,.04); padding:16px; }}
-      .card h2 {{ margin:0 0 8px; font-size:16px; font-weight:600; display:flex; align-items:center; gap:8px; }}
-      .summary {{ white-space:pre-line; font-size:15px; line-height:1.7; color:#111827; }}
+      .card {{ margin-top:8px; background:var(--bg); border:1px solid var(--ring); border-radius:12px; box-shadow:0 1px 2px rgba(0,0,0,.05); padding:14px 16px; }}
+      .card h2 {{ margin:0 0 8px; font-size:15px; font-weight:700; color:var(--text-2); display:flex; align-items:center; gap:8px; }}
+      .summary {{ max-width:78ch; white-space:pre-line; font-size:15px; line-height:1.6; color:var(--text-2); }}
+      .summary p {{ margin:10px 0; hyphens:auto; }}
     </style>
     <script>
       function copyLink(url) {{
@@ -552,9 +554,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     <section class=\"grid\">
       <div class=\"thumb\">{f'<img src="{thumbnail}" alt="" />' if thumbnail else ''}</div>
       <div>
-        <h1 class=\"title\">{title}</h1>
+        <h1 class=\"title clamp\">{title}</h1>
         <div class=\"facts\">
-          <div class=\"chip\"><span class=\"label\">Channel:</span><span class=\"value\">{channel}</span></div>
+          <div class=\"chip brand\"><span class=\"label\">Channel:</span><span class=\"value\">{channel}</span></div>
           <div class=\"chip duration\"><span class=\"label\">Duration:</span><span class=\"value\">{duration_str or '—'}</span></div>
           <div class=\"chip views\"><span class=\"label\">Views:</span><span class=\"value\">{formatted_views}</span></div>
           <div class=\"chip date\"><span class=\"label\">Uploaded:</span><span class=\"value\">{formatted_date}</span></div>
