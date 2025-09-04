@@ -479,14 +479,16 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             else:
                 formatted_views = 'Views unknown'
             
-            # Discover audio file if present
+            # Discover audio file if present (support legacy and new prefixes)
             audio_url = ''
             try:
                 video_id = video_info.get('video_id', '')
                 if video_id:
-                    matches = list(Path('./exports').glob(f'audio_{video_id}_*.mp3'))
-                    if matches:
-                        latest = max(matches, key=lambda p: p.stat().st_mtime)
+                    candidates = []
+                    for pattern in [f'audio_{video_id}_*.mp3', f'{video_id}_*.mp3']:
+                        candidates.extend(Path('./exports').glob(pattern))
+                    if candidates:
+                        latest = max(candidates, key=lambda p: p.stat().st_mtime)
                         base_url = os.getenv('NGROK_URL', '')
                         audio_url = (base_url.rstrip('/') + f"/exports/{latest.name}") if base_url else f"/exports/{latest.name}"
             except Exception:
