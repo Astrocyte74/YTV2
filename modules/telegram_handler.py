@@ -18,6 +18,9 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 from telegram.constants import ParseMode
 
+from export_utils import SummaryExporter
+from modules.report_generator import JSONReportGenerator
+
 from youtube_summarizer import YouTubeSummarizer
 from llm_config import llm_config
 
@@ -38,6 +41,10 @@ class YouTubeTelegramBot:
         self.application = None
         self.summarizer = None
         self.last_video_url = None
+        
+        # Initialize exporters
+        self.html_exporter = SummaryExporter("./exports")
+        self.json_exporter = JSONReportGenerator("./data/reports")
         
         # YouTube URL regex pattern
         self.youtube_url_pattern = re.compile(
@@ -252,21 +259,37 @@ class YouTubeTelegramBot:
                 await query.edit_message_text("❌ Failed to process video. Please check the URL and try again.")
                 return
             
+            # Export to JSON and HTML for dashboard
+            export_info = {"html_path": None, "json_path": None}
+            try:
+                # Export to JSON (preferred format)
+                json_path = self.json_exporter.save_report(result)
+                export_info["json_path"] = Path(json_path).name
+                logging.info(f"✅ Exported JSON report: {json_path}")
+                
+                # Export to HTML (for dashboard compatibility)  
+                html_path = self.html_exporter.export_to_html(result)
+                export_info["html_path"] = Path(html_path).name
+                logging.info(f"✅ Exported HTML report: {html_path}")
+                
+            except Exception as e:
+                logging.warning(f"⚠️ Export failed: {e}")
+            
             # Format and send the response
-            await self._send_formatted_response(query, result, summary_type)
+            await self._send_formatted_response(query, result, summary_type, export_info)
             
         except Exception as e:
             logging.error(f"Error processing video {self.last_video_url}: {e}")
             await query.edit_message_text(f"❌ Error processing video: {str(e)[:100]}...")
     
-    async def _send_formatted_response(self, query, result: Dict[str, Any], summary_type: str):
+    async def _send_formatted_response(self, query, result: Dict[str, Any], summary_type: str, export_info: Dict = None):
         """Send formatted summary response."""
         try:
             # Get video metadata
             video_info = result.get('metadata', {})
             title = video_info.get('title', 'Unknown Title')
-            channel = video_info.get('channel', 'Unknown Channel')
-            duration = video_info.get('duration_formatted', 'Unknown')
+            channel = video_info.get('uploader', 'Unknown Channel')
+            duration_info = self._format_duration_and_savings(video_info)
             
             # Get summary content - extract the text from the summary dictionary
             summary_data = result.get('summary', {})
@@ -275,10 +298,8 @@ class YouTubeTelegramBot:
             else:
                 summary = summary_data or 'No summary available'
             
-            # Handle audio summaries with TTS generation
-            if summary_type == "audio":
-                await self._handle_audio_summary(query, result, summary_type)
-                return
+            # Always send text summary first for better UX
+            # (For audio summaries, TTS will be generated separately below)
             
             # Truncate if too long for Telegram
             if len(summary) > 1000:
@@ -288,11 +309,25 @@ class YouTubeTelegramBot:
             response_parts = [
                 f"🎬 **{self._escape_markdown(title)}**",
                 f"📺 {self._escape_markdown(channel)}",
-                f"⏱️ Duration: {duration}",
+                duration_info,
                 "",
                 f"📝 **{summary_type.replace('-', ' ').title()} Summary:**",
                 summary
             ]
+            
+            # Add dashboard links if exports were successful
+            if export_info and (export_info.get('html_path') or export_info.get('json_path')):
+                web_port = os.getenv('WEB_PORT', '6452')
+                base_url = f"http://localhost:{web_port}"
+                
+                links = []
+                links.append(f"📊 [Dashboard]({base_url})")
+                
+                if export_info.get('html_path'):
+                    html_filename = export_info['html_path']
+                    links.append(f"🔗 [Full Report]({base_url}/exports/{html_filename})")
+                
+                response_parts.extend(["", "📱 **Links:**", " • ".join(links)])
             
             response_text = "\n".join(response_parts)
             
@@ -301,9 +336,83 @@ class YouTubeTelegramBot:
             
             logging.info(f"Successfully sent {summary_type} summary for {title}")
             
+            # Generate TTS audio for audio summaries (after text is sent)
+            if summary_type == "audio":
+                await self._generate_and_send_tts(query, result, summary)
+            
         except Exception as e:
             logging.error(f"Error sending formatted response: {e}")
             await query.edit_message_text("❌ Error formatting response. The summary was generated but couldn't be displayed properly.")
+    
+    async def _generate_and_send_tts(self, query, result: Dict[str, Any], summary_text: str):
+        """Generate TTS audio and send as voice message (separate from text summary)."""
+        try:
+            # Get video metadata  
+            video_info = result.get('metadata', {})
+            title = video_info.get('title', 'Unknown Title')
+            
+            # Generate TTS audio
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            video_id = video_info.get('video_id', 'unknown')
+            audio_filename = f"audio_{video_id}_{timestamp}.mp3"
+            
+            # Generate the audio file
+            logging.info(f"🎙️ Generating TTS audio for: {title}")
+            audio_filepath = await self.summarizer.generate_tts_audio(summary_text, audio_filename)
+            
+            if audio_filepath and Path(audio_filepath).exists():
+                # Send the audio as a voice message
+                try:
+                    with open(audio_filepath, 'rb') as audio_file:
+                        await query.message.reply_voice(
+                            voice=audio_file,
+                            caption=f"🎧 **Audio Summary**: {self._escape_markdown(title)}\n"
+                                   f"🎵 Generated with OpenAI TTS",
+                            parse_mode=ParseMode.MARKDOWN
+                        )
+                    logging.info(f"✅ Successfully sent audio summary for: {title}")
+                    
+                except Exception as e:
+                    logging.error(f"❌ Failed to send voice message: {e}")
+            else:
+                logging.warning("⚠️ TTS generation failed")
+                
+        except Exception as e:
+            logging.error(f"Error generating TTS audio: {e}")
+    
+    def _format_duration_and_savings(self, metadata: Dict) -> str:
+        """Format video duration and calculate time savings from summary."""
+        duration = metadata.get('duration', 0)
+        
+        if duration:
+            # Format original duration
+            hours = duration // 3600
+            minutes = (duration % 3600) // 60
+            seconds = duration % 60
+            
+            if hours > 0:
+                duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            else:
+                duration_str = f"{minutes:02d}:{seconds:02d}"
+            
+            # Calculate time savings (typical summary reading time is 2-3 minutes)
+            reading_time_seconds = 180  # 3 minutes average
+            if duration > reading_time_seconds:
+                time_saved = duration - reading_time_seconds
+                saved_hours = time_saved // 3600
+                saved_minutes = (time_saved % 3600) // 60
+                
+                if saved_hours > 0:
+                    savings_str = f"{saved_hours:02d}:{saved_minutes:02d}:00"
+                else:
+                    savings_str = f"{saved_minutes:02d}:{time_saved % 60:02d}"
+                
+                return f"⏱️ **Duration**: {duration_str} → ~3 min read (⏰ Saves {savings_str})"
+            else:
+                return f"⏱️ **Duration**: {duration_str}"
+        else:
+            return f"⏱️ **Duration**: Unknown"
     
     def _extract_youtube_url(self, text: str) -> Optional[str]:
         """Extract YouTube URL from text."""
@@ -323,18 +432,14 @@ class YouTubeTelegramBot:
             # Get video metadata
             video_info = result.get('metadata', {})
             title = video_info.get('title', 'Unknown Title')
-            channel = video_info.get('channel', 'Unknown Channel')
+            channel = video_info.get('uploader', 'Unknown Channel')
             
             # Get summary content - extract the text from the summary dictionary
             summary_data = result.get('summary', {})
-            print(f"🐞 DEBUG: summary_data type: {type(summary_data)}")
-            print(f"🐞 DEBUG: summary_data content: {summary_data}")
             if isinstance(summary_data, dict):
                 summary = summary_data.get('summary', 'No summary available')
-                print(f"🐞 DEBUG: Extracted summary: {summary[:100]}...")
             else:
                 summary = summary_data or 'No summary available'
-                print(f"🐞 DEBUG: Direct summary: {str(summary)[:100]}...")
             
             # Update status to show TTS generation
             await query.edit_message_text(f"🎙️ Generating audio summary... Creating TTS audio file.")
@@ -346,8 +451,6 @@ class YouTubeTelegramBot:
             audio_filename = f"audio_{video_id}_{timestamp}.mp3"
             
             # Generate the audio file
-            print(f"🐞 DEBUG: TTS summary type: {type(summary)}")
-            print(f"🐞 DEBUG: TTS summary content: {str(summary)[:200]}...")
             audio_filepath = await self.summarizer.generate_tts_audio(summary, audio_filename)
             
             if audio_filepath and Path(audio_filepath).exists():
