@@ -262,18 +262,16 @@ class YouTubeTelegramBot:
                 await query.edit_message_text("❌ Failed to process video. Please check the URL and try again.")
                 return
             
-            # Export to JSON and HTML for dashboard
+            # Export to JSON for dashboard (skip HTML to avoid duplicates)
             export_info = {"html_path": None, "json_path": None}
             try:
-                # Export to JSON (preferred format)
+                # Export to JSON (primary format for dashboard)
                 json_path = self.json_exporter.save_report(result)
                 export_info["json_path"] = Path(json_path).name
                 logging.info(f"✅ Exported JSON report: {json_path}")
                 
-                # Export to HTML (for dashboard compatibility)  
-                html_path = self.html_exporter.export_to_html(result)
-                export_info["html_path"] = Path(html_path).name
-                logging.info(f"✅ Exported HTML report: {html_path}")
+                # TODO: Generate HTML on-demand when "Full Report" is clicked
+                # For now, skip HTML to prevent duplicate dashboard cards
                 
             except Exception as e:
                 logging.warning(f"⚠️ Export failed: {e}")
@@ -318,29 +316,26 @@ class YouTubeTelegramBot:
                 summary
             ]
             
-            # Add dashboard links if exports were successful
-            if export_info and (export_info.get('html_path') or export_info.get('json_path')):
-                web_port = os.getenv('WEB_PORT', '6452')
-                # Use PUBLIC_BASE_URL (ngrok/domain) or fall back to localhost for dev
-                base_url = os.getenv('NGROK_URL') or f"http://localhost:{web_port}"
-                
-                links = []
-                links.append(f"📊 [Dashboard]({base_url})")
-                
-                if export_info.get('html_path'):
-                    html_filename = export_info['html_path']
-                    # URL encode the filename to handle special characters
-                    import urllib.parse
-                    encoded_filename = urllib.parse.quote(html_filename)
-                    links.append(f"🔗 [Full Report]({base_url}/exports/{encoded_filename})")
-                
-                response_parts.extend(["", "📱 **Links:**"])
-                response_parts.extend(links)
+            # We'll add link buttons separately, not in text
             
             response_text = "\n".join(response_parts)
             
+            # Create inline keyboard with link buttons if exports were successful
+            reply_markup = None
+            if export_info and (export_info.get('html_path') or export_info.get('json_path')):
+                web_port = os.getenv('WEB_PORT', '6452')
+                base_url = os.getenv('NGROK_URL') or f"http://localhost:{web_port}"
+                
+                keyboard = []
+                keyboard.append([InlineKeyboardButton("📊 Dashboard", url=base_url)])
+                
+                # For now, just link to dashboard since we're not generating HTML
+                # TODO: Add "Full Report" button when HTML generation is re-enabled
+                
+                reply_markup = InlineKeyboardMarkup(keyboard)
+            
             # Send response
-            await query.edit_message_text(response_text, parse_mode=ParseMode.MARKDOWN)
+            await query.edit_message_text(response_text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
             
             logging.info(f"Successfully sent {summary_type} summary for {title}")
             
