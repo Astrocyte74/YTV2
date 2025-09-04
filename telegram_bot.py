@@ -628,7 +628,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 {f'<div class="headline">{headline}</div>' if headline else ''}
                 <div class="summary-text">{summary_text}</div>
                 
-                {f'<div class="tags">{" ".join([f\'<span class="tag">{cat}</span>\' for cat in categories])}</div>' if categories else ''}
+                {'<div class="tags">' + " ".join([f'<span class="tag">{cat}</span>' for cat in categories]) + '</div>' if categories else ''}
             </div>
             
             {f'''<div class="section">
