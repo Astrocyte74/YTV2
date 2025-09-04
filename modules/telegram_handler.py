@@ -42,7 +42,10 @@ class YouTubeTelegramBot:
         self.summarizer = None
         self.last_video_url = None
         
-        # Initialize exporters
+        # Initialize exporters and ensure directories exist
+        Path("./data/reports").mkdir(parents=True, exist_ok=True)
+        Path("./exports").mkdir(parents=True, exist_ok=True)
+        
         self.html_exporter = SummaryExporter("./exports")
         self.json_exporter = JSONReportGenerator("./data/reports")
         
@@ -288,7 +291,7 @@ class YouTubeTelegramBot:
             # Get video metadata
             video_info = result.get('metadata', {})
             title = video_info.get('title', 'Unknown Title')
-            channel = video_info.get('uploader', 'Unknown Channel')
+            channel = video_info.get('uploader') or video_info.get('channel') or 'Unknown Channel'
             duration_info = self._format_duration_and_savings(video_info)
             
             # Get summary content - extract the text from the summary dictionary
@@ -318,7 +321,8 @@ class YouTubeTelegramBot:
             # Add dashboard links if exports were successful
             if export_info and (export_info.get('html_path') or export_info.get('json_path')):
                 web_port = os.getenv('WEB_PORT', '6452')
-                base_url = f"http://localhost:{web_port}"
+                # Use PUBLIC_BASE_URL (ngrok/domain) or fall back to localhost for dev
+                base_url = os.getenv('NGROK_URL') or f"http://localhost:{web_port}"
                 
                 links = []
                 links.append(f"📊 [Dashboard]({base_url})")
@@ -357,9 +361,13 @@ class YouTubeTelegramBot:
             video_id = video_info.get('video_id', 'unknown')
             audio_filename = f"audio_{video_id}_{timestamp}.mp3"
             
-            # Generate the audio file
+            # Generate the audio file (run in executor to avoid blocking event loop)
             logging.info(f"🎙️ Generating TTS audio for: {title}")
-            audio_filepath = await self.summarizer.generate_tts_audio(summary_text, audio_filename)
+            loop = asyncio.get_running_loop()
+            audio_filepath = await loop.run_in_executor(
+                None, 
+                lambda: asyncio.run(self.summarizer.generate_tts_audio(summary_text, audio_filename))
+            )
             
             if audio_filepath and Path(audio_filepath).exists():
                 # Send the audio as a voice message
@@ -432,7 +440,7 @@ class YouTubeTelegramBot:
             # Get video metadata
             video_info = result.get('metadata', {})
             title = video_info.get('title', 'Unknown Title')
-            channel = video_info.get('uploader', 'Unknown Channel')
+            channel = video_info.get('uploader') or video_info.get('channel') or 'Unknown Channel'
             
             # Get summary content - extract the text from the summary dictionary
             summary_data = result.get('summary', {})
