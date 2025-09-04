@@ -223,6 +223,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.serve_dashboard()
         elif self.path == '/status':
             self.serve_status()
+        elif self.path == '/health':
+            self.serve_health()
         elif self.path.startswith('/api/'):
             self.serve_api()
         elif self.path.endswith('.css'):
@@ -757,6 +759,28 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_response(500)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
+            self.wfile.write(json.dumps(error_data).encode())
+
+    def serve_health(self):
+        """Serve health check endpoint for RENDER deployment"""
+        try:
+            # Simple health check - just respond with OK
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            health_data = {
+                "status": "healthy",
+                "timestamp": datetime.now().isoformat(),
+                "service": "ytv2-telegram-bot"
+            }
+            self.wfile.write(json.dumps(health_data).encode())
+            
+        except Exception as e:
+            logger.error(f"Error serving health check: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            error_data = {"status": "unhealthy", "error": str(e)}
             self.wfile.write(json.dumps(error_data).encode())
     
     def serve_api(self):

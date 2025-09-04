@@ -25,7 +25,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY . .
 
 # Create necessary directories with proper permissions
-RUN mkdir -p /app/downloads /app/cache /app/logs && \
+RUN mkdir -p /app/downloads /app/cache /app/logs /app/exports /app/data && \
     chown -R appuser:appuser /app
 
 # Switch to non-root user
@@ -34,10 +34,14 @@ USER appuser
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV PORT=10000
 
-# Health check
+# Expose the port
+EXPOSE 10000
+
+# Health check for Render
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import sys; sys.exit(0)"
+    CMD curl -f http://localhost:10000/health || exit 1
 
-# Run the telegram bot
+# Run the telegram bot (which includes the web server)
 CMD ["python", "telegram_bot.py"]
