@@ -231,6 +231,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.serve_js()
         elif self.path.endswith('.html') and self.path != '/':
             self.serve_report()
+        elif self.path.endswith('.json') and self.path != '/':
+            self.serve_report()
         else:
             super().do_GET()
     
