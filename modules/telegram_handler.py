@@ -323,16 +323,20 @@ class YouTubeTelegramBot:
             # Create inline keyboard with link buttons if exports were successful
             reply_markup = None
             if export_info and (export_info.get('html_path') or export_info.get('json_path')):
-                web_port = os.getenv('WEB_PORT', '6452')
-                base_url = os.getenv('NGROK_URL') or f"http://localhost:{web_port}"
+                base_url = os.getenv('NGROK_URL')
                 
-                keyboard = []
-                keyboard.append([InlineKeyboardButton("📊 Dashboard", url=base_url)])
-                
-                # For now, just link to dashboard since we're not generating HTML
-                # TODO: Add "Full Report" button when HTML generation is re-enabled
-                
-                reply_markup = InlineKeyboardMarkup(keyboard)
+                # Only add buttons if we have a public URL (Telegram can't access localhost)
+                if base_url:
+                    keyboard = []
+                    keyboard.append([InlineKeyboardButton("📊 Dashboard", url=base_url)])
+                    
+                    # For now, just link to dashboard since we're not generating HTML
+                    # TODO: Add "Full Report" button when HTML generation is re-enabled
+                    
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                else:
+                    reply_markup = None
+                    logging.warning("⚠️ No NGROK_URL set - skipping link buttons")
             
             # Send response
             await query.edit_message_text(response_text, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)

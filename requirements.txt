@@ -11,6 +11,7 @@ langchain-community>=0.3.27
 
 # Export utilities
 reportlab>=4.4.3  # For PDF export
+markdown>=3.4.4   # For HTML export
 requests>=2.31.0
 beautifulsoup4>=4.12.0  # For fallback metadata extraction
 
