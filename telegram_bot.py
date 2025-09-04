@@ -494,6 +494,82 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             except Exception:
                 audio_url = ''
 
+            # Build mini-player script safely (avoid f-string brace escaping)
+            script_block = ''
+            if audio_url:
+                _dur = duration_seconds
+                script_block = (
+                    """
+<script>(function(){
+  const a = document.getElementById('summaryAudio');
+  if (!a) return;
+  const el = {
+    play: document.getElementById('playPauseBtn'),
+    cur:  document.getElementById('cur'),
+    dur:  document.getElementById('dur'),
+    seek: document.getElementById('seek'),
+    speedBtn: document.getElementById('speedBtn'),
+    bar:  document.getElementById('listenSticky'),
+    mPlay:document.getElementById('mPlayPause'),
+    mCur: document.getElementById('mCur'),
+    mDur: document.getElementById('mDur'),
+    mSeek:document.getElementById('mSeek'),
+    mSpeed:document.getElementById('mSpeed'),
+  };
+  const fmt = (s) => {
+    if (isNaN(s)) return '--:--';
+    s = Math.max(0, Math.floor(s));
+    const m = Math.floor(s/60), r = s%60;
+    return `${m}:${r.toString().padStart(2,'0')}`;
+  };
+  function syncUI(){
+    const { currentTime, duration, paused } = a;
+    const pct = duration ? (currentTime/duration)*100 : 0;
+    if (el.cur) el.cur.textContent = fmt(currentTime);
+    if (el.dur) el.dur.textContent = fmt(duration);
+    if (el.seek) el.seek.value = pct;
+    if (el.mCur) el.mCur.textContent = fmt(currentTime);
+    if (el.mDur) el.mDur.textContent = fmt(duration);
+    if (el.mSeek) el.mSeek.value = pct;
+    if (el.play) el.play.textContent = paused ? '▶' : '⏸';
+    if (el.mPlay) el.mPlay.textContent = paused ? '▶' : '⏸';
+  }
+  function toggle(){ a.paused ? a.play() : a.pause(); }
+  if (el.play) el.play.addEventListener('click', toggle);
+  if (el.mPlay) el.mPlay.addEventListener('click', toggle);
+  function setSeek(p){ if (a.duration) a.currentTime = (p/100)*a.duration; }
+  if (el.seek) el.seek.addEventListener('input', e => setSeek(e.target.value));
+  if (el.mSeek) el.mSeek.addEventListener('input', e => setSeek(e.target.value));
+  const speeds = [1,1.25,1.5,1.75,2];
+  function cycleSpeed(btn){
+    const i = (speeds.indexOf(a.playbackRate)+1) % speeds.length;
+    a.playbackRate = speeds[i];
+    btn.textContent = `${speeds[i]}×`;
+    if (btn === el.speedBtn && el.mSpeed) el.mSpeed.textContent = btn.textContent;
+    if (btn === el.mSpeed && el.speedBtn) el.speedBtn.textContent = btn.textContent;
+  }
+  if (el.speedBtn) el.speedBtn.addEventListener('click', () => cycleSpeed(el.speedBtn));
+  if (el.mSpeed) el.mSpeed.addEventListener('click', () => cycleSpeed(el.mSpeed));
+  a.addEventListener('loadedmetadata', () => {
+    syncUI();
+    try {
+      var v = __DUR__;
+      if (v && a.duration) {
+        var diff = Math.max(0, v - Math.floor(a.duration));
+        var mm = Math.floor(diff/60), ss = diff%60;
+        var elSave = document.getElementById('save');
+        if (elSave) elSave.textContent = mm + ':' + String(ss).padStart(2,'0');
+      }
+    } catch(e) {}
+  });
+  a.addEventListener('timeupdate', syncUI);
+  a.addEventListener('play', () => { const bar = document.getElementById('listenSticky'); if (bar) bar.hidden = false; syncUI(); });
+  a.addEventListener('pause', syncUI);
+  syncUI();
+})();</script>
+""".replace('__DUR__', str(_dur))
+                )
+
             # Compact, professional HTML template
             html_content = f"""<!DOCTYPE html>
 <html lang=\"en\">
@@ -618,52 +694,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
       <div class=\"summary\">{summary_text}</div>
     </section>
   </main>
-  {f'''<script>(function() {{
-    const a = document.getElementById('summaryAudio');
-    if (!a) return;
-    const el = {{
-      play: document.getElementById('playPauseBtn'),
-      cur:  document.getElementById('cur'),
-      dur:  document.getElementById('dur'),
-      seek: document.getElementById('seek'),
-      speedBtn: document.getElementById('speedBtn'),
-      bar:  document.getElementById('listenSticky'),
-      mPlay:document.getElementById('mPlayPause'),
-      mCur: document.getElementById('mCur'),
-      mDur: document.getElementById('mDur'),
-      mSeek:document.getElementById('mSeek'),
-      mSpeed:document.getElementById('mSpeed'),
-    }};
-    function fmt(s) {{ if (isNaN(s)) return '--:--'; s=Math.max(0,Math.floor(s)); const m=Math.floor(s/60),r=s%60; return `${{m}}:${{r.toString().padStart(2,'0')}}`; }}
-    function syncUI() {{ const {{currentTime, duration, paused}} = a; const pct = duration ? (currentTime/duration)*100 : 0; if(el.cur) el.cur.textContent=fmt(currentTime); if(el.dur) el.dur.textContent=fmt(duration); if(el.seek) el.seek.value=pct; if(el.mCur) el.mCur.textContent=fmt(currentTime); if(el.mDur) el.mDur.textContent=fmt(duration); if(el.mSeek) el.mSeek.value=pct; if(el.play) el.play.textContent = paused ? '▶' : '⏸'; if(el.mPlay) el.mPlay.textContent = paused ? '▶' : '⏸'; }}
-    function toggle() {{ a.paused ? a.play() : a.pause(); }}
-    if (el.play) el.play.addEventListener('click', toggle);
-    if (el.mPlay) el.mPlay.addEventListener('click', toggle);
-    function setSeek(p) {{ if (a.duration) a.currentTime = (p/100)*a.duration; }}
-    if (el.seek) el.seek.addEventListener('input', e=>setSeek(e.target.value));
-    if (el.mSeek) el.mSeek.addEventListener('input', e=>setSeek(e.target.value));
-    const speeds=[1,1.25,1.5,1.75,2];
-    function cycleSpeed(btn) {{ const i=(speeds.indexOf(a.playbackRate)+1)%speeds.length; a.playbackRate=speeds[i]; btn.textContent=`${{speeds[i]}}×`; if(btn===el.speedBtn && el.mSpeed) el.mSpeed.textContent=btn.textContent; if(btn===el.mSpeed && el.speedBtn) el.speedBtn.textContent=btn.textContent; }}
-    if (el.speedBtn) el.speedBtn.addEventListener('click', ()=>cycleSpeed(el.speedBtn));
-    if (el.mSpeed) el.mSpeed.addEventListener('click', ()=>cycleSpeed(el.mSpeed));
-    // loadedmetadata replaced
-    a.addEventListener('loadedmetadata', function(){
-      syncUI();
-      try {
-        var v = {duration_seconds};
-        if (v && a.duration) {
-          var diff = Math.max(0, v - Math.floor(a.duration));
-          var mm = Math.floor(diff/60), ss = diff%60;
-          var elSave = document.getElementById('save');
-          if (elSave) elSave.textContent = mm+':'+String(ss).padStart(2,'0');
-        }
-      } catch(e) {}
-    });
-    a.addEventListener('timeupdate', syncUI);
-    a.addEventListener('play', function(){ var bar=document.getElementById('listenSticky'); if (bar) bar.hidden=false; syncUI(); });
-    a.addEventListener('pause', syncUI);
-    syncUI();
-  }})();</script>''' if audio_url else ''}
+  {script_block if audio_url else ''}
 </body>
 </html>"""
             
