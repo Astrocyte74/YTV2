@@ -530,6 +530,23 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
       .card h2 {{ margin:0 0 8px; font-size:15px; font-weight:700; color:var(--text-2); display:flex; align-items:center; gap:8px; }}
       .summary {{ max-width:78ch; white-space:pre-line; font-size:15px; line-height:1.6; color:var(--text-2); }}
       .summary p {{ margin:10px 0; hyphens:auto; }}
+      /* Inline mini audio player */
+      .listen-inline {{ margin-top:8px; }}
+      .listen-card {{ display:flex; align-items:center; gap:12px; border:1px solid var(--ring); background:#fff; border-radius:12px; padding:10px 12px; box-shadow:0 1px 2px rgba(0,0,0,.04); }}
+      .listen-btn {{ width:36px; height:36px; border-radius:999px; border:1px solid var(--ring); background:#111827; color:#fff; display:grid; place-items:center; font-weight:700; cursor:pointer; }}
+      .listen-info {{ flex:1; min-width:0; }}
+      .listen-title {{ font-weight:600; font-size:14px; line-height:1.2; }}
+      .listen-meta {{ color:#64748b; font-size:12px; margin-top:2px; }}
+      .listen-actions {{ display:flex; align-items:center; gap:8px; }}
+      #seek {{ width:100%; margin-top:6px; }}
+      .chip.ghost {{ background:#fff; }}
+      /* Sticky bottom mini-player for mobile */
+      .listen-sticky {{ position: sticky; bottom:12px; margin:0 auto; left:0; right:0; max-width:520px; display:flex; align-items:center; gap:8px; background:#fff; border:1px solid var(--ring); padding:8px 10px; border-radius:999px; box-shadow:0 8px 24px rgba(0,0,0,.14); }}
+      .listen-sticky .meta {{ flex:1; min-width:0; }}
+      .listen-sticky button {{ height:34px; min-width:34px; border-radius:999px; border:1px solid var(--ring); background:#111827; color:#fff; }}
+      .listen-sticky small {{ color:#64748b; display:block; }}
+      @media (max-width:900px) {{ .listen-inline {{ display:none; }} }}
+      @media (min-width:901px) {{ #listenSticky {{ display:none !important; }} }}
     </style>
     <script>
       function copyLink(url) {{
@@ -563,8 +580,33 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
           <div class=\"chip model\"><span class=\"label\">AI Model:</span><span class=\"value\">{model}{(' ('+provider+')') if provider else ''}</span></div>
           <div class=\"chip type\"><span class=\"label\">Summary Type:</span><span class=\"value\">{summary_type.title()}</span></div>
         </div>
+        {f'''<div class="listen-inline">
+          <div class="listen-card">
+            <button id="playPauseBtn" class="listen-btn" aria-label="Play audio summary">▶</button>
+            <div class="listen-info">
+              <div class="listen-title">Audio summary</div>
+              <div class="listen-meta"><span id="cur">0:00</span> / <span id="dur">--:--</span></div>
+              <input id="seek" type="range" min="0" max="100" value="0" aria-label="Seek audio" />
+            </div>
+            <div class="listen-actions">
+              <button id="speedBtn" class="chip">1×</button>
+              <a class="chip ghost" href="{audio_url}" download>Download</a>
+            </div>
+          </div>
+        </div>''' if audio_url else ''}
       </div>
     </section>
+
+    {f'''<div class="listen-sticky" id="listenSticky">
+      <button id="mPlayPause" aria-label="Play audio">▶</button>
+      <div class="meta">
+        <strong>Audio summary</strong>
+        <small><span id="mCur">0:00</span> / <span id="mDur">--:--</span></small>
+        <input id="mSeek" type="range" min="0" max="100" value="0" aria-label="Seek audio" />
+      </div>
+      <button id="mSpeed">1×</button>
+    </div>
+    <audio id="summaryAudio" preload="metadata"><source src="{audio_url}" type="audio/mpeg" /></audio>''' if audio_url else ''}
 
     <div class=\"divider\"></div>
 
@@ -574,6 +616,40 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
       <div class=\"summary\">{summary_text}</div>
     </section>
   </main>
+  {f'''<script>(function() {{
+    const a = document.getElementById('summaryAudio');
+    if (!a) return;
+    const el = {{
+      play: document.getElementById('playPauseBtn'),
+      cur:  document.getElementById('cur'),
+      dur:  document.getElementById('dur'),
+      seek: document.getElementById('seek'),
+      speedBtn: document.getElementById('speedBtn'),
+      bar:  document.getElementById('listenSticky'),
+      mPlay:document.getElementById('mPlayPause'),
+      mCur: document.getElementById('mCur'),
+      mDur: document.getElementById('mDur'),
+      mSeek:document.getElementById('mSeek'),
+      mSpeed:document.getElementById('mSpeed'),
+    }};
+    function fmt(s) {{ if (isNaN(s)) return '--:--'; s=Math.max(0,Math.floor(s)); const m=Math.floor(s/60),r=s%60; return `${{m}}:${{r.toString().padStart(2,'0')}}`; }}
+    function syncUI() {{ const {{currentTime, duration, paused}} = a; const pct = duration ? (currentTime/duration)*100 : 0; if(el.cur) el.cur.textContent=fmt(currentTime); if(el.dur) el.dur.textContent=fmt(duration); if(el.seek) el.seek.value=pct; if(el.mCur) el.mCur.textContent=fmt(currentTime); if(el.mDur) el.mDur.textContent=fmt(duration); if(el.mSeek) el.mSeek.value=pct; if(el.play) el.play.textContent = paused ? '▶' : '⏸'; if(el.mPlay) el.mPlay.textContent = paused ? '▶' : '⏸'; }}
+    function toggle() {{ a.paused ? a.play() : a.pause(); }}
+    if (el.play) el.play.addEventListener('click', toggle);
+    if (el.mPlay) el.mPlay.addEventListener('click', toggle);
+    function setSeek(p) {{ if (a.duration) a.currentTime = (p/100)*a.duration; }}
+    if (el.seek) el.seek.addEventListener('input', e=>setSeek(e.target.value));
+    if (el.mSeek) el.mSeek.addEventListener('input', e=>setSeek(e.target.value));
+    const speeds=[1,1.25,1.5,1.75,2];
+    function cycleSpeed(btn) {{ const i=(speeds.indexOf(a.playbackRate)+1)%speeds.length; a.playbackRate=speeds[i]; btn.textContent=`${{speeds[i]}}×`; if(btn===el.speedBtn && el.mSpeed) el.mSpeed.textContent=btn.textContent; if(btn===el.mSpeed && el.speedBtn) el.speedBtn.textContent=btn.textContent; }}
+    if (el.speedBtn) el.speedBtn.addEventListener('click', ()=>cycleSpeed(el.speedBtn));
+    if (el.mSpeed) el.mSpeed.addEventListener('click', ()=>cycleSpeed(el.mSpeed));
+    a.addEventListener('loadedmetadata', syncUI);
+    a.addEventListener('timeupdate', syncUI);
+    a.addEventListener('play', syncUI);
+    a.addEventListener('pause', syncUI);
+    syncUI();
+  }})();</script>''' if audio_url else ''}
 </body>
 </html>"""
             
