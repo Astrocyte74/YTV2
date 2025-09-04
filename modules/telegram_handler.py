@@ -194,7 +194,7 @@ class YouTubeTelegramBot:
             ],
             [
                 InlineKeyboardButton("💡 Insights", callback_data="summarize_key-insights"),
-                InlineKeyboardButton("📊 Executive", callback_data="summarize_executive_summary")
+                InlineKeyboardButton("🎙️ Audio Summary", callback_data="summarize_audio")
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -243,11 +243,9 @@ class YouTubeTelegramBot:
             # Process the video
             logging.info(f"Processing {self.last_video_url} with {summary_type} summary for {user_name}")
             
-            result = await asyncio.to_thread(
-                self.summarizer.summarize_video,
+            result = await self.summarizer.process_video(
                 self.last_video_url,
-                summary_type=summary_type,
-                include_analysis=True
+                summary_type=summary_type
             )
             
             if not result:
@@ -265,13 +263,22 @@ class YouTubeTelegramBot:
         """Send formatted summary response."""
         try:
             # Get video metadata
-            video_info = result.get('video_info', {})
+            video_info = result.get('metadata', {})
             title = video_info.get('title', 'Unknown Title')
             channel = video_info.get('channel', 'Unknown Channel')
             duration = video_info.get('duration_formatted', 'Unknown')
             
-            # Get summary content
-            summary = result.get('summary', 'No summary available')
+            # Get summary content - extract the text from the summary dictionary
+            summary_data = result.get('summary', {})
+            if isinstance(summary_data, dict):
+                summary = summary_data.get('summary', 'No summary available')
+            else:
+                summary = summary_data or 'No summary available'
+            
+            # Handle audio summaries with TTS generation
+            if summary_type == "audio":
+                await self._handle_audio_summary(query, result, summary_type)
+                return
             
             # Truncate if too long for Telegram
             if len(summary) > 1000:
@@ -309,6 +316,95 @@ class YouTubeTelegramBot:
     def _is_user_allowed(self, user_id: int) -> bool:
         """Check if user is allowed to use the bot."""
         return user_id in self.allowed_user_ids
+    
+    async def _handle_audio_summary(self, query, result: Dict[str, Any], summary_type: str):
+        """Handle audio summary generation with TTS."""
+        try:
+            # Get video metadata
+            video_info = result.get('metadata', {})
+            title = video_info.get('title', 'Unknown Title')
+            channel = video_info.get('channel', 'Unknown Channel')
+            
+            # Get summary content - extract the text from the summary dictionary
+            summary_data = result.get('summary', {})
+            print(f"🐞 DEBUG: summary_data type: {type(summary_data)}")
+            print(f"🐞 DEBUG: summary_data content: {summary_data}")
+            if isinstance(summary_data, dict):
+                summary = summary_data.get('summary', 'No summary available')
+                print(f"🐞 DEBUG: Extracted summary: {summary[:100]}...")
+            else:
+                summary = summary_data or 'No summary available'
+                print(f"🐞 DEBUG: Direct summary: {str(summary)[:100]}...")
+            
+            # Update status to show TTS generation
+            await query.edit_message_text(f"🎙️ Generating audio summary... Creating TTS audio file.")
+            
+            # Generate TTS audio
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            video_id = video_info.get('video_id', 'unknown')
+            audio_filename = f"audio_{video_id}_{timestamp}.mp3"
+            
+            # Generate the audio file
+            print(f"🐞 DEBUG: TTS summary type: {type(summary)}")
+            print(f"🐞 DEBUG: TTS summary content: {str(summary)[:200]}...")
+            audio_filepath = await self.summarizer.generate_tts_audio(summary, audio_filename)
+            
+            if audio_filepath and Path(audio_filepath).exists():
+                # Send the audio as a voice message
+                try:
+                    with open(audio_filepath, 'rb') as audio_file:
+                        await query.message.reply_voice(
+                            voice=audio_file,
+                            caption=f"🎧 **Audio Summary**: {self._escape_markdown(title)}\n"
+                                   f"📺 **Channel**: {self._escape_markdown(channel)}\n\n"
+                                   f"🎵 Generated with OpenAI TTS",
+                            parse_mode=ParseMode.MARKDOWN
+                        )
+                    
+                    # Also send the text summary
+                    text_summary = summary
+                    if len(text_summary) > 1000:
+                        text_summary = text_summary[:1000] + "..."
+                    
+                    response_text = f"🎙️ **Audio Summary Generated**\n\n" \
+                                  f"📝 **Text Version:**\n{text_summary}\n\n" \
+                                  f"✅ Voice message sent above!"
+                    
+                    await query.edit_message_text(
+                        response_text,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    
+                    logging.info(f"✅ Successfully sent audio summary for: {title}")
+                    
+                except Exception as e:
+                    logging.error(f"❌ Failed to send voice message: {e}")
+                    # Ensure summary is a string for slicing
+                    summary_text = str(summary) if summary else "No summary available"
+                    await query.edit_message_text(
+                        f"❌ Generated audio but failed to send voice message.\n\n"
+                        f"**Text Summary:**\n{summary_text[:1000]}{'...' if len(summary_text) > 1000 else ''}"
+                    )
+            else:
+                # TTS generation failed, send text only
+                logging.warning("⚠️ TTS generation failed, sending text only")
+                # Ensure summary is a string for slicing
+                summary_text = str(summary) if summary else "No summary available"
+                response_text = f"🎙️ **Audio Summary** (TTS failed)\n\n" \
+                              f"🎬 **{self._escape_markdown(title)}**\n" \
+                              f"📺 **Channel**: {self._escape_markdown(channel)}\n\n" \
+                              f"📝 **Summary:**\n{summary_text[:1000]}{'...' if len(summary_text) > 1000 else ''}\n\n" \
+                              f"⚠️ Audio generation failed. Check TTS configuration."
+                
+                await query.edit_message_text(
+                    response_text,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                
+        except Exception as e:
+            logging.error(f"Error handling audio summary: {e}")
+            await query.edit_message_text(f"❌ Error generating audio summary: {str(e)[:100]}...")
     
     def _escape_markdown(self, text: str) -> str:
         """Escape special characters for Markdown V2."""
@@ -351,7 +447,19 @@ class YouTubeTelegramBot:
             logging.info("✅ Telegram bot is running and listening for messages")
             
             # Keep the bot running
-            await self.application.updater.idle()
+            try:
+                import signal
+                stop_event = asyncio.Event()
+                
+                def signal_handler(signum, frame):
+                    stop_event.set()
+                
+                signal.signal(signal.SIGINT, signal_handler)
+                signal.signal(signal.SIGTERM, signal_handler)
+                
+                await stop_event.wait()
+            except KeyboardInterrupt:
+                pass
             
         except Exception as e:
             logging.error(f"Error running bot: {e}")
