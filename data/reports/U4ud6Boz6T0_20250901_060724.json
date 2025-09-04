@@ -1,0 +1,63 @@
+{
+  "metadata": {
+    "schema_version": "1.0.0",
+    "generated_at": "2025-09-01T00:07:26.998076",
+    "report_id": "U4ud6Boz6T0_1512b6"
+  },
+  "video": {
+    "url": "https://www.youtube.com/watch?v=U4ud6Boz6T0",
+    "video_id": "U4ud6Boz6T0",
+    "title": "Narwal Flow Review: 2 NEW Fresh Takes You'll Want to See!",
+    "channel": "ModernDayTech",
+    "channel_id": "",
+    "duration": 632,
+    "duration_string": "10:32",
+    "view_count": 5892,
+    "like_count": 0,
+    "upload_date": "20250801",
+    "description": "",
+    "tags": [],
+    "categories": [],
+    "thumbnail": "https://i.ytimg.com/vi_webp/U4ud6Boz6T0/maxresdefault.webp",
+    "language": "",
+    "subtitles_available": false
+  },
+  "summary": {
+    "content": {
+      "summary": "Narwal’s new Flow takes two bold swings: a crawler-style “track” mop and a reversible corner brush. In everyday cleaning it matches modern flagships, but its mopping strategy, liquid handling, and low-profile navigation are the standout innovations, with a few trade-offs to note.\n\nFirst, let’s look at the performance results on hard floors. The track mop lays more surface area on the floor than a rotary pad, and it did outperform a rotary system in a dried-mustard test. Pitted head-to-head against a roller mop on a single pass, the roller still removed more residue. In real homes where multi-pass cleaning is common, the gap narrows, but on strict one-pass tests the roller wins. The Flow includes a detergent dispenser in the base, but it uses proprietary cartridges, so you can’t refill it with your own solution, which adds ongoing cost.\n\nMoving on to edges and corners, the Flow uses two side brushes with longer bristles and a clever reversal trick. When it senses a corner, it briefly reverses the right brush motor, sweeping deeper into the corner without needing a mechanical extension arm. Most of the time this pulls out debris effectively, though it can miss the corner reversal in odd layouts, like near some door frames. There’s no liftable side brush, so around unexpected spills you’ll still want to switch to a mop-only pass to avoid flicking wet messes.\n\nThe most important finding was liquid handling. Using Narwal’s Artificial Intelligence, or A-I, called “Freo Mind,” the robot can detect many opaque liquids, shut off suction, raise the vacuum head, and mop them up instead of pulling liquid into the dust bin. That’s a real step forward. However, it’s not 100 percent reliable, and clear water often goes undetected. For known spills, sending it in mop-only mode remains the safest plan.\n\nNavigation and obstacle avoidance are strong. Twin A-I cameras recognize common hazards like cords and pet waste and log snapshots in the app. It can still miss very thin objects like a pencil. The big hardware change is LiDAR built into the body instead of a rooftop turret, dropping height to about 95 millimeters, so it fits under more furniture. A liftable chassis helps it climb transitions up to roughly 4 centimeters, and it auto-detects these zones during mapping instead of making you tag them manually.\n\nWhen it comes to carpets, the Flow brings a headline 22,000 Pascals of suction. In practice, any premium bot above roughly ten to twelve thousand Pascals already delivers solid carpet pickup, so the extra headline number shows diminishing returns. More meaningful is the way it lifts the mop track to keep rugs dry, and the maintenance-friendly hardware. Narwal’s Cyclone Tangle-Free main roller and anti-tangle dual side brushes do a good job minimizing hair wrap, cutting down on upkeep.\n\nMoving on to the base station, the design is tidy with the robot tucked under the housing, and it includes clean and dirty water tanks plus the detergent cartridge slot. One key caveat: the base does not perform a traditional suction-based auto-empty of the robot’s dust bin. If you want a bagged, hands-off dust collection dock, this isn’t it, and your maintenance routine will be different from auto-empty systems.\n\nSo what’s the bottom line? The Narwal Flow delivers flagship-level daily cleaning with genuinely useful ideas: a wider-contact track mop, smarter liquid handling that protects the dust bin, a low profile that reaches under more furniture, and good obstacle avoidance for cords and pet messes. The trade-offs are clear: one-pass mopping isn’t the best in class versus roller systems, liquid detection misses clear water, the detergent is a proprietary cartridge, and there’s no suction auto-empty. Pricing wasn’t specified here, but if it lands in typical flagship territory, expect it to compete with four-figure, bagged auto-empty rivals. If your priorities are better spill management, strong carpet pickup, and a shorter robot that fits where others can’t, the Flow is easy to recommend. If you value set-and-forget dust emptying and the freedom to use your own cleaning solution, weigh those ongoing costs and conveniences before you buy.",
+      "headline": "",
+      "summary_type": "audio",
+      "generated_at": "2025-09-01T00:07:26.998076"
+    },
+    "type": "audio",
+    "analysis": {
+      "category": [],
+      "sentiment": "",
+      "target_audience": "",
+      "complexity_level": "",
+      "key_topics": [],
+      "content_type": "",
+      "educational_value": "",
+      "entertainment_value": ""
+    },
+    "key_points": [],
+    "topics": [],
+    "sentiment": {},
+    "quality_score": 0,
+    "word_count": 678
+  },
+  "processing": {
+    "llm_provider": "openai",
+    "model": "gpt-5"
+  },
+  "stats": {
+    "video_length_seconds": 632,
+    "video_length_minutes": 10.53,
+    "summary_word_count": 678,
+    "summary_character_count": 4183,
+    "compression_ratio": 0,
+    "has_analysis": false,
+    "has_key_points": false,
+    "topic_count": 0
+  }
+}
