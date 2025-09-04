@@ -516,8 +516,15 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
       .title {{ font-size:20px; line-height:32px; font-weight:600; letter-spacing:-.01em; margin:8px 0 4px; }}
       .facts {{ margin-top:8px; display:flex; flex-wrap:wrap; gap:8px; }}
       .chip {{ height:30px; padding:0 10px; border:1px solid var(--border); border-radius:10px; background:rgba(255,255,255,.8); display:inline-flex; align-items:center; gap:8px; font-size:13px; }}
-      .chip .label {{ color:#6b7280; }}
-      .chip .value {{ color:#111827; font-weight:500; }}
+      .chip .label {{ color:#6b7280; font-size:12px; }}
+      .chip .value {{ color:#111827; font-weight:600; }}
+      .chip.duration {{ background:#e0f2fe; border-color:#bfdbfe; }}
+      .chip.views {{ background:#dcfce7; border-color:#bbf7d0; }}
+      .chip.date {{ background:#ede9fe; border-color:#ddd6fe; }}
+      .chip.model {{ background:#f3f4f6; }}
+      .chip.type {{ background:#f3f4f6; }}
+      .divider {{ border-top:2px solid #e0e7ff; margin:12px 0 4px; }}
+      .icon-badge {{ padding:6px; border-radius:8px; background:#dbeafe; color:#1d4ed8; display:inline-flex; align-items:center; }}
       .card {{ margin-top:8px; border:1px solid var(--border); border-radius:12px; background:var(--bg); box-shadow:0 1px 2px rgba(0,0,0,.04); padding:16px; }}
       .card h2 {{ margin:0 0 8px; font-size:16px; font-weight:600; display:flex; align-items:center; gap:8px; }}
       .summary {{ white-space:pre-line; font-size:15px; line-height:1.7; color:#111827; }}
@@ -548,17 +555,19 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         <h1 class=\"title\">{title}</h1>
         <div class=\"facts\">
           <div class=\"chip\"><span class=\"label\">Channel:</span><span class=\"value\">{channel}</span></div>
-          <div class=\"chip\"><span class=\"label\">Duration:</span><span class=\"value\">{duration_str or '—'}</span></div>
-          <div class=\"chip\"><span class=\"label\">Views:</span><span class=\"value\">{formatted_views}</span></div>
-          <div class=\"chip\"><span class=\"label\">Uploaded:</span><span class=\"value\">{formatted_date}</span></div>
-          <div class=\"chip\"><span class=\"label\">AI Model:</span><span class=\"value\">{model}{(' ('+provider+')') if provider else ''}</span></div>
-          <div class=\"chip\"><span class=\"label\">Summary Type:</span><span class=\"value\">{summary_type.title()}</span></div>
+          <div class=\"chip duration\"><span class=\"label\">Duration:</span><span class=\"value\">{duration_str or '—'}</span></div>
+          <div class=\"chip views\"><span class=\"label\">Views:</span><span class=\"value\">{formatted_views}</span></div>
+          <div class=\"chip date\"><span class=\"label\">Uploaded:</span><span class=\"value\">{formatted_date}</span></div>
+          <div class=\"chip model\"><span class=\"label\">AI Model:</span><span class=\"value\">{model}{(' ('+provider+')') if provider else ''}</span></div>
+          <div class=\"chip type\"><span class=\"label\">Summary Type:</span><span class=\"value\">{summary_type.title()}</span></div>
         </div>
       </div>
     </section>
 
+    <div class=\"divider\"></div>
+
     <section class=\"card\">
-      <h2>📄 Summary</h2>
+      <div class=\"flex\" style=\"display:flex;align-items:center;gap:8px;margin-bottom:8px;\"><span class=\"icon-badge\">📄</span><h2 style=\"margin:0;\">Summary</h2></div>
       {f'<div class="summary">{headline}</div>' if headline else ''}
       <div class=\"summary\">{summary_text}</div>
     </section>
