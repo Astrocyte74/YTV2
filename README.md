@@ -81,6 +81,50 @@ python main.py "https://youtu.be/video-id" --export all
 python main.py "https://youtu.be/video-id" --analysis --export pdf
 ```
 
+## 🤖 Telegram Bot Setup (Recommended)
+
+### Quick Setup
+Your Telegram user ID (8350044022) is already configured! Just add your bot token:
+
+1. **Get Bot Token**:
+   - Message @BotFather on Telegram
+   - Send `/newbot` and follow instructions
+   - Copy the token you receive
+
+2. **Configure Environment**:
+   ```bash
+   # Copy the template
+   cp .env.template .env
+   
+   # Edit .env and add your bot token
+   TELEGRAM_BOT_TOKEN=your-bot-token-here
+   ```
+
+3. **Add API Keys**:
+   - Get OpenAI key from: https://platform.openai.com/api-keys
+   - Or Anthropic key from: https://console.anthropic.com/
+   - Add to .env file
+
+4. **Run the Bot**:
+   ```bash
+   python telegram_bot.py
+   ```
+
+5. **Start Using**:
+   - Send YouTube URLs to your bot on Telegram
+   - Access dashboard at: http://localhost:6452
+
+### Adding More Users
+Edit `.env` to add more Telegram user IDs:
+```bash
+TELEGRAM_ALLOWED_USERS=8350044022,friend_id,another_id
+```
+
+Use the helper script to find user IDs:
+```bash
+python get_telegram_id.py
+```
+
 ## 📚 Detailed Usage
 
 ### Command Line Options
