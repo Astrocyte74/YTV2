@@ -329,9 +329,13 @@ class YouTubeTelegramBot:
                 
                 if export_info.get('html_path'):
                     html_filename = export_info['html_path']
-                    links.append(f"🔗 [Full Report]({base_url}/exports/{html_filename})")
+                    # URL encode the filename to handle special characters
+                    import urllib.parse
+                    encoded_filename = urllib.parse.quote(html_filename)
+                    links.append(f"🔗 [Full Report]({base_url}/exports/{encoded_filename})")
                 
-                response_parts.extend(["", "📱 **Links:**", " • ".join(links)])
+                response_parts.extend(["", "📱 **Links:**"])
+                response_parts.extend(links)
             
             response_text = "\n".join(response_parts)
             
@@ -518,12 +522,12 @@ class YouTubeTelegramBot:
             await query.edit_message_text(f"❌ Error generating audio summary: {str(e)[:100]}...")
     
     def _escape_markdown(self, text: str) -> str:
-        """Escape special characters for Markdown V2."""
+        """Escape special characters for Telegram Markdown (minimal escaping)."""
         if not text:
             return ""
         
-        # For Markdown, we need to escape these characters
-        escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+        # Only escape truly problematic characters for Telegram
+        escape_chars = ['_', '*', '[', ']', '`']
         
         escaped_text = text
         for char in escape_chars:
