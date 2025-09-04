@@ -497,7 +497,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # Build mini-player script safely (avoid f-string brace escaping)
             script_block = ''
             if audio_url:
-                _dur = duration_seconds
+                _dur = video_info.get('duration', 0)
                 script_block = (
                     """
 <script>(function(){
