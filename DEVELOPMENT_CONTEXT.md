@@ -39,10 +39,10 @@
 
 ### **Environment Variables (from stack.env)**
 ```bash
-TELEGRAM_BOT_TOKEN=8277446371:AAE7nok1cOaToQno9qRqdZC_O9O0efGAzUQ
-TELEGRAM_USER_ID=8350044022
-OPENAI_API_KEY=sk-proj-Tv45zgqnM10P7hKSwA9Hf8ahRd-54HGF_sM2TLPQi7LkBrc7e6KA7KLPE4j4e2t5Ab3MixYUuRT3BlbkFJaJO9FrwvFjgG7BETGslWcG1A456rFJgrq2s137g9EE7Ep1zyktbJt9LZarh44ziXeKJ66IOhT4A
-OPENROUTER_API_KEY=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
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+TELEGRAM_USER_ID=your_telegram_user_id_here
+OPENAI_API_KEY=your_openai_key_here
+OPENROUTER_API_KEY=your_openrouter_key_here
 ```
 
 ### **Docker Container Details**
