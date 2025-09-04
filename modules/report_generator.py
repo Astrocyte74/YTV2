@@ -143,6 +143,27 @@ class JSONReportGenerator:
                 with open(filepath, 'r', encoding='utf-8') as f:
                     report = json.load(f)
                 
+                # Parse timestamp for display
+                generated_at = report.get("metadata", {}).get("generated_at", "")
+                try:
+                    if generated_at:
+                        dt = datetime.fromisoformat(generated_at.replace('Z', '+00:00'))
+                        created_date = dt.strftime('%Y-%m-%d')
+                        created_time = dt.strftime('%H:%M')
+                        timestamp = dt.isoformat()
+                    else:
+                        # Fallback to file modification time
+                        dt = datetime.fromtimestamp(filepath.stat().st_mtime)
+                        created_date = dt.strftime('%Y-%m-%d')
+                        created_time = dt.strftime('%H:%M')
+                        timestamp = dt.isoformat()
+                except (ValueError, AttributeError):
+                    # Final fallback
+                    dt = datetime.fromtimestamp(filepath.stat().st_mtime)
+                    created_date = dt.strftime('%Y-%m-%d')
+                    created_time = dt.strftime('%H:%M')
+                    timestamp = dt.isoformat()
+                
                 metadata = {
                     "filename": filepath.name,
                     "filepath": str(filepath.absolute()),
@@ -151,7 +172,15 @@ class JSONReportGenerator:
                     "title": report.get("video", {}).get("title", "Unknown"),
                     "channel": report.get("video", {}).get("channel", "Unknown"),
                     "duration": report.get("video", {}).get("duration", 0),
-                    "generated_at": report.get("metadata", {}).get("generated_at", ""),
+                    "thumbnail": report.get("video", {}).get("thumbnail", ""),
+                    "url": report.get("video", {}).get("url", ""),
+                    "video_id": report.get("video", {}).get("video_id", ""),
+                    "generated_at": generated_at,
+                    "created_date": created_date,
+                    "created_time": created_time,
+                    "timestamp": timestamp,
+                    "model": report.get("processing", {}).get("model", "Unknown"),
+                    "summary_preview": (report.get("summary", {}).get("content", "")[:150] + "...") if len(report.get("summary", {}).get("content", "")) > 150 else report.get("summary", {}).get("content", ""),
                     "report_id": report.get("metadata", {}).get("report_id", "")
                 }
                 reports.append(metadata)
@@ -288,12 +317,15 @@ def create_report_from_youtube_summarizer(summarizer_result: Dict[str, Any],
     generator = JSONReportGenerator()
     
     # Extract video and summary data from summarizer result
-    video_data = summarizer_result.get("video_info", {})
+    video_data = summarizer_result.get("metadata", {})
     summary_data = {
         "summary": summarizer_result.get("summary", ""),
         "analysis": summarizer_result.get("analysis", {}),
         "summary_type": summarizer_result.get("summary_type", "comprehensive")
     }
+    
+    # Extract processing info from summarizer result
+    processing_info = summarizer_result.get("processor_info", processing_info)
     
     return generator.generate_report(video_data, summary_data, processing_info)
 

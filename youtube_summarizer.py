@@ -136,8 +136,10 @@ class YouTubeSummarizer:
                     'view_count': 0,
                     'url': youtube_url,
                     'video_id': video_id,
+                    'id': video_id,
                     'channel_url': '',
                     'tags': [],
+                    'thumbnail': '',
                 }
         except Exception as e:
             print(f"⚠️ Fallback metadata extraction failed: {str(e)}")
@@ -153,8 +155,10 @@ class YouTubeSummarizer:
             'view_count': 0,
             'url': youtube_url,
             'video_id': video_id,
+            'id': video_id,
             'channel_url': '',
             'tags': [],
+            'thumbnail': '',
         }
 
     def _extract_video_id(self, youtube_url: str) -> str:
@@ -203,8 +207,10 @@ class YouTubeSummarizer:
                     'view_count': info.get('view_count', 0),
                     'url': youtube_url,
                     'video_id': video_id,
+                    'id': info.get('id', video_id),
                     'channel_url': info.get('channel_url', ''),
                     'tags': info.get('tags', []),
+                    'thumbnail': info.get('thumbnail', ''),
                 }
         except Exception as e:
             print(f"⚠️ yt-dlp metadata extraction failed: {e}")
@@ -346,8 +352,10 @@ class YouTubeSummarizer:
                     'view_count': info.get('view_count', 0),
                     'url': youtube_url,
                     'video_id': info.get('id', ''),
+                    'id': info.get('id', ''),
                     'channel_url': info.get('channel_url', ''),
                     'tags': info.get('tags', []),
+                    'thumbnail': info.get('thumbnail', ''),
                 }
                 
                 # STEP 3: Handle transcript - use primary result or fallback to yt-dlp

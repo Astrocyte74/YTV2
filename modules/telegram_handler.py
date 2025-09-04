@@ -19,7 +19,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 from telegram.constants import ParseMode
 
 from export_utils import SummaryExporter
-from modules.report_generator import JSONReportGenerator
+from modules.report_generator import JSONReportGenerator, create_report_from_youtube_summarizer
 
 from youtube_summarizer import YouTubeSummarizer
 from llm_config import llm_config
@@ -266,7 +266,9 @@ class YouTubeTelegramBot:
             export_info = {"html_path": None, "json_path": None}
             try:
                 # Export to JSON (primary format for dashboard)
-                json_path = self.json_exporter.save_report(result)
+                # Use the proper helper function to transform data structure
+                report_dict = create_report_from_youtube_summarizer(result)
+                json_path = self.json_exporter.save_report(report_dict)
                 export_info["json_path"] = Path(json_path).name
                 logging.info(f"✅ Exported JSON report: {json_path}")
                 

@@ -611,6 +611,60 @@ body {
 }
 
 /* ================================================
+   REPORT SELECTION CHECKBOXES
+   ================================================ */
+
+.report-checkbox-container {
+    position: absolute;
+    top: var(--space-3);
+    left: var(--space-3);
+    z-index: 10;
+    opacity: 0;
+    transition: opacity var(--transition-base);
+}
+
+.report-card:hover .report-checkbox-container {
+    opacity: 1;
+}
+
+.report-checkbox {
+    width: 1.25rem;
+    height: 1.25rem;
+    appearance: none;
+    -webkit-appearance: none;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition-base);
+    position: relative;
+}
+
+.report-checkbox:checked {
+    background: var(--primary-500);
+    border-color: var(--primary-500);
+}
+
+.report-checkbox:checked::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+}
+
+.report-checkbox:hover {
+    background: rgba(255, 255, 255, 1);
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* ================================================
    MINI PLAYER
    ================================================ */
 

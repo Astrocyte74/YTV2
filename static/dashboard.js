@@ -76,6 +76,17 @@ function loadReports() {
     
     // Setup card interactions
     setupReportCards();
+    
+    // Setup checkbox event listeners
+    document.querySelectorAll('.report-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', function(e) {
+            e.stopPropagation(); // Prevent event from bubbling up to card click
+            updateDeleteButton();
+        });
+        checkbox.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent event from bubbling up to card click
+        });
+    });
 }
 
 function generateReportCard(report) {
@@ -99,6 +110,9 @@ function generateReportCard(report) {
              data-channel="${report.channel}" 
              data-model="${report.model}"
              data-video-data='${JSON.stringify(videoData).replace(/'/g, "&#39;")}'>
+            <div class="report-checkbox-container">
+                <input type="checkbox" class="report-checkbox" data-filename="${report.filename}">
+            </div>
             <div class="report-thumbnail">
                 ${thumbnailHTML}
                 <div class="report-overlay">
@@ -135,7 +149,7 @@ function setupReportCards() {
     const reportCards = document.querySelectorAll('.report-card');
     reportCards.forEach(card => {
         card.addEventListener('click', function(e) {
-            if (e.target.closest('.play-button')) return; // Let the play button handle its own click
+            if (e.target.closest('.play-button') || e.target.closest('.report-checkbox')) return; // Let the play button and checkbox handle their own clicks
             
             const filename = this.querySelector('.play-button').getAttribute('onclick').match(/'([^']+)'/)[1];
             openReport(filename);
@@ -215,7 +229,7 @@ function handleDelete() {
     
     if (confirm(`Delete ${checkedBoxes.length} selected reports?`)) {
         const filenames = Array.from(checkedBoxes).map(cb => 
-            cb.closest('.report-card').querySelector('.play-button').getAttribute('onclick').match(/'([^']+)'/)[1]
+            cb.getAttribute('data-filename')
         );
         
         // Make delete request
@@ -223,9 +237,17 @@ function handleDelete() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ files: filenames })
-        }).then(() => {
-            location.reload();
-        }).catch(console.error);
+        }).then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                console.error('Delete failed:', response.status);
+                alert('Failed to delete some reports. Check console for details.');
+            }
+        }).catch(error => {
+            console.error('Delete error:', error);
+            alert('Failed to delete reports. Check console for details.');
+        });
     }
 }
 

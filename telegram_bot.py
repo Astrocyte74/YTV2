@@ -154,7 +154,7 @@ def extract_json_report_metadata(file_path: Path) -> Dict:
             'title': video_info.get('title', 'Unknown Title'),
             'channel': video_info.get('channel', 'Unknown Channel'),
             'model': processing_info.get('model', 'Unknown Model'),
-            'summary_preview': (summary_info.get('content', '')[:150] + "...") if summary_info.get('content') else "No preview available",
+            'summary_preview': (summary_info.get('content', {}).get('summary', '')[:150] + "...") if summary_info.get('content', {}).get('summary') else "No preview available",
             'thumbnail_url': video_info.get('thumbnail', ''),
             'created_date': report_time.strftime('%B %d, %Y'),
             'created_time': report_time.strftime('%H:%M'),
@@ -233,6 +233,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.serve_report()
         else:
             super().do_GET()
+    
+    def do_POST(self):
+        if self.path == '/delete-reports':
+            self.handle_delete_reports()
+        else:
+            self.send_error(404, "Endpoint not found")
     
     def serve_dashboard(self):
         """Serve the modern dashboard using templates"""
@@ -380,28 +386,103 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         try:
             filename = self.path[1:]  # Remove leading slash
             
-            # Look for the file in current directory and exports folder
-            possible_paths = [Path(filename), Path('./exports') / filename]
-            report_file = None
-            
-            for path in possible_paths:
+            # Look for HTML files first (legacy)
+            html_paths = [Path(filename), Path('./exports') / filename]
+            for path in html_paths:
                 if path.exists() and path.suffix == '.html':
-                    report_file = path
-                    break
+                    self.send_response(200)
+                    self.send_header('Content-type', 'text/html; charset=utf-8')
+                    self.send_header('Cache-Control', 'no-cache')
+                    self.end_headers()
+                    self.wfile.write(path.read_bytes())
+                    return
             
-            if report_file:
-                # For now, serve the original report files as-is
-                # TODO: Implement report template system
-                self.send_response(200)
-                self.send_header('Content-type', 'text/html; charset=utf-8')
-                self.send_header('Cache-Control', 'no-cache')
-                self.end_headers()
-                self.wfile.write(report_file.read_bytes())
+            # Look for JSON files in data/reports
+            if filename.endswith('.json'):
+                json_path = Path('./data/reports') / filename
+                if json_path.exists():
+                    self.serve_json_report(json_path)
+                    return
             else:
-                self.send_error(404, "Report not found")
+                # Try adding .json extension if not present
+                json_filename = filename + '.json'
+                json_path = Path('./data/reports') / json_filename
+                if json_path.exists():
+                    self.serve_json_report(json_path)
+                    return
+            
+            self.send_error(404, "Report not found")
         except Exception as e:
             logger.error(f"Error serving report {self.path}: {e}")
             self.send_error(500, "Error serving report")
+    
+    def serve_json_report(self, json_path: Path):
+        """Serve a JSON report wrapped in HTML template"""
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                report_data = json.load(f)
+            
+            # Extract data for display
+            video_info = report_data.get('video', {})
+            summary = report_data.get('summary', {})
+            
+            title = video_info.get('title', 'Unknown Video')
+            channel = video_info.get('channel', 'Unknown Channel')
+            duration_str = video_info.get('duration_string', '')
+            url = video_info.get('url', '')
+            
+            summary_content = summary.get('content', 'No summary available')
+            
+            # Create simple HTML template
+            html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title} - YTV2 Report</title>
+    <style>
+        body {{ 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px; margin: 0 auto; padding: 20px; 
+            line-height: 1.6; color: #333;
+        }}
+        .header {{ background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }}
+        .title {{ font-size: 1.5em; margin: 0 0 10px 0; color: #2563eb; }}
+        .meta {{ color: #666; font-size: 0.9em; }}
+        .summary {{ background: white; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; }}
+        .back-link {{ display: inline-block; margin-bottom: 20px; text-decoration: none; 
+                     color: #2563eb; font-size: 0.9em; }}
+        .back-link:hover {{ text-decoration: underline; }}
+    </style>
+</head>
+<body>
+    <a href="/" class="back-link">← Back to Dashboard</a>
+    
+    <div class="header">
+        <h1 class="title">{title}</h1>
+        <div class="meta">
+            <strong>Channel:</strong> {channel}<br>
+            <strong>Duration:</strong> {duration_str}<br>
+            {f'<strong>URL:</strong> <a href="{url}" target="_blank">{url}</a>' if url else ''}
+        </div>
+    </div>
+    
+    <div class="summary">
+        <h2>Summary</h2>
+        <div style="white-space: pre-wrap;">{summary_content}</div>
+    </div>
+</body>
+</html>"""
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html; charset=utf-8')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(html_content.encode('utf-8'))
+            
+        except Exception as e:
+            logger.error(f"Error serving JSON report {json_path}: {e}")
+            self.send_error(500, "Error serving JSON report")
     
     def serve_status(self):
         """Serve system status endpoint"""
@@ -485,12 +566,15 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "title": report['title'],
                     "channel": report['channel'],
                     "duration": report.get('duration', 0),
-                    "created_date": report['created_date'],
-                    "created_time": report['created_time'],
-                    "timestamp": report['timestamp'],
+                    "created_date": report.get('created_date', ''),
+                    "created_time": report.get('created_time', ''),
+                    "timestamp": report.get('timestamp', ''),
                     "type": "json",
                     "url": report.get('url', ''),
-                    "video_id": report.get('video_id', '')
+                    "video_id": report.get('video_id', ''),
+                    "thumbnail_url": report.get('thumbnail', ''),
+                    "model": report.get('model', 'Unknown'),
+                    "summary_preview": report.get('summary_preview', '')
                 })
             
             # Add HTML reports for legacy support
@@ -621,6 +705,73 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps(error_data).encode())
+    
+    def handle_delete_reports(self):
+        """Handle POST request to delete selected reports"""
+        try:
+            # Read request body
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            request_data = json.loads(post_data.decode('utf-8'))
+            
+            filenames = request_data.get('files', [])
+            if not filenames:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "No files specified"}).encode())
+                return
+            
+            deleted_count = 0
+            errors = []
+            
+            # Delete files from all possible locations
+            search_dirs = [
+                Path('./data/reports'),  # JSON reports
+                Path('./exports'),       # HTML reports
+                Path('.')               # Legacy location
+            ]
+            
+            for filename in filenames:
+                deleted = False
+                for search_dir in search_dirs:
+                    if search_dir.exists():
+                        # Try different extensions
+                        for ext in ['.json', '.html', '']:
+                            file_path = search_dir / (filename + ext if not filename.endswith(ext) else filename)
+                            if file_path.exists():
+                                try:
+                                    file_path.unlink()
+                                    deleted = True
+                                    deleted_count += 1
+                                    logger.info(f"Deleted report: {file_path}")
+                                    break
+                                except Exception as e:
+                                    errors.append(f"Failed to delete {file_path}: {e}")
+                    if deleted:
+                        break
+                
+                if not deleted:
+                    errors.append(f"File not found: {filename}")
+            
+            # Send response
+            response_data = {
+                "deleted": deleted_count,
+                "errors": errors,
+                "message": f"Successfully deleted {deleted_count} reports"
+            }
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data).encode())
+            
+        except Exception as e:
+            logger.error(f"Error handling delete request: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
 
 def start_http_server():
     """Start the HTTP server for dashboard access"""
