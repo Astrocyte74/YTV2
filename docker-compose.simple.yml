@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  youtube-summarizer-bot:
+    image: python:3.11-slim
+    container_name: youtube-summarizer-bot
+    restart: unless-stopped
+    
+    working_dir: /app
+    
+    # Simplified startup command
+    command: >
+      sh -c "
+        apt-get update && 
+        apt-get install -y ffmpeg git curl && 
+        pip install --no-cache-dir -r /app/requirements.txt && 
+        python /app/telegram_bot.py
+      "
+    
+    environment:
+      # Timezone
+      TZ: ${TZ:-America/Edmonton}
+      
+      # Telegram Bot Configuration
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_USER_ID: ${TELEGRAM_USER_ID}
+      
+      # AI Provider API Keys (at least one required)
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      
+      # LLM Configuration
+      LLM_SHORTLIST: ${LLM_SHORTLIST:-fast}
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      
+      # Bot Behavior
+      DEFAULT_SUMMARY_TYPE: ${DEFAULT_SUMMARY_TYPE:-comprehensive}
+      MAX_TRANSCRIPT_LENGTH: ${MAX_TRANSCRIPT_LENGTH:-50000}
+      
+      # Web Server Configuration  
+      WEB_BASE_URL: ${WEB_BASE_URL:-192.168.4.54:6452}
+      WEB_PORT: ${WEB_PORT:-6452}
+      
+      # Python Configuration
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: "/app"
+    
+    volumes:
+      # Mount the entire application directory
+      - /volume1/Docker/YTV2:/app:rw
+      
+      # Persistent data directories (writable)
+      - yt-downloads:/app/downloads:rw
+      - yt-exports:/app/exports:rw
+    
+    # Resource limits (adjust as needed)
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    
+    ports:
+      - "6452:6452"
+    
+    # Force host networking to bypass Docker network isolation
+    network_mode: "host"
+    
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=100m
+
+volumes:
+  yt-downloads:
+    driver: local
+  yt-exports:
+    driver: local
