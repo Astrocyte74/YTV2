@@ -545,6 +545,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
       .listen-sticky .meta {{ flex:1; min-width:0; }}
       .listen-sticky button {{ height:34px; min-width:34px; border-radius:999px; border:1px solid var(--ring); background:#111827; color:#fff; }}
       .listen-sticky small {{ color:#64748b; display:block; }}
+      #listenSticky[hidden] {{ display:none; }}
       @media (max-width:900px) {{ .listen-inline {{ display:none; }} }}
       @media (min-width:901px) {{ #listenSticky {{ display:none !important; }} }}
     </style>
@@ -562,7 +563,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
       <div style=\"display:flex;align-items:center;gap:8px;\">
         {f'<a class="btn-ghost" href="{url}" target="_blank">Open on YouTube</a>' if url else ''}
         <button class=\"btn-ghost\" onclick=\"copyLink('{url}')\">Copy link</button>
-        {f'<a class="btn-primary" href="{audio_url}">Download audio</a>' if audio_url else ''}
+        
       </div>
     </div>
   </header>
@@ -578,14 +579,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
           <div class=\"chip views\"><span class=\"label\">Views:</span><span class=\"value\">{formatted_views}</span></div>
           <div class=\"chip date\"><span class=\"label\">Uploaded:</span><span class=\"value\">{formatted_date}</span></div>
           <div class=\"chip model\"><span class=\"label\">AI Model:</span><span class=\"value\">{model}{(' ('+provider+')') if provider else ''}</span></div>
-          <div class=\"chip type\"><span class=\"label\">Summary Type:</span><span class=\"value\">{summary_type.title()}</span></div>
         </div>
         {f'''<div class="listen-inline">
           <div class="listen-card">
             <button id="playPauseBtn" class="listen-btn" aria-label="Play audio summary">▶</button>
             <div class="listen-info">
               <div class="listen-title">Audio summary</div>
-              <div class="listen-meta"><span id="cur">0:00</span> / <span id="dur">--:--</span></div>
+              <div class="listen-meta"><span id="cur">0:00</span> / <span id="dur">--:--</span> • <span id="save"></span></div>
               <input id="seek" type="range" min="0" max="100" value="0" aria-label="Seek audio" />
             </div>
             <div class="listen-actions">
@@ -597,7 +597,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
       </div>
     </section>
 
-    {f'''<div class="listen-sticky" id="listenSticky">
+    {f'''<div class="listen-sticky" id="listenSticky" hidden>
       <button id="mPlayPause" aria-label="Play audio">▶</button>
       <div class="meta">
         <strong>Audio summary</strong>
@@ -644,9 +644,21 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     function cycleSpeed(btn) {{ const i=(speeds.indexOf(a.playbackRate)+1)%speeds.length; a.playbackRate=speeds[i]; btn.textContent=`${{speeds[i]}}×`; if(btn===el.speedBtn && el.mSpeed) el.mSpeed.textContent=btn.textContent; if(btn===el.mSpeed && el.speedBtn) el.speedBtn.textContent=btn.textContent; }}
     if (el.speedBtn) el.speedBtn.addEventListener('click', ()=>cycleSpeed(el.speedBtn));
     if (el.mSpeed) el.mSpeed.addEventListener('click', ()=>cycleSpeed(el.mSpeed));
-    a.addEventListener('loadedmetadata', syncUI);
+    // loadedmetadata replaced
+    a.addEventListener('loadedmetadata', function(){
+      syncUI();
+      try {
+        var v = {duration_seconds};
+        if (v && a.duration) {
+          var diff = Math.max(0, v - Math.floor(a.duration));
+          var mm = Math.floor(diff/60), ss = diff%60;
+          var elSave = document.getElementById('save');
+          if (elSave) elSave.textContent = mm+':'+String(ss).padStart(2,'0');
+        }
+      } catch(e) {}
+    });
     a.addEventListener('timeupdate', syncUI);
-    a.addEventListener('play', syncUI);
+    a.addEventListener('play', function(){ var bar=document.getElementById('listenSticky'); if (bar) bar.hidden=false; syncUI(); });
     a.addEventListener('pause', syncUI);
     syncUI();
   }})();</script>''' if audio_url else ''}
