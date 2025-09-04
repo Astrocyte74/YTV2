@@ -479,173 +479,90 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             else:
                 formatted_views = 'Views unknown'
             
-            # Create professional HTML template
+            # Discover audio file if present
+            audio_url = ''
+            try:
+                video_id = video_info.get('video_id', '')
+                if video_id:
+                    matches = list(Path('./exports').glob(f'audio_{video_id}_*.mp3'))
+                    if matches:
+                        latest = max(matches, key=lambda p: p.stat().st_mtime)
+                        base_url = os.getenv('NGROK_URL', '')
+                        audio_url = (base_url.rstrip('/') + f"/exports/{latest.name}") if base_url else f"/exports/{latest.name}"
+            except Exception:
+                audio_url = ''
+
+            # Compact, professional HTML template
             html_content = f"""<!DOCTYPE html>
-<html lang="en">
+<html lang=\"en\">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title} - YTV2 Report</title>
+    <meta charset=\"UTF-8\">
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
+    <title>{title} - YTV2</title>
     <style>
-        body {{ 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            margin: 0; padding: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh; color: #333;
-        }}
-        .container {{ max-width: 1000px; margin: 0 auto; padding: 20px; }}
-        .back-button {{ 
-            display: inline-flex; align-items: center; gap: 8px; 
-            background: rgba(255,255,255,0.9); padding: 12px 20px; 
-            border-radius: 25px; text-decoration: none; color: #2563eb;
-            font-weight: 500; margin-bottom: 30px; backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.2); transition: all 0.3s ease;
-        }}
-        .back-button:hover {{ background: rgba(255,255,255,1); transform: translateY(-2px); }}
-        
-        .video-header {{
-            background: rgba(255,255,255,0.95); backdrop-filter: blur(20px);
-            border-radius: 20px; padding: 30px; margin-bottom: 30px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1); border: 1px solid rgba(255,255,255,0.2);
-        }}
-        
-        .video-thumbnail {{
-            width: 100%; max-width: 500px; border-radius: 15px; margin-bottom: 20px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
-        }}
-        
-        .video-title {{ 
-            font-size: 2em; font-weight: 700; color: #1a365d; margin: 0 0 15px 0; 
-            line-height: 1.3;
-        }}
-        
-        .video-meta {{
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px; margin-top: 25px;
-        }}
-        
-        .meta-item {{
-            background: rgba(59,130,246,0.1); padding: 15px; border-radius: 12px;
-            border-left: 4px solid #3b82f6;
-        }}
-        
-        .meta-label {{ font-weight: 600; color: #1e40af; font-size: 0.9em; }}
-        .meta-value {{ color: #374151; margin-top: 5px; }}
-        
-        .content-sections {{
-            display: grid; gap: 30px; margin-top: 30px;
-        }}
-        
-        .section {{
-            background: rgba(255,255,255,0.95); backdrop-filter: blur(20px);
-            border-radius: 20px; padding: 30px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1); border: 1px solid rgba(255,255,255,0.2);
-        }}
-        
-        .section-title {{
-            font-size: 1.5em; font-weight: 600; color: #1a365d; margin: 0 0 20px 0;
-            display: flex; align-items: center; gap: 10px;
-        }}
-        
-        .section-icon {{ font-size: 1.2em; }}
-        
-        .summary-text {{
-            line-height: 1.8; color: #374151; font-size: 1.1em;
-            white-space: pre-line; background: rgba(249,250,251,0.8);
-            padding: 20px; border-radius: 12px; border: 1px solid #e5e7eb;
-        }}
-        
-        .headline {{ 
-            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-            color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px;
-            font-size: 1.2em; font-weight: 500; text-align: center;
-        }}
-        
-        .tags {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }}
-        .tag {{ 
-            background: #dbeafe; color: #1e40af; padding: 6px 12px; 
-            border-radius: 20px; font-size: 0.85em; font-weight: 500;
-        }}
-        
-        .youtube-link {{
-            display: inline-flex; align-items: center; gap: 8px;
-            background: #ff0000; color: white; padding: 12px 20px;
-            border-radius: 25px; text-decoration: none; font-weight: 500;
-            transition: all 0.3s ease;
-        }}
-        .youtube-link:hover {{ background: #cc0000; transform: translateY(-2px); }}
-        
-        @media (max-width: 768px) {{
-            .container {{ padding: 15px; }}
-            .video-meta {{ grid-template-columns: 1fr; }}
-            .video-title {{ font-size: 1.5em; }}
-        }}
+      :root {{ --border:#e5e7eb; --bg:#fff; --text:#0f172a; }}
+      * {{ box-sizing: border-box; }}
+      body {{ margin:0; font-family: Inter, -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; color:var(--text); background:#f8fafc; }}
+      .topbar {{ position:sticky; top:0; z-index:40; backdrop-filter:blur(8px); background:rgba(255,255,255,.72); border-bottom:1px solid var(--border); }}
+      .topbar-inner {{ max-width:1024px; margin:0 auto; height:56px; padding:0 16px; display:flex; align-items:center; justify-content:space-between; }}
+      .btn-ghost {{ height:36px; padding:0 12px; border:1px solid #e5e7eb; border-radius:10px; background:#fff; color:#111827; font-size:14px; display:inline-flex; align-items:center; gap:6px; text-decoration:none; }}
+      .btn-ghost:hover {{ background:#f9fafb; }}
+      .btn-primary {{ height:36px; padding:0 12px; border-radius:10px; background:#111827; color:#fff; font-size:14px; text-decoration:none; display:inline-flex; align-items:center; }}
+      .container {{ max-width:1024px; margin:0 auto; padding:16px; }}
+      .grid {{ display:grid; grid-template-columns:1fr; gap:16px; }}
+      @media (min-width:768px) {{ .grid {{ grid-template-columns:5fr 7fr; }} }}
+      .thumb {{ aspect-ratio:16/9; border-radius:12px; overflow:hidden; border:1px solid var(--border); background:#fff; }}
+      .thumb img {{ width:100%; height:100%; object-fit:cover; display:block; }}
+      .title {{ font-size:20px; line-height:32px; font-weight:600; letter-spacing:-.01em; margin:8px 0 4px; }}
+      .facts {{ margin-top:8px; display:flex; flex-wrap:wrap; gap:8px; }}
+      .chip {{ height:30px; padding:0 10px; border:1px solid var(--border); border-radius:10px; background:rgba(255,255,255,.8); display:inline-flex; align-items:center; gap:8px; font-size:13px; }}
+      .chip .label {{ color:#6b7280; }}
+      .chip .value {{ color:#111827; font-weight:500; }}
+      .card {{ margin-top:8px; border:1px solid var(--border); border-radius:12px; background:var(--bg); box-shadow:0 1px 2px rgba(0,0,0,.04); padding:16px; }}
+      .card h2 {{ margin:0 0 8px; font-size:16px; font-weight:600; display:flex; align-items:center; gap:8px; }}
+      .summary {{ white-space:pre-line; font-size:15px; line-height:1.7; color:#111827; }}
     </style>
+    <script>
+      function copyLink(url) {{
+        const toCopy = url || window.location.href;
+        navigator.clipboard.writeText(toCopy).catch(()=>{{}});
+      }}
+    </script>
 </head>
 <body>
-    <div class="container">
-        <a href="/" class="back-button">
-            <span>←</span> Back to Dashboard
-        </a>
-        
-        <div class="video-header">
-            {f'<img src="{thumbnail}" alt="Video thumbnail" class="video-thumbnail">' if thumbnail else ''}
-            <h1 class="video-title">{title}</h1>
-            
-            <div class="video-meta">
-                <div class="meta-item">
-                    <div class="meta-label">📺 Channel</div>
-                    <div class="meta-value">{channel}</div>
-                </div>
-                <div class="meta-item">
-                    <div class="meta-label">⏱️ Duration</div>
-                    <div class="meta-value">{duration_str}</div>
-                </div>
-                <div class="meta-item">
-                    <div class="meta-label">👀 Views</div>
-                    <div class="meta-value">{formatted_views}</div>
-                </div>
-                <div class="meta-item">
-                    <div class="meta-label">📅 Upload Date</div>
-                    <div class="meta-value">{formatted_date}</div>
-                </div>
-                <div class="meta-item">
-                    <div class="meta-label">🤖 AI Model</div>
-                    <div class="meta-value">{model} ({provider})</div>
-                </div>
-                <div class="meta-item">
-                    <div class="meta-label">📝 Summary Type</div>
-                    <div class="meta-value">{summary_type.title()}</div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="content-sections">
-            <div class="section">
-                <h2 class="section-title">
-                    <span class="section-icon">📋</span>
-                    Summary
-                </h2>
-                {f'<div class="headline">{headline}</div>' if headline else ''}
-                <div class="summary-text">{summary_text}</div>
-                
-                {'<div class="tags">' + " ".join([f'<span class="tag">{cat}</span>' for cat in categories]) + '</div>' if categories else ''}
-            </div>
-            
-            {f'''<div class="section">
-                <h2 class="section-title">
-                    <span class="section-icon">🎯</span>
-                    Target Audience
-                </h2>
-                <p style="color: #374151; line-height: 1.6; font-size: 1.1em;">{target_audience}</p>
-            </div>''' if target_audience else ''}
-            
-            {f'''<div class="section" style="text-align: center;">
-                <a href="{url}" target="_blank" class="youtube-link">
-                    <span>▶️</span> Watch on YouTube
-                </a>
-            </div>''' if url else ''}
-        </div>
+  <header class=\"topbar\">
+    <div class=\"topbar-inner\">
+      <a class=\"btn-ghost\" href=\"/\">← Back</a>
+      <div style=\"display:flex;align-items:center;gap:8px;\">
+        {f'<a class="btn-ghost" href="{url}" target="_blank">Open on YouTube</a>' if url else ''}
+        <button class=\"btn-ghost\" onclick=\"copyLink('{url}')\">Copy link</button>
+        {f'<a class="btn-primary" href="{audio_url}">Download audio</a>' if audio_url else ''}
+      </div>
     </div>
+  </header>
+
+  <main class=\"container\">
+    <section class=\"grid\">
+      <div class=\"thumb\">{f'<img src="{thumbnail}" alt="" />' if thumbnail else ''}</div>
+      <div>
+        <h1 class=\"title\">{title}</h1>
+        <div class=\"facts\">
+          <div class=\"chip\"><span class=\"label\">Channel:</span><span class=\"value\">{channel}</span></div>
+          <div class=\"chip\"><span class=\"label\">Duration:</span><span class=\"value\">{duration_str or '—'}</span></div>
+          <div class=\"chip\"><span class=\"label\">Views:</span><span class=\"value\">{formatted_views}</span></div>
+          <div class=\"chip\"><span class=\"label\">Uploaded:</span><span class=\"value\">{formatted_date}</span></div>
+          <div class=\"chip\"><span class=\"label\">AI Model:</span><span class=\"value\">{model}{(' ('+provider+')') if provider else ''}</span></div>
+          <div class=\"chip\"><span class=\"label\">Summary Type:</span><span class=\"value\">{summary_type.title()}</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class=\"card\">
+      <h2>📄 Summary</h2>
+      {f'<div class="summary">{headline}</div>' if headline else ''}
+      <div class=\"summary\">{summary_text}</div>
+    </section>
+  </main>
 </body>
 </html>"""
             
