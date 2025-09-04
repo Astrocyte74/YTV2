@@ -1,0 +1,72 @@
+{
+  "metadata": {
+    "schema_version": "1.0.0",
+    "generated_at": "2025-09-04T06:34:30.249034",
+    "report_id": "cfSIC8jwbQs_753cc9"
+  },
+  "video": {
+    "url": "https://www.youtube.com/watch?v=cfSIC8jwbQs",
+    "video_id": "cfSIC8jwbQs",
+    "title": "The centuries-old debt that's still paying interest",
+    "channel": "Tom Scott",
+    "channel_id": "",
+    "duration": 238,
+    "duration_string": "3:58",
+    "view_count": 8326004,
+    "like_count": 0,
+    "upload_date": "20170925",
+    "description": "In the archives of Yale University, there's a 367-year-old bond from the water authority of Lekdijk Bovendams, in the Netherlands. And it's still paying interest.\n\nThanks to:\nProf. Geert Rouwenhorst for his time and explanation\nAll the team at the Beinecke Rare Book and Manuscript Library\nMichelle Martin https://www.youtube.com/@OnTheCrux for editing the interview\nand Leendert van Egmond for telling me about the bond!\n\n🟥 MORE FROM TOM: https://www.tomscott.com/\n(you can find contact details and social links there too)\n\n📰 WEEKLY NEWSLETTER with good stuff from the rest of the internet: https://www.tomscott.com/newsletter/\n❓ LATERAL, free weekly podcast: https://lateralcast.com/ https://youtube.com/lateralcast/\n➕ TOM SCOTT PLUS: https://youtube.com/tomscottplus\n👥 THE TECHNICAL DIFFICULTIES: https://youtube.com/techdif",
+    "tags": [],
+    "categories": [],
+    "thumbnail": "https://i.ytimg.com/vi_webp/cfSIC8jwbQs/maxresdefault.webp",
+    "language": "",
+    "subtitles_available": false
+  },
+  "summary": {
+    "content": {
+      "summary": "A 1648 Dutch bond is still paying interest today. A small water authority near the River Lek sold a perpetual bearer bond to fund levee repairs, and more than three and a half centuries later, Yale University owns it and still collects the annual payout. The punchline is modest but remarkable: about €11.35 a year, still honored without an end date.\n\nFirst, let’s demystify the “perpetual” part. In early finance, many bonds had no maturity date; the idea that a bond must be paid back in full on a set date is actually a later innovation. Perpetual debt works a bit like stock—ongoing payments without repaying the principal—except it lasts only as long as the issuer survives.\n\nNow, why did this one survive? Dutch water boards were special-purpose governments created to manage levees and drainage, because rivers ignore city and provincial borders. They could levy taxes on everyone protected by the dikes, and unlike national governments, they didn’t go to war. That combination—steady tax revenue and low existential risk—made them unusually reliable payers, the municipal equivalent of a triple‑A credit profile.\n\nZooming in on the specifics, the issuer was the Water Board of Lekdijk Bovendams. Over time, it merged into a larger authority called Hoogheemraadschap De Stichtse Rijnlanden, which still services the debt. The original principal was 1,000 carolus guilders, which later converted through different Dutch currencies and, eventually, to euros. The interest rate was reduced at some point, leaving today’s annual payment at €11.35.\n\nBecause it’s a bearer bond, whoever physically holds the document can claim the interest. Each payment was literally written on the bond itself, and when the parchment filled up, they attached an extra sheet to keep recording. When Yale bought the bond in 2003, the last payment on record was from 1976, so they collected 27 years of back interest at once. The bond stayed at Yale for a while, then in 2015 they caught up again on the missed years from 2004 through 2015.\n\nThere’s an amusing economic wrinkle. Flying someone to the Netherlands to present the bond costs far more than the interest itself. The water authority could probably stop paying with minimal legal risk, but for roughly a euro a month they preserve a centuries‑long promise and gain a steady stream of good publicity. That’s cheap heritage marketing, and it keeps a living thread of financial history intact.\n\nSo what’s the bottom line? A perpetual bond can endure for centuries when it’s backed by a stable, tax‑funded institution with minimal reasons to fail. Yale gets a token payout and a great story, and the Dutch water authority gets continuity and goodwill at a bargain price—proof that, sometimes, the value of a financial instrument is as much about trust and tradition as it is about cash flow.",
+      "headline": "1648 Dutch water board bond still pays interest 375 years later, now at Yale",
+      "summary_type": "audio",
+      "generated_at": "2025-09-04T06:34:21.531902"
+    },
+    "type": "comprehensive",
+    "analysis": {
+      "category": [
+        "Education",
+        "Business"
+      ],
+      "sentiment": "Neutral",
+      "target_audience": "Viewers interested in financial history, economics students, policy and public finance enthusiasts, and history buffs",
+      "complexity_level": "Beginner",
+      "key_topics": [
+        "Perpetual bonds",
+        "Dutch water boards",
+        "Public finance",
+        "Historical debt",
+        "Yale University"
+      ],
+      "content_type": "Documentary",
+      "educational_value": "High",
+      "entertainment_value": "Medium"
+    },
+    "key_points": [],
+    "topics": [],
+    "sentiment": {},
+    "quality_score": 0,
+    "word_count": 478
+  },
+  "processing": {
+    "llm_provider": "openai",
+    "model": "gpt-5"
+  },
+  "stats": {
+    "video_length_seconds": 238,
+    "video_length_minutes": 4.0,
+    "summary_word_count": 478,
+    "summary_character_count": 3020,
+    "compression_ratio": 3.652,
+    "has_analysis": true,
+    "has_key_points": false,
+    "topic_count": 0
+  }
+}
