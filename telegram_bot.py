@@ -1198,17 +1198,14 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 audio_data = files['audio']
                 audio_filename = audio_data.get('filename', 'upload.mp3')
                 
-                # Force filename from stem for consistency if provided
-                if client_stem:
-                    audio_filename = f"{client_stem}.mp3"
-                else:
-                    # Sanitize audio filename
-                    if not safe_name_pattern.match(audio_filename.replace('.mp3', '')):
-                        base_name = re.sub(r'[^A-Za-z0-9_\-]', '_', audio_filename.replace('.mp3', ''))
-                        audio_filename = f"{base_name}.mp3"
-                    
-                    if not audio_filename.endswith('.mp3'):
-                        audio_filename += '.mp3'
+                # Don't rename audio files - preserve original filename which contains video_id
+                # Only sanitize if needed to prevent path traversal attacks
+                if not safe_name_pattern.match(audio_filename.replace('.mp3', '')):
+                    base_name = re.sub(r'[^A-Za-z0-9_\-]', '_', audio_filename.replace('.mp3', ''))
+                    audio_filename = f"{base_name}.mp3"
+                
+                if not audio_filename.endswith('.mp3'):
+                    audio_filename += '.mp3'
                 
                 audio_path = exports_dir / audio_filename
                 new_audio_bytes = audio_data['content']
