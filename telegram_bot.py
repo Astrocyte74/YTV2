@@ -501,7 +501,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     if candidates:
                         latest = max(candidates, key=lambda p: p.stat().st_mtime)
                         base_url = os.getenv('NGROK_URL', '')
-                        audio_url = (base_url.rstrip('/') + f"/exports/{latest.name}") if base_url else f"/exports/{latest.name}"
+                        audio_url = f"/exports/{latest.name}"
             except Exception:
                 audio_url = ''
 
