@@ -1,139 +1,237 @@
-# 🎥 YTV2 - AI-Powered YouTube Summarizer
+# YTV2-Dashboard - Web Interface & Audio Player
 
-AI-powered YouTube video summarizer with Telegram bot interface. Features multi-provider LLM support, transcript extraction, and web-based summary viewing.
+**The dashboard component** of the YTV2 hybrid architecture. This deploys to Render and serves the web interface with audio playback for YouTube video summaries.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Astrocyte74/YTV2)
 
+## 🏗️ Architecture Overview
+
+YTV2 uses a **hybrid architecture** with separated concerns:
+
+- **🔧 NAS Component**: YouTube processing + Telegram bot (runs on your NAS)
+- **🌐 Dashboard Component** (This project): Web interface + audio playback (deployed to Render)
+
+### How It Works
+
+1. **🔧 NAS Processing** generates reports and audio files
+2. **🔄 Auto-Sync** uploads content to this Dashboard
+3. **🌐 Web Interface** serves reports with rich formatting  
+4. **🎵 Audio Playback** streams audio files with metadata
+5. **📱 Responsive Design** works on desktop and mobile
+6. **🔗 Public Access** shareable URL for viewing summaries
+
 ## ✨ Features
 
-- 🤖 **Multi-AI Provider Support**: OpenAI, Anthropic Claude, OpenRouter, and more
-- 📱 **Telegram Bot Interface**: Easy-to-use bot with web-based summary viewing
-- 🎵 **Audio Support**: Extracts and processes video transcripts + audio content
-- 📊 **Multiple Summary Types**: Comprehensive, bullet points, key insights
-- 🌐 **Web Dashboard**: Beautiful HTML reports with media player integration
-- 🐳 **Docker Ready**: One-click deployment to any cloud platform
+- **🌐 Beautiful Web Dashboard**: Glass morphism UI with responsive design
+- **🎵 Integrated Audio Player**: Play generated audio with video metadata
+- **📊 Rich Report Display**: Formatted JSON reports with syntax highlighting
+- **🔄 Auto-Sync**: Receives content from NAS component automatically
+- **📱 Mobile Responsive**: Works perfectly on phones and tablets
+- **🔗 Public Sharing**: Share dashboard URL for easy access
+- **⚡ Fast Loading**: Optimized for quick report browsing
+- **🔒 Secure Sync**: Authenticated uploads from NAS only
 
 ## 🚀 Quick Deploy to Render
 
+### One-Click Deployment
+
 1. **Fork this repository** to your GitHub account
-2. **Click the Deploy to Render button** above
-3. **Set environment variables** in Render dashboard:
+2. **Click the Deploy to Render button** above  
+3. **Configure environment variables** in Render dashboard:
+   ```bash
+   # Leave empty for dashboard-only mode
+   TELEGRAM_BOT_TOKEN=""
+   
+   # Sync security (set same value on NAS)
+   SYNC_SECRET=your_secure_random_string_here
    ```
-   TELEGRAM_BOT_TOKEN=your_bot_token
-   TELEGRAM_USER_ID=your_user_id  
-   OPENAI_API_KEY=your_openai_key
-   ```
-4. **Deploy and enjoy!** Your bot will be live in minutes
+4. **Deploy and get your URL!** Dashboard will be live in minutes
 
-## 📱 Local Development
+### Manual Render Setup
 
-### Prerequisites
-- Python 3.11+
-- Docker (optional)
-- Telegram Bot Token ([get one from @BotFather](https://t.me/botfather))
-- AI API Keys (OpenAI, Anthropic, etc.)
-
-### Installation
-```bash
-# Clone the repository
-git clone https://github.com/Astrocyte74/YTV2.git
-cd YTV2
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your API keys
-
-# Run the bot
-python telegram_bot.py
-```
-
-### Docker Development
-```bash
-# Build and run
-docker build -t ytv2 .
-docker run --env-file .env -p 6452:6452 ytv2
-```
+1. **Create new Web Service** on Render
+2. **Connect GitHub repository**
+3. **Configure build settings**:
+   - **Environment**: Docker
+   - **Dockerfile Path**: ./Dockerfile  
+   - **Build Command**: (automatic)
+   - **Start Command**: python telegram_bot.py
+4. **Add environment variables** (see above)
+5. **Deploy!**
 
 ## 🔧 Configuration
 
-### Required Environment Variables
+### Environment Variables
+
+#### Required Settings
 ```bash
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-TELEGRAM_USER_ID=your_telegram_user_id
-OPENAI_API_KEY=your_openai_api_key  # At least one AI provider required
+# Dashboard-only mode (leave Telegram token empty)
+TELEGRAM_BOT_TOKEN=""
+
+# Sync security - must match NAS configuration
+SYNC_SECRET=your_secure_random_string_here
 ```
 
-### Optional Environment Variables
+#### Optional Settings  
 ```bash
-# AI Provider Settings
-ANTHROPIC_API_KEY=your_anthropic_key
-OPENROUTER_API_KEY=your_openrouter_key
-LLM_SHORTLIST=fast  # Options: fast, research, budget, creative
+# Custom port (Render handles this automatically)
+PORT=10000
 
-# Bot Behavior
-DEFAULT_SUMMARY_TYPE=comprehensive  # comprehensive, bullet-points, key-insights
-MAX_TRANSCRIPT_LENGTH=50000
-HTML_REPORT_RETENTION_HOURS=168  # 7 days
-
-# Web Server
-WEB_PORT=6452  # Port for web interface
-WEB_BASE_URL=https://your-app.onrender.com
+# Dashboard URL (auto-configured by Render)
+RENDER_DASHBOARD_URL=https://your-app.onrender.com
 ```
 
-## 🎯 Usage
+### NAS Integration Setup
 
-### Telegram Bot Commands
-- Send any YouTube URL to get a summary
-- `/start` - Welcome message and instructions
-- `/help` - Show available commands
-- `/stats` - Show usage statistics
+Configure your NAS component to sync with this dashboard:
 
-### Web Interface
-- Access your deployed URL to view summaries
-- Interactive media player for audio content
-- Mobile-responsive design
-- Automatic cleanup of old reports
+1. **Get your Render URL** from the Render dashboard
+2. **Set NAS environment variables**:
+   ```bash
+   # In your NAS .env.nas file
+   RENDER_DASHBOARD_URL=https://your-dashboard.onrender.com
+   SYNC_SECRET=same_secret_as_dashboard_here
+   ```
+3. **Restart NAS bot** to begin syncing
 
-## 🏗️ Architecture
+## 📁 Project Structure
 
-- **Core Engine**: `youtube_summarizer.py` - Handles video processing and AI integration
-- **Bot Interface**: `telegram_bot.py` - Telegram bot with web server
-- **AI Models**: `llm_config.py` - Multi-provider LLM configuration
-- **Export Tools**: `export_utils.py` - HTML, JSON, PDF report generation
+### Essential Files
+```
+YTV2-Dashboard/
+├── telegram_bot.py          # Dashboard server (not Telegram bot!)
+├── dashboard_template.html  # Main web interface
+├── Dockerfile              # Render deployment configuration
+├── render.yaml             # Render service configuration  
+├── modules/                # Dashboard utilities
+│   └── report_generator.py # JSON report handling
+├── static/                 # CSS and JavaScript
+│   ├── dashboard.css      # Styling and animations
+│   └── dashboard.js       # Interactive functionality
+├── data/                  # Synced JSON reports
+└── exports/              # Synced audio files
+```
 
-## 🔐 Security Features
+### Archived Content
+- `archive_render/old_*` - Previous versions and unused components
 
-- Environment-based configuration
-- Non-root Docker container
-- Input sanitization and validation
-- Rate limiting and error handling
-- Secure file handling
+## 🔄 Usage Workflow
 
-## 📊 Supported Platforms
+1. **NAS Processing** creates reports and audio
+2. **Auto-Sync** uploads to Dashboard  
+3. **Web Access** via Render URL shows:
+   - List of all processed videos
+   - Rich formatting of summaries
+   - Audio playback with metadata
+   - Mobile-responsive interface
 
-- ✅ **Render** - One-click deployment (recommended)
-- ✅ **Railway** - Git-based deployment
-- ✅ **Fly.io** - Global edge deployment  
-- ✅ **DigitalOcean App Platform** - Managed containers
-- ✅ **Any Docker-compatible platform**
+## 📱 Dashboard Features
 
-## 🤝 Contributing
+### Report Display
+- **JSON formatting** with syntax highlighting
+- **Metadata extraction** shows video info, duration, thumbnails
+- **Summary sections** clearly organized and readable
+- **Search/filter** functionality for large collections
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+### Audio Integration  
+- **Embedded player** for each video's audio
+- **Metadata display** shows title, duration, channel info
+- **Playback controls** with progress tracking
+- **Mobile optimization** for touch interfaces
 
-## 📄 License
+### Interface Design
+- **Glass morphism UI** with modern visual effects
+- **Dark/light themes** with system preference detection
+- **Responsive layout** adapts to any screen size
+- **Fast loading** with optimized assets
 
-MIT License - see [LICENSE](LICENSE) file for details.
+## 🛠️ Development
 
-## 🆘 Support
+### Local Testing
+```bash
+# Install dependencies
+pip install -r requirements.txt
 
-- 📚 Check the [deployment guides](./docs/) for platform-specific instructions
-- 🐛 Report issues on [GitHub Issues](https://github.com/Astrocyte74/YTV2/issues)
-- 💬 Join discussions in [GitHub Discussions](https://github.com/Astrocyte74/YTV2/discussions)
+# Run dashboard locally  
+python telegram_bot.py
+
+# Access at http://localhost:10000
+```
+
+### File Upload Testing
+```bash
+# Test sync endpoint
+curl -X POST http://localhost:10000/api/upload-report \
+  -H "Authorization: Bearer your_sync_secret" \
+  -F "file=@test_report.json"
+```
+
+## 🔒 Security
+
+### Sync Authentication
+- **Shared secret** authentication for NAS uploads
+- **HTTPS only** for all Render deployments
+- **No API keys** stored (dashboard-only mode)
+- **Limited endpoints** only for receiving uploads
+
+### Access Control
+- **Public dashboard** (no login required for viewing)
+- **Protected uploads** (only authenticated NAS can upload)  
+- **No processing** (read-only for security)
+
+## ⚡ Performance
+
+### Optimized for Speed
+- **Static serving** of reports and audio
+- **Compressed assets** for faster loading
+- **CDN integration** via Render
+- **Minimal resource usage** (dashboard-only)
+
+### Render Benefits
+- **Global CDN** for fast worldwide access
+- **Auto-scaling** handles traffic spikes  
+- **HTTPS** included by default
+- **Custom domains** supported
+
+## 🚀 Deployment Options
+
+### Render (Recommended)
+- ✅ **One-click deployment** 
+- ✅ **Auto-scaling and CDN**
+- ✅ **HTTPS and custom domains**
+- ✅ **Git-based deployments**
+
+### Other Platforms
+- **Heroku**: Similar Docker deployment
+- **Railway**: One-click from GitHub
+- **DigitalOcean App Platform**: Docker container support
+- **AWS/GCP**: Container deployment options
+
+## 🛠️ Troubleshooting
+
+### Common Issues
+
+**Dashboard not loading:**
+- Check Render deployment logs
+- Verify environment variables are set
+- Ensure PORT is configured correctly
+
+**NAS sync failing:**  
+- Verify SYNC_SECRET matches on both sides
+- Check Dashboard URL accessibility
+- Monitor upload endpoint for errors
+
+**Audio files not playing:**
+- Confirm exports/ directory has content
+- Check file permissions and accessibility
+- Verify audio file formats are supported
+
+### Debug Information
+- **Render Logs**: Available in Render dashboard
+- **Health Check**: `/health` endpoint for status
+- **Sync Status**: Monitor for upload success/failures
 
 ---
 
-**Made with ❤️ for the YouTube summarization community**
+**Part of YTV2 Hybrid Architecture**  
+🔗 **Processing Component**: See YTV2-NAS project for video processing and Telegram bot
