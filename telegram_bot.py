@@ -21,10 +21,8 @@ import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import socket
 
-# Import our modular components
-from modules.telegram_handler import YouTubeTelegramBot
+# Import dashboard components only
 from modules.report_generator import JSONReportGenerator
-from youtube_summarizer import YouTubeSummarizer
 
 # Load environment variables from .env file and stack.env
 load_dotenv()
@@ -1426,25 +1424,15 @@ async def main():
                 httpd.shutdown()
         return
     
-    logger.info(f"👥 Telegram bot authorized for {len(allowed_user_ids)} users")
+    logger.warning("🚨 This is the DASHBOARD-ONLY version of YTV2")
+    logger.warning("🚨 Telegram bot functionality has been moved to the NAS component")
+    logger.warning("🚨 Please use the NAS version (YTV2-NAS) for Telegram bot functionality")
+    logger.error("❌ Dashboard version cannot run Telegram bot mode")
     
-    # Create and start Telegram bot
-    try:
-        telegram_bot = YouTubeTelegramBot(telegram_token, allowed_user_ids)
-        
-        logger.info("🚀 Starting Telegram bot...")
-        
-        # Run both services concurrently
-        await asyncio.gather(
-            telegram_bot.run(),
-            run_dashboard_monitor(httpd)
-        )
-        
-    except Exception as e:
-        logger.error(f"Error running Telegram bot: {e}")
-        if httpd:
-            httpd.shutdown()
-        raise
+    # Shutdown dashboard since this configuration is invalid
+    if httpd:
+        httpd.shutdown()
+    return
 
 async def run_dashboard_monitor(httpd):
     """Monitor the dashboard server"""
