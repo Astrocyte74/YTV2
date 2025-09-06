@@ -1,12 +1,10 @@
 """
-YTV2 Modules Package
+YTV2-Dashboard Modules Package
 
-This package contains modular components for the YTV2 YouTube Summarizer system.
-Each module provides specific functionality that can be used independently or
-integrated with the main application.
+This package contains components for the dashboard/web interface portion of YTV2.
+This is dashboard-only code - no Telegram bot or processing logic.
 """
 
-from .telegram_handler import YouTubeTelegramBot
 from .report_generator import JSONReportGenerator, create_report_from_youtube_summarizer
 
-__all__ = ['YouTubeTelegramBot', 'JSONReportGenerator', 'create_report_from_youtube_summarizer']
+__all__ = ['JSONReportGenerator', 'create_report_from_youtube_summarizer']
