@@ -317,8 +317,8 @@ class YouTubeTelegramBot:
                         if sync_success:
                             status = "📊+🎵" if audio_path else "📊"
                             logging.info(f"✅ SYNC SUCCESS: {status} → {stem}")
-                    else:
-                        logging.error(f"❌ SYNC FAILED: Upload failed for {stem}")
+                        else:
+                            logging.error(f"❌ SYNC FAILED: Upload failed for {stem}")
                         
                 except Exception as sync_e:
                     logging.warning(f"⚠️ Render sync error: {sync_e}")
