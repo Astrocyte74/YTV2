@@ -489,8 +489,15 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 video_id = video_info.get('video_id', '')
                 if video_id:
                     candidates = []
-                    for pattern in [f'audio_{video_id}_*.mp3', f'{video_id}_*.mp3']:
-                        candidates.extend(Path('./exports').glob(pattern))
+                    # Check both local exports and uploaded files directory
+                    search_dirs = [Path('./exports')]
+                    if Path('/app/data/exports').exists():
+                        search_dirs.append(Path('/app/data/exports'))
+                    
+                    for search_dir in search_dirs:
+                        for pattern in [f'audio_{video_id}_*.mp3', f'{video_id}_*.mp3']:
+                            candidates.extend(search_dir.glob(pattern))
+                    
                     if candidates:
                         latest = max(candidates, key=lambda p: p.stat().st_mtime)
                         base_url = os.getenv('NGROK_URL', '')
