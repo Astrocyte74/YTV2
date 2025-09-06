@@ -673,18 +673,21 @@ body {
     bottom: var(--space-6);
     left: var(--space-6);
     right: var(--space-6);
-    background: rgba(0, 0, 0, 0.9);
+    background: rgba(0, 0, 0, 0.95);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: var(--radius-2xl);
     padding: var(--space-4);
-    z-index: 200;
+    z-index: 9999; /* Higher z-index for mobile */
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
     transform: translateY(100%);
     transition: all var(--transition-base);
     opacity: 0;
     visibility: hidden;
+    /* Mobile-specific fixes */
+    -webkit-transform: translateY(100%);
+    will-change: transform, opacity;
 }
 
 .mini-player.active {
@@ -694,10 +697,12 @@ body {
 
 .mini-player.visible {
     transform: translateY(0);
+    -webkit-transform: translateY(0);
 }
 
 .mini-player.show {
     transform: translateY(0);
+    -webkit-transform: translateY(0);
     opacity: 1;
     visibility: visible;
 }
@@ -957,6 +962,31 @@ body {
         left: var(--space-3);
     }
     
+    /* Mobile mini player fixes */
+    .mini-player {
+        /* Ensure fixed positioning works on mobile */
+        position: fixed !important;
+        bottom: 20px !important;
+        left: 20px !important;
+        right: 20px !important;
+        z-index: 99999 !important;
+        /* Fix backdrop-filter on iOS */
+        background: rgba(0, 0, 0, 0.98);
+        /* Force hardware acceleration on mobile */
+        -webkit-transform: translate3d(0, 100%, 0);
+        transform: translate3d(0, 100%, 0);
+        /* Fix touch interactions */
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        touch-action: manipulation;
+    }
+    
+    .mini-player.visible,
+    .mini-player.show {
+        -webkit-transform: translate3d(0, 0, 0) !important;
+        transform: translate3d(0, 0, 0) !important;
+    }
+    
     .mini-player-content {
         flex-direction: column;
         gap: var(--space-3);
@@ -965,6 +995,16 @@ body {
     
     .mini-player-controls {
         justify-content: center;
+    }
+}
+
+/* iOS Safari specific fixes */
+@supports (-webkit-touch-callout: none) {
+    .mini-player {
+        /* Fix iOS Safari viewport issues */
+        bottom: max(20px, env(safe-area-inset-bottom, 20px));
+        /* Ensure proper stacking context */
+        isolation: isolate;
     }
 }
 
