@@ -235,6 +235,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.serve_report()
         elif self.path.endswith('.json') and self.path != '/':
             self.serve_report()
+        elif self.path.startswith('/exports/'):
+            self.serve_audio_file()
         else:
             super().do_GET()
     
@@ -718,6 +720,37 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error serving JSON report {json_path}: {e}")
             self.send_error(500, "Error serving JSON report")
+    
+    def serve_audio_file(self):
+        """Serve audio files from /exports/ route"""
+        try:
+            filename = self.path[1:]  # Remove leading slash, e.g., "exports/audio_xxx.mp3"
+            if not filename.startswith('exports/'):
+                self.send_error(404, "Not found")
+                return
+            
+            audio_filename = filename[8:]  # Remove "exports/" prefix
+            
+            # Look for audio file in uploaded files directory
+            audio_path = Path('/app/data/exports') / audio_filename
+            if not audio_path.exists():
+                # Fallback to local exports directory
+                audio_path = Path('./exports') / audio_filename
+                
+            if audio_path.exists():
+                self.send_response(200)
+                self.send_header('Content-type', 'audio/mpeg')
+                self.send_header('Content-Length', str(audio_path.stat().st_size))
+                self.send_header('Cache-Control', 'public, max-age=3600')  # Cache for 1 hour
+                self.end_headers()
+                with open(audio_path, 'rb') as f:
+                    self.wfile.write(f.read())
+            else:
+                self.send_error(404, f"Audio file not found: {audio_filename}")
+                
+        except Exception as e:
+            logger.error(f"Error serving audio file {self.path}: {e}")
+            self.send_error(500, "Error serving audio file")
     
     def serve_status(self):
         """Serve system status endpoint"""
