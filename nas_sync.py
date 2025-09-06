@@ -88,6 +88,7 @@ def upload_to_render(report_path, audio_path=None, max_retries=6):
                         with open(audio_path, 'rb') as af:
                             audio_filename = Path(audio_path).name  # Use actual filename
                             files['audio'] = (audio_filename, af, 'audio/mpeg')
+                            logger.info(f"🎵 Uploading audio file: {audio_filename}")
                             response = requests.post(url, files=files, headers=headers, timeout=30)
                     else:
                         response = requests.post(url, files=files, headers=headers, timeout=30)

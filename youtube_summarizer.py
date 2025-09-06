@@ -136,8 +136,10 @@ class YouTubeSummarizer:
                     'view_count': 0,
                     'url': youtube_url,
                     'video_id': video_id,
+                    'id': video_id,
                     'channel_url': '',
                     'tags': [],
+                    'thumbnail': '',
                 }
         except Exception as e:
             print(f"⚠️ Fallback metadata extraction failed: {str(e)}")
@@ -153,8 +155,10 @@ class YouTubeSummarizer:
             'view_count': 0,
             'url': youtube_url,
             'video_id': video_id,
+            'id': video_id,
             'channel_url': '',
             'tags': [],
+            'thumbnail': '',
         }
 
     def _extract_video_id(self, youtube_url: str) -> str:
@@ -173,14 +177,44 @@ class YouTubeSummarizer:
         """Extract transcript and attempt basic metadata using youtube-transcript-api + web scraping"""
         transcript_text = None
         
-        # Get transcript via youtube-transcript-api (instance method)
+        # Get transcript via youtube-transcript-api with multiple language support
         if TRANSCRIPT_API_AVAILABLE:
             try:
                 api = YouTubeTranscriptApi()
-                transcript_data = api.fetch(video_id)
-                text_parts = [snippet.text for snippet in transcript_data]
-                transcript_text = ' '.join(text_parts)
-                print(f"✅ YouTube Transcript API: Extracted {len(transcript_text)} characters")
+                
+                # Try multiple language codes in order of preference
+                language_codes = [
+                    'en',           # English (US)
+                    'en-GB',        # English (UK)
+                    'en-US',        # English (US explicit)
+                    'en-AU',        # English (Australia)
+                    'en-CA',        # English (Canada)
+                    'es',           # Spanish
+                    'es-ES',        # Spanish (Spain)
+                    'es-MX',        # Spanish (Mexico)
+                    'fr',           # French
+                    'fr-FR',        # French (France)
+                    'fr-CA'         # French (Canada)
+                ]
+                
+                transcript_data = None
+                used_language = None
+                
+                for lang_code in language_codes:
+                    try:
+                        transcript_data = api.fetch(video_id, [lang_code])
+                        used_language = lang_code
+                        break
+                    except Exception:
+                        continue
+                
+                if transcript_data:
+                    text_parts = [snippet.text for snippet in transcript_data]
+                    transcript_text = ' '.join(text_parts)
+                    print(f"✅ YouTube Transcript API: Extracted {len(transcript_text)} characters in {used_language}")
+                else:
+                    print(f"⚠️ YouTube Transcript API: No supported language found")
+                    
             except Exception as e:
                 print(f"⚠️ YouTube Transcript API failed: {e}")
         
@@ -203,8 +237,10 @@ class YouTubeSummarizer:
                     'view_count': info.get('view_count', 0),
                     'url': youtube_url,
                     'video_id': video_id,
+                    'id': info.get('id', video_id),
                     'channel_url': info.get('channel_url', ''),
                     'tags': info.get('tags', []),
+                    'thumbnail': info.get('thumbnail', ''),
                 }
         except Exception as e:
             print(f"⚠️ yt-dlp metadata extraction failed: {e}")
@@ -346,8 +382,10 @@ class YouTubeSummarizer:
                     'view_count': info.get('view_count', 0),
                     'url': youtube_url,
                     'video_id': info.get('id', ''),
+                    'id': info.get('id', ''),
                     'channel_url': info.get('channel_url', ''),
                     'tags': info.get('tags', []),
+                    'thumbnail': info.get('thumbnail', ''),
                 }
                 
                 # STEP 3: Handle transcript - use primary result or fallback to yt-dlp

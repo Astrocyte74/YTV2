@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import re
+import glob
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -251,56 +252,71 @@ class YouTubeTelegramBot:
         await query.edit_message_text(f"🔄 Creating {summary_type} summary... This may take a moment.")
         
         try:
-            # Process the video
-            logging.info(f"Processing {self.last_video_url} with {summary_type} summary for {user_name}")
+            # Check if video already exists before processing
+            video_id = self._extract_video_id(self.last_video_url)
+            existing_report = self._find_existing_report(video_id)
             
-            result = await self.summarizer.process_video(
-                self.last_video_url,
-                summary_type=summary_type
-            )
-            
-            if not result:
-                await query.edit_message_text("❌ Failed to process video. Please check the URL and try again.")
-                return
-            
-            # Export to JSON for dashboard (skip HTML to avoid duplicates)
-            export_info = {"html_path": None, "json_path": None}
-            try:
-                # Export to JSON (primary format for dashboard)
-                # Use the proper helper function to transform data structure
-                report_dict = create_report_from_youtube_summarizer(result)
-                json_path = self.json_exporter.save_report(report_dict)
-                export_info["json_path"] = Path(json_path).name
-                logging.info(f"✅ Exported JSON report: {json_path}")
+            if existing_report:
+                logging.info(f"📄 Found existing report for video {video_id}, skipping processing")
+                # Load the existing report
+                with open(existing_report, 'r', encoding='utf-8') as f:
+                    existing_data = json.load(f)
                 
-                # Sync to Render dashboard (hybrid architecture) 
+                # Convert back to YouTubeSummarizer format for compatibility
+                result = self._convert_json_report_to_summarizer_format(existing_data)
+                export_info = {"html_path": None, "json_path": Path(existing_report).name}
+                logging.info(f"♻️  Using existing report: {existing_report}")
+            else:
+                # Process the video (new processing)
+                logging.info(f"Processing {self.last_video_url} with {summary_type} summary for {user_name}")
+                
+                result = await self.summarizer.process_video(
+                    self.last_video_url,
+                    summary_type=summary_type
+                )
+                
+                if not result:
+                    await query.edit_message_text("❌ Failed to process video. Please check the URL and try again.")
+                    return
+                
+                # Export to JSON for dashboard (skip HTML to avoid duplicates)
+                export_info = {"html_path": None, "json_path": None}
                 try:
-                    json_path_obj = Path(json_path)
-                    stem = json_path_obj.stem
+                    # Export to JSON (primary format for dashboard)
+                    # Use the proper helper function to transform data structure
+                    report_dict = create_report_from_youtube_summarizer(result)
+                    json_path = self.json_exporter.save_report(report_dict)
+                    export_info["json_path"] = Path(json_path).name
+                    logging.info(f"✅ Exported JSON report: {json_path}")
                     
-                    # Find audio file with current naming pattern: audio_{video_id}_{timestamp}.mp3
-                    audio_path = None
-                    video_id = result.get('metadata', {}).get('video_id', '')
-                    if video_id:
-                        # Look for audio files matching the current TTS generation pattern
-                        exports_dir = Path('./exports')
-                        audio_pattern = f"audio_{video_id}_*.mp3"
-                        audio_candidates = list(exports_dir.glob(audio_pattern))
-                        if audio_candidates:
-                            # Use the most recent audio file for this video
-                            audio_path = max(audio_candidates, key=lambda p: p.stat().st_mtime)
-                            logging.info(f"🎧 AUDIO FOUND: {audio_path.name}")
+                    # Sync to Render dashboard (hybrid architecture)
+                    try:
+                        json_path_obj = Path(json_path)
+                        stem = json_path_obj.stem
+                        
+                        # Find audio file with current naming pattern: audio_{video_id}_{timestamp}.mp3
+                        audio_path = None
+                        video_id = result.get('metadata', {}).get('video_id', '')
+                        if video_id:
+                            # Look for audio files matching the current TTS generation pattern
+                            exports_dir = Path('./exports')
+                            audio_pattern = f"audio_{video_id}_*.mp3"
+                            audio_candidates = list(exports_dir.glob(audio_pattern))
+                            if audio_candidates:
+                                # Use the most recent audio file for this video
+                                audio_path = max(audio_candidates, key=lambda p: p.stat().st_mtime)
+                                logging.info(f"🎧 AUDIO FOUND: {audio_path.name}")
+                            else:
+                                logging.warning(f"🔇 NO AUDIO: No audio files found for video_id {video_id}")
                         else:
-                            logging.warning(f"🔇 NO AUDIO: No audio files found for video_id {video_id}")
-                    else:
-                        logging.warning(f"🚫 NO VIDEO_ID: Cannot search for audio files")
-                    
-                    # Sync to Render
-                    logging.info(f"🚀 SYNC START: Uploading to Render dashboard...")
-                    sync_success = upload_to_render(str(json_path_obj), str(audio_path) if audio_path else None)
-                    if sync_success:
-                        status = "📊+🎵" if audio_path else "📊"
-                        logging.info(f"✅ SYNC SUCCESS: {status} → {stem}")
+                            logging.warning(f"🚫 NO VIDEO_ID: Cannot search for audio files")
+                        
+                        # Sync to Render
+                        logging.info(f"🚀 SYNC START: Uploading to Render dashboard...")
+                        sync_success = upload_to_render(str(json_path_obj), str(audio_path) if audio_path else None)
+                        if sync_success:
+                            status = "📊+🎵" if audio_path else "📊"
+                            logging.info(f"✅ SYNC SUCCESS: {status} → {stem}")
                     else:
                         logging.error(f"❌ SYNC FAILED: Upload failed for {stem}")
                         
@@ -591,6 +607,49 @@ class YouTubeTelegramBot:
         
         return escaped_text
     
+    def _extract_video_id(self, youtube_url: str) -> str:
+        """Extract video ID from YouTube URL"""
+        if 'watch?v=' in youtube_url:
+            return youtube_url.split('watch?v=')[1].split('&')[0]
+        elif 'youtu.be/' in youtube_url:
+            return youtube_url.split('youtu.be/')[1].split('?')[0]
+        elif '/embed/' in youtube_url:
+            return youtube_url.split('/embed/')[1].split('?')[0]
+        else:
+            # Assume it's already a video ID
+            return youtube_url
+    
+    def _find_existing_report(self, video_id: str) -> Optional[str]:
+        """Find existing JSON report for a video ID"""
+        reports_dir = Path("data/reports")
+        if not reports_dir.exists():
+            return None
+        
+        # Search for files containing the video ID
+        # Pattern: look for files with the video ID in the filename
+        pattern = f"*{video_id}*.json"
+        matching_files = list(reports_dir.glob(pattern))
+        
+        if matching_files:
+            # Return the most recent file if multiple matches
+            return str(max(matching_files, key=lambda x: x.stat().st_mtime))
+        
+        return None
+    
+    def _convert_json_report_to_summarizer_format(self, json_report: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert JSON report back to YouTubeSummarizer format for compatibility"""
+        return {
+            'metadata': json_report.get('video', {}),
+            'summary': {
+                'summary': json_report.get('summary', {}).get('content', 'No summary available'),
+                'headline': json_report.get('video', {}).get('title', 'No title'),
+                'summary_type': json_report.get('summary', {}).get('type', 'comprehensive')
+            },
+            'analysis': json_report.get('summary', {}).get('analysis', {}),
+            'processed_at': json_report.get('metadata', {}).get('generated_at', ''),
+            'processor_info': json_report.get('processing', {})
+        }
+
     async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
         """Handle errors in the bot."""
         logging.error(f"Exception while handling an update: {context.error}")
