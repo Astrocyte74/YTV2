@@ -23,6 +23,7 @@ from modules.report_generator import JSONReportGenerator, create_report_from_you
 
 from youtube_summarizer import YouTubeSummarizer
 from llm_config import llm_config
+from nas_sync import upload_to_render
 
 
 class YouTubeTelegramBot:
@@ -271,6 +272,40 @@ class YouTubeTelegramBot:
                 json_path = self.json_exporter.save_report(report_dict)
                 export_info["json_path"] = Path(json_path).name
                 logging.info(f"✅ Exported JSON report: {json_path}")
+                
+                # Sync to Render dashboard (hybrid architecture) 
+                try:
+                    json_path_obj = Path(json_path)
+                    stem = json_path_obj.stem
+                    
+                    # Find audio file with current naming pattern: audio_{video_id}_{timestamp}.mp3
+                    audio_path = None
+                    video_id = result.get('metadata', {}).get('video_id', '')
+                    if video_id:
+                        # Look for audio files matching the current TTS generation pattern
+                        exports_dir = Path('./exports')
+                        audio_pattern = f"audio_{video_id}_*.mp3"
+                        audio_candidates = list(exports_dir.glob(audio_pattern))
+                        if audio_candidates:
+                            # Use the most recent audio file for this video
+                            audio_path = max(audio_candidates, key=lambda p: p.stat().st_mtime)
+                            logging.info(f"🎧 AUDIO FOUND: {audio_path.name}")
+                        else:
+                            logging.warning(f"🔇 NO AUDIO: No audio files found for video_id {video_id}")
+                    else:
+                        logging.warning(f"🚫 NO VIDEO_ID: Cannot search for audio files")
+                    
+                    # Sync to Render
+                    logging.info(f"🚀 SYNC START: Uploading to Render dashboard...")
+                    sync_success = upload_to_render(str(json_path_obj), str(audio_path) if audio_path else None)
+                    if sync_success:
+                        status = "📊+🎵" if audio_path else "📊"
+                        logging.info(f"✅ SYNC SUCCESS: {status} → {stem}")
+                    else:
+                        logging.error(f"❌ SYNC FAILED: Upload failed for {stem}")
+                        
+                except Exception as sync_e:
+                    logging.warning(f"⚠️ Render sync error: {sync_e}")
                 
                 # TODO: Generate HTML on-demand when "Full Report" is clicked
                 # For now, skip HTML to prevent duplicate dashboard cards
