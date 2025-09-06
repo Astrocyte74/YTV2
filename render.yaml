@@ -4,10 +4,10 @@
 services:
   - type: web
     name: ytv2-dashboard
-    env: python3
+    env: docker
     repo: https://github.com/Astrocyte74/YTV2
     branch: main
-    buildCommand: "pip install -r requirements.txt"
+    dockerfilePath: ./Dockerfile
     
     # Health check endpoint
     healthCheckPath: /health
@@ -18,6 +18,8 @@ services:
         value: "1"
       - key: PYTHONDONTWRITEBYTECODE
         value: "1"
+      - key: WEB_PORT
+        value: "10000"
       - key: PORT
         value: "10000"
       
