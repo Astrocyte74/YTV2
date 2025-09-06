@@ -496,15 +496,21 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     if Path('/app/data/exports').exists():
                         search_dirs.append(Path('/app/data/exports'))
                     
+                    logger.info(f"🔍 Looking for audio: video_id={video_id}")
                     for search_dir in search_dirs:
                         for pattern in [f'audio_{video_id}_*.mp3', f'{video_id}_*.mp3']:
-                            candidates.extend(search_dir.glob(pattern))
+                            found = list(search_dir.glob(pattern))
+                            candidates.extend(found)
+                            logger.info(f"🎵 Pattern '{pattern}' in {search_dir}: found {len(found)} files")
                     
                     if candidates:
                         latest = max(candidates, key=lambda p: p.stat().st_mtime)
-                        base_url = os.getenv('NGROK_URL', '')
                         audio_url = f"/exports/{latest.name}"
-            except Exception:
+                        logger.info(f"✅ Audio URL: {audio_url}")
+                    else:
+                        logger.info(f"❌ No audio found for video_id {video_id}")
+            except Exception as e:
+                logger.error(f"❌ Audio detection error: {e}")
                 audio_url = ''
 
             # Build mini-player script safely (avoid f-string brace escaping)
