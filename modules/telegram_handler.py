@@ -421,6 +421,26 @@ class YouTubeTelegramBot:
                         )
                     logging.info(f"✅ Successfully sent audio summary for: {title}")
                     
+                    # Sync audio file to Render dashboard
+                    try:
+                        video_id = video_info.get('video_id', '')
+                        if video_id and audio_filepath and Path(audio_filepath).exists():
+                            reports_dir = Path('./data/reports')
+                            json_files = list(reports_dir.glob(f'*{video_id}.json'))
+                            if json_files:
+                                report_path = max(json_files, key=lambda p: p.stat().st_mtime)
+                                logging.info(f"🎵 SYNC: Uploading audio to Render...")
+                                loop = asyncio.get_running_loop()
+                                success = await loop.run_in_executor(
+                                    None, upload_to_render, str(report_path), str(audio_filepath)
+                                )
+                                if success:
+                                    logging.info(f"✅ AUDIO SYNCED: {Path(audio_filepath).name}")
+                                else:
+                                    logging.warning(f"⚠️ Audio sync failed")
+                    except Exception as sync_e:
+                        logging.error(f"❌ Audio sync error: {sync_e}")
+                    
                 except Exception as e:
                     logging.error(f"❌ Failed to send voice message: {e}")
             else:
