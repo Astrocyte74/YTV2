@@ -483,47 +483,19 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             else:
                 formatted_views = 'Views unknown'
             
-            # Discover audio file if present (support all naming patterns)
+            # Discover audio file if present (support legacy and new prefixes)
             audio_url = ''
             try:
                 video_id = video_info.get('video_id', '')
-                stem = json_path.stem if json_path else ''
-                
-                if video_id or stem:
+                if video_id:
                     candidates = []
-                    # Check exports directory (for uploaded files from NAS)
-                    exports_dir = Path('/app/data/exports') if Path('/app/data').exists() else Path('./exports')
-                    
-                    # Search patterns in order of preference
-                    search_patterns = []
-                    if video_id:
-                        search_patterns.extend([
-                            f'audio_{video_id}_*.mp3',  # NAS TTS pattern
-                            f'{video_id}_*.mp3',        # Alternative pattern
-                        ])
-                    if stem:
-                        search_patterns.extend([
-                            f'{stem}.mp3',              # Stem-based pattern
-                            f'audio_{stem}.mp3'         # Alternative stem pattern
-                        ])
-                    
-                    for pattern in search_patterns:
-                        found = list(exports_dir.glob(pattern))
-                        candidates.extend(found)
-                        if found:
-                            logger.info(f"🎧 AUDIO PATTERN MATCH: Found {len(found)} files with pattern '{pattern}'")
-                    
+                    for pattern in [f'audio_{video_id}_*.mp3', f'{video_id}_*.mp3']:
+                        candidates.extend(Path('./exports').glob(pattern))
                     if candidates:
-                        # Use the most recent audio file
                         latest = max(candidates, key=lambda p: p.stat().st_mtime)
                         base_url = os.getenv('NGROK_URL', '')
                         audio_url = (base_url.rstrip('/') + f"/exports/{latest.name}") if base_url else f"/exports/{latest.name}"
-                        logger.info(f"🎵 AUDIO SELECTED: {latest.name}")
-                    else:
-                        logger.warning(f"🔇 NO AUDIO: No audio files found for video_id='{video_id}' stem='{stem}'")
-                        
-            except Exception as e:
-                logger.warning(f"🚫 AUDIO ERROR: Failed to discover audio file: {e}")
+            except Exception:
                 audio_url = ''
 
             # Build mini-player script safely (avoid f-string brace escaping)
@@ -1074,11 +1046,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             
             auth_header = self.headers.get('X-Sync-Secret', '')
             if auth_header != sync_secret:
-                logger.warning(f"🚫 AUTH FAILED: Invalid sync secret from {self.client_address[0]}")
+                logger.warning(f"Upload rejected: Invalid sync secret from {self.client_address[0]}")
                 self.send_error(401, "Unauthorized")
                 return
-            
-            logger.info(f"🔐 AUTH SUCCESS: Valid sync secret from {self.client_address[0]}")
             
             # Parse multipart form data with size limit (25MB)
             content_type = self.headers.get('Content-Type', '')
@@ -1236,18 +1206,14 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 with open(report_path, 'wb') as f:
                     f.write(new_report_bytes)
                 uploaded_files.append(f"report: {report_filename}")
-                logger.info(f"📊 REPORT SAVED: {report_filename.replace('.json', '')}")
-            else:
-                logger.info(f"♻️ REPORT EXISTED: {report_filename.replace('.json', '')} (idempotent)")
+                logger.info(f"📊 Synced report: {report_filename.replace('.json', '')}")
             
             # Write audio file if present and not idempotent
             if audio_filename and not audio_idempotent:
                 with open(audio_path, 'wb') as af:
                     af.write(new_audio_bytes)
                 uploaded_files.append(f"audio: {audio_filename}")
-                logger.info(f"🎵 AUDIO SAVED: {audio_filename.replace('.mp3', '')}")
-            elif audio_idempotent and audio_filename:
-                logger.info(f"♻️ AUDIO EXISTED: {audio_filename.replace('.mp3', '')} (idempotent)")
+                logger.info(f"🎵 Synced audio: {audio_filename.replace('.mp3', '')}")
             
             # Add to uploaded_files for response even if idempotent
             if report_idempotent:
