@@ -443,10 +443,16 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             view_count = video_info.get('view_count', 0)
             upload_date = video_info.get('upload_date', '')
             
-            # Properly extract summary content
+            # Properly extract summary content - handle both old and new structures
             summary_content = summary.get('content', {})
             if isinstance(summary_content, dict):
-                summary_text = summary_content.get('summary', 'No summary available')
+                # Try new chunked structure: content.comprehensive/audio/bullet_points
+                summary_text = (summary_content.get('comprehensive') or 
+                              summary_content.get('audio') or
+                              summary_content.get('bullet_points') or
+                              summary_content.get('key_insights') or
+                              summary_content.get('summary') or  # fallback to old structure
+                              'No summary available')
                 headline = summary_content.get('headline', '')
                 summary_type = summary_content.get('summary_type', 'comprehensive')
             else:
