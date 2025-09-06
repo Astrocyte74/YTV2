@@ -498,7 +498,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     
                     logger.info(f"🔍 Looking for audio: video_id={video_id}")
                     for search_dir in search_dirs:
-                        for pattern in [f'audio_{video_id}_*.mp3', f'{video_id}_*.mp3']:
+                        # Search for all possible audio file patterns
+                        patterns = [
+                            f'audio_{video_id}_*.mp3',     # Standard pattern
+                            f'{video_id}_*.mp3',           # Legacy pattern  
+                            f'audio_*{video_id}*.mp3'     # Flexible pattern for complex stems
+                        ]
+                        for pattern in patterns:
                             found = list(search_dir.glob(pattern))
                             candidates.extend(found)
                             logger.info(f"🎵 Pattern '{pattern}' in {search_dir}: found {len(found)} files")
