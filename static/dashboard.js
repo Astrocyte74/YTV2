@@ -375,14 +375,33 @@ function showMiniPlayer(videoData) {
     // Create embedded YouTube player
     createVideoPlayer(videoData);
     
-    // Show the mini player
+    // Show the mini player with mobile fixes
     miniPlayer.style.display = 'block';
     miniPlayer.classList.add('active');
     
-    // Add slide-up animation
+    // Force reflow on mobile devices
+    miniPlayer.offsetHeight;
+    
+    // Add slide-up animation with mobile-specific delay
+    const isMobile = window.innerWidth <= 640;
+    const delay = isMobile ? 100 : 50;
+    
     setTimeout(() => {
         miniPlayer.classList.add('visible');
-    }, 50);
+        miniPlayer.classList.add('show'); // Ensure both classes are added
+        
+        // Double-check visibility on mobile
+        if (isMobile) {
+            setTimeout(() => {
+                if (!miniPlayer.classList.contains('visible')) {
+                    console.log('Mobile mini-player fix: re-adding visibility classes');
+                    miniPlayer.classList.add('visible', 'show');
+                    miniPlayer.style.transform = 'translate3d(0, 0, 0)';
+                    miniPlayer.style.webkitTransform = 'translate3d(0, 0, 0)';
+                }
+            }, 200);
+        }
+    }, delay);
 }
 
 function closeMiniPlayer() {
