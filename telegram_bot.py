@@ -25,15 +25,24 @@ import socket
 # V2 template engine imports
 try:
     from jinja2 import Environment, FileSystemLoader, select_autoescape
+    import bleach
     JINJA2_AVAILABLE = True
+    BLEACH_AVAILABLE = True
     # Initialize Jinja2 environment
     jinja_env = Environment(
         loader=FileSystemLoader("templates"),
         autoescape=select_autoescape(["html"])
     )
-except ImportError:
+    
+    # HTML sanitization settings
+    ALLOWED_TAGS = ['p','ul','ol','li','strong','em','br','h3','h4','blockquote','code','pre','a']
+    ALLOWED_ATTRS = {'a': ['href','title','rel','target']}
+    
+except ImportError as e:
     JINJA2_AVAILABLE = False
+    BLEACH_AVAILABLE = False
     jinja_env = None
+    logger.warning(f"V2 dependencies not available: {e}")
 
 # Import dashboard components only
 from modules.report_generator import JSONReportGenerator
@@ -266,6 +275,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         else:
             summary_html = str(summary.get('content', ''))
         
+        # Sanitize HTML for security (only if bleach is available)
+        if BLEACH_AVAILABLE and summary_html:
+            summary_html = bleach.clean(summary_html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, strip=True)
+        
         # Calculate audio duration estimate
         audio_dur_pretty = ""
         if audio_url and video_info.get('duration'):
@@ -277,6 +290,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         model = processing.get('model', '')
         provider = processing.get('llm_provider', '')
         ai_model = f"{model} ({provider})" if model and provider else model or provider or ""
+        
+        # Create cache bust string from available data
+        cache_bust_parts = [uploaded_pretty, views_pretty, ai_model]
+        cache_bust = hash("".join(filter(None, cache_bust_parts))) % 10000
         
         return {
             "title": video_info.get("title", ""),
@@ -292,6 +309,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             "vocabulary": vocabulary,
             "back_url": "/",
             "youtube_url": video_info.get("url", ""),
+            "cache_bust": cache_bust,
         }
     
     def do_GET(self):

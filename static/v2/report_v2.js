@@ -1,4 +1,8 @@
 (() => {
+  // Simple telemetry logging
+  const isMobile = window.innerWidth <= 768;
+  console.log('[V2 Telemetry] v2_rendered', { ua_is_mobile: isMobile, viewport: `${window.innerWidth}x${window.innerHeight}` });
+
   const $ = (id) => document.getElementById(id);
 
   const player = $("player");
@@ -47,11 +51,18 @@
     if (stickyClosed) return;
     const scrolled = window.scrollY > 240;
     const playing = !player.paused && !player.ended;
-    sticky.style.display = (scrolled || playing) ? "block" : "none";
+    const shouldShow = (scrolled || playing);
+    const wasHidden = sticky.style.display === "none";
+    sticky.style.display = shouldShow ? "block" : "none";
+    
+    if (shouldShow && wasHidden) {
+      console.log('[V2 Telemetry] sticky_shown', { scrolled, playing });
+    }
   };
 
   // events
   playPause.addEventListener("click", () => {
+    console.log('[V2 Telemetry] play_clicked', { was_paused: player.paused });
     if (player.paused) player.play(); else player.pause();
   });
   mPlayPause.addEventListener("click", () => {

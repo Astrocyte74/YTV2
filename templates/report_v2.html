@@ -81,9 +81,9 @@
         <!-- chips -->
         <div class="flex snap-x snap-mandatory gap-2 overflow-x-auto py-1">
           <span class="snap-start inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm
-                       border-chipBorder bg-chip dark:border-chipBorder-dark dark:bg-chip-dark">
-            <span class="text-slate-500 dark:text-slate-300/80">Channel</span>
-            <span class="font-semibold">{{ channel }}</span>
+                       border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/70 hover:dark:bg-slate-700/70">
+            <span class="text-slate-500 dark:text-slate-300">Channel</span>
+            <span class="font-semibold dark:text-slate-100">{{ channel }}</span>
           </span>
           {% if duration_str %}
           <span class="snap-start inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm
@@ -105,8 +105,8 @@
           {% endif %}
           {% if ai_model %}
           <span class="snap-start inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm
-                       border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/40">
-            AI Model <span class="font-semibold">{{ ai_model }}</span>
+                       border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/70 hover:dark:bg-slate-700/70">
+            <span class="text-slate-500 dark:text-slate-300">AI Model</span> <span class="font-semibold dark:text-slate-100">{{ ai_model }}</span>
           </span>
           {% endif %}
         </div>
@@ -180,6 +180,6 @@
     </div>
   </div>
 
-  <script src="/static/v2/report_v2.js"></script>
+  <script src="/static/v2/report_v2.js?v={{ cache_bust }}"></script>
 </body>
 </html>
