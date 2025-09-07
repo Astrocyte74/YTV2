@@ -338,7 +338,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         elif path.endswith('.css'):
             self.serve_css()
         elif path.endswith('.js'):
-            self.serve_js()
+            self.serve_js(path)
         elif path.endswith('.html') and path != '/':
             self.serve_report(path, self._query_params)
         elif path.endswith('.json') and path != '/':
@@ -480,10 +480,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             logger.error(f"Error serving CSS {self.path}: {e}")
             self.send_error(500, "Error serving CSS")
     
-    def serve_js(self):
+    def serve_js(self, path=None):
         """Serve JavaScript files including V2 assets"""
         try:
-            filename = self.path[1:]  # Remove leading slash
+            # Use provided path or fallback to self.path for backward compatibility
+            request_path = path or self.path
+            filename = request_path[1:]  # Remove leading slash
             
             # Handle both regular static/ and static/v2/ paths
             if filename.startswith('static/'):
