@@ -856,6 +856,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_report_detail()
             elif path == '/api/config':
                 self.serve_api_config()
+            elif path == '/api/refresh':
+                self.serve_api_refresh()
             else:
                 self.send_error(404, "API endpoint not found")
         except Exception as e:
@@ -1146,6 +1148,37 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error serving config API: {e}")
             error_data = {"error": "Failed to load configuration", "message": str(e)}
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(error_data).encode())
+    
+    def serve_api_refresh(self):
+        """Force refresh the content index"""
+        try:
+            if not content_index:
+                self.send_error(500, "Content index not available")
+                return
+            
+            # Force immediate refresh
+            count = content_index.force_refresh()
+            
+            result = {
+                "status": "success",
+                "message": f"Content index refreshed - {count} reports loaded",
+                "reports_count": count,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(json.dumps(result, indent=2).encode())
+            
+        except Exception as e:
+            logger.error(f"Error refreshing content index: {e}")
+            error_data = {"error": "Failed to refresh index", "message": str(e)}
             self.send_response(500)
             self.send_header('Content-type', 'application/json')
             self.end_headers()

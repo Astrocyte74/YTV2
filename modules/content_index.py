@@ -37,7 +37,7 @@ class ContentIndex:
         self.search_index = {}  # for text search
         self.last_refresh = None
         self._file_mtimes = {}  # track file modification times
-        self._refresh_threshold = 30  # minimum seconds between refresh checks
+        self._refresh_threshold = 5   # minimum seconds between refresh checks (reduced for faster updates)
         self._last_check_time = 0  # last time we checked for file changes
         
         # Initialize facet structure
@@ -54,6 +54,11 @@ class ContentIndex:
         
         # Load initial data
         self.refresh_index()
+    
+    def force_refresh(self) -> int:
+        """Force immediate index refresh regardless of throttling"""
+        self._last_check_time = 0  # Reset throttle
+        return self.refresh_index()
     
     def needs_refresh(self) -> bool:
         """Check if index needs to be refreshed based on file changes with throttling"""
@@ -162,32 +167,51 @@ class ContentIndex:
     def _index_report(self, report_data: Dict[str, Any], file_stem: str) -> None:
         """Index a single report into the search structures"""
         
-        # Create normalized report structure
-        report_id = report_data.get('id', f"legacy:{file_stem}")
+        # Detect legacy vs universal schema format
+        is_legacy = not ('metadata' in report_data and 'schema_version' in report_data.get('metadata', {}))
         
-        # Extract universal schema fields with fallbacks
-        title = str(report_data.get('title', ''))
-        if not title:
-            # Fallback to legacy metadata
-            metadata = report_data.get('metadata', {})
-            title = str(metadata.get('title', file_stem.replace('_', ' ')))
+        if is_legacy:
+            # Legacy format - extract from old structure
+            video_info = report_data.get('video', {})
+            summary_info = report_data.get('summary', {})
+            
+            report_id = f"legacy:{file_stem}"
+            title = video_info.get('title', file_stem.replace('_', ' '))
+            content_source = 'youtube'
+            duration_seconds = video_info.get('duration', 0)
+            published_at = video_info.get('upload_date', '')
+            
+            # Legacy analysis - use defaults
+            category = ['General']
+            content_type = 'Discussion'  
+            complexity_level = 'Intermediate'
+            language = 'en'
+            key_topics = []
+            
+        else:
+            # Universal schema format
+            report_id = report_data.get('id', f"legacy:{file_stem}")
+            title = str(report_data.get('title', ''))
+            if not title:
+                metadata = report_data.get('metadata', {})
+                title = str(metadata.get('title', file_stem.replace('_', ' ')))
+            
+            content_source = report_data.get('content_source', 'youtube')
+            published_at = report_data.get('published_at', '')
+            duration_seconds = report_data.get('duration_seconds', 0)
         
-        content_source = report_data.get('content_source', 'youtube')
-        published_at = report_data.get('published_at', '')
-        duration_seconds = report_data.get('duration_seconds', 0)
-        
-        # Extract analysis data
-        analysis = report_data.get('analysis', {})
-        category = analysis.get('category', ['General'])
-        if isinstance(category, str):
-            category = [category]
-        
-        content_type = analysis.get('content_type', 'Discussion')
-        complexity_level = analysis.get('complexity_level', 'Intermediate')
-        language = analysis.get('language', 'en')
-        key_topics = analysis.get('key_topics', [])
-        if isinstance(key_topics, str):
-            key_topics = [key_topics]
+            # Universal schema - extract analysis data
+            analysis = report_data.get('analysis', {})
+            category = analysis.get('category', ['General'])
+            if isinstance(category, str):
+                category = [category]
+            
+            content_type = analysis.get('content_type', 'Discussion')
+            complexity_level = analysis.get('complexity_level', 'Intermediate')
+            language = analysis.get('language', 'en')
+            key_topics = analysis.get('key_topics', [])
+            if isinstance(key_topics, str):
+                key_topics = [key_topics]
         
         # Media information
         media = report_data.get('media', {})
