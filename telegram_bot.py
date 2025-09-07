@@ -632,11 +632,14 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
           --text: #eef0f3;
           --text-muted: #c7cdda;
           --border: #2b2f38;
-          --chip-bg: #1e2128;
+          --chip-bg: #1f2430;
           --callout: #12161d;
           --accent: #4f7cff;
           --ring: #2b2f38;
         }}
+        .chip {{ background:#1f2430; border:1px solid #30384a; }}
+        .chip .label {{ color:#b7c0d1; }}
+        .chip .value {{ color:#fff; font-weight:600; }}
       }}
       * {{ box-sizing: border-box; }}
       body {{ margin:0; font-family: Inter, -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; color:var(--text); background:var(--bg); }}
@@ -645,24 +648,27 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
       .btn-ghost {{ height:36px; padding:0 12px; border:1px solid #e5e7eb; border-radius:10px; background:#fff; color:#111827; font-size:14px; display:inline-flex; align-items:center; gap:6px; text-decoration:none; }}
       .btn-ghost:hover {{ background:#f9fafb; }}
       .btn-primary {{ height:36px; padding:0 12px; border-radius:10px; background:#111827; color:#fff; font-size:14px; text-decoration:none; display:inline-flex; align-items:center; }}
-      /* Page container with responsive layout */
-      .page {{ max-width:1100px; margin:0 auto; padding:16px; }}
+      /* Unified page width across all containers */
+      .page, .container, .topbar-inner {{ max-width:1100px; margin:0 auto; }}
+      .page {{ padding:16px; }}
       @media (min-width:900px) {{ .page {{ padding:24px 32px; }} }}
       
       /* Responsive header layout */
       .header {{ display:grid; grid-template-columns:1fr; gap:12px; margin-bottom:20px; }}
       @media (min-width:900px) {{ .header {{ grid-template-columns:minmax(420px, 520px) 1fr; align-items:start; gap:20px; }} }}
       .meta {{ display:flex; flex-direction:column; gap:10px; }}
-      .thumb {{ aspect-ratio:16/9; border-radius:14px; overflow:hidden; border:1px solid var(--ring); background:#fff; }}
+      
+      /* Thumbnail: never overflow; keep 16:9 and full-bleed width */
+      .thumb {{ width:100%; aspect-ratio:16/9; overflow:hidden; border-radius:14px; border:1px solid var(--ring); background:#fff; }}
       .thumb img {{ width:100%; height:100%; object-fit:cover; display:block; }}
       /* Responsive title typography */
       h1.title {{ margin:0 0 10px; font-weight:700; line-height:1.15; font-size:clamp(22px, 4.2vw, 34px); color:var(--text); word-break:break-word; }}
       .title[title] {{ cursor:help; }}
       .title.clamp {{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }}
-      /* True scrollable chips with fade edges */
-      .chips {{ display:flex; gap:8px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding:2px 0 6px; margin-bottom:12px; mask-image:linear-gradient(90deg, transparent 0, #000 16px, #000 calc(100% - 24px), transparent 100%); }}
+      /* Chips: scroll on mobile, readable in dark mode */
+      .chips {{ display:flex; gap:8px; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding:4px 0; margin-bottom:12px; }}
       .chips::-webkit-scrollbar {{ display:none; }}
-      .chip {{ font-size:12.5px; padding:6px 10px; border-radius:999px; background:var(--chip-bg); border:1px solid var(--border); white-space:nowrap; flex:0 0 auto; line-height:1; display:inline-flex; align-items:center; gap:6px; }}
+      .chip {{ white-space:nowrap; flex:0 0 auto; border-radius:999px; padding:6px 10px; font-size:12.5px; line-height:1; display:inline-flex; align-items:center; gap:6px; background:var(--chip-bg); border:1px solid var(--border); }}
       .chip .label {{ color:var(--text-muted); font-size:12px; }}
       .chip .value {{ color:var(--text); font-weight:600; }}
       .chip.duration {{ background:#e0f2fe; border-color:#bfdbfe; }}
@@ -672,10 +678,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
       .chip.type {{ background:#f3f4f6; }}
       .divider {{ border-top:2px solid #e0e7ff; margin:10px 0 6px; }}
       .icon-badge {{ padding:6px; border-radius:8px; background:#dbeafe; color:#1d4ed8; display:inline-flex; align-items:center; }}
-      /* Better card styling */
+      /* Make summary card match header width */
       .card {{ border:1px solid var(--border); border-radius:14px; padding:16px; background:var(--elev); margin-bottom:16px; }}
       @media (min-width:900px) {{ .card {{ padding:20px; }} }}
       .card h2 {{ margin:0 0 8px; font-size:15px; font-weight:700; color:var(--text-muted); display:flex; align-items:center; gap:8px; }}
+      main.page > * {{ max-width:100%; }}
       
       /* Better summary typography */
       .summary {{ line-height:1.7; font-size:16.5px; color:var(--text-muted); white-space:pre-line; }}
@@ -687,9 +694,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
       .glossary ul {{ list-style:none; margin:0; padding:0; display:grid; gap:8px; }}
       @media (min-width:900px) {{ .glossary ul {{ grid-template-columns:1fr 1fr; gap:10px 24px; }} }}
       .glossary li strong {{ color:var(--text); }}
-      /* Audio player styling */
+      /* Audio player: full-width, stack on mobile */
       .listen-inline {{ margin-top:8px; }}
-      .listen-card {{ display:flex; align-items:center; gap:10px; padding:12px; border-radius:14px; border:1px solid var(--border); background:var(--elev); }}
+      .listen-card {{ display:flex; gap:12px; align-items:center; padding:14px; border-radius:14px; border:1px solid var(--border); background:var(--elev); }}
       .listen-btn {{ width:36px; height:36px; border-radius:999px; border:1px solid var(--border); background:var(--accent); color:#fff; display:grid; place-items:center; font-weight:700; cursor:pointer; }}
       .listen-info {{ flex:1; min-width:0; }}
       .listen-title {{ font-weight:600; font-size:14px; line-height:1.2; }}
@@ -713,7 +720,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         .listen-card {{ flex-direction:column; align-items:stretch; }}
         .listen-actions {{ justify-content:space-between; }}
         .listen-info {{ text-align:left; }}
-        .listen-btn {{ width:48px; height:48px; font-size:18px; }}
+        .listen-btn {{ width:52px; height:52px; font-size:20px; }}
         .listen-card button, .listen-card a {{ padding:12px 16px; font-size:15px; min-height:44px; }}
         #seek {{ width:100%; margin-top:4px; }}
         /* iOS range slider improvements */
