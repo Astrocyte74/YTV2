@@ -186,12 +186,46 @@ class AudioDashboard {
         const duration = this.formatDuration(item.duration_seconds || 0);
         const categories = item.analysis?.category?.slice(0, 2) || ['General'];
         const hasAudio = item.media?.has_audio;
+        const thumbnailUrl = item.thumbnail_url;
         
         return `
-            <div data-report-id="${item.id}" class="group bg-white/70 backdrop-blur-sm rounded-xl border border-slate-200/50 p-6 hover:bg-white/90 hover:shadow-lg transition-all duration-300">
-                <!-- Header -->
-                <div class="flex items-start justify-between mb-4">
-                    <div class="flex-1 min-w-0 mr-4">
+            <div data-report-id="${item.id}" class="group bg-white/70 backdrop-blur-sm rounded-xl border border-slate-200/50 overflow-hidden hover:bg-white/90 hover:shadow-lg transition-all duration-300">
+                
+                <!-- Thumbnail -->
+                ${thumbnailUrl ? `
+                    <div class="relative aspect-video bg-gradient-to-r from-slate-100 to-slate-200">
+                        <img src="${this.escapeHtml(thumbnailUrl)}" 
+                             alt="${this.escapeHtml(item.title)}"
+                             class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                             onerror="this.parentElement.innerHTML = '<div class=\'w-full h-full bg-gradient-to-r from-slate-200 to-slate-300 flex items-center justify-center\'><svg class=\'w-12 h-12 text-slate-400\' fill=\'none\' stroke=\'currentColor\' viewBox=\'0 0 24 24\'><path stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z\'/></svg></div>'">
+                        
+                        <!-- Audio indicator overlay -->
+                        ${hasAudio ? `
+                            <div class="absolute top-3 right-3 w-8 h-8 bg-audio-500/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm">
+                                <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                                </svg>
+                            </div>
+                        ` : ''}
+                        
+                        <!-- Duration overlay -->
+                        <div class="absolute bottom-3 right-3 bg-black/70 text-white text-xs px-2 py-1 rounded font-medium">
+                            ${duration}
+                        </div>
+                    </div>
+                ` : `
+                    <!-- No thumbnail fallback -->
+                    <div class="aspect-video bg-gradient-to-r from-slate-200 to-slate-300 flex items-center justify-center">
+                        <svg class="w-12 h-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                `}
+                
+                <!-- Content -->
+                <div class="p-6">
+                    <!-- Header -->
+                    <div class="mb-4">
                         <h3 class="text-lg font-semibold text-slate-800 group-hover:text-audio-700 transition-colors line-clamp-2 mb-2">
                             ${this.escapeHtml(item.title)}
                         </h3>
@@ -203,22 +237,6 @@ class AudioDashboard {
                             <span>${item.analysis?.language || 'en'}</span>
                         </div>
                     </div>
-                    
-                    <!-- Audio Status -->
-                    ${hasAudio ? `
-                        <div class="flex-shrink-0 w-12 h-12 bg-gradient-to-r from-audio-400 to-audio-600 rounded-lg flex items-center justify-center shadow-sm">
-                            <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                            </svg>
-                        </div>
-                    ` : `
-                        <div class="flex-shrink-0 w-12 h-12 bg-slate-200 rounded-lg flex items-center justify-center">
-                            <svg class="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                            </svg>
-                        </div>
-                    `}
-                </div>
 
                 <!-- Categories -->
                 <div class="flex flex-wrap gap-2 mb-4">
@@ -340,28 +358,38 @@ class AudioDashboard {
 
     async playAudio(reportId) {
         try {
-            // Find the report data
-            const reportCard = document.querySelector(`[data-report-id="${reportId}"]`);
-            if (!reportCard) return;
-
-            // Extract report info from the card
-            const title = reportCard.querySelector('h3').textContent.trim();
+            // Get actual report data from API to access the correct audio_url
+            const response = await fetch(`/api/reports?size=1000`); // Get all reports to find this one
+            const data = await response.json();
+            const report = data.data.find(r => r.id === reportId);
             
-            // Construct audio file path (assuming it matches the file_stem)
-            const audioSrc = `/exports/${reportId}.mp3`;
+            if (!report) {
+                console.error('Report not found:', reportId);
+                this.showError('Report not found');
+                return;
+            }
+
+            // Check if audio is available
+            const audioSrc = report.media?.audio_url;
+            if (!audioSrc) {
+                console.error('No audio available for report:', reportId);
+                this.showError('No audio available for this content');
+                return;
+            }
             
             // Update current track info
             this.currentAudio = {
                 id: reportId,
-                title: title,
-                src: audioSrc
+                title: report.title,
+                src: audioSrc,
+                report: report
             };
 
             // Show audio player if hidden
             this.audioPlayerContainer.classList.remove('hidden');
             
             // Update player info
-            this.playerTitle.textContent = title;
+            this.playerTitle.textContent = report.title;
             this.playerMeta.textContent = 'Loading...';
             
             // Load and play audio
