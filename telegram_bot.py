@@ -84,6 +84,9 @@ try:
 except Exception as e:
     pass  # Continue if .envrc sourcing fails
 
+# Feature toggle for V2 template as default
+USE_V2_DEFAULT = os.getenv("USE_V2_DEFAULT", "1") == "1"  # default ON
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -533,14 +536,23 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         """Serve a JSON report with V2 Tailwind template support"""
         try:
             # Use query params passed from serve_report
-            query_params = qs or {}
-            
-            # Feature flag logic: ?v=2 enables V2, ?legacy=1 forces legacy
-            use_v2 = query_params.get('v', [''])[0] == '2'
-            force_legacy = query_params.get('legacy', [''])[0] == '1'
-            
+            qs = qs or {}
+            v_param = qs.get('v', [''])[0]
+            force_legacy = qs.get('legacy', [''])[0] == '1'
+
+            # Order of precedence:
+            #   - ?legacy=1  -> legacy
+            #   - ?v=2       -> V2
+            #   - default    -> V2 if USE_V2_DEFAULT, else legacy
             if force_legacy:
                 use_v2 = False
+            elif v_param == '2':
+                use_v2 = True
+            else:
+                use_v2 = USE_V2_DEFAULT
+            
+            # Log render choice for debugging rollout
+            logger.info(f"render_choice use_v2={use_v2} v_param='{v_param}' force_legacy={force_legacy} env_default={USE_V2_DEFAULT}")
             
             # Load report data
             with open(json_path, 'r', encoding='utf-8') as f:
