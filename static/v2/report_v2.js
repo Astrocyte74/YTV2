@@ -19,6 +19,8 @@
   const sticky = $("stickyBar");
   const mPlayPause = $("mPlayPause");
   const mTimeMeta = $("mTimeMeta");
+  const mSeek = $("mSeek");
+  const mRateBtn = $("mRateBtn");
   const closeSticky = $("closeSticky");
 
   const copyBtn = $("copyLinkBtn");
@@ -45,7 +47,11 @@
     const dur = player.duration || 0;
     timeMeta.textContent = `${fmt(cur)} / ${fmt(dur)}`;
     mTimeMeta.textContent = `${fmt(cur)} / ${fmt(dur)}`;
-    if (dur > 0) seek.value = Math.round((cur / dur) * 100);
+    if (dur > 0 && !seeking) {
+      const progress = Math.round((cur / dur) * 100);
+      seek.value = progress;
+      if (mSeek) mSeek.value = progress;
+    }
   };
 
   // sticky visibility rules:
@@ -76,15 +82,44 @@
     if (player.paused) player.play(); else player.pause();
   });
 
+  // sticky player controls
+  mRateBtn?.addEventListener("click", () => {
+    rIdx = (rIdx + 1) % rates.length;
+    player.playbackRate = rates[rIdx];
+    rateBtn.textContent = `${rates[rIdx]}×`;
+    mRateBtn.textContent = `${rates[rIdx]}×`;
+  });
+
+  mSeek?.addEventListener("mousedown", () => { seeking = true; });
+  mSeek?.addEventListener("mouseup", () => { seeking = false; });
+  mSeek?.addEventListener("touchstart", () => { seeking = true; });
+  mSeek?.addEventListener("touchend", () => { seeking = false; });
+  
+  mSeek?.addEventListener("input", () => {
+    if (seeking) {
+      const dur = player.duration || 0;
+      player.currentTime = (mSeek.value / 100) * dur;
+    }
+  });
+
   rateBtn?.addEventListener("click", () => {
     rIdx = (rIdx + 1) % rates.length;
     player.playbackRate = rates[rIdx];
     rateBtn.textContent = `${rates[rIdx]}×`;
   });
 
+  let seeking = false;
+  
+  seek.addEventListener("mousedown", () => { seeking = true; });
+  seek.addEventListener("mouseup", () => { seeking = false; });
+  seek.addEventListener("touchstart", () => { seeking = true; });
+  seek.addEventListener("touchend", () => { seeking = false; });
+  
   seek.addEventListener("input", () => {
-    const dur = player.duration || 0;
-    player.currentTime = (seek.value / 100) * dur;
+    if (seeking) {
+      const dur = player.duration || 0;
+      player.currentTime = (seek.value / 100) * dur;
+    }
   });
 
   player.addEventListener("timeupdate", updateTime);
