@@ -10,6 +10,11 @@
   const seek = $("seek");
   const timeMeta = $("timeMeta");
   const rateBtn = $("rateBtn");
+  
+  // Debug: Check if elements are found
+  if (!player) console.error('Audio player element not found');
+  if (!playPause) console.error('Play/pause button not found');
+  if (!seek) console.error('Seek slider not found');
 
   const sticky = $("stickyBar");
   const mPlayPause = $("mPlayPause");
@@ -61,10 +66,12 @@
   };
 
   // events
-  playPause.addEventListener("click", () => {
-    console.log('[V2 Telemetry] play_clicked', { was_paused: player.paused });
-    if (player.paused) player.play(); else player.pause();
-  });
+  if (playPause && player) {
+    playPause.addEventListener("click", () => {
+      console.log('[V2 Telemetry] play_clicked', { was_paused: player.paused });
+      if (player.paused) player.play(); else player.pause();
+    });
+  }
   mPlayPause.addEventListener("click", () => {
     if (player.paused) player.play(); else player.pause();
   });
