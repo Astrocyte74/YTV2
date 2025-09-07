@@ -653,8 +653,33 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
       .listen-sticky button {{ height:34px; min-width:34px; border-radius:999px; border:1px solid var(--ring); background:#111827; color:#fff; }}
       .listen-sticky small {{ color:#64748b; display:block; }}
       #listenSticky[hidden] {{ display:none; }}
-      @media (max-width:900px) {{ .listen-inline {{ display:none; }} }}
+      /* Show audio player on all screens */
+      @media (max-width:900px) {{ .listen-inline {{ display:flex; }} }}
       @media (min-width:901px) {{ #listenSticky {{ display:none !important; }} }}
+      /* Mobile-friendly audio player layout */
+      @media (max-width:640px) {{
+        .listen-card {{ 
+          flex-direction: column; 
+          padding: 12px; 
+          gap: 8px; 
+        }}
+        .listen-actions {{
+          width: 100%;
+          justify-content: space-between;
+        }}
+        .listen-info {{
+          width: 100%;
+          text-align: center;
+        }}
+        .listen-btn {{
+          width: 48px;
+          height: 48px;
+          font-size: 18px;
+        }}
+        #seek {{
+          width: 100%;
+        }}
+      }}
     </style>
     <script>
       function copyLink(url) {{
