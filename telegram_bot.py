@@ -455,10 +455,16 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                               'No summary available')
                 headline = summary_content.get('headline', '')
                 summary_type = summary_content.get('summary_type', 'comprehensive')
+                
+                # Extract vocabulary/glossary for language learning
+                vocabulary = summary_content.get('vocabulary', [])
+                glossary = summary_content.get('glossary', [])
             else:
                 summary_text = str(summary_content) if summary_content else 'No summary available'
                 headline = ''
                 summary_type = summary.get('type', 'comprehensive')
+                vocabulary = []
+                glossary = []
             
             # Get analysis data
             analysis = summary.get('analysis', {})
@@ -604,28 +610,58 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 <html lang=\"en\">
 <head>
     <meta charset=\"UTF-8\">
-    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">
     <title>{title} - YTV2</title>
     <style>
-      :root {{ --border:#e5e7eb; --bg:#fff; --text:#0f172a; --bg-page:#f8fafc; --ring:#e5e7eb; --text-1:#0f172a; --text-2:#334155; --brand:#1d4ed8; }}
+      :root {{
+        /* Light mode (default) */
+        --bg: #f7f8fb;
+        --elev: #fff;
+        --text: #12141a;
+        --text-muted: #5b6373;
+        --border: #e6e8ef;
+        --chip-bg: #f1f3f7;
+        --callout: #f4f7ff;
+        --accent: #345bff;
+        --ring: #e6e8ef;
+      }}
+      @media (prefers-color-scheme: dark) {{
+        :root {{
+          --bg: #0b0c0f;
+          --elev: #14161b;
+          --text: #eef0f3;
+          --text-muted: #aeb5c2;
+          --border: #262a33;
+          --chip-bg: #171a20;
+          --callout: #12161d;
+          --accent: #4f7cff;
+          --ring: #262a33;
+        }}
+      }}
       * {{ box-sizing: border-box; }}
-      body {{ margin:0; font-family: Inter, -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; color:var(--text); background:var(--bg-page); }}
+      body {{ margin:0; font-family: Inter, -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; color:var(--text); background:var(--bg); }}
       .topbar {{ position:sticky; top:0; z-index:40; backdrop-filter:blur(8px); background:rgba(255,255,255,.72); border-bottom:1px solid var(--border); }}
       .topbar-inner {{ max-width:1120px; margin:0 auto; height:56px; padding:0 16px; display:flex; align-items:center; justify-content:space-between; }}
       .btn-ghost {{ height:36px; padding:0 12px; border:1px solid #e5e7eb; border-radius:10px; background:#fff; color:#111827; font-size:14px; display:inline-flex; align-items:center; gap:6px; text-decoration:none; }}
       .btn-ghost:hover {{ background:#f9fafb; }}
       .btn-primary {{ height:36px; padding:0 12px; border-radius:10px; background:#111827; color:#fff; font-size:14px; text-decoration:none; display:inline-flex; align-items:center; }}
-      .container {{ max-width:1120px; margin:0 auto; padding:16px 20px; }}
-      .grid {{ display:grid; grid-template-columns:1fr; gap:16px; }}
-      @media (min-width:768px) {{ .grid {{ grid-template-columns:1fr 1.1fr; }} }}
+      /* Page container with responsive layout */
+      .page {{ max-width:1100px; margin:0 auto; padding:16px; }}
+      @media (min-width:900px) {{ .page {{ padding:24px 32px; }} }}
+      
+      /* Responsive header layout */
+      .header {{ display:grid; grid-template-columns:1fr; gap:16px; margin-bottom:20px; }}
+      @media (min-width:900px) {{ .header {{ grid-template-columns:520px 1fr; align-items:start; gap:24px; }} }}
       .thumb {{ aspect-ratio:16/9; border-radius:14px; overflow:hidden; border:1px solid var(--ring); background:#fff; }}
       .thumb img {{ width:100%; height:100%; object-fit:cover; display:block; }}
-      .title {{ margin:4px 0 8px; font-weight:700; font-size:22px; line-height:1.25; color:var(--text-1); }}
+      /* Responsive title typography */
+      h1.title {{ margin:0 0 12px; font-weight:700; line-height:1.15; font-size:clamp(24px, 3vw, 34px); color:var(--text); word-break:break-word; }}
       .title.clamp {{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }}
-      .facts {{ margin-top:8px; display:flex; flex-wrap:wrap; gap:8px; }}
-      .chip {{ height:28px; padding:0 10px; border:1px solid var(--ring); border-radius:10px; background:rgba(255,255,255,.9); display:inline-flex; align-items:center; gap:6px; font-size:12.5px; }}
-      .chip .label {{ color:#64748b; font-size:12px; }}
-      .chip .value {{ color:#0f172a; font-weight:600; }}
+      /* Scrollable chips on mobile */
+      .chips {{ display:flex; gap:8px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:4px; margin-bottom:12px; }}
+      .chip {{ font-size:12.5px; padding:6px 10px; border-radius:999px; background:var(--chip-bg); border:1px solid var(--border); white-space:nowrap; flex-shrink:0; display:inline-flex; align-items:center; gap:6px; }}
+      .chip .label {{ color:var(--text-muted); font-size:12px; }}
+      .chip .value {{ color:var(--text); font-weight:600; }}
       .chip.duration {{ background:#e0f2fe; border-color:#bfdbfe; }}
       .chip.views {{ background:#dcfce7; border-color:#bbf7d0; }}
       .chip.date {{ background:#ede9fe; border-color:#ddd6fe; }}
@@ -633,22 +669,34 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
       .chip.type {{ background:#f3f4f6; }}
       .divider {{ border-top:2px solid #e0e7ff; margin:10px 0 6px; }}
       .icon-badge {{ padding:6px; border-radius:8px; background:#dbeafe; color:#1d4ed8; display:inline-flex; align-items:center; }}
-      .card {{ margin-top:8px; background:var(--bg); border:1px solid var(--ring); border-radius:12px; box-shadow:0 1px 2px rgba(0,0,0,.05); padding:14px 16px; }}
-      .card h2 {{ margin:0 0 8px; font-size:15px; font-weight:700; color:var(--text-2); display:flex; align-items:center; gap:8px; }}
-      .summary {{ max-width:78ch; white-space:pre-line; font-size:15px; line-height:1.6; color:var(--text-2); }}
+      /* Better card styling */
+      .card {{ border:1px solid var(--border); border-radius:14px; padding:16px; background:var(--elev); margin-bottom:16px; }}
+      @media (min-width:900px) {{ .card {{ padding:20px; }} }}
+      .card h2 {{ margin:0 0 8px; font-size:15px; font-weight:700; color:var(--text-muted); display:flex; align-items:center; gap:8px; }}
+      
+      /* Better summary typography */
+      .summary {{ line-height:1.65; font-size:16.5px; color:var(--text-muted); white-space:pre-line; }}
       .summary p {{ margin:10px 0; hyphens:auto; }}
-      /* Inline mini audio player */
+      
+      /* Glossary/Vocabulary styling */
+      .glossary {{ border-left:4px solid var(--accent); background:var(--callout); padding:14px 16px; border-radius:10px; margin-bottom:20px; }}
+      .glossary h3 {{ margin:0 0 10px; font-size:16px; font-weight:600; color:var(--text); }}
+      .glossary ul {{ margin:0; padding-left:18px; list-style-type:none; }}
+      .glossary li {{ margin-bottom:8px; }}
+      @media (min-width:900px) {{ .glossary ul {{ columns:2; column-gap:24px; }} }}
+      /* Audio player styling */
       .listen-inline {{ margin-top:8px; }}
-      .listen-card {{ display:flex; align-items:center; gap:12px; border:1px solid var(--ring); background:#fff; border-radius:12px; padding:10px 12px; box-shadow:0 1px 2px rgba(0,0,0,.04); }}
-      .listen-btn {{ width:36px; height:36px; border-radius:999px; border:1px solid var(--ring); background:#111827; color:#fff; display:grid; place-items:center; font-weight:700; cursor:pointer; }}
+      .listen-card {{ display:flex; align-items:center; gap:14px; padding:14px; border-radius:14px; border:1px solid var(--border); background:var(--elev); }}
+      .listen-btn {{ width:36px; height:36px; border-radius:999px; border:1px solid var(--border); background:var(--accent); color:#fff; display:grid; place-items:center; font-weight:700; cursor:pointer; }}
       .listen-info {{ flex:1; min-width:0; }}
       .listen-title {{ font-weight:600; font-size:14px; line-height:1.2; }}
       .listen-meta {{ color:#64748b; font-size:12px; margin-top:2px; }}
       .listen-actions {{ display:flex; align-items:center; gap:8px; }}
       #seek {{ width:100%; margin-top:6px; }}
       .chip.ghost {{ background:#fff; }}
-      /* Sticky bottom mini-player for mobile */
-      .listen-sticky {{ position: sticky; bottom:12px; margin:0 auto; left:0; right:0; max-width:520px; display:flex; align-items:center; gap:8px; background:#fff; border:1px solid var(--ring); padding:8px 10px; border-radius:999px; box-shadow:0 8px 24px rgba(0,0,0,.14); }}
+      /* Sticky bottom mini-player with safe area support */
+      #listenSticky {{ position:fixed; left:12px; right:12px; bottom:calc(env(safe-area-inset-bottom, 12px) + 12px); z-index:50; display:none; padding:10px 12px; border-radius:12px; background:var(--elev); border:1px solid var(--border); box-shadow:0 8px 24px rgba(0,0,0,.12); }}
+      .listen-sticky {{ display:flex; align-items:center; gap:8px; }}
       .listen-sticky .meta {{ flex:1; min-width:0; }}
       .listen-sticky button {{ height:34px; min-width:34px; border-radius:999px; border:1px solid var(--ring); background:#111827; color:#fff; }}
       .listen-sticky small {{ color:#64748b; display:block; }}
@@ -658,27 +706,14 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
       @media (min-width:901px) {{ #listenSticky {{ display:none !important; }} }}
       /* Mobile-friendly audio player layout */
       @media (max-width:640px) {{
-        .listen-card {{ 
-          flex-direction: column; 
-          padding: 12px; 
-          gap: 8px; 
-        }}
-        .listen-actions {{
-          width: 100%;
-          justify-content: space-between;
-        }}
-        .listen-info {{
-          width: 100%;
-          text-align: center;
-        }}
-        .listen-btn {{
-          width: 48px;
-          height: 48px;
-          font-size: 18px;
-        }}
-        #seek {{
-          width: 100%;
-        }}
+        .listen-card {{ flex-direction:column; align-items:stretch; }}
+        .listen-actions {{ justify-content:space-between; }}
+        .listen-info {{ text-align:center; }}
+        .listen-btn {{ width:52px; height:52px; font-size:20px; }}
+        .listen-card button, .listen-card a {{ padding:12px 16px; font-size:15px; min-height:44px; }}
+        #seek {{ width:100%; }}
+        /* iOS range slider improvements */
+        input[type=range]::-webkit-slider-thumb {{ height:28px; width:28px; }}
       }}
     </style>
     <script>
@@ -700,12 +735,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     </div>
   </header>
 
-  <main class=\"container\">
-    <section class=\"grid\">
+  <main class=\"page\">
+    <div class=\"header\">
       <div class=\"thumb\">{f'<img src="{thumbnail}" alt="" />' if thumbnail else ''}</div>
-      <div>
+      <div class=\"meta\">
         <h1 class=\"title clamp\">{title}</h1>
-        <div class=\"facts\">
+        <div class=\"chips\">
           <div class=\"chip brand\"><span class=\"label\">Channel:</span><span class=\"value\">{channel}</span></div>
           <div class=\"chip duration\"><span class=\"label\">Duration:</span><span class=\"value\">{duration_str or '—'}</span></div>
           <div class=\"chip views\"><span class=\"label\">Views:</span><span class=\"value\">{formatted_views}</span></div>
@@ -727,7 +762,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
           </div>
         </div>''' if audio_url else ''}
       </div>
-    </section>
+    </div>
 
     {f'''<div class="listen-sticky" id="listenSticky" hidden>
       <button id="mPlayPause" aria-label="Play audio">▶</button>
@@ -741,6 +776,20 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     <audio id="summaryAudio" preload="metadata"><source src="{audio_url}" type="audio/mpeg" /></audio>''' if audio_url else ''}
 
     <div class=\"divider\"></div>
+
+    {f'''<section class="glossary">
+      <h3>📚 Vocabulary</h3>
+      <ul>
+        {chr(10).join(f'<li><strong>{item["word"]}</strong>: {item["definition"]}</li>' for item in vocabulary)}
+      </ul>
+    </section>''' if vocabulary else ''}
+
+    {f'''<section class="glossary">
+      <h3>📖 Key Terms</h3>
+      <ul>
+        {chr(10).join(f'<li><strong>{item["term"]}</strong>: {item["definition"]}</li>' for item in glossary)}
+      </ul>
+    </section>''' if glossary else ''}
 
     <section class=\"card\">
       <div class=\"flex\" style=\"display:flex;align-items:center;gap:8px;margin-bottom:8px;\"><span class=\"icon-badge\">📄</span><h2 style=\"margin:0;\">Summary</h2></div>
