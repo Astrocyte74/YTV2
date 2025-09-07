@@ -20,3 +20,7 @@ beautifulsoup4>=4.12.0  # For fallback metadata extraction
 
 # Telegram Bot Integration
 python-telegram-bot>=20.0
+
+# Template engine for V2 redesign
+jinja2>=3.1
+markupsafe>=2.1

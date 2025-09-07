@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en" dir="auto">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>{{ title }} – YTV2</title>
+
+  <!-- Tailwind CDN (safe for initial rollout) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // optional: small token nudge for better dark contrast
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            chip: {
+              DEFAULT: '#eef2f7',
+              dark: '#1f2430'
+            },
+            chipBorder: {
+              DEFAULT: '#e5e9f2',
+              dark: '#30384a'
+            }
+          }
+        }
+      },
+      darkMode: 'media'
+    }
+  </script>
+
+  <style>
+    /* iOS safe-area for sticky player */
+    .safe-bottom {
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+    }
+    /* improve iOS slider thumb tap area a bit */
+    input[type="range"]::-webkit-slider-thumb { height: 28px; width: 28px; }
+  </style>
+</head>
+<body class="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+
+  <!-- Top bar -->
+  <header class="sticky top-0 z-50 border-b border-slate-200/70 bg-white/80 backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/70">
+    <div class="mx-auto flex h-14 max-w-[1100px] items-center justify-between px-4 lg:px-8">
+      <a href="{{ back_url or '#' }}" class="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm
+         border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800">← Back</a>
+      <div class="flex items-center gap-2">
+        <a href="{{ youtube_url }}" target="_blank" rel="noopener"
+           class="rounded-xl border px-3 py-1.5 text-sm border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800">
+          Open on YouTube
+        </a>
+        <button id="copyLinkBtn"
+           class="rounded-xl border px-3 py-1.5 text-sm border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800">
+          Copy link
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Page container -->
+  <main class="mx-auto max-w-[1100px] space-y-6 px-4 py-5 lg:px-8 lg:py-8">
+
+    <!-- Header grid -->
+    <section class="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,600px)_1fr]">
+      <!-- Hero -->
+      <div class="aspect-video overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900/50">
+        {% if thumbnail %}
+          <img src="{{ thumbnail }}" alt="" class="h-full w-full object-cover" />
+        {% endif %}
+      </div>
+
+      <!-- Meta + player -->
+      <div class="min-w-0">
+        <h1 class="mb-3 line-clamp-3 text-2xl font-bold leading-tight sm:text-3xl">
+          {{ title }}
+        </h1>
+
+        <!-- chips -->
+        <div class="flex snap-x snap-mandatory gap-2 overflow-x-auto py-1">
+          <span class="snap-start inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm
+                       border-chipBorder bg-chip dark:border-chipBorder-dark dark:bg-chip-dark">
+            <span class="text-slate-500 dark:text-slate-300/80">Channel</span>
+            <span class="font-semibold">{{ channel }}</span>
+          </span>
+          {% if duration_str %}
+          <span class="snap-start inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm
+                       border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900/40 dark:bg-blue-900/20 dark:text-blue-200">
+            Duration <span class="font-semibold">{{ duration_str }}</span>
+          </span>
+          {% endif %}
+          {% if views_pretty %}
+          <span class="snap-start inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm
+                       border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200">
+            Views <span class="font-semibold">{{ views_pretty }}</span>
+          </span>
+          {% endif %}
+          {% if uploaded_pretty %}
+          <span class="snap-start inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm
+                       border-violet-200 bg-violet-50 text-violet-900 dark:border-violet-900/40 dark:bg-violet-900/20 dark:text-violet-200">
+            Uploaded <span class="font-semibold">{{ uploaded_pretty }}</span>
+          </span>
+          {% endif %}
+          {% if ai_model %}
+          <span class="snap-start inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm
+                       border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/40">
+            AI Model <span class="font-semibold">{{ ai_model }}</span>
+          </span>
+          {% endif %}
+        </div>
+
+        <!-- audio card -->
+        <section class="mt-4 flex flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row">
+          <button id="playPause" aria-pressed="false" aria-label="Play audio summary"
+            class="grid size-12 place-items-center rounded-full bg-blue-600 font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            ▶
+          </button>
+
+          <div class="w-full grow min-w-0">
+            <div class="text-sm font-medium">Audio summary</div>
+            <div class="text-xs text-slate-500 dark:text-slate-400" id="timeMeta">0:00 / {{ audio_dur_pretty or '—' }}</div>
+            <input id="seek" type="range" min="0" max="100" value="0"
+                   class="mt-1 w-full accent-blue-600" />
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button id="rateBtn" class="rounded-full border border-slate-200 px-3 py-1.5 text-sm dark:border-slate-800">1×</button>
+            {% if audio_mp3 %}
+              <a class="rounded-full border border-slate-200 px-3 py-1.5 text-sm dark:border-slate-800"
+                 href="{{ audio_mp3 }}" download>Download</a>
+            {% endif %}
+          </div>
+
+          <!-- hidden native audio (we control it) -->
+          <audio id="player" preload="metadata">
+            {% if audio_mp3 %}<source src="{{ audio_mp3 }}" type="audio/mpeg" />{% endif %}
+          </audio>
+        </section>
+      </div>
+    </section>
+
+    <!-- Glossary -->
+    {% if vocabulary and vocabulary|length > 0 %}
+    <section class="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/40 lg:p-5">
+      <h2 class="mb-2 text-base font-semibold">📚 Vocabulary</h2>
+      <dl class="grid gap-3 lg:grid-cols-2">
+        {% for item in vocabulary %}
+          <div>
+            <dt class="font-semibold">{{ item.term }}</dt>
+            <dd class="text-slate-600 dark:text-slate-300">{{ item.definition }}</dd>
+          </div>
+        {% endfor %}
+      </dl>
+    </section>
+    {% endif %}
+
+    <!-- Summary -->
+    <section class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 lg:p-6">
+      <h2 class="mb-3 flex items-center gap-2 text-base font-semibold">📄 Summary</h2>
+      <article class="prose max-w-none prose-slate dark:prose-invert">
+        {{ summary_html | safe }}
+      </article>
+    </section>
+  </main>
+
+  <!-- Sticky mini player (mobile & desktop) -->
+  <div id="stickyBar"
+       class="safe-bottom fixed left-3 right-3 z-[60] hidden rounded-xl border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-800 dark:bg-slate-900 md:left-1/2 md:right-auto md:w-[520px] md:-translate-x-1/2">
+    <div class="flex items-center gap-3">
+      <button id="mPlayPause" aria-pressed="false" aria-label="Play audio summary"
+              class="grid size-10 place-items-center rounded-full bg-blue-600 text-white">▶</button>
+      <div class="min-w-0 grow">
+        <div class="truncate text-sm font-medium">Audio summary</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400" id="mTimeMeta">0:00 / {{ audio_dur_pretty or '—' }}</div>
+      </div>
+      <button id="closeSticky" aria-label="Close"
+              class="rounded-md border border-slate-200 px-2 py-1 text-xs dark:border-slate-800">✕</button>
+    </div>
+  </div>
+
+  <script src="/static/v2/report_v2.js"></script>
+</body>
+</html>
