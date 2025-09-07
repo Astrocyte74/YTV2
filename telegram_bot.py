@@ -277,9 +277,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         
         # Format summary for better readability
         if summary_html and not summary_html.startswith('<'):
-            # Plain text - convert to paragraphs
+            # Plain text - convert to paragraphs with better spacing
             paragraphs = summary_html.split('\n\n')
-            summary_html = ''.join(f'<p class="mb-4">{p.strip()}</p>' for p in paragraphs if p.strip())
+            summary_html = ''.join(f'<p class="mb-6 leading-relaxed">{p.strip()}</p>' for p in paragraphs if p.strip())
         
         # Sanitize HTML for security (only if bleach is available)
         if BLEACH_AVAILABLE and summary_html:
