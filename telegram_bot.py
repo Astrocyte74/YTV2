@@ -46,6 +46,7 @@ except ImportError as e:
 
 # Import dashboard components only
 from modules.report_generator import JSONReportGenerator
+from modules.content_index import ContentIndex
 
 # Load environment variables from .env file and stack.env
 load_dotenv()
@@ -97,6 +98,19 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Initialize global content index for Phase 2 API
+try:
+    # Determine reports directory - check for Render deployment vs local
+    if Path('/app/data/reports').exists():
+        content_index = ContentIndex('/app/data/reports')
+        logger.info("📊 ContentIndex initialized with Render data directory")
+    else:
+        content_index = ContentIndex('./data/reports')
+        logger.info("📊 ContentIndex initialized with local data directory")
+except Exception as e:
+    logger.warning(f"⚠️ ContentIndex initialization failed: {e}")
+    content_index = None
 
 # Template loading utility
 def load_template(template_name: str) -> Optional[str]:
@@ -401,16 +415,20 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     continue
             
             # Load dashboard template
-            template_content = load_template('dashboard_template.html')
+            # Try V3 template first, fallback to original
+            template_content = load_template('dashboard_v3_template.html')
+            if not template_content:
+                template_content = load_template('dashboard_template.html')
             
             if template_content:
                 # Get base URL
                 base_url = os.getenv('NGROK_URL', 'https://chief-inspired-lab.ngrok-free.app')
                 
-                # Replace template placeholders
-                dashboard_html = template_content.format(
-                    reports_data=json.dumps(reports_data, ensure_ascii=False),
-                    base_url=base_url
+                # Replace template placeholders (safe replacement for templates with {})
+                dashboard_html = template_content.replace(
+                    '{reports_data}', json.dumps(reports_data, ensure_ascii=False)
+                ).replace(
+                    '{base_url}', base_url
                 )
                 
                 self.send_response(200)
@@ -823,19 +841,159 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(error_data).encode())
     
     def serve_api(self):
-        """Serve API endpoints"""
+        """Serve Phase 2 API endpoints with enhanced filtering and search"""
         try:
-            if self.path == '/api/reports':
-                self.serve_api_reports()
-            elif self.path.startswith('/api/reports/'):
+            # Parse URL to separate path from query string
+            parsed_url = urlparse(self.path)
+            path = parsed_url.path
+            query_params = parse_qs(parsed_url.query)
+            
+            if path == '/api/filters':
+                self.serve_api_filters(query_params)
+            elif path == '/api/reports':
+                self.serve_api_reports_v2(query_params)
+            elif path.startswith('/api/reports/'):
                 self.serve_api_report_detail()
-            elif self.path == '/api/config':
+            elif path == '/api/config':
                 self.serve_api_config()
             else:
                 self.send_error(404, "API endpoint not found")
         except Exception as e:
             logger.error(f"Error serving API {self.path}: {e}")
             self.send_error(500, "API error")
+    
+    def serve_api_filters(self, query_params: Dict[str, List[str]]):
+        """Serve Phase 2 filters API endpoint with faceted search"""
+        try:
+            if not content_index:
+                self.send_error(500, "Content index not available")
+                return
+            
+            # Parse active filters from query parameters
+            active_filters = {}
+            
+            # Extract filter parameters
+            if 'source' in query_params:
+                active_filters['source'] = query_params['source']
+            if 'language' in query_params:
+                active_filters['language'] = query_params['language']
+            if 'category' in query_params:
+                active_filters['category'] = query_params['category']
+            if 'topics' in query_params:
+                # Handle comma-separated topics
+                topics = []
+                for topic_list in query_params['topics']:
+                    topics.extend(topic_list.split(','))
+                active_filters['topics'] = [t.strip() for t in topics if t.strip()]
+            if 'content_type' in query_params:
+                active_filters['content_type'] = query_params['content_type']
+            if 'complexity' in query_params:
+                active_filters['complexity'] = query_params['complexity']
+            if 'has_audio' in query_params:
+                # Convert string to boolean
+                has_audio_str = query_params['has_audio'][0].lower()
+                if has_audio_str in ['true', '1', 'yes']:
+                    active_filters['has_audio'] = True
+                elif has_audio_str in ['false', '0', 'no']:
+                    active_filters['has_audio'] = False
+            
+            # Get facets (with masked counts if filters are active)
+            facets = content_index.get_facets(active_filters if active_filters else None)
+            
+            # Send response
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Cache-Control', 'public, max-age=60')  # Cache for 1 minute
+            self.end_headers()
+            
+            self.wfile.write(json.dumps(facets, ensure_ascii=False, indent=2).encode())
+            
+        except Exception as e:
+            logger.error(f"Error serving filters API: {e}")
+            self.send_error(500, f"Filters API error: {str(e)}")
+    
+    def serve_api_reports_v2(self, query_params: Dict[str, List[str]]):
+        """Serve Phase 2 reports API endpoint with filtering, search, and pagination"""
+        try:
+            if not content_index:
+                # Fallback to legacy method
+                return self.serve_api_reports()
+            
+            # Parse query parameters
+            filters = {}
+            
+            # Filter parameters with validation
+            for param in ['source', 'language', 'category', 'content_type', 'complexity']:
+                if param in query_params:
+                    # Limit array size and sanitize strings
+                    values = query_params[param][:10]  # Max 10 items
+                    filters[param] = [str(v)[:50] for v in values if v and str(v).strip()]  # Max 50 chars per item
+            
+            if 'topics' in query_params:
+                # Handle comma-separated topics with validation
+                topics = []
+                for topic_list in query_params['topics'][:5]:  # Max 5 topic lists
+                    if len(str(topic_list)) <= 200:  # Limit individual topic list length
+                        topics.extend(str(topic_list).split(','))
+                filters['topics'] = [t.strip()[:50] for t in topics[:20] if t.strip()]  # Max 20 topics, 50 chars each
+            if 'has_audio' in query_params:
+                has_audio_str = query_params['has_audio'][0].lower()
+                if has_audio_str in ['true', '1', 'yes']:
+                    filters['has_audio'] = True
+                elif has_audio_str in ['false', '0', 'no']:
+                    filters['has_audio'] = False
+            
+            # Date range filters
+            if 'date_from' in query_params:
+                filters['date_from'] = query_params['date_from'][0]
+            if 'date_to' in query_params:
+                filters['date_to'] = query_params['date_to'][0]
+            
+            # Search query with validation
+            query = query_params.get('q', [''])[0].strip()
+            if len(query) > 200:  # Limit search query length
+                query = query[:200]
+            # Basic XSS protection
+            query = query.replace('<', '').replace('>', '').replace('&', '') if query else ''
+            
+            # Sorting
+            sort = query_params.get('sort', ['newest'])[0]
+            valid_sorts = ['newest', 'title', 'duration']
+            if sort not in valid_sorts:
+                sort = 'newest'
+            
+            # Pagination
+            try:
+                page = int(query_params.get('page', ['1'])[0])
+                size = int(query_params.get('size', ['20'])[0])
+            except ValueError:
+                page = 1
+                size = 20
+            
+            # Validate pagination parameters
+            page = max(1, page)
+            size = max(1, min(50, size))  # Cap at 50 items per page
+            
+            # Execute search
+            results = content_index.search_reports(
+                filters=filters if filters else None,
+                query=query if query else None,
+                sort=sort,
+                page=page,
+                size=size
+            )
+            
+            # Send response
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache')  # Don't cache filtered results
+            self.end_headers()
+            
+            self.wfile.write(json.dumps(results, ensure_ascii=False, indent=2).encode())
+            
+        except Exception as e:
+            logger.error(f"Error serving reports API v2: {e}")
+            self.send_error(500, f"Reports API error: {str(e)}")
     
     def serve_api_reports(self):
         """Serve reports list API endpoint"""
