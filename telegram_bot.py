@@ -259,33 +259,38 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     
     @staticmethod
     def to_report_v2_dict(report_data: dict, audio_url: str = "") -> dict:
-        """Convert report data to V2 template format with enhanced metadata support"""
-        # Extract enhanced metadata from source_metadata.youtube if available
-        youtube_meta = report_data.get('source_metadata', {}).get('youtube', {})
-        
-        # Get basic video info - support both legacy and enhanced schemas
-        video_info = report_data
-        summary = report_data.get('summary', {})
-        processing = report_data.get('processing', {})
+        """Convert report data to V2 template format with robust fallbacks"""
+        # Enhanced metadata (optional)
+        youtube_meta = (report_data.get('source_metadata') or {}).get('youtube', {})
+        # Primary video block (YTV2 schema)
+        video = report_data.get('video', {}) or {}
+        summary = report_data.get('summary', {}) or {}
+        processing = report_data.get('processing', {}) or {}
         
         # Enhanced metadata extraction
-        video_id = youtube_meta.get('video_id', '')
-        title = report_data.get('title', '') or youtube_meta.get('title', '')
+        video_id = youtube_meta.get('video_id') or video.get('video_id', '')
+        title = (report_data.get('title') or video.get('title') or youtube_meta.get('title') or '').strip()
         
         # Channel - prioritize uploader_id over channel_name
-        channel = youtube_meta.get('uploader_id', '').replace('@', '') or youtube_meta.get('channel_name', '') or report_data.get('channel', '')
+        channel = (video.get('channel') or youtube_meta.get('channel_name') or (youtube_meta.get('uploader_id') or '').replace('@','') or '').strip()
         if channel == 'Unknown':
             channel = youtube_meta.get('uploader_id', '').replace('@', '')
         
         # Thumbnail - generate from video_id if not available
-        thumbnail = (report_data.get('thumbnail_url') or 
-                    report_data.get('thumbnail') or 
-                    (f"https://img.youtube.com/vi/{video_id}/mqdefault.jpg" if video_id else ""))
+        thumbnail = (
+            report_data.get('thumbnail_url') or
+            report_data.get('thumbnail') or
+            video.get('thumbnail') or
+            (f"https://img.youtube.com/vi/{video_id}/mqdefault.jpg" if video_id else "")
+        )
         
         # Duration - support both video and audio durations from multiple sources
-        video_duration_seconds = (report_data.get('duration_seconds', 0) or 
-                                report_data.get('duration', 0) or  # Direct duration field
-                                youtube_meta.get('duration', 0))
+        video_duration_seconds = (
+            report_data.get('duration_seconds') or
+            report_data.get('duration') or
+            video.get('duration') or
+            youtube_meta.get('duration') or 0
+        )
         
         audio_duration_seconds = report_data.get('media', {}).get('audio_duration_seconds', 0)
         
@@ -315,7 +320,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             audio_dur_pretty = ""
         
         # Format views with enhanced metadata
-        view_count = youtube_meta.get('view_count', 0) or report_data.get('view_count', 0)
+        view_count = youtube_meta.get('view_count') or report_data.get('view_count') or 0
         if view_count >= 1000000:
             views_pretty = f"{view_count/1000000:.1f}M views"
         elif view_count >= 1000:
@@ -324,7 +329,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             views_pretty = f"{view_count:,} views" if view_count else ""
         
         # Format date
-        upload_date = report_data.get('upload_date', '') or youtube_meta.get('upload_date', '')
+        upload_date = video.get('upload_date') or report_data.get('upload_date') or youtube_meta.get('upload_date', '')
         if upload_date and len(upload_date) == 8:
             uploaded_pretty = f"{upload_date[4:6]}/{upload_date[6:8]}/{upload_date[:4]}"
         else:
@@ -413,7 +418,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             "summary_html": summary_html,
             "vocabulary": vocabulary,
             "back_url": "/",
-            "youtube_url": report_data.get("url", "") or report_data.get("canonical_url", ""),
+            "youtube_url": video.get("url") or report_data.get("url") or report_data.get("canonical_url", ""),
             "cache_bust": cache_bust,
         }
     
