@@ -368,8 +368,8 @@ class AudioDashboard {
                                     <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                                 </button>
                                 ` : ''}
-                                <button data-control data-delete-btn title="Delete" aria-label="Delete" class="p-2 rounded-lg text-red-600 hover:bg-red-50 focus:ring-2 focus:ring-red-500">
-                                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"/><path d="M10 11v6M14 11v6"/><path d="M9 6l1-2h4l1 2"/></svg>
+                                <button data-control data-delete-btn title="Delete Report" aria-label="Delete Report" class="p-2.5 rounded-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 focus:ring-2 focus:ring-red-500 focus:ring-offset-1 transition-all duration-200 shadow-sm hover:shadow-md hover:scale-105 opacity-0 group-hover:opacity-100">
+                                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 6h18"/><path d="M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"/><path d="M10 11v6M14 11v6"/><path d="M9 6l1-2h4l1 2"/></svg>
                                 </button>
                             </div>
                         </div>

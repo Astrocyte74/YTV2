@@ -249,9 +249,12 @@ class ContentIndex:
                 if gen:
                     published_at = gen
         
-            # Universal schema - extract analysis data
+            # Universal schema - extract analysis data, check both locations
             analysis = report_data.get('analysis', {})
-            category = analysis.get('category', ['General'])
+            summary_analysis = report_data.get('summary', {}).get('analysis', {})
+            
+            # Categories - check summary.analysis first, then analysis
+            category = summary_analysis.get('category') or analysis.get('category', ['General'])
             if isinstance(category, str):
                 category = [category]
             

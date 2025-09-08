@@ -97,13 +97,23 @@
               <span class="text-slate-600 dark:text-slate-400">Channel</span>
               <span class="font-medium text-slate-900 dark:text-slate-100">{{ channel }}</span>
             </div>
-            {% if duration_str %}
+            
+            {% if video_duration_str %}
             <div class="flex items-center gap-2">
-              <span class="text-slate-400">🕐</span>
-              <span class="text-slate-600 dark:text-slate-400">Duration</span>
-              <span class="font-medium text-slate-900 dark:text-slate-100">{{ duration_str }}</span>
+              <span class="text-slate-400">🎬</span>
+              <span class="text-slate-600 dark:text-slate-400">Video Duration</span>
+              <span class="font-medium text-slate-900 dark:text-slate-100">{{ video_duration_str }}</span>
             </div>
             {% endif %}
+            
+            {% if audio_dur_pretty %}
+            <div class="flex items-center gap-2">
+              <span class="text-slate-400">🎵</span>
+              <span class="text-slate-600 dark:text-slate-400">Audio Duration</span>
+              <span class="font-medium text-slate-900 dark:text-slate-100">{{ audio_dur_pretty }}</span>
+            </div>
+            {% endif %}
+            
             {% if views_pretty %}
             <div class="flex items-center gap-2">
               <span class="text-slate-400">👁️</span>
@@ -111,6 +121,31 @@
               <span class="font-medium text-slate-900 dark:text-slate-100">{{ views_pretty }}</span>
             </div>
             {% endif %}
+            
+            {% if like_count_pretty %}
+            <div class="flex items-center gap-2">
+              <span class="text-slate-400">👍</span>
+              <span class="text-slate-600 dark:text-slate-400">Likes</span>
+              <span class="font-medium text-slate-900 dark:text-slate-100">{{ like_count_pretty }}</span>
+            </div>
+            {% endif %}
+            
+            {% if comment_count_pretty %}
+            <div class="flex items-center gap-2">
+              <span class="text-slate-400">💬</span>
+              <span class="text-slate-600 dark:text-slate-400">Comments</span>
+              <span class="font-medium text-slate-900 dark:text-slate-100">{{ comment_count_pretty }}</span>
+            </div>
+            {% endif %}
+            
+            {% if follower_count_pretty %}
+            <div class="flex items-center gap-2">
+              <span class="text-slate-400">📊</span>
+              <span class="text-slate-600 dark:text-slate-400">Subscribers</span>
+              <span class="font-medium text-slate-900 dark:text-slate-100">{{ follower_count_pretty }}</span>
+            </div>
+            {% endif %}
+            
             {% if uploaded_pretty %}
             <div class="flex items-center gap-2">
               <span class="text-slate-400">📅</span>
@@ -118,6 +153,29 @@
               <span class="font-medium text-slate-900 dark:text-slate-100">{{ uploaded_pretty }}</span>
             </div>
             {% endif %}
+            
+            {% if resolution %}
+            <div class="flex items-center gap-2">
+              <span class="text-slate-400">📱</span>
+              <span class="text-slate-600 dark:text-slate-400">Resolution</span>
+              <span class="font-medium text-slate-900 dark:text-slate-100">{{ resolution }}{% if fps_pretty %} • {{ fps_pretty }}{% endif %}</span>
+            </div>
+            {% endif %}
+            
+            {% if categories and categories|length > 0 %}
+            <div class="flex items-center gap-2 lg:col-span-2">
+              <span class="text-slate-400">🏷️</span>
+              <span class="text-slate-600 dark:text-slate-400">Categories</span>
+              <div class="flex flex-wrap gap-1">
+                {% for category in categories %}
+                  <span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                    {{ category }}
+                  </span>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+            
             {% if ai_model %}
             <div class="flex items-center gap-2 lg:col-span-2">
               <span class="text-slate-400">🤖</span>
