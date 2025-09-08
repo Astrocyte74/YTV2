@@ -191,10 +191,16 @@ class ContentIndex:
         else:
             # Universal schema format
             report_id = report_data.get('id', f"legacy:{file_stem}")
-            title = str(report_data.get('title', ''))
+            # Prefer explicit top-level title; fall back to video.title; then metadata; finally file stem
+            title = str(report_data.get('title', '')).strip()
+            if not title:
+                video_block = report_data.get('video', {}) or {}
+                title = str(video_block.get('title', '')).strip()
             if not title:
                 metadata = report_data.get('metadata', {})
-                title = str(metadata.get('title', file_stem.replace('_', ' ')))
+                title = str(metadata.get('title', '')).strip()
+            if not title:
+                title = file_stem.replace('_', ' ')
             
             content_source = report_data.get('content_source', 'youtube')
             published_at = report_data.get('published_at', '')
@@ -233,14 +239,20 @@ class ContentIndex:
             year = str(datetime.now().year)  # fallback to current year
         
         # Create indexed report structure (without raw data to save memory)
+        # Pull common video fields for thumbnails/urls/video_id
+        video_block = report_data.get('video', {}) or {}
+        thumbnail_url = report_data.get('thumbnail_url') or video_block.get('thumbnail', '')
+        canonical_url = report_data.get('canonical_url') or video_block.get('url', '')
+        video_id = video_block.get('video_id', '')
+
         indexed_report = {
             'id': report_id,
             'title': title[:300],  # Limit title length
             'content_source': content_source,
             'published_at': published_at,
             'duration_seconds': duration_seconds,
-            'thumbnail_url': report_data.get('thumbnail_url', ''),
-            'canonical_url': report_data.get('canonical_url', ''),
+            'thumbnail_url': thumbnail_url,
+            'canonical_url': canonical_url,
             'analysis': {
                 'language': language,
                 'category': category[:3],  # Limit to 3 categories
@@ -253,7 +265,8 @@ class ContentIndex:
                 'audio_duration_seconds': media.get('audio_duration_seconds', duration_seconds)
             },
             'year': year,
-            'file_stem': file_stem
+            'file_stem': file_stem,
+            'video_id': video_id,
         }
         
         # Store in main index
@@ -551,7 +564,8 @@ class ContentIndex:
             'duration_seconds': report['duration_seconds'],
             'analysis': report['analysis'],
             'media': report['media'],
-            'file_stem': report['file_stem']
+            'file_stem': report['file_stem'],
+            'video_id': report.get('video_id', ''),
         }
     
     def get_report_count(self) -> int:

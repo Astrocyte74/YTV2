@@ -360,6 +360,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.serve_report(path, self._query_params)
         elif path.endswith('.json') and path != '/':
             self.serve_report(path, self._query_params)
+        elif path.startswith('/exports/by_video/'):
+            self.serve_audio_by_video()
         elif path.startswith('/exports/'):
             self.serve_audio_file()
         else:
@@ -766,6 +768,60 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error serving audio file {self.path}: {e}")
             self.send_error(500, "Error serving audio file")
+
+    def serve_audio_by_video(self):
+        """Resolve and stream the most recent audio file for a given video_id.
+
+        Route: /exports/by_video/<video_id>.mp3 (extension optional)
+        """
+        try:
+            # Extract video_id from path
+            parts = self.path.split('/')
+            if len(parts) < 4:
+                self.send_error(400, "Invalid by_video path")
+                return
+            video_id_with_ext = parts[-1]
+            video_id = video_id_with_ext.replace('.mp3', '')
+
+            # Search for candidate files in common locations
+            search_dirs = [Path('/app/data/exports'), Path('./exports')]
+            patterns = [
+                f'audio_{video_id}_*.mp3',   # standard new pattern
+                f'{video_id}_*.mp3',         # legacy pattern
+                f'*{video_id}*.mp3',         # fallback
+            ]
+
+            best_match = None
+            best_mtime = -1
+
+            for d in search_dirs:
+                if not d.exists():
+                    continue
+                for pat in patterns:
+                    for p in d.glob(pat):
+                        try:
+                            mtime = p.stat().st_mtime
+                            if mtime > best_mtime:
+                                best_mtime = mtime
+                                best_match = p
+                        except OSError:
+                            continue
+
+            if not best_match:
+                self.send_error(404, f"Audio not found for video_id {video_id}")
+                return
+
+            # Stream the resolved file
+            self.send_response(200)
+            self.send_header('Content-type', 'audio/mpeg')
+            self.send_header('Content-Length', str(best_match.stat().st_size))
+            self.send_header('Cache-Control', 'public, max-age=600')
+            self.end_headers()
+            with open(best_match, 'rb') as f:
+                self.wfile.write(f.read())
+        except Exception as e:
+            logger.error(f"Error serving by_video audio {self.path}: {e}")
+            self.send_error(500, "Error resolving audio by video id")
     
     def serve_status(self):
         """Serve system status endpoint"""
