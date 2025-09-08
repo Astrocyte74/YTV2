@@ -195,13 +195,13 @@ class AudioDashboard {
 
     renderFilterSection(items, container, filterType) {
         container.innerHTML = items.slice(0, 8).map(item => `
-            <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 rounded px-2 py-1 transition-colors">
+            <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
                 <input type="checkbox" 
                        value="${this.escapeHtml(item.value)}" 
                        data-filter="${filterType}"
-                       class="rounded border-slate-300 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
-                <span class="text-sm text-slate-700 flex-1">${this.escapeHtml(item.value)}</span>
-                <span class="text-xs text-slate-400">${item.count}</span>
+                       class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
+                <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
+                <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
             </label>
         `).join('');
 

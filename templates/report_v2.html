@@ -186,6 +186,20 @@
             </div>
             {% endif %}
             
+            {% if key_topics and key_topics|length > 0 %}
+            <div class="flex items-center gap-2 lg:col-span-2">
+              <span class="text-slate-400">🔖</span>
+              <span class="text-slate-600 dark:text-slate-400">Key Topics</span>
+              <div class="flex flex-wrap gap-1">
+                {% for topic in key_topics %}
+                  <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200">
+                    {{ topic }}
+                  </span>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+            
             {% if ai_model %}
             <div class="flex items-center gap-2 lg:col-span-2">
               <span class="text-slate-400">🤖</span>

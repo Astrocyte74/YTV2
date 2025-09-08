@@ -355,12 +355,18 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         fps = youtube_meta.get('fps', '')
         fps_pretty = f"{fps} fps" if fps else ""
         
-        # Categories from enhanced metadata
-        categories = []
-        if 'analysis' in report_data and 'category' in report_data['analysis']:
-            categories = report_data['analysis']['category']
-        elif 'summary' in report_data and 'analysis' in report_data['summary'] and 'category' in report_data['summary']['analysis']:
-            categories = report_data['summary']['analysis']['category']
+        # Categories and key_topics from enhanced metadata - match ContentIndex logic 
+        # Check summary.analysis first (the real data), then top-level analysis (usually empty/fallback)
+        analysis = report_data.get('analysis', {})
+        summary_analysis = report_data.get('summary', {}).get('analysis', {})
+        categories = summary_analysis.get('category') or analysis.get('category', ['General'])
+        if isinstance(categories, str):
+            categories = [categories]
+            
+        # Extract key topics for additional tagging
+        key_topics = summary_analysis.get('key_topics') or analysis.get('key_topics', [])
+        if isinstance(key_topics, str):
+            key_topics = [key_topics]
         
         # Extract vocabulary
         vocabulary = []
@@ -413,6 +419,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             "resolution": resolution,
             "fps_pretty": fps_pretty,
             "categories": categories,
+            "key_topics": key_topics,
             "ai_model": ai_model,
             "audio_mp3": audio_url,
             "summary_html": summary_html,
