@@ -702,10 +702,20 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             summary = report_data.get('summary', {})
             processing = report_data.get('processing', {})
             
-            # Discover audio file (reuse existing logic)
-            logger.info(f"🎬 video_info keys: {list(video_info.keys()) if video_info else 'None'}")
-            logger.info(f"🆔 video_info.video_id: {video_info.get('video_id', 'NOT_FOUND') if video_info else 'video_info is None'}")
-            audio_url = self._discover_audio_file(video_info)
+            # Extract video_id from the correct location (YouTube metadata)
+            youtube_meta = (report_data.get('source_metadata') or {}).get('youtube', {})
+            video_id = youtube_meta.get('video_id', '') or video_info.get('video_id', '')
+            
+            # Create proper video_info with video_id for audio discovery
+            enhanced_video_info = dict(video_info)  # Copy existing video_info
+            if video_id:
+                enhanced_video_info['video_id'] = video_id
+            
+            # Discover audio file with enhanced video_info
+            logger.info(f"🎬 original video_info keys: {list(video_info.keys()) if video_info else 'None'}")
+            logger.info(f"🆔 extracted video_id from youtube_meta: '{video_id}'")
+            logger.info(f"🎬 enhanced_video_info: {enhanced_video_info}")
+            audio_url = self._discover_audio_file(enhanced_video_info)
             
             # Generate HTML content
             if use_v2 and JINJA2_AVAILABLE:
