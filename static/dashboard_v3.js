@@ -69,8 +69,8 @@ class AudioDashboard {
         this.nowPlayingMeta = document.getElementById('nowPlayingMeta');
         this.nowPlayingProgress = document.getElementById('nowPlayingProgress');
         
-        // Action buttons
-        this.playAllBtn = document.getElementById('playAllBtn');
+        // Action buttons (Play All removed as auto-playlist is active)
+        // this.playAllBtn = document.getElementById('playAllBtn');
     }
 
     bindEvents() {
@@ -99,7 +99,7 @@ class AudioDashboard {
         
         // UI controls
         this.queueToggle.addEventListener('click', () => this.toggleQueue());
-        this.playAllBtn.addEventListener('click', () => this.playAllResults());
+        // Play All button removed - auto-playlist handles this
         if (this.listViewBtn) this.listViewBtn.addEventListener('click', () => this.setViewMode('list'));
         if (this.gridViewBtn) this.gridViewBtn.addEventListener('click', () => this.setViewMode('grid'));
         this.updateViewToggle();
@@ -271,8 +271,8 @@ class AudioDashboard {
                             </div>
                             <div class="flex items-center gap-2">
                                 ${hasAudio ? `
-                                <button data-control data-play-btn title="Play audio" class="p-2 rounded-full bg-audio-50 text-audio-600 hover:bg-audio-100 focus:ring-2 focus:ring-audio-500">
-                                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 1116 0"/><path d="M7 12v3a1 1 0 001 1h1a1 1 0 001-1V9a1 1 0 00-1-1H8a1 1 0 00-1 1v3"/><path d="M17 12v3a1 1 0 01-1 1h-1a1 1 0 01-1-1V9a1 1 0 011-1h1a1 1 0 011 1v3"/></svg>
+                                <button data-control data-play-btn title="Play Audio" class="p-3 rounded-full bg-audio-500 text-white hover:bg-audio-600 focus:ring-2 focus:ring-audio-500 transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105">
+                                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                                 </button>
                                 ` : ''}
                                 <a data-control href="${href}" class="text-sm text-audio-600 hover:text-audio-700">View →</a>
@@ -313,8 +313,8 @@ class AudioDashboard {
                     <span>${item.analysis?.language || 'en'}</span>
                 </div>
                 <div class="mt-2 flex items-center justify-between">
-                    <button data-control data-play-btn title="Play audio" class="p-1.5 rounded-full bg-audio-50 text-audio-600 hover:bg-audio-100">
-                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 1116 0"/><path d="M7 12v3a1 1 0 001 1h1a1 1 0 001-1V9a1 1 0 00-1-1H8a1 1 0 00-1 1v3"/><path d="M17 12v3a1 1 0 01-1 1h-1a1 1 0 01-1-1V9a1 1 0 011-1h1a1 1 0 011 1v3"/></svg>
+                    <button data-control data-play-btn title="Play Audio" class="p-2.5 rounded-full bg-audio-500 text-white hover:bg-audio-600 transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                     </button>
                     <a data-control href="${href}" class="text-xs text-audio-600 hover:text-audio-700">View →</a>
                 </div>
@@ -647,11 +647,52 @@ class AudioDashboard {
         this.playAudio(this.playlist[this.currentTrackIndex]);
     }
 
+    toggleMute() {
+        if (!this.audioElement) return;
+        
+        this.audioElement.muted = !this.audioElement.muted;
+        this.updateMuteIcon();
+    }
+
+    updateMuteIcon() {
+        if (this.audioElement.muted) {
+            this.volumeOnIcon.classList.add('hidden');
+            this.volumeOffIcon.classList.remove('hidden');
+        } else {
+            this.volumeOnIcon.classList.remove('hidden');
+            this.volumeOffIcon.classList.add('hidden');
+        }
+    }
+
     handleKeyboard(event) {
-        // Space bar for play/pause
-        if (event.code === 'Space' && this.currentAudio) {
-            event.preventDefault();
-            this.togglePlayPause();
+        // Ignore if typing in an input
+        if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
+        
+        switch(event.code) {
+            case 'Space':
+                if (this.currentAudio) {
+                    event.preventDefault();
+                    this.togglePlayPause();
+                }
+                break;
+            case 'KeyJ':
+                if (this.currentAudio) {
+                    event.preventDefault();
+                    this.playPrevious();
+                }
+                break;
+            case 'KeyK':
+                if (this.currentAudio) {
+                    event.preventDefault();
+                    this.playNext();
+                }
+                break;
+            case 'KeyM':
+                if (this.currentAudio) {
+                    event.preventDefault();
+                    this.toggleMute();
+                }
+                break;
         }
     }
 
