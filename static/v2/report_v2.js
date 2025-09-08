@@ -231,28 +231,18 @@
     }
   });
   
-  // Hide audio player if no audio file
-  const audioSections = document.querySelectorAll('section');
-  let audioSection = null;
-  
-  // Find the audio player section
-  for (const section of audioSections) {
-    if (section.innerHTML.includes('Audio summary') && section.innerHTML.includes('playPause')) {
-      audioSection = section;
-      break;
-    }
-  }
-  
+  // Hide audio player if no audio file (but never hide metadata/thumbnail)
   if (player && (!player.querySelector('source') || !player.querySelector('source').src)) {
-    // No audio source - hide the entire audio player section
-    if (audioSection) {
-      audioSection.style.display = 'none';
+    // No audio source - find and hide only the specific audio player section
+    const audioPlayerSection = player.closest('section');
+    if (audioPlayerSection) {
+      audioPlayerSection.style.display = 'none';
+      console.log('[V2 Debug] No audio source found, hiding only audio player section');
     }
     // Also hide sticky player
     if (sticky) {
       sticky.style.display = 'none';
     }
-    console.log('[V2 Debug] No audio source found, hiding player sections');
   } else {
     console.log('[V2 Debug] Audio source found:', player?.querySelector('source')?.src);
   }
