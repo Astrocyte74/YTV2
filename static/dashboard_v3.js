@@ -274,24 +274,20 @@ class AudioDashboard {
         if (!this.pendingDelete) return;
         const stem = this.pendingDelete.stem;
         try {
-            // Get or ask for admin secret
-            let adminSecret = localStorage.getItem('ytv2.adminSecret');
-            if (!adminSecret) {
-                adminSecret = window.prompt('Enter admin delete key');
-                if (!adminSecret) return;
-                localStorage.setItem('ytv2.adminSecret', adminSecret);
-            }
+            // Optional admin secret (if set manually in localStorage)
+            const adminSecret = localStorage.getItem('ytv2.adminSecret') || '';
             const res = await fetch('/delete-reports', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Sync-Secret': adminSecret,
+                    ...(adminSecret ? { 'X-Sync-Secret': adminSecret } : {})
                 },
                 body: JSON.stringify({ files: [stem], delete_audio: true })
             });
+            // If 401 and we were using a stored key, clear it silently
             if (res.status === 401) {
-                localStorage.removeItem('ytv2.adminSecret');
-                alert('Unauthorized. Please enter a valid admin key.');
+                if (adminSecret) localStorage.removeItem('ytv2.adminSecret');
+                alert('Unauthorized (delete key invalid). Set localStorage ytv2.adminSecret if needed.');
                 return;
             }
             await res.json();
