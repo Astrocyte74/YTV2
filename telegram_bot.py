@@ -21,6 +21,7 @@ import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import socket
+import requests
 
 # V2 template engine imports
 try:
@@ -253,6 +254,29 @@ def extract_html_report_metadata(file_path: Path) -> Dict:
         logger.error(f"Error extracting HTML metadata from {file_path.name}: {e}")
         raise
 
+def get_youtube_video_info(video_id: str) -> dict:
+    """Simple YouTube video info fetcher without API"""
+    try:
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            # Look for JSON data in the page
+            import re
+            # Try to find duration in the page source
+            duration_match = re.search(r'"lengthSeconds":"(\d+)"', response.text)
+            if duration_match:
+                duration_seconds = int(duration_match.group(1))
+                return {"duration_seconds": duration_seconds}
+    except Exception as e:
+        logger.warning(f"Could not fetch YouTube info for {video_id}: {e}")
+    
+    return {}
+
+
 class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     """HTTP request handler with modern template system"""
     
@@ -285,6 +309,15 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         video_duration_seconds = (report_data.get('duration_seconds', 0) or 
                                 report_data.get('duration', 0) or  # Direct duration field
                                 youtube_meta.get('duration', 0))
+        
+        # If no duration found, try to fetch from YouTube
+        if not video_duration_seconds and video_id:
+            try:
+                yt_info = get_youtube_video_info(video_id)
+                video_duration_seconds = yt_info.get('duration_seconds', 0)
+            except Exception as e:
+                logger.debug(f"YouTube lookup failed for {video_id}: {e}")
+        
         audio_duration_seconds = report_data.get('media', {}).get('audio_duration_seconds', 0)
         
         # Format video duration
