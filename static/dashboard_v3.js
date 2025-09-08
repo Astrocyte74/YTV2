@@ -170,6 +170,7 @@ class AudioDashboard {
         // Bind play buttons
         this.contentGrid.querySelectorAll('[data-play-btn]').forEach(btn => {
             btn.addEventListener('click', (e) => {
+                e.stopPropagation();
                 const reportId = e.target.closest('[data-report-id]').dataset.reportId;
                 this.playAudio(reportId);
             });
@@ -178,8 +179,25 @@ class AudioDashboard {
         // Bind add to queue buttons
         this.contentGrid.querySelectorAll('[data-queue-btn]').forEach(btn => {
             btn.addEventListener('click', (e) => {
+                e.stopPropagation();
                 const reportId = e.target.closest('[data-report-id]').dataset.reportId;
                 this.addToQueue(reportId);
+            });
+        });
+
+        // Make whole card clickable (except controls)
+        this.contentGrid.querySelectorAll('[data-card]').forEach(card => {
+            card.addEventListener('click', (e) => {
+                // Ignore if click on a control
+                if (e.target.closest('[data-control]')) return;
+                const href = card.dataset.href;
+                if (href) window.location.href = href;
+            });
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    const href = card.dataset.href;
+                    if (href) window.location.href = href;
+                }
             });
         });
     }
@@ -188,86 +206,48 @@ class AudioDashboard {
         const duration = this.formatDuration(item.duration_seconds || 0);
         const categories = item.analysis?.category?.slice(0, 2) || ['General'];
         const hasAudio = item.media?.has_audio;
+        const href = `/${item.file_stem}.json?v=2`;
         
         return `
-            <div data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" class="group bg-white/70 backdrop-blur-sm rounded-xl border border-slate-200/50 p-6 hover:bg-white/90 hover:shadow-lg transition-all duration-300">
-                <!-- Header -->
-                <div class="flex items-start justify-between mb-4">
-                    <div class="flex-1 min-w-0 mr-4">
-                        <h3 class="text-lg font-semibold text-slate-800 group-hover:text-audio-700 transition-colors line-clamp-2 mb-2">
-                            <a href="/${item.file_stem}.json?v=2" class="hover:underline">${this.escapeHtml(item.title)}</a>
-                        </h3>
-                        <div class="flex items-center space-x-2 text-sm text-slate-500">
-                            <span>${duration}</span>
-                            <span>•</span>
-                            <span>${item.analysis?.complexity_level || 'Intermediate'}</span>
-                            <span>•</span>
-                            <span>${item.analysis?.language || 'en'}</span>
+            <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" tabindex="0" class="group cursor-pointer bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60 p-4 hover:bg-white hover:shadow-lg transition-all duration-300">
+                <div class="flex gap-4 items-start">
+                    <div class="relative w-56 aspect-video overflow-hidden rounded-lg bg-slate-100 flex-shrink-0">
+                        ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" class="absolute inset-0 w-full h-full object-cover">` : ''}
+                        ${hasAudio ? `
+                            <div class="absolute top-2 right-2 bg-audio-600/90 text-white rounded-full p-1.5 shadow-sm">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                            </div>` : ''}
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="flex-1 min-w-0">
+                                <h3 class="text-lg font-semibold text-slate-800 group-hover:text-audio-700 transition-colors line-clamp-2">
+                                    ${this.escapeHtml(item.title)}
+                                </h3>
+                                <div class="mt-1 flex items-center gap-2 text-sm text-slate-500">
+                                    <span>${duration}</span>
+                                    <span>•</span>
+                                    <span>${item.analysis?.complexity_level || 'Intermediate'}</span>
+                                    <span>•</span>
+                                    <span>${item.analysis?.language || 'en'}</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                ${hasAudio ? `
+                                <button data-control data-play-btn title="Play audio" class="p-2 rounded-lg text-audio-600 hover:bg-audio-100 focus:ring-2 focus:ring-audio-500">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                                </button>
+                                ` : ''}
+                                <a data-control href="${href}" class="text-sm text-audio-600 hover:text-audio-700">View →</a>
+                            </div>
+                        </div>
+
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            ${categories.map(cat => `
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-audio-100 text-audio-800">${this.escapeHtml(cat)}</span>
+                            `).join('')}
                         </div>
                     </div>
-                    ${item.thumbnail_url ? `
-                    <img src="${item.thumbnail_url}" alt="thumbnail" class="w-12 h-12 rounded-lg object-cover flex-shrink-0"/>
-                    ` : ''}
-                    
-                    <!-- Audio Status -->
-                    ${hasAudio ? `
-                        <div class="flex-shrink-0 w-12 h-12 bg-gradient-to-r from-audio-400 to-audio-600 rounded-lg flex items-center justify-center shadow-sm">
-                            <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                            </svg>
-                        </div>
-                    ` : `
-                        <div class="flex-shrink-0 w-12 h-12 bg-slate-200 rounded-lg flex items-center justify-center">
-                            <svg class="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                            </svg>
-                        </div>
-                    `}
-                </div>
-
-                <!-- Categories -->
-                <div class="flex flex-wrap gap-2 mb-4">
-                    ${categories.map(cat => `
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-audio-100 text-audio-800">
-                            ${this.escapeHtml(cat)}
-                        </span>
-                    `).join('')}
-                </div>
-
-                <!-- Key Topics (if available) -->
-                ${item.analysis?.key_topics?.length ? `
-                    <div class="mb-4">
-                        <p class="text-sm text-slate-600 line-clamp-2">
-                            Topics: ${item.analysis.key_topics.slice(0, 3).join(', ')}
-                        </p>
-                    </div>
-                ` : ''}
-
-                <!-- Actions -->
-                <div class="flex items-center justify-between pt-4 border-t border-slate-100">
-                    ${hasAudio ? `
-                        <button data-play-btn 
-                                class="inline-flex items-center space-x-2 bg-audio-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-audio-600 transition-colors">
-                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M8 5v14l11-7z"/>
-                            </svg>
-                            <span>Play Audio</span>
-                        </button>
-                        <a href="/${item.file_stem}.json?v=2" class="text-sm text-audio-600 hover:text-audio-700 transition-colors">View Summary →</a>
-                        <button data-queue-btn 
-                                class="inline-flex items-center space-x-2 text-slate-600 hover:text-audio-600 transition-colors">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                            </svg>
-                            <span class="text-sm">Add to Queue</span>
-                        </button>
-                    ` : `
-                        <span class="text-sm text-slate-500">No audio available</span>
-                        <a href="/${item.file_stem}.json" 
-                           class="text-sm text-audio-600 hover:text-audio-700 transition-colors">
-                            View Report →
-                        </a>
-                    `}
                 </div>
             </div>
         `;
