@@ -36,6 +36,9 @@ class AudioDashboard {
         this.progressBar = document.getElementById('progressBar');
         this.currentTimeEl = document.getElementById('currentTime');
         this.totalTimeEl = document.getElementById('totalTime');
+        this.volumeBtn = document.getElementById('volumeBtn');
+        this.volumeOnIcon = document.getElementById('volumeOnIcon');
+        this.volumeOffIcon = document.getElementById('volumeOffIcon');
         
         // Player info
         // Legacy bottom-player ids not present anymore; keep null-safe
@@ -83,6 +86,7 @@ class AudioDashboard {
         this.prevBtn.addEventListener('click', () => this.playPrevious());
         this.nextBtn.addEventListener('click', () => this.playNext());
         this.progressContainer.addEventListener('click', (e) => this.seekTo(e));
+        if (this.volumeBtn) this.volumeBtn.addEventListener('click', () => this.toggleMute());
         
         // Search and filters
         this.searchInput.addEventListener('input', 
@@ -102,6 +106,7 @@ class AudioDashboard {
         
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyboard(e));
+        this.audioElement.addEventListener('volumechange', () => this.updateMuteIcon());
     }
 
     async loadInitialData() {
@@ -254,8 +259,8 @@ class AudioDashboard {
                             </div>
                             <div class="flex items-center gap-2">
                                 ${hasAudio ? `
-                                <button data-control data-play-btn title="Play audio" class="p-2 rounded-lg text-audio-600 hover:bg-audio-100 focus:ring-2 focus:ring-audio-500">
-                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3c3.866 0 7 3.134 7 7v8a2 2 0 01-2 2h-1a1 1 0 01-1-1V12a1 1 0 00-1-1H10a1 1 0 00-1 1v7a1 1 0 01-1 1H7a2 2 0 01-2-2V10c0-3.866 3.134-7 7-7z"/></svg>
+                                <button data-control data-play-btn title="Play audio" class="p-2 rounded-full bg-audio-50 text-audio-600 hover:bg-audio-100 focus:ring-2 focus:ring-audio-500">
+                                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 1116 0"/><path d="M7 12v3a1 1 0 001 1h1a1 1 0 001-1V9a1 1 0 00-1-1H8a1 1 0 00-1 1v3"/><path d="M17 12v3a1 1 0 01-1 1h-1a1 1 0 01-1-1V9a1 1 0 011-1h1a1 1 0 011 1v3"/></svg>
                                 </button>
                                 ` : ''}
                                 <a data-control href="${href}" class="text-sm text-audio-600 hover:text-audio-700">View →</a>
@@ -290,8 +295,8 @@ class AudioDashboard {
                     <span>${item.analysis?.language || 'en'}</span>
                 </div>
                 <div class="mt-2 flex items-center justify-between">
-                    <button data-control data-play-btn title="Play audio" class="p-1.5 rounded-md text-audio-600 hover:bg-audio-100">
-                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3c3.866 0 7 3.134 7 7v8a2 2 0 01-2 2h-1a1 1 0 01-1-1V12a1 1 0 00-1-1H10a1 1 0 00-1 1v7a1 1 0 01-1 1H7a2 2 0 01-2-2V10c0-3.866 3.134-7 7-7z"/></svg>
+                    <button data-control data-play-btn title="Play audio" class="p-1.5 rounded-full bg-audio-50 text-audio-600 hover:bg-audio-100">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 1116 0"/><path d="M7 12v3a1 1 0 001 1h1a1 1 0 001-1V9a1 1 0 00-1-1H8a1 1 0 00-1 1v3"/><path d="M17 12v3a1 1 0 01-1 1h-1a1 1 0 01-1-1V9a1 1 0 011-1h1a1 1 0 011 1v3"/></svg>
                     </button>
                     <a data-control href="${href}" class="text-xs text-audio-600 hover:text-audio-700">View →</a>
                 </div>
@@ -604,18 +609,22 @@ class AudioDashboard {
     }
 
     playAllResults() {
-        // Implementation for playing all filtered results
-        console.log('Playing all results');
+        if (!this.currentItems || this.currentItems.length === 0) return;
+        this.playlist = this.currentItems.map(i => i.file_stem);
+        this.currentTrackIndex = 0;
+        this.playAudio(this.playlist[0]);
     }
 
     playNext() {
-        // Implementation for next track
-        console.log('Playing next');
+        if (!this.playlist || this.playlist.length === 0) return;
+        this.currentTrackIndex = (this.currentTrackIndex + 1) % this.playlist.length;
+        this.playAudio(this.playlist[this.currentTrackIndex]);
     }
 
     playPrevious() {
-        // Implementation for previous track
-        console.log('Playing previous');
+        if (!this.playlist || this.playlist.length === 0) return;
+        this.currentTrackIndex = (this.currentTrackIndex - 1 + this.playlist.length) % this.playlist.length;
+        this.playAudio(this.playlist[this.currentTrackIndex]);
     }
 
     handleKeyboard(event) {
