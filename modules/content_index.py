@@ -7,7 +7,6 @@ Provides the foundation for Phase 2 API infrastructure with universal schema sup
 
 import json
 import logging
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Any, Tuple
@@ -33,7 +32,6 @@ class ContentIndex:
     def __init__(self, reports_dir: str = "data/reports"):
         """Initialize content index with reports directory"""
         self.reports_dir = Path(reports_dir)
-        self.exports_dir = Path(os.getenv('EXPORTS_DIR', './exports'))  # For audio file discovery
         self.reports = {}  # id -> report data
         self.facets = {}   # facet_name -> {value: count}
         self.search_index = {}  # for text search
@@ -174,32 +172,14 @@ class ContentIndex:
         
         if is_legacy:
             # Legacy format - extract from old structure
-            video_info = report_data.get('video', {}) or report_data.get('video_info', {})
-            summary_info = report_data.get('summary', {}) or {}
-            
-            # Extract video ID and proper title
-            video_id = video_info.get('id') or video_info.get('video_id')
-            file_title_fallback = file_stem.replace('_', ' ')
-            title = video_info.get('title') or summary_info.get('title') or file_title_fallback
+            video_info = report_data.get('video', {})
+            summary_info = report_data.get('summary', {})
             
             report_id = f"legacy:{file_stem}"
+            title = video_info.get('title', file_stem.replace('_', ' '))
             content_source = 'youtube'
-            duration_seconds = int(video_info.get('duration') or 0)
-            published_at = video_info.get('upload_date') or video_info.get('published_at') or ''
-            
-            # Build canonical URL
-            canonical_url = video_info.get('url')
-            if not canonical_url and video_id:
-                canonical_url = f"https://www.youtube.com/watch?v={video_id}"
-            
-            # Extract thumbnail URL
-            thumbnail_url = (
-                video_info.get('thumbnail_url') or 
-                video_info.get('thumbnail') or
-                (video_info.get('thumbnails') or [{}])[-1].get('url') if video_info.get('thumbnails') else None
-            )
-            if not thumbnail_url and video_id:
-                thumbnail_url = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+            duration_seconds = video_info.get('duration', 0)
+            published_at = video_info.get('upload_date', '')
             
             # Legacy analysis - use defaults
             category = ['General']
@@ -208,32 +188,17 @@ class ContentIndex:
             language = 'en'
             key_topics = []
             
-            # Discover audio files for this content
-            audio_url = self._find_audio_file(video_id, file_stem)
-            has_audio = bool(audio_url)
-            
         else:
             # Universal schema format
             report_id = report_data.get('id', f"legacy:{file_stem}")
-            
-            # Try multiple sources for title: top-level, metadata, video object, then fallback
             title = str(report_data.get('title', ''))
             if not title:
                 metadata = report_data.get('metadata', {})
-                title = str(metadata.get('title', ''))
-            if not title and video_title:
-                title = str(video_title)
-            if not title:
-                title = file_stem.replace('_', ' ')
+                title = str(metadata.get('title', file_stem.replace('_', ' ')))
             
             content_source = report_data.get('content_source', 'youtube')
             published_at = report_data.get('published_at', '')
-            if not published_at and video_upload_date:
-                published_at = video_upload_date
-                
             duration_seconds = report_data.get('duration_seconds', 0)
-            if not duration_seconds and video_duration:
-                duration_seconds = int(video_duration)
         
             # Universal schema - extract analysis data
             analysis = report_data.get('analysis', {})
@@ -268,71 +233,28 @@ class ContentIndex:
             year = str(datetime.now().year)  # fallback to current year
         
         # Create indexed report structure (without raw data to save memory)
-        if is_legacy:
-            # Legacy format - use extracted values
-            indexed_report = {
-                'id': report_id,
-                'title': title[:300],  # Limit title length
-                'content_source': content_source,
-                'published_at': published_at,
-                'duration_seconds': duration_seconds,
-                'thumbnail_url': thumbnail_url or '',
-                'canonical_url': canonical_url or '',
-                'analysis': {
-                    'language': language,
-                    'category': category[:3],  # Limit to 3 categories
-                    'content_type': content_type,
-                    'complexity_level': complexity_level,
-                    'key_topics': key_topics[:5]  # Limit to 5 topics
-                },
-                'media': {
-                    'has_audio': has_audio,
-                    'audio_duration_seconds': duration_seconds,
-                    'audio_url': audio_url
-                },
-                'year': year,
-                'file_stem': file_stem
-            }
-        else:
-            # Universal schema format - but also check for legacy data in video object
-            media = report_data.get('media', {})
-            video_info = report_data.get('video', {}) or {}
-            
-            # Try to extract video_id and title from video object if available
-            video_id = video_info.get('id') or video_info.get('video_id')
-            video_title = video_info.get('title')
-            video_thumbnail = video_info.get('thumbnail')
-            video_duration = video_info.get('duration', 0)
-            video_upload_date = video_info.get('upload_date')
-            
-            # Discover audio file if not already provided in media
-            audio_url = media.get('audio_url')
-            if not audio_url:
-                audio_url = self._find_audio_file(video_id, file_stem)
-            
-            indexed_report = {
-                'id': report_id,
-                'title': title[:300],  # Limit title length
-                'content_source': content_source,
-                'published_at': published_at,
-                'duration_seconds': duration_seconds,
-                'thumbnail_url': report_data.get('thumbnail_url', '') or video_thumbnail or (f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else ''),
-                'canonical_url': report_data.get('canonical_url', '') or (f"https://www.youtube.com/watch?v={video_id}" if video_id else ''),
-                'analysis': {
-                    'language': language,
-                    'category': category[:3],  # Limit to 3 categories
-                    'content_type': content_type,
-                    'complexity_level': complexity_level,
-                    'key_topics': key_topics[:5]  # Limit to 5 topics
-                },
-                'media': {
-                    'has_audio': has_audio,
-                    'audio_duration_seconds': media.get('audio_duration_seconds', duration_seconds),
-                    'audio_url': audio_url
-                },
-                'year': year,
-                'file_stem': file_stem
-            }
+        indexed_report = {
+            'id': report_id,
+            'title': title[:300],  # Limit title length
+            'content_source': content_source,
+            'published_at': published_at,
+            'duration_seconds': duration_seconds,
+            'thumbnail_url': report_data.get('thumbnail_url', ''),
+            'canonical_url': report_data.get('canonical_url', ''),
+            'analysis': {
+                'language': language,
+                'category': category[:3],  # Limit to 3 categories
+                'content_type': content_type,
+                'complexity_level': complexity_level,
+                'key_topics': key_topics[:5]  # Limit to 5 topics
+            },
+            'media': {
+                'has_audio': has_audio,
+                'audio_duration_seconds': media.get('audio_duration_seconds', duration_seconds)
+            },
+            'year': year,
+            'file_stem': file_stem
+        }
         
         # Store in main index
         self.reports[report_id] = indexed_report
@@ -506,42 +428,6 @@ class ContentIndex:
                     validated[key] = value
         
         return validated
-    
-    def _find_audio_file(self, video_id: Optional[str], file_stem: str) -> Optional[str]:
-        """Find matching audio file for a report"""
-        try:
-            if not self.exports_dir.exists():
-                return None
-                
-            # Search patterns in priority order
-            candidates = []
-            
-            # Pattern 1: audio_{video_id}_*.mp3 (from new uploads)
-            if video_id:
-                candidates.extend(self.exports_dir.glob(f"audio_{video_id}_*.mp3"))
-                candidates.extend(self.exports_dir.glob(f"*{video_id}*.mp3"))
-            
-            # Pattern 2: {video_id}_*.mp3 (older format)
-            if video_id:
-                candidates.extend(self.exports_dir.glob(f"{video_id}_*.mp3"))
-            
-            # Pattern 3: {file_stem}.mp3 (exact match)
-            candidates.extend(self.exports_dir.glob(f"{file_stem}.mp3"))
-            
-            # Pattern 4: anything containing file_stem
-            candidates.extend(self.exports_dir.glob(f"*{file_stem}*.mp3"))
-            
-            # Remove duplicates and pick most recent
-            if candidates:
-                unique_candidates = list(set(candidates))
-                latest = max(unique_candidates, key=lambda p: p.stat().st_mtime)
-                # Return URL path for serving
-                return f"/exports/{latest.name}"
-                
-        except Exception as e:
-            logger.warning(f"Error finding audio file for {file_stem}: {e}")
-            
-        return None
     
     def _apply_filters(self, filters: Dict[str, Any], reports: Optional[List[Dict]] = None) -> List[Dict[str, Any]]:
         """Apply filters to reports"""

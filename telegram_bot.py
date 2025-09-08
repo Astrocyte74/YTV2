@@ -1265,7 +1265,6 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     
     def handle_upload_report(self):
         """Handle POST request to upload report from NAS to Render with transactional validation"""
-        global content_index
         try:
             # Check sync secret for authentication
             sync_secret = os.getenv('SYNC_SECRET')
@@ -1410,14 +1409,6 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             
             # Handle fully idempotent case (both files already exist with same content)
             if report_idempotent and (not audio_filename or audio_idempotent):
-                # Force refresh the content index even for idempotent uploads (in case index was stale)
-                try:
-                    if content_index:
-                        refreshed_count = content_index.force_refresh()
-                        logger.info(f"🔄 Content index force-refreshed after idempotent upload: {refreshed_count} reports indexed")
-                except Exception as e:
-                    logger.warning(f"Failed to refresh content index after idempotent upload: {e}")
-                
                 response_data = {
                     "status": "success",
                     "idempotent": True,
@@ -1457,15 +1448,6 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             
             # Send success response with useful JSON
             report_stem = report_filename.replace('.json', '') if report_filename else ''
-            
-            # Force refresh the content index immediately after successful upload
-            try:
-                if content_index:
-                    refreshed_count = content_index.force_refresh()
-                    logger.info(f"🔄 Content index force-refreshed after upload: {refreshed_count} reports indexed")
-            except Exception as e:
-                logger.warning(f"Failed to refresh content index after upload: {e}")
-            
             response_data = {
                 "status": "success",
                 "report_stem": report_stem,
