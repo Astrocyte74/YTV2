@@ -355,7 +355,8 @@ class AudioDashboard {
                                     ${isPlaying ? '<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-audio-100 text-audio-700">Now Playing</span>' : ''}
                                 </div>
                                 <div class="mt-1 flex items-center gap-2 text-sm text-slate-500">
-                                    <span>${duration}</span>
+                                    <span>🎬 ${duration}</span>
+                                    ${item.media?.audio_duration_seconds ? `<span>•</span><span>🎵 ${this.formatDuration(item.media.audio_duration_seconds)}</span>` : ''}
                                     <span>•</span>
                                     <span>${item.analysis?.complexity_level || 'Intermediate'}</span>
                                     <span>•</span>

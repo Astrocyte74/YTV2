@@ -219,8 +219,10 @@ class ContentIndex:
             content_source = report_data.get('content_source', 'youtube')
             published_at = report_data.get('published_at', '')
             
-            # Enhanced schema duration support
-            duration_seconds = report_data.get('duration_seconds', 0)
+            # Enhanced schema duration support - check multiple sources
+            duration_seconds = (report_data.get('duration_seconds', 0) or
+                              report_data.get('duration', 0) or  # Direct duration field
+                              youtube_meta.get('duration', 0))
             if not duration_seconds and 'media' in report_data:
                 # Try enhanced schema audio duration
                 duration_seconds = report_data.get('media', {}).get('audio_duration_seconds', 0)

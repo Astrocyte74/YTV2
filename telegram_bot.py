@@ -281,8 +281,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     report_data.get('thumbnail') or 
                     (f"https://img.youtube.com/vi/{video_id}/mqdefault.jpg" if video_id else ""))
         
-        # Duration - support both video and audio durations
-        video_duration_seconds = report_data.get('duration_seconds', 0) or youtube_meta.get('duration', 0)
+        # Duration - support both video and audio durations from multiple sources
+        video_duration_seconds = (report_data.get('duration_seconds', 0) or 
+                                report_data.get('duration', 0) or  # Direct duration field
+                                youtube_meta.get('duration', 0))
         audio_duration_seconds = report_data.get('media', {}).get('audio_duration_seconds', 0)
         
         # Format video duration
