@@ -554,6 +554,8 @@ class ContentIndex:
         
         if sort == 'newest':
             return sorted(reports, key=lambda r: r.get('published_at', ''), reverse=True)
+        elif sort == 'oldest':
+            return sorted(reports, key=lambda r: r.get('published_at', ''))
         elif sort == 'title':
             return sorted(reports, key=lambda r: r.get('title', '').lower())
         elif sort == 'duration':

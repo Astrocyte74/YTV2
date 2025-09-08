@@ -23,7 +23,8 @@ class AudioDashboard {
     initializeElements() {
         // Audio elements
         this.audioElement = document.getElementById('audioElement');
-        this.audioPlayerContainer = document.getElementById('audioPlayerContainer');
+        // Bottom container removed; mini player is always visible in sidebar
+        this.audioPlayerContainer = null;
         
         // Player controls
         this.playPauseBtn = document.getElementById('playPauseBtn');
@@ -37,6 +38,7 @@ class AudioDashboard {
         this.totalTimeEl = document.getElementById('totalTime');
         
         // Player info
+        // Legacy bottom-player ids not present anymore; keep null-safe
         this.playerTitle = document.getElementById('playerTitle');
         this.playerMeta = document.getElementById('playerMeta');
         
@@ -92,6 +94,7 @@ class AudioDashboard {
         this.playAllBtn.addEventListener('click', () => this.playAllResults());
         if (this.listViewBtn) this.listViewBtn.addEventListener('click', () => this.setViewMode('list'));
         if (this.gridViewBtn) this.gridViewBtn.addEventListener('click', () => this.setViewMode('grid'));
+        this.updateViewToggle();
         
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyboard(e));
@@ -248,8 +251,7 @@ class AudioDashboard {
                             <div class="flex items-center gap-2">
                                 ${hasAudio ? `
                                 <button data-control data-play-btn title="Play audio" class="p-2 rounded-lg text-audio-600 hover:bg-audio-100 focus:ring-2 focus:ring-audio-500">
-                                    <img src="/images/icon_headphones-32.png" alt="Play" class="w-5 h-5" onerror="this.style.display='none'; this.nextElementSibling.classList.remove('hidden')">
-                                    <svg class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3c3.866 0 7 3.134 7 7v8a2 2 0 01-2 2h-1a1 1 0 01-1-1V12a1 1 0 00-1-1H10a1 1 0 00-1 1v7a1 1 0 01-1 1H7a2 2 0 01-2-2V10c0-3.866 3.134-7 7-7z"/></svg>
                                 </button>
                                 ` : ''}
                                 <a data-control href="${href}" class="text-sm text-audio-600 hover:text-audio-700">View →</a>
@@ -285,8 +287,7 @@ class AudioDashboard {
                 </div>
                 <div class="mt-2 flex items-center justify-between">
                     <button data-control data-play-btn title="Play audio" class="p-1.5 rounded-md text-audio-600 hover:bg-audio-100">
-                        <img src="/images/icon_headphones-32.png" alt="Play" class="w-4 h-4" onerror="this.style.display='none'; this.nextElementSibling.classList.remove('hidden')">
-                        <svg class="w-4 h-4 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3c3.866 0 7 3.134 7 7v8a2 2 0 01-2 2h-1a1 1 0 01-1-1V12a1 1 0 00-1-1H10a1 1 0 00-1 1v7a1 1 0 01-1 1H7a2 2 0 01-2-2V10c0-3.866 3.134-7 7-7z"/></svg>
                     </button>
                     <a data-control href="${href}" class="text-xs text-audio-600 hover:text-audio-700">View →</a>
                 </div>
@@ -383,12 +384,9 @@ class AudioDashboard {
                 src: audioSrc
             };
 
-            // Show audio player if hidden
-            this.audioPlayerContainer.classList.remove('hidden');
-            
             // Update player info
-            this.playerTitle.textContent = title;
-            this.playerMeta.textContent = 'Loading...';
+            if (this.nowPlayingTitle) this.nowPlayingTitle.textContent = title;
+            if (this.nowPlayingMeta) this.nowPlayingMeta.textContent = 'Loading...';
             
             // Load and play audio
             this.audioElement.src = audioSrc;
@@ -454,7 +452,19 @@ class AudioDashboard {
         this.viewMode = mode;
         localStorage.setItem('ytv2.viewMode', mode);
         // Re-render current items
+        this.updateViewToggle();
         if (this.currentItems) this.renderContent(this.currentItems);
+    }
+
+    updateViewToggle() {
+        const active = 'bg-audio-500 text-white';
+        const inactive = 'bg-white text-slate-700';
+        if (this.listViewBtn && this.gridViewBtn) {
+            this.listViewBtn.className = this.listViewBtn.className
+                .replace(active, '').replace(inactive, '').trim() + ' ' + (this.viewMode === 'list' ? active : inactive);
+            this.gridViewBtn.className = this.gridViewBtn.className
+                .replace(active, '').replace(inactive, '').trim() + ' ' + (this.viewMode === 'grid' ? active : inactive);
+        }
     }
 
     setCurrentFromItem(item) {
@@ -463,8 +473,8 @@ class AudioDashboard {
         const videoId = item.video_id;
         const audioSrc = videoId ? `/exports/by_video/${videoId}.mp3` : `/exports/${reportId}.mp3`;
         this.currentAudio = { id: reportId, title, src: audioSrc };
-        this.playerTitle.textContent = title;
-        this.playerMeta.textContent = 'Ready';
+        if (this.nowPlayingTitle) this.nowPlayingTitle.textContent = title;
+        if (this.nowPlayingMeta) this.nowPlayingMeta.textContent = 'Ready';
         // Do not autoplay here; will load when user hits play
         this.audioElement.src = audioSrc;
         this.audioElement.load();
