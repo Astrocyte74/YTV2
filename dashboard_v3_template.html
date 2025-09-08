@@ -69,31 +69,31 @@
     </style>
 </head>
 
-<body class="h-full bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950 font-sans antialiased text-slate-900 dark:text-slate-100">
+<body class="h-full bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800 font-sans antialiased text-slate-900 dark:text-slate-100">
     
     <!-- Main Container -->
     <div class="min-h-full flex flex-col">
         
         <!-- Header -->
-        <header class="bg-white/80 backdrop-blur-md border-b border-slate-200/50 sticky top-0 z-40">
+        <header class="bg-white/80 dark:bg-slate-800/90 backdrop-blur-md border-b border-slate-200/50 dark:border-slate-700/50 sticky top-0 z-40">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex items-center justify-between h-16">
                     <div class="flex items-center space-x-3">
                         <div class="text-2xl">🎧</div>
                         <div>
-                            <h1 class="text-xl font-semibold text-slate-800">YTV2 Audio</h1>
-                            <p class="text-sm text-slate-500">AI-powered video summaries</p>
+                            <h1 class="text-xl font-semibold text-slate-800 dark:text-slate-100">YTV2 Audio</h1>
+                            <p class="text-sm text-slate-500 dark:text-slate-300">AI-powered video summaries</p>
                         </div>
                     </div>
                     
                     <!-- Header Controls -->
                     <div class="flex items-center space-x-3">
-                        <button id="queueToggle" class="p-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors">
+                        <button id="queueToggle" class="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                             </svg>
                         </button>
-                        <button id="settingsToggle" class="p-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors">
+                        <button id="settingsToggle" class="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -127,7 +127,7 @@
         <div class="flex-1 flex">
             
             <!-- Search & Filters Sidebar -->
-            <aside id="sidebar" class="w-80 bg-white/50 backdrop-blur-sm border-r border-slate-200/50 overflow-y-auto sticky top-16 self-start" style="height: calc(100vh - 4rem)">
+            <aside id="sidebar" class="w-80 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm border-r border-slate-200/50 dark:border-slate-700/50 overflow-y-auto sticky top-16 self-start" style="height: calc(100vh - 4rem)">
                 <div class="p-6 space-y-6">
                     <!-- Mini Player (always visible) -->
                     <div id="nowPlayingPreview" class="bg-gradient-to-r from-audio-500 to-audio-600 rounded-xl p-4 text-white shadow-md">
@@ -175,27 +175,27 @@
                             </div>
                             <input type="text" id="searchInput" 
                                    placeholder="Search summaries..." 
-                                   class="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-audio-500 focus:border-audio-500 bg-white/80 backdrop-blur-sm text-slate-800 placeholder-slate-500">
+                                   class="w-full pl-10 pr-4 py-3 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-audio-500 focus:border-audio-500 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm text-slate-800 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400">
                         </div>
                     </div>
 
                     <!-- Quick Filters -->
                     <div>
-                        <h3 class="text-sm font-medium text-slate-800 mb-3">Categories</h3>
+                        <h3 class="text-sm font-medium text-slate-800 dark:text-slate-200 mb-3">Categories</h3>
                         <div class="space-y-2" id="categoryFilters">
                             <!-- Dynamic category filters will be inserted here -->
                         </div>
                     </div>
 
                     <div>
-                        <h3 class="text-sm font-medium text-slate-800 mb-3">Content Type</h3>
+                        <h3 class="text-sm font-medium text-slate-800 dark:text-slate-200 mb-3">Content Type</h3>
                         <div class="space-y-2" id="contentTypeFilters">
                             <!-- Dynamic content type filters will be inserted here -->
                         </div>
                     </div>
 
                     <div>
-                        <h3 class="text-sm font-medium text-slate-800 mb-3">Complexity</h3>
+                        <h3 class="text-sm font-medium text-slate-800 dark:text-slate-200 mb-3">Complexity</h3>
                         <div class="space-y-2" id="complexityFilters">
                             <!-- Dynamic complexity filters will be inserted here -->
                         </div>
