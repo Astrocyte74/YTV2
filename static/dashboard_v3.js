@@ -58,6 +58,7 @@ class AudioDashboard {
         this.audioQueue = document.getElementById('audioQueue');
         this.nowPlayingPreview = document.getElementById('nowPlayingPreview');
         this.nowPlayingTitle = document.getElementById('nowPlayingTitle');
+        this.nowPlayingMeta = document.getElementById('nowPlayingMeta');
         this.nowPlayingProgress = document.getElementById('nowPlayingProgress');
         
         // Action buttons
@@ -70,6 +71,7 @@ class AudioDashboard {
         this.audioElement.addEventListener('timeupdate', () => this.updateProgress());
         this.audioElement.addEventListener('ended', () => this.playNext());
         this.audioElement.addEventListener('canplay', () => this.handleCanPlay());
+        this.audioElement.addEventListener('error', () => this.handleAudioError());
         
         // Player controls
         this.playPauseBtn.addEventListener('click', () => this.togglePlayPause());
@@ -380,6 +382,17 @@ class AudioDashboard {
         }
     }
 
+    handleAudioError() {
+        // Try fallback path if by_video failed
+        if (!this.currentAudio) return;
+        const src = this.audioElement.currentSrc || this.audioElement.src;
+        if (src.includes('/exports/by_video/') && this.currentAudio.id) {
+            const fallback = `/exports/${this.currentAudio.id}.mp3`;
+            this.audioElement.src = fallback;
+            this.audioElement.load();
+        }
+    }
+
     togglePlayPause() {
         if (!this.currentAudio) return;
 
@@ -419,6 +432,9 @@ class AudioDashboard {
         if (duration && !isNaN(duration)) {
             this.totalTimeEl.textContent = this.formatDuration(duration);
             this.playerMeta.textContent = `${this.formatDuration(duration)} audio summary`;
+            if (this.nowPlayingMeta) {
+                this.nowPlayingMeta.textContent = `0:00 / ${this.formatDuration(duration)}`;
+            }
         }
     }
 
@@ -434,6 +450,9 @@ class AudioDashboard {
             // Update now playing preview
             if (this.nowPlayingProgress) {
                 this.nowPlayingProgress.style.width = `${progress}%`;
+            }
+            if (this.nowPlayingMeta) {
+                this.nowPlayingMeta.textContent = `${this.formatDuration(currentTime)} / ${this.formatDuration(duration)}`;
             }
         }
         
