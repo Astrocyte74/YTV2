@@ -232,19 +232,29 @@
   });
   
   // Hide audio player if no audio file (but never hide metadata/thumbnail)
-  if (player && (!player.querySelector('source') || !player.querySelector('source').src)) {
+  const audioSource = player?.querySelector('source');
+  const hasAudioSrc = audioSource && audioSource.src && audioSource.src.trim() !== '';
+  
+  console.log('[V2 Debug] Audio element check:', {
+    hasPlayer: !!player,
+    hasSource: !!audioSource,
+    srcValue: audioSource?.src,
+    hasValidSrc: hasAudioSrc
+  });
+  
+  if (player && !hasAudioSrc) {
     // No audio source - find and hide only the specific audio player section
     const audioPlayerSection = player.closest('section');
     if (audioPlayerSection) {
       audioPlayerSection.style.display = 'none';
-      console.log('[V2 Debug] No audio source found, hiding only audio player section');
+      console.log('[V2 Debug] No valid audio source found, hiding only audio player section');
     }
     // Also hide sticky player
     if (sticky) {
       sticky.style.display = 'none';
     }
-  } else {
-    console.log('[V2 Debug] Audio source found:', player?.querySelector('source')?.src);
+  } else if (hasAudioSrc) {
+    console.log('[V2 Debug] Valid audio source found:', audioSource.src);
   }
   
   // init
