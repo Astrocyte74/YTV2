@@ -192,8 +192,21 @@ class ContentIndex:
         else:
             # Universal schema format
             report_id = report_data.get('id', f"legacy:{file_stem}")
-            # Prefer explicit top-level title; fall back to video.title; then metadata; finally file stem
+            
+            # Enhanced JSON schema support - get YouTube metadata from source_metadata
+            youtube_meta = report_data.get('source_metadata', {}).get('youtube', {})
+            
+            # Prefer explicit top-level title; fall back to enhanced schema; then video.title; then metadata; finally file stem
             title = str(report_data.get('title', '')).strip()
+            if not title:
+                # Try enhanced schema title (extracted from video info)
+                video_id = youtube_meta.get('video_id', '')
+                if video_id:
+                    # Title can be derived from filename or video metadata
+                    # For now, use filename cleaning as title extraction
+                    title_parts = file_stem.replace(video_id, '').strip('_').split('_')
+                    title = ' '.join(title_parts[:-2] if len(title_parts) > 2 else title_parts).replace('_', ' ')
+                    title = title.strip()
             if not title:
                 video_block = report_data.get('video', {}) or {}
                 title = str(video_block.get('title', '')).strip()
@@ -205,14 +218,23 @@ class ContentIndex:
             
             content_source = report_data.get('content_source', 'youtube')
             published_at = report_data.get('published_at', '')
+            
+            # Enhanced schema duration support
             duration_seconds = report_data.get('duration_seconds', 0)
+            if not duration_seconds and 'media' in report_data:
+                # Try enhanced schema audio duration
+                duration_seconds = report_data.get('media', {}).get('audio_duration_seconds', 0)
             if not duration_seconds:
                 # Fallback to original video duration if provided
                 try:
                     duration_seconds = int((report_data.get('video') or {}).get('duration') or 0)
                 except Exception:
                     duration_seconds = 0
-            channel = (report_data.get('video') or {}).get('channel', '')
+                    
+            # Enhanced schema channel support
+            channel = youtube_meta.get('channel_name', '') or youtube_meta.get('uploader_id', '').replace('@', '')
+            if not channel:
+                channel = (report_data.get('video') or {}).get('channel', '')
             # Fallbacks for published date
             if not published_at:
                 vid = report_data.get('video') or {}
@@ -258,11 +280,20 @@ class ContentIndex:
             year = str(datetime.now().year)  # fallback to current year
         
         # Create indexed report structure (without raw data to save memory)
-        # Pull common video fields for thumbnails/urls/video_id
+        # Pull common video fields for thumbnails/urls/video_id with enhanced schema support
         video_block = report_data.get('video', {}) or {}
+        
+        # Enhanced schema support for thumbnail_url
         thumbnail_url = report_data.get('thumbnail_url') or video_block.get('thumbnail', '')
+        if not thumbnail_url and youtube_meta:
+            # Generate YouTube thumbnail URL from video_id
+            video_id_meta = youtube_meta.get('video_id', '')
+            if video_id_meta:
+                thumbnail_url = f"https://img.youtube.com/vi/{video_id_meta}/mqdefault.jpg"
+        
+        # Enhanced schema support for canonical_url and video_id
         canonical_url = report_data.get('canonical_url') or video_block.get('url', '')
-        video_id = video_block.get('video_id', '')
+        video_id = youtube_meta.get('video_id', '') or video_block.get('video_id', '')
 
         indexed_report = {
             'id': report_id,
