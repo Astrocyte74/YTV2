@@ -180,6 +180,12 @@ class AudioDashboard {
             this.renderContent(this.currentItems);
             this.renderPagination(data.pagination);
             this.updateResultsInfo(data.pagination);
+            // Default playlist and current item (no autoplay)
+            if (this.currentItems && this.currentItems.length > 0) {
+                this.playlist = this.currentItems.map(i => i.file_stem);
+                this.currentTrackIndex = 0;
+                this.setCurrentFromItem(this.currentItems[0]);
+            }
         } catch (error) {
             console.error('Failed to load content:', error);
             this.showError('Failed to load content');
@@ -236,6 +242,8 @@ class AudioDashboard {
         const hasAudio = item.media?.has_audio;
         const href = `/${item.file_stem}.json?v=2`;
         
+        const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
+        const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
         return `
             <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" tabindex="0" class="group cursor-pointer bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60 p-4 hover:bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200">
                 <div class="flex gap-4 items-start">
@@ -248,7 +256,11 @@ class AudioDashboard {
                                 <h3 class="text-lg font-semibold text-slate-800 group-hover:text-audio-700 transition-colors line-clamp-2">
                                     ${this.escapeHtml(item.title)}
                                 </h3>
-                                <div class="text-sm text-slate-500 mt-0.5 line-clamp-1">${this.escapeHtml(item.channel || '')}</div>
+                                <div class="text-sm text-slate-500 mt-0.5 line-clamp-1 flex items-center gap-2">
+                                    <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-200 text-slate-700 text-[10px]">${channelInitial}</span>
+                                    ${this.escapeHtml(item.channel || '')}
+                                    ${isPlaying ? '<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-audio-100 text-audio-700">Now Playing</span>' : ''}
+                                </div>
                                 <div class="mt-1 flex items-center gap-2 text-sm text-slate-500">
                                     <span>${duration}</span>
                                     <span>•</span>
@@ -281,6 +293,8 @@ class AudioDashboard {
     createGridCard(item) {
         const duration = this.formatDuration(item.duration_seconds || 0);
         const href = `/${item.file_stem}.json?v=2`;
+        const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
+        const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
         return `
         <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" tabindex="0" class="group cursor-pointer bg-white/80 rounded-xl border border-slate-200/60 hover:bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
             <div class="relative aspect-video bg-slate-100">
@@ -288,7 +302,11 @@ class AudioDashboard {
             </div>
             <div class="p-3">
                 <h3 class="text-sm font-semibold text-slate-800 group-hover:text-audio-700 line-clamp-2">${this.escapeHtml(item.title)}</h3>
-                <div class="text-xs text-slate-500 mt-1 line-clamp-1">${this.escapeHtml(item.channel || '')}</div>
+                <div class="text-xs text-slate-500 mt-1 line-clamp-1 flex items-center gap-2">
+                    <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-slate-700 text-[9px]">${channelInitial}</span>
+                    ${this.escapeHtml(item.channel || '')}
+                    ${isPlaying ? '<span class="ml-2 text-[10px] px-1 py-0.5 rounded bg-audio-100 text-audio-700">Now Playing</span>' : ''}
+                </div>
                 <div class="mt-1 flex items-center gap-2 text-xs text-slate-500">
                     <span>${duration}</span>
                     <span>•</span>
@@ -397,9 +415,10 @@ class AudioDashboard {
             if (this.nowPlayingTitle) this.nowPlayingTitle.textContent = title;
             if (this.nowPlayingMeta) this.nowPlayingMeta.textContent = 'Loading...';
             
-            // Load and play audio
+            // Load and play audio (user initiated)
             this.audioElement.src = audioSrc;
             this.audioElement.load();
+            this.userInitiatedPlay = true;
             
             // Update now playing preview
             this.updateNowPlayingPreview();
@@ -436,13 +455,15 @@ class AudioDashboard {
     }
 
     handleCanPlay() {
-        if (this.currentAudio && !this.isPlaying) {
+        if (this.currentAudio && !this.isPlaying && this.userInitiatedPlay) {
             this.audioElement.play().then(() => {
                 this.isPlaying = true;
                 this.updatePlayButton();
                 this.updatePlayingCard();
             }).catch(error => {
                 console.error('Auto-play failed:', error);
+            }).finally(() => {
+                this.userInitiatedPlay = false;
             });
         }
     }
@@ -506,8 +527,7 @@ class AudioDashboard {
     updateDuration() {
         const duration = this.audioElement.duration;
         if (duration && !isNaN(duration)) {
-            this.totalTimeEl.textContent = this.formatDuration(duration);
-            this.playerMeta.textContent = `${this.formatDuration(duration)} audio summary`;
+            if (this.totalTimeEl) this.totalTimeEl.textContent = this.formatDuration(duration);
             if (this.nowPlayingMeta) {
                 this.nowPlayingMeta.textContent = `0:00 / ${this.formatDuration(duration)}`;
             }
