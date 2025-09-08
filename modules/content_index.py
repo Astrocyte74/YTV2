@@ -180,6 +180,7 @@ class ContentIndex:
             content_source = 'youtube'
             duration_seconds = video_info.get('duration', 0)
             published_at = video_info.get('upload_date', '')
+            channel = video_info.get('channel', '')
             
             # Legacy analysis - use defaults
             category = ['General']
@@ -211,6 +212,7 @@ class ContentIndex:
                     duration_seconds = int((report_data.get('video') or {}).get('duration') or 0)
                 except Exception:
                     duration_seconds = 0
+            channel = (report_data.get('video') or {}).get('channel', '')
         
             # Universal schema - extract analysis data
             analysis = report_data.get('analysis', {})
@@ -259,6 +261,7 @@ class ContentIndex:
             'duration_seconds': duration_seconds,
             'thumbnail_url': thumbnail_url,
             'canonical_url': canonical_url,
+            'channel': channel,
             'analysis': {
                 'language': language,
                 'category': category[:3],  # Limit to 3 categories
@@ -566,6 +569,7 @@ class ContentIndex:
             'title': report['title'],
             'thumbnail_url': report['thumbnail_url'],
             'canonical_url': report['canonical_url'],
+            'channel': report.get('channel', ''),
             'published_at': report['published_at'],
             'duration_seconds': report['duration_seconds'],
             'analysis': report['analysis'],
