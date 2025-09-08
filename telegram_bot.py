@@ -746,6 +746,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 
                 logger.info(f"🔍 Looking for audio: video_id={video_id}")
                 for search_dir in search_dirs:
+                    # List all MP3 files for debugging
+                    if search_dir.exists():
+                        all_mp3s = list(search_dir.glob('*.mp3'))
+                        logger.info(f"🗂️ {search_dir} contains {len(all_mp3s)} MP3 files total")
+                        for mp3 in all_mp3s[:3]:  # Show first 3 for debugging
+                            logger.info(f"🎵 Available MP3: {mp3.name}")
+                    
                     # Search for all possible audio file patterns
                     patterns = [
                         f'audio_{video_id}_*.mp3',     # Standard pattern
