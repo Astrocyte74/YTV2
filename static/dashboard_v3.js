@@ -75,6 +75,11 @@ class AudioDashboard {
         this.cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
         this.confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
         this.pendingDelete = null; // {stem, title}
+        // Settings / theme
+        this.settingsToggle = document.getElementById('settingsToggle');
+        this.settingsMenu = document.getElementById('settingsMenu');
+        this.themeButtons = this.settingsMenu ? this.settingsMenu.querySelectorAll('[data-theme]') : [];
+        this.themeMode = localStorage.getItem('ytv2.theme') || 'system';
     }
 
     bindEvents() {
@@ -91,6 +96,9 @@ class AudioDashboard {
         this.nextBtn.addEventListener('click', () => this.playNext());
         this.progressContainer.addEventListener('click', (e) => this.seekTo(e));
         if (this.volumeBtn) this.volumeBtn.addEventListener('click', () => this.toggleMute());
+        if (this.settingsToggle) this.settingsToggle.addEventListener('click', (e) => { e.stopPropagation(); this.toggleSettings(); });
+        if (this.settingsMenu) document.addEventListener('click', (e) => { if (!e.target.closest('#settingsMenu') && !e.target.closest('#settingsToggle')) this.closeSettings(); });
+        if (this.themeButtons) this.themeButtons.forEach(btn => btn.addEventListener('click', () => this.setTheme(btn.dataset.theme)));
         if (this.cancelDeleteBtn) this.cancelDeleteBtn.addEventListener('click', () => this.closeConfirm());
         if (this.confirmDeleteBtn) this.confirmDeleteBtn.addEventListener('click', () => this.confirmDelete());
         
@@ -117,6 +125,9 @@ class AudioDashboard {
 
     async loadInitialData() {
         try {
+            // Apply theme at startup
+            this.applyTheme(this.themeMode);
+            this.updateThemeChecks();
             await Promise.all([
                 this.loadFilters(),
                 this.loadContent()
@@ -130,6 +141,24 @@ class AudioDashboard {
             console.error('Failed to load initial data:', error);
             this.showError('Failed to load dashboard data');
         }
+    }
+
+    // Settings / Theme
+    toggleSettings() { if (!this.settingsMenu) return; this.settingsMenu.classList.toggle('hidden'); }
+    closeSettings() { if (!this.settingsMenu) return; this.settingsMenu.classList.add('hidden'); }
+    setTheme(mode) { this.themeMode = mode || 'system'; localStorage.setItem('ytv2.theme', this.themeMode); this.applyTheme(this.themeMode); this.updateThemeChecks(); }
+    applyTheme(mode) {
+        const root = document.documentElement;
+        const mq = window.matchMedia('(prefers-color-scheme: dark)');
+        const wantsDark = mode === 'dark' || (mode === 'system' && mq.matches);
+        root.classList.toggle('dark', wantsDark);
+        if (!this._mqBound) { mq.addEventListener('change', () => { if ((localStorage.getItem('ytv2.theme') || 'system') === 'system') this.applyTheme('system'); }); this._mqBound = true; }
+    }
+    updateThemeChecks() {
+        const id = `themeCheck-${this.themeMode}`;
+        ['system','light','dark'].forEach(k => {
+            const el = document.getElementById(`themeCheck-${k}`); if (el) el.textContent = (k===this.themeMode?'✓':'');
+        });
     }
 
     async loadFilters() {
