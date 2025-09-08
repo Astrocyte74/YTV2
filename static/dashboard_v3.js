@@ -68,9 +68,13 @@ class AudioDashboard {
         this.nowPlayingTitle = document.getElementById('nowPlayingTitle');
         this.nowPlayingMeta = document.getElementById('nowPlayingMeta');
         this.nowPlayingProgress = document.getElementById('nowPlayingProgress');
-        
-        // Action buttons (Play All removed as auto-playlist is active)
-        // this.playAllBtn = document.getElementById('playAllBtn');
+
+        // Delete modal
+        this.confirmModal = document.getElementById('confirmModal');
+        this.confirmText = document.getElementById('confirmText');
+        this.cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+        this.confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+        this.pendingDelete = null; // {stem, title}
     }
 
     bindEvents() {
@@ -87,6 +91,8 @@ class AudioDashboard {
         this.nextBtn.addEventListener('click', () => this.playNext());
         this.progressContainer.addEventListener('click', (e) => this.seekTo(e));
         if (this.volumeBtn) this.volumeBtn.addEventListener('click', () => this.toggleMute());
+        if (this.cancelDeleteBtn) this.cancelDeleteBtn.addEventListener('click', () => this.closeConfirm());
+        if (this.confirmDeleteBtn) this.confirmDeleteBtn.addEventListener('click', () => this.confirmDelete());
         
         // Search and filters
         this.searchInput.addEventListener('input', 
@@ -216,6 +222,17 @@ class AudioDashboard {
             });
         });
 
+        // Bind delete buttons
+        this.contentGrid.querySelectorAll('[data-delete-btn]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const card = e.target.closest('[data-report-id]');
+                const stem = card.dataset.reportId;
+                const title = card.querySelector('h3')?.textContent?.trim() || stem;
+                this.openConfirm(stem, title);
+            });
+        });
+
         // Make whole card clickable (except controls)
         this.contentGrid.querySelectorAll('[data-card]').forEach(card => {
             card.addEventListener('click', (e) => {
@@ -234,6 +251,57 @@ class AudioDashboard {
 
         // Highlight currently playing
         this.updatePlayingCard();
+    }
+
+    openConfirm(stem, title) {
+        this.pendingDelete = { stem, title };
+        if (this.confirmText) this.confirmText.textContent = `Delete "${title}" and its audio?`;
+        if (this.confirmModal) {
+            this.confirmModal.classList.remove('hidden');
+            this.confirmModal.classList.add('flex');
+        }
+    }
+
+    closeConfirm() {
+        if (this.confirmModal) {
+            this.confirmModal.classList.add('hidden');
+            this.confirmModal.classList.remove('flex');
+        }
+        this.pendingDelete = null;
+    }
+
+    async confirmDelete() {
+        if (!this.pendingDelete) return;
+        const stem = this.pendingDelete.stem;
+        try {
+            // Get or ask for admin secret
+            let adminSecret = localStorage.getItem('ytv2.adminSecret');
+            if (!adminSecret) {
+                adminSecret = window.prompt('Enter admin delete key');
+                if (!adminSecret) return;
+                localStorage.setItem('ytv2.adminSecret', adminSecret);
+            }
+            const res = await fetch('/delete-reports', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Sync-Secret': adminSecret,
+                },
+                body: JSON.stringify({ files: [stem], delete_audio: true })
+            });
+            if (res.status === 401) {
+                localStorage.removeItem('ytv2.adminSecret');
+                alert('Unauthorized. Please enter a valid admin key.');
+                return;
+            }
+            await res.json();
+            await fetch('/api/refresh');
+            this.closeConfirm();
+            this.loadContent();
+        } catch (e) {
+            console.error('Delete failed', e);
+            alert('Delete failed: ' + (e?.message || e));
+        }
     }
 
     createContentCard(item) {

@@ -1286,6 +1286,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             request_data = json.loads(post_data.decode('utf-8'))
             
             filenames = request_data.get('files', [])
+            delete_audio = bool(request_data.get('delete_audio', True))
             if not filenames:
                 self.send_response(400)
                 self.send_header('Content-type', 'application/json')
@@ -1305,6 +1306,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             
             for filename in filenames:
                 deleted = False
+                video_id_for_audio = None
                 for search_dir in search_dirs:
                     if search_dir.exists():
                         # Try different extensions
@@ -1312,6 +1314,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                             file_path = search_dir / (filename + ext if not filename.endswith(ext) else filename)
                             if file_path.exists():
                                 try:
+                                    # If JSON, try to extract video_id for audio cleanup
+                                    if file_path.suffix == '.json':
+                                        try:
+                                            data = json.loads(file_path.read_text(encoding='utf-8'))
+                                            video_id_for_audio = (data.get('video') or {}).get('video_id', None)
+                                        except Exception:
+                                            video_id_for_audio = None
                                     file_path.unlink()
                                     deleted = True
                                     deleted_count += 1
@@ -1324,6 +1333,27 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 
                 if not deleted:
                     errors.append(f"File not found: {filename}")
+                
+                # Delete audio files if requested and video id is known
+                if delete_audio and video_id_for_audio:
+                    for d in [Path('/app/data/exports'), Path('./exports')]:
+                        if not d.exists():
+                            continue
+                        try:
+                            patterns = [
+                                f'audio_{video_id_for_audio}_*.mp3',
+                                f'{video_id_for_audio}_*.mp3',
+                                f'*{video_id_for_audio}*.mp3'
+                            ]
+                            for pat in patterns:
+                                for p in d.glob(pat):
+                                    try:
+                                        p.unlink()
+                                        logger.info(f"Deleted audio: {p}")
+                                    except Exception as e:
+                                        errors.append(f"Failed to delete audio {p}: {e}")
+                        except Exception as e:
+                            errors.append(f"Audio cleanup error for {video_id_for_audio}: {e}")
             
             # Send response
             response_data = {
