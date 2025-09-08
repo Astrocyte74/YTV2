@@ -13,6 +13,7 @@ class AudioDashboard {
         this.currentPage = 1;
         this.currentSort = 'newest';
         this.searchQuery = '';
+        this.viewMode = (localStorage.getItem('ytv2.viewMode') || 'list');
         
         this.initializeElements();
         this.bindEvents();
@@ -51,6 +52,8 @@ class AudioDashboard {
         this.resultsTitle = document.getElementById('resultsTitle');
         this.resultsCount = document.getElementById('resultsCount');
         this.pagination = document.getElementById('pagination');
+        this.listViewBtn = document.getElementById('listViewBtn');
+        this.gridViewBtn = document.getElementById('gridViewBtn');
         
         // Queue
         this.queueSidebar = document.getElementById('queueSidebar');
@@ -87,6 +90,8 @@ class AudioDashboard {
         // UI controls
         this.queueToggle.addEventListener('click', () => this.toggleQueue());
         this.playAllBtn.addEventListener('click', () => this.playAllResults());
+        if (this.listViewBtn) this.listViewBtn.addEventListener('click', () => this.setViewMode('list'));
+        if (this.gridViewBtn) this.gridViewBtn.addEventListener('click', () => this.setViewMode('grid'));
         
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyboard(e));
@@ -98,6 +103,11 @@ class AudioDashboard {
                 this.loadFilters(),
                 this.loadContent()
             ]);
+            // Default select first item (do not autoplay)
+            if (!this.currentAudio && this.currentItems && this.currentItems.length > 0) {
+                const first = this.currentItems[0];
+                this.setCurrentFromItem(first);
+            }
         } catch (error) {
             console.error('Failed to load initial data:', error);
             this.showError('Failed to load dashboard data');
@@ -154,8 +164,8 @@ class AudioDashboard {
         try {
             const response = await fetch(`/api/reports?${params}`);
             const data = await response.json();
-            
-            this.renderContent(data.data);
+            this.currentItems = data.data;
+            this.renderContent(this.currentItems);
             this.renderPagination(data.pagination);
             this.updateResultsInfo(data.pagination);
         } catch (error) {
@@ -165,7 +175,10 @@ class AudioDashboard {
     }
 
     renderContent(items) {
-        this.contentGrid.innerHTML = items.map(item => this.createContentCard(item)).join('');
+        const html = this.viewMode === 'grid'
+            ? `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(i => this.createGridCard(i)).join('')}</div>`
+            : items.map(i => this.createContentCard(i)).join('');
+        this.contentGrid.innerHTML = html;
         
         // Bind play buttons
         this.contentGrid.querySelectorAll('[data-play-btn]').forEach(btn => {
@@ -200,6 +213,9 @@ class AudioDashboard {
                 }
             });
         });
+
+        // Highlight currently playing
+        this.updatePlayingCard();
     }
 
     createContentCard(item) {
@@ -209,14 +225,10 @@ class AudioDashboard {
         const href = `/${item.file_stem}.json?v=2`;
         
         return `
-            <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" tabindex="0" class="group cursor-pointer bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60 p-4 hover:bg-white hover:shadow-lg transition-all duration-300">
+            <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" tabindex="0" class="group cursor-pointer bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60 p-4 hover:bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200">
                 <div class="flex gap-4 items-start">
                     <div class="relative w-56 aspect-video overflow-hidden rounded-lg bg-slate-100 flex-shrink-0">
                         ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" class="absolute inset-0 w-full h-full object-cover">` : ''}
-                        ${hasAudio ? `
-                            <div class="absolute top-2 right-2 bg-audio-600/90 text-white rounded-full p-1.5 shadow-sm">
-                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
-                            </div>` : ''}
                     </div>
                     <div class="flex-1 min-w-0">
                         <div class="flex items-start justify-between gap-3">
@@ -224,6 +236,7 @@ class AudioDashboard {
                                 <h3 class="text-lg font-semibold text-slate-800 group-hover:text-audio-700 transition-colors line-clamp-2">
                                     ${this.escapeHtml(item.title)}
                                 </h3>
+                                <div class="text-sm text-slate-500 mt-0.5 line-clamp-1">${this.escapeHtml(item.channel || '')}</div>
                                 <div class="mt-1 flex items-center gap-2 text-sm text-slate-500">
                                     <span>${duration}</span>
                                     <span>•</span>
@@ -235,7 +248,8 @@ class AudioDashboard {
                             <div class="flex items-center gap-2">
                                 ${hasAudio ? `
                                 <button data-control data-play-btn title="Play audio" class="p-2 rounded-lg text-audio-600 hover:bg-audio-100 focus:ring-2 focus:ring-audio-500">
-                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                                    <img src="/images/icon_headphones-32.png" alt="Play" class="w-5 h-5" onerror="this.style.display='none'; this.nextElementSibling.classList.remove('hidden')">
+                                    <svg class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
                                 </button>
                                 ` : ''}
                                 <a data-control href="${href}" class="text-sm text-audio-600 hover:text-audio-700">View →</a>
@@ -251,6 +265,33 @@ class AudioDashboard {
                 </div>
             </div>
         `;
+    }
+
+    createGridCard(item) {
+        const duration = this.formatDuration(item.duration_seconds || 0);
+        const href = `/${item.file_stem}.json?v=2`;
+        return `
+        <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" tabindex="0" class="group cursor-pointer bg-white/80 rounded-xl border border-slate-200/60 hover:bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+            <div class="relative aspect-video bg-slate-100">
+                ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" class="absolute inset-0 w-full h-full object-cover">` : ''}
+            </div>
+            <div class="p-3">
+                <h3 class="text-sm font-semibold text-slate-800 group-hover:text-audio-700 line-clamp-2">${this.escapeHtml(item.title)}</h3>
+                <div class="text-xs text-slate-500 mt-1 line-clamp-1">${this.escapeHtml(item.channel || '')}</div>
+                <div class="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                    <span>${duration}</span>
+                    <span>•</span>
+                    <span>${item.analysis?.language || 'en'}</span>
+                </div>
+                <div class="mt-2 flex items-center justify-between">
+                    <button data-control data-play-btn title="Play audio" class="p-1.5 rounded-md text-audio-600 hover:bg-audio-100">
+                        <img src="/images/icon_headphones-32.png" alt="Play" class="w-4 h-4" onerror="this.style.display='none'; this.nextElementSibling.classList.remove('hidden')">
+                        <svg class="w-4 h-4 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                    </button>
+                    <a data-control href="${href}" class="text-xs text-audio-600 hover:text-audio-700">View →</a>
+                </div>
+            </div>
+        </div>`;
     }
 
     renderPagination(pagination) {
@@ -355,6 +396,7 @@ class AudioDashboard {
             
             // Update now playing preview
             this.updateNowPlayingPreview();
+            this.updatePlayingCard();
             
         } catch (error) {
             console.error('Failed to play audio:', error);
@@ -391,6 +433,7 @@ class AudioDashboard {
             this.audioElement.play().then(() => {
                 this.isPlaying = true;
                 this.updatePlayButton();
+                this.updatePlayingCard();
             }).catch(error => {
                 console.error('Auto-play failed:', error);
             });
@@ -404,6 +447,40 @@ class AudioDashboard {
         } else {
             this.playIcon.classList.remove('hidden');
             this.pauseIcon.classList.add('hidden');
+        }
+    }
+
+    setViewMode(mode) {
+        this.viewMode = mode;
+        localStorage.setItem('ytv2.viewMode', mode);
+        // Re-render current items
+        if (this.currentItems) this.renderContent(this.currentItems);
+    }
+
+    setCurrentFromItem(item) {
+        const reportId = item.file_stem;
+        const title = item.title;
+        const videoId = item.video_id;
+        const audioSrc = videoId ? `/exports/by_video/${videoId}.mp3` : `/exports/${reportId}.mp3`;
+        this.currentAudio = { id: reportId, title, src: audioSrc };
+        this.playerTitle.textContent = title;
+        this.playerMeta.textContent = 'Ready';
+        // Do not autoplay here; will load when user hits play
+        this.audioElement.src = audioSrc;
+        this.audioElement.load();
+        this.updateNowPlayingPreview();
+        this.updatePlayingCard();
+    }
+
+    updatePlayingCard() {
+        this.contentGrid.querySelectorAll('[data-card]').forEach(card => {
+            card.classList.remove('ring-2', 'ring-audio-400');
+        });
+        if (this.currentAudio) {
+            const active = this.contentGrid.querySelector(`[data-report-id="${this.currentAudio.id}"]`);
+            if (active) {
+                active.classList.add('ring-2', 'ring-audio-400');
+            }
         }
     }
 
