@@ -213,6 +213,17 @@ class ContentIndex:
                 except Exception:
                     duration_seconds = 0
             channel = (report_data.get('video') or {}).get('channel', '')
+            # Fallbacks for published date
+            if not published_at:
+                vid = report_data.get('video') or {}
+                upload_date = vid.get('upload_date', '')
+                if upload_date and len(upload_date) == 8:
+                    # Convert YYYYMMDD to ISO
+                    published_at = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}T00:00:00"
+            if not published_at:
+                gen = (report_data.get('metadata') or {}).get('generated_at', '')
+                if gen:
+                    published_at = gen
         
             # Universal schema - extract analysis data
             analysis = report_data.get('analysis', {})
@@ -556,10 +567,14 @@ class ContentIndex:
             return sorted(reports, key=lambda r: r.get('published_at', ''), reverse=True)
         elif sort == 'oldest':
             return sorted(reports, key=lambda r: r.get('published_at', ''))
-        elif sort == 'title':
+        elif sort == 'title' or sort == 'title_asc':
             return sorted(reports, key=lambda r: r.get('title', '').lower())
-        elif sort == 'duration':
+        elif sort == 'title_desc':
+            return sorted(reports, key=lambda r: r.get('title', '').lower(), reverse=True)
+        elif sort == 'duration' or sort == 'duration_desc':
             return sorted(reports, key=lambda r: r.get('duration_seconds', 0), reverse=True)
+        elif sort == 'duration_asc':
+            return sorted(reports, key=lambda r: r.get('duration_seconds', 0))
         else:
             # Default to newest
             return sorted(reports, key=lambda r: r.get('published_at', ''), reverse=True)

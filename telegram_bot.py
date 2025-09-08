@@ -356,6 +356,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.serve_css()
         elif path.endswith('.js'):
             self.serve_js(path)
+        elif path.startswith('/images/'):
+            self.serve_images()
         elif path.endswith('.html') and path != '/':
             self.serve_report(path, self._query_params)
         elif path.endswith('.json') and path != '/':
@@ -527,6 +529,29 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error serving JS {self.path}: {e}")
             self.send_error(500, "Error serving JavaScript")
+
+    def serve_images(self):
+        """Serve images from a local images/ folder if present"""
+        try:
+            img_path = Path(self.path.lstrip('/'))  # e.g., images/icon.png
+            if not img_path.parts or img_path.parts[0] != 'images':
+                self.send_error(404, 'Not found')
+                return
+            fs_path = Path('.') / img_path
+            if fs_path.exists() and fs_path.is_file():
+                # Basic content type detection
+                ext = fs_path.suffix.lower()
+                ctype = 'image/png' if ext == '.png' else 'image/jpeg' if ext in ('.jpg', '.jpeg') else 'image/svg+xml' if ext == '.svg' else 'application/octet-stream'
+                self.send_response(200)
+                self.send_header('Content-type', ctype)
+                self.send_header('Cache-Control', 'public, max-age=3600')
+                self.end_headers()
+                self.wfile.write(fs_path.read_bytes())
+            else:
+                self.send_error(404, 'Image not found')
+        except Exception as e:
+            logger.error(f"Error serving image {self.path}: {e}")
+            self.send_error(500, "Error serving image")
     
     def serve_report(self, path: str, qs: dict = None):
         """
@@ -1016,7 +1041,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             
             # Sorting
             sort = query_params.get('sort', ['newest'])[0]
-            valid_sorts = ['newest', 'title', 'duration']
+            valid_sorts = ['newest', 'oldest', 'title', 'title_asc', 'title_desc', 'duration', 'duration_desc', 'duration_asc']
             if sort not in valid_sorts:
                 sort = 'newest'
             

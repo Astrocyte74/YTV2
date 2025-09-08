@@ -44,7 +44,7 @@ class AudioDashboard {
         
         // Search and filters
         this.searchInput = document.getElementById('searchInput');
-        this.sortSelect = document.getElementById('sortSelect');
+        this.sortToolbar = document.getElementById('sortToolbar');
         this.categoryFilters = document.getElementById('categoryFilters');
         this.contentTypeFilters = document.getElementById('contentTypeFilters');
         this.complexityFilters = document.getElementById('complexityFilters');
@@ -87,7 +87,11 @@ class AudioDashboard {
         // Search and filters
         this.searchInput.addEventListener('input', 
             this.debounce(() => this.handleSearch(), 500));
-        this.sortSelect.addEventListener('change', () => this.handleSortChange());
+        if (this.sortToolbar) {
+            this.sortToolbar.querySelectorAll('[data-sort]').forEach(btn => {
+                btn.addEventListener('click', () => this.setSortMode(btn.dataset.sort));
+            });
+        }
         
         // UI controls
         this.queueToggle.addEventListener('click', () => this.toggleQueue());
@@ -557,10 +561,20 @@ class AudioDashboard {
         this.loadContent();
     }
 
-    handleSortChange() {
-        this.currentSort = this.sortSelect.value;
+    setSortMode(mode) {
+        this.currentSort = mode;
         this.currentPage = 1;
+        this.updateSortToggle();
         this.loadContent();
+    }
+
+    updateSortToggle() {
+        if (!this.sortToolbar) return;
+        this.sortToolbar.querySelectorAll('[data-sort]').forEach(btn => {
+            const active = btn.dataset.sort === this.currentSort;
+            btn.classList.toggle('bg-audio-500', active);
+            btn.classList.toggle('text-white', active);
+        });
     }
 
     handleFilterChange() {
