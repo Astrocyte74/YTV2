@@ -365,15 +365,15 @@ class AudioDashboard {
                     <div class="flex-1 min-w-0">
                         <div class="flex items-start justify-between gap-3">
                             <div class="flex-1 min-w-0">
-                                <h3 class="text-lg font-semibold text-slate-800 group-hover:text-audio-700 transition-colors line-clamp-2">
+                                <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 transition-colors line-clamp-2">
                                     ${this.escapeHtml(item.title)}
                                 </h3>
-                                <div class="text-sm text-slate-500 mt-0.5 line-clamp-1 flex items-center gap-2">
+                                <div class="text-sm text-slate-500 dark:text-slate-300 mt-0.5 line-clamp-1 flex items-center gap-2">
                                     <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-200 text-slate-700 text-[10px]">${channelInitial}</span>
                                     ${this.escapeHtml(item.channel || '')}
                                     ${isPlaying ? '<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-audio-100 text-audio-700">Now Playing</span>' : ''}
                                 </div>
-                                <div class="mt-1 flex items-center gap-2 text-sm text-slate-500">
+                                <div class="mt-1 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                                     <span>🎬 ${duration}</span>
                                     ${item.media?.audio_duration_seconds ? `<span>•</span><span>🎵 ${this.formatDuration(item.media.audio_duration_seconds)}</span>` : ''}
                                     <span>•</span>
@@ -416,13 +416,13 @@ class AudioDashboard {
                 ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" class="absolute inset-0 w-full h-full object-cover">` : ''}
             </div>
             <div class="p-3">
-                <h3 class="text-sm font-semibold text-slate-800 group-hover:text-audio-700 line-clamp-2">${this.escapeHtml(item.title)}</h3>
-                <div class="text-xs text-slate-500 mt-1 line-clamp-1 flex items-center gap-2">
+                <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 line-clamp-2">${this.escapeHtml(item.title)}</h3>
+                <div class="text-xs text-slate-500 dark:text-slate-300 mt-1 line-clamp-1 flex items-center gap-2">
                     <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-slate-700 text-[9px]">${channelInitial}</span>
                     ${this.escapeHtml(item.channel || '')}
                     ${isPlaying ? '<span class="ml-2 text-[10px] px-1 py-0.5 rounded bg-audio-100 text-audio-700">Now Playing</span>' : ''}
                 </div>
-                <div class="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                <div class="mt-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                     <span>${duration}</span>
                     <span>•</span>
                     <span>${item.analysis?.language || 'en'}</span>
