@@ -703,6 +703,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             processing = report_data.get('processing', {})
             
             # Discover audio file (reuse existing logic)
+            logger.info(f"🎬 video_info keys: {list(video_info.keys()) if video_info else 'None'}")
+            logger.info(f"🆔 video_info.video_id: {video_info.get('video_id', 'NOT_FOUND') if video_info else 'video_info is None'}")
             audio_url = self._discover_audio_file(video_info)
             
             # Generate HTML content
@@ -734,9 +736,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     
     def _discover_audio_file(self, video_info: dict) -> str:
         """Discover audio file for a video (extracted from legacy method)"""
+        logger.info(f"🔍 _discover_audio_file called with video_info: {video_info}")
         audio_url = ''
         try:
             video_id = video_info.get('video_id', '')
+            logger.info(f"🆔 Extracted video_id: '{video_id}'")
             if video_id:
                 candidates = []
                 # Check both local exports and uploaded files directory
@@ -770,6 +774,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     logger.info(f"✅ Audio URL: {audio_url}")
                 else:
                     logger.info(f"❌ No audio found for video_id {video_id}")
+            else:
+                logger.warning(f"❌ No video_id found in video_info: {video_info}")
         except Exception as e:
             logger.error(f"❌ Audio detection error: {e}")
             audio_url = ''
