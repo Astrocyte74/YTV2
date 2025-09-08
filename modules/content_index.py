@@ -205,6 +205,12 @@ class ContentIndex:
             content_source = report_data.get('content_source', 'youtube')
             published_at = report_data.get('published_at', '')
             duration_seconds = report_data.get('duration_seconds', 0)
+            if not duration_seconds:
+                # Fallback to original video duration if provided
+                try:
+                    duration_seconds = int((report_data.get('video') or {}).get('duration') or 0)
+                except Exception:
+                    duration_seconds = 0
         
             # Universal schema - extract analysis data
             analysis = report_data.get('analysis', {})
