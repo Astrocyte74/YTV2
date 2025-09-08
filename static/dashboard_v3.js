@@ -188,12 +188,12 @@ class AudioDashboard {
         const hasAudio = item.media?.has_audio;
         
         return `
-            <div data-report-id="${item.id}" class="group bg-white/70 backdrop-blur-sm rounded-xl border border-slate-200/50 p-6 hover:bg-white/90 hover:shadow-lg transition-all duration-300">
+            <div data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" class="group bg-white/70 backdrop-blur-sm rounded-xl border border-slate-200/50 p-6 hover:bg-white/90 hover:shadow-lg transition-all duration-300">
                 <!-- Header -->
                 <div class="flex items-start justify-between mb-4">
                     <div class="flex-1 min-w-0 mr-4">
                         <h3 class="text-lg font-semibold text-slate-800 group-hover:text-audio-700 transition-colors line-clamp-2 mb-2">
-                            ${this.escapeHtml(item.title)}
+                            <a href="/${item.file_stem}.json?v=2" class="hover:underline">${this.escapeHtml(item.title)}</a>
                         </h3>
                         <div class="flex items-center space-x-2 text-sm text-slate-500">
                             <span>${duration}</span>
@@ -203,6 +203,9 @@ class AudioDashboard {
                             <span>${item.analysis?.language || 'en'}</span>
                         </div>
                     </div>
+                    ${item.thumbnail_url ? `
+                    <img src="${item.thumbnail_url}" alt="thumbnail" class="w-12 h-12 rounded-lg object-cover flex-shrink-0"/>
+                    ` : ''}
                     
                     <!-- Audio Status -->
                     ${hasAudio ? `
@@ -248,7 +251,7 @@ class AudioDashboard {
                             </svg>
                             <span>Play Audio</span>
                         </button>
-                        
+                        <a href="/${item.file_stem}.json?v=2" class="text-sm text-audio-600 hover:text-audio-700 transition-colors">View Summary →</a>
                         <button data-queue-btn 
                                 class="inline-flex items-center space-x-2 text-slate-600 hover:text-audio-600 transition-colors">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -346,9 +349,9 @@ class AudioDashboard {
 
             // Extract report info from the card
             const title = reportCard.querySelector('h3').textContent.trim();
-            
-            // Construct audio file path (assuming it matches the file_stem)
-            const audioSrc = `/exports/${reportId}.mp3`;
+            const videoId = reportCard.dataset.videoId;
+            // Use server-side resolver to map videoId to latest audio file
+            const audioSrc = videoId ? `/exports/by_video/${videoId}.mp3` : `/exports/${reportId}.mp3`;
             
             // Update current track info
             this.currentAudio = {
