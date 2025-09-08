@@ -27,7 +27,7 @@
           }
         }
       },
-      darkMode: 'media'
+      darkMode: 'class'
     }
   </script>
 
@@ -53,15 +53,25 @@
         Dashboard
       </a>
       <div class="flex items-center gap-2">
+        <!-- Theme Toggle -->
+        <div class="relative">
+          <button id="themeToggle"
+             class="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">
+            <svg id="themeIcon" class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+            </svg>
+            <span id="themeText">Theme</span>
+          </button>
+        </div>
         <a href="{{ youtube_url }}" target="_blank" rel="noopener"
-           class="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800">
+           class="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">
           <svg class="size-4" fill="currentColor" viewBox="0 0 24 24">
             <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
           </svg>
           YouTube
         </a>
         <button id="copyLinkBtn"
-           class="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800">
+           class="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">
           <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
           </svg>
@@ -90,7 +100,7 @@
         </h1>
 
         <!-- compact info grid -->
-        <div class="rounded-lg border border-slate-200 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+        <div class="rounded-lg border border-slate-200 bg-slate-50/50 p-3 dark:border-slate-700 dark:bg-slate-800/80">
           <div class="grid grid-cols-1 gap-2 text-sm lg:grid-cols-2">
             <div class="flex items-center gap-2">
               <span class="text-slate-400">📺</span>
@@ -187,7 +197,7 @@
         </div>
 
         <!-- compact audio player -->
-        <section class="mt-4 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+        <section class="mt-4 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
           <div class="flex items-center gap-3">
             <button id="playPause" aria-pressed="false" aria-label="Play audio summary"
               class="grid size-10 shrink-0 place-items-center rounded-full bg-blue-600 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
@@ -255,7 +265,7 @@
 
   <!-- Sticky mini player (mobile & desktop) -->
   <div id="stickyBar"
-       class="safe-bottom fixed left-3 right-3 z-[60] hidden rounded-xl border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-800 dark:bg-slate-900 md:left-1/2 md:right-auto md:w-[600px] md:-translate-x-1/2">
+       class="safe-bottom fixed left-3 right-3 z-[60] hidden rounded-xl border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-800 md:left-1/2 md:right-auto md:w-[600px] md:-translate-x-1/2">
     <div class="flex items-center gap-3">
       <button id="mPlayPause" aria-pressed="false" aria-label="Play audio summary"
               class="grid size-10 shrink-0 place-items-center rounded-full bg-blue-600 text-white hover:bg-blue-700">▶</button>
