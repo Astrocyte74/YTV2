@@ -257,10 +257,60 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     """HTTP request handler with modern template system"""
     
     @staticmethod
-    def to_report_v2_dict(video_info: dict, summary: dict, processing: dict, audio_url: str = "") -> dict:
-        """Convert report data to V2 template format"""
-        # Format views
-        view_count = video_info.get('view_count', 0)
+    def to_report_v2_dict(report_data: dict, audio_url: str = "") -> dict:
+        """Convert report data to V2 template format with enhanced metadata support"""
+        # Extract enhanced metadata from source_metadata.youtube if available
+        youtube_meta = report_data.get('source_metadata', {}).get('youtube', {})
+        
+        # Get basic video info - support both legacy and enhanced schemas
+        video_info = report_data
+        summary = report_data.get('summary', {})
+        processing = report_data.get('processing', {})
+        
+        # Enhanced metadata extraction
+        video_id = youtube_meta.get('video_id', '')
+        title = report_data.get('title', '') or youtube_meta.get('title', '')
+        
+        # Channel - prioritize uploader_id over channel_name
+        channel = youtube_meta.get('uploader_id', '').replace('@', '') or youtube_meta.get('channel_name', '') or report_data.get('channel', '')
+        if channel == 'Unknown':
+            channel = youtube_meta.get('uploader_id', '').replace('@', '')
+        
+        # Thumbnail - generate from video_id if not available
+        thumbnail = (report_data.get('thumbnail_url') or 
+                    report_data.get('thumbnail') or 
+                    (f"https://img.youtube.com/vi/{video_id}/mqdefault.jpg" if video_id else ""))
+        
+        # Duration - support both video and audio durations
+        video_duration_seconds = report_data.get('duration_seconds', 0) or youtube_meta.get('duration', 0)
+        audio_duration_seconds = report_data.get('media', {}).get('audio_duration_seconds', 0)
+        
+        # Format video duration
+        if video_duration_seconds:
+            hours = video_duration_seconds // 3600
+            minutes = (video_duration_seconds % 3600) // 60
+            seconds = video_duration_seconds % 60
+            if hours:
+                video_duration_str = f"{hours}:{minutes:02d}:{seconds:02d}"
+            else:
+                video_duration_str = f"{minutes}:{seconds:02d}"
+        else:
+            video_duration_str = ""
+        
+        # Format audio duration
+        if audio_duration_seconds:
+            audio_minutes = audio_duration_seconds // 60
+            audio_seconds = audio_duration_seconds % 60
+            audio_dur_pretty = f"{audio_minutes}:{audio_seconds:02d}"
+        elif audio_url and video_duration_seconds:
+            # Fallback: estimate ~40% of video duration for audio summary
+            estimated_audio_seconds = int(video_duration_seconds * 0.4)
+            audio_dur_pretty = f"{estimated_audio_seconds // 60}:{estimated_audio_seconds % 60:02d}"
+        else:
+            audio_dur_pretty = ""
+        
+        # Format views with enhanced metadata
+        view_count = youtube_meta.get('view_count', 0) or report_data.get('view_count', 0)
         if view_count >= 1000000:
             views_pretty = f"{view_count/1000000:.1f}M views"
         elif view_count >= 1000:
@@ -269,11 +319,38 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             views_pretty = f"{view_count:,} views" if view_count else ""
         
         # Format date
-        upload_date = video_info.get('upload_date', '')
+        upload_date = report_data.get('upload_date', '') or youtube_meta.get('upload_date', '')
         if upload_date and len(upload_date) == 8:
             uploaded_pretty = f"{upload_date[4:6]}/{upload_date[6:8]}/{upload_date[:4]}"
         else:
             uploaded_pretty = upload_date
+        
+        # Extract engagement metrics
+        like_count = youtube_meta.get('like_count', 0)
+        like_count_pretty = f"{like_count:,}" if like_count else ""
+        
+        comment_count = youtube_meta.get('comment_count', 0)
+        comment_count_pretty = f"{comment_count:,}" if comment_count else ""
+        
+        follower_count = youtube_meta.get('channel_follower_count', 0)
+        if follower_count >= 1000000:
+            follower_count_pretty = f"{follower_count/1000000:.1f}M subscribers"
+        elif follower_count >= 1000:
+            follower_count_pretty = f"{follower_count/1000:.1f}K subscribers"
+        else:
+            follower_count_pretty = f"{follower_count:,} subscribers" if follower_count else ""
+        
+        # Technical specs
+        resolution = youtube_meta.get('resolution', '')
+        fps = youtube_meta.get('fps', '')
+        fps_pretty = f"{fps} fps" if fps else ""
+        
+        # Categories from enhanced metadata
+        categories = []
+        if 'analysis' in report_data and 'category' in report_data['analysis']:
+            categories = report_data['analysis']['category']
+        elif 'summary' in report_data and 'analysis' in report_data['summary'] and 'category' in report_data['summary']['analysis']:
+            categories = report_data['summary']['analysis']['category']
         
         # Extract vocabulary
         vocabulary = []
@@ -302,13 +379,6 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         if BLEACH_AVAILABLE and summary_html:
             summary_html = bleach.clean(summary_html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, strip=True)
         
-        # Calculate audio duration estimate
-        audio_dur_pretty = ""
-        if audio_url and video_info.get('duration'):
-            # Estimate ~40% of video duration for audio summary
-            audio_seconds = int(video_info['duration'] * 0.4)
-            audio_dur_pretty = f"{audio_seconds // 60}:{audio_seconds % 60:02d}"
-        
         # Create AI model string
         model = processing.get('model', '')
         provider = processing.get('llm_provider', '')
@@ -319,19 +389,26 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         cache_bust = hash("".join(filter(None, cache_bust_parts))) % 10000
         
         return {
-            "title": video_info.get("title", ""),
-            "thumbnail": video_info.get("thumbnail_url") or video_info.get("thumbnail"),
-            "channel": video_info.get("channel", ""),
-            "duration_str": video_info.get("duration_string", ""),
+            "title": title,
+            "thumbnail": thumbnail,
+            "channel": channel,
+            "duration_str": video_duration_str,
+            "video_duration_str": video_duration_str,
+            "audio_dur_pretty": audio_dur_pretty,
             "views_pretty": views_pretty,
             "uploaded_pretty": uploaded_pretty,
+            "like_count_pretty": like_count_pretty,
+            "comment_count_pretty": comment_count_pretty,
+            "follower_count_pretty": follower_count_pretty,
+            "resolution": resolution,
+            "fps_pretty": fps_pretty,
+            "categories": categories,
             "ai_model": ai_model,
             "audio_mp3": audio_url,
-            "audio_dur_pretty": audio_dur_pretty,
             "summary_html": summary_html,
             "vocabulary": vocabulary,
             "back_url": "/",
-            "youtube_url": video_info.get("url", ""),
+            "youtube_url": report_data.get("url", "") or report_data.get("canonical_url", ""),
             "cache_bust": cache_bust,
         }
     
@@ -616,7 +693,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 # V2 Tailwind Template Path
                 logger.info("🚀 Rendering V2 Tailwind template")
                 
-                ctx = self.to_report_v2_dict(video_info, summary, processing, audio_url)
+                ctx = self.to_report_v2_dict(report_data, audio_url)
                 template = jinja_env.get_template("report_v2.html")
                 html_content = template.render(**ctx)
                 
