@@ -211,36 +211,36 @@
                     <!-- Results Header -->
                     <div class="flex items-center justify-between">
                         <div>
-                            <h2 class="text-2xl font-semibold text-slate-800" id="resultsTitle">Explore Audio Summaries</h2>
-                            <p class="text-slate-500 mt-1" id="resultsCount">Loading summaries...</p>
+                            <h2 class="text-2xl font-semibold text-slate-800 dark:text-slate-100" id="resultsTitle">Explore Audio Summaries</h2>
+                            <p class="text-slate-500 dark:text-slate-400 mt-1" id="resultsCount">Loading summaries...</p>
                         </div>
                         
                         <!-- Sort & View Options -->
                         <div class="flex items-center space-x-3">
                             <!-- Sort icons -->
-                            <div id="sortToolbar" class="inline-flex border border-slate-200 rounded-lg overflow-hidden">
-                                <button data-sort="newest" class="px-3 py-2 text-sm bg-white hover:bg-slate-50" title="Newest">
+                            <div id="sortToolbar" class="inline-flex border border-slate-200 dark:border-slate-600 rounded-lg overflow-hidden">
+                                <button data-sort="newest" class="px-3 py-2 text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200" title="Newest">
                                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 7h10M7 12h7M7 17h4" stroke-width="2" stroke-linecap="round"/></svg>
                                 </button>
-                                <button data-sort="oldest" class="px-3 py-2 text-sm bg-white hover:bg-slate-50 border-l border-slate-200" title="Oldest">
+                                <button data-sort="oldest" class="px-3 py-2 text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-l border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200" title="Oldest">
                                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 17h10M7 12h7M7 7h4" stroke-width="2" stroke-linecap="round"/></svg>
                                 </button>
-                                <button data-sort="title_asc" class="px-3 py-2 text-sm bg-white hover:bg-slate-50 border-l border-slate-200" title="Title A→Z">
+                                <button data-sort="title_asc" class="px-3 py-2 text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-l border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200" title="Title A→Z">
                                     <span class="text-xs">A→Z</span>
                                 </button>
-                                <button data-sort="title_desc" class="px-3 py-2 text-sm bg-white hover:bg-slate-50 border-l border-slate-200" title="Title Z→A">
+                                <button data-sort="title_desc" class="px-3 py-2 text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-l border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200" title="Title Z→A">
                                     <span class="text-xs">Z→A</span>
                                 </button>
-                                <button data-sort="duration_desc" class="px-3 py-2 text-sm bg-white hover:bg-slate-50 border-l border-slate-200" title="Longest">
+                                <button data-sort="duration_desc" class="px-3 py-2 text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-l border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200" title="Longest">
                                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M5 12l4-4m-4 4l4 4" stroke-width="2" stroke-linecap="round"/></svg>
                                 </button>
-                                <button data-sort="duration_asc" class="px-3 py-2 text-sm bg-white hover:bg-slate-50 border-l border-slate-200" title="Shortest">
+                                <button data-sort="duration_asc" class="px-3 py-2 text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-l border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200" title="Shortest">
                                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 12H5m14 0l-4-4m4 4l-4 4" stroke-width="2" stroke-linecap="round"/></svg>
                                 </button>
                             </div>
-                            <div class="inline-flex border border-slate-200 rounded-lg overflow-hidden">
-                                <button id="listViewBtn" class="px-3 py-2 text-sm bg-white hover:bg-slate-50">List</button>
-                                <button id="gridViewBtn" class="px-3 py-2 text-sm bg-white hover:bg-slate-50 border-l border-slate-200">Grid</button>
+                            <div class="inline-flex border border-slate-200 dark:border-slate-600 rounded-lg overflow-hidden">
+                                <button id="listViewBtn" class="px-3 py-2 text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200">List</button>
+                                <button id="gridViewBtn" class="px-3 py-2 text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-l border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200">Grid</button>
                             </div>
                             
                         </div>
@@ -262,7 +262,7 @@
             <!-- Audio Queue Sidebar (toggleable) -->
             <aside id="queueSidebar" class="w-80 bg-white/50 backdrop-blur-sm border-l border-slate-200/50 overflow-y-auto hidden">
                 <div class="p-6 space-y-4">
-                    <h3 class="text-lg font-semibold text-slate-800 flex items-center space-x-2">
+                    <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center space-x-2">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                         </svg>
