@@ -437,7 +437,11 @@ class ContentIndex:
     
     def _validate_sort_param(self, sort: str) -> str:
         """Validate sort parameter"""
-        valid_sorts = {'newest', 'title', 'duration'}
+        valid_sorts = {
+            'newest', 'oldest',
+            'title', 'title_asc', 'title_desc',
+            'duration', 'duration_desc', 'duration_asc'
+        }
         return sort if sort in valid_sorts else 'newest'
     
     def _validate_filters(self, filters: Dict[str, Any]) -> Dict[str, Any]:
