@@ -338,7 +338,7 @@ class AudioDashboard {
         const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
         const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
         return `
-            <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" title="Open summary" tabindex="0" class="group cursor-pointer bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60 p-4 hover:bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200">
+            <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" title="Open summary" tabindex="0" class="group cursor-pointer bg-white/80 dark:bg-slate-800/60 backdrop-blur-sm rounded-xl border border-slate-200/60 dark:border-slate-700 p-4 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200">
                 <div class="flex gap-4 items-start">
                     <div class="relative w-56 aspect-video overflow-hidden rounded-lg bg-slate-100 flex-shrink-0">
                         ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" class="absolute inset-0 w-full h-full object-cover">` : ''}
@@ -376,7 +376,7 @@ class AudioDashboard {
 
                         <div class="mt-3 flex flex-wrap gap-2">
                             ${categories.map(cat => `
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-audio-100 text-audio-800">${this.escapeHtml(cat)}</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-audio-100 dark:bg-slate-700 text-audio-800 dark:text-slate-300">${this.escapeHtml(cat)}</span>
                             `).join('')}
                         </div>
                     </div>
@@ -391,7 +391,7 @@ class AudioDashboard {
         const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
         const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
         return `
-        <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" title="Open summary" tabindex="0" class="group cursor-pointer bg-white/80 rounded-xl border border-slate-200/60 hover:bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+        <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" title="Open summary" tabindex="0" class="group cursor-pointer bg-white/80 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
             <div class="relative aspect-video bg-slate-100">
                 ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" class="absolute inset-0 w-full h-full object-cover">` : ''}
             </div>
@@ -696,6 +696,7 @@ class AudioDashboard {
             const active = btn.dataset.sort === this.currentSort;
             btn.classList.toggle('bg-audio-500', active);
             btn.classList.toggle('text-white', active);
+            btn.classList.toggle('dark:bg-audio-600', active);
         });
     }
 
