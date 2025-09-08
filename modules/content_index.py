@@ -231,10 +231,12 @@ class ContentIndex:
                 except Exception:
                     duration_seconds = 0
                     
-            # Enhanced schema channel support
-            channel = youtube_meta.get('channel_name', '') or youtube_meta.get('uploader_id', '').replace('@', '')
+            # Enhanced schema channel support - prioritize uploader_id over channel_name
+            channel = youtube_meta.get('uploader_id', '').replace('@', '') or youtube_meta.get('channel_name', '')
             if not channel:
                 channel = (report_data.get('video') or {}).get('channel', '')
+            if channel == 'Unknown':
+                channel = youtube_meta.get('uploader_id', '').replace('@', '')
             # Fallbacks for published date
             if not published_at:
                 vid = report_data.get('video') or {}
