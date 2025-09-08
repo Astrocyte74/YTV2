@@ -245,7 +245,7 @@ class AudioDashboard {
         const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
         const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
         return `
-            <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" tabindex="0" class="group cursor-pointer bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60 p-4 hover:bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200">
+            <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" title="Open summary" tabindex="0" class="group cursor-pointer bg-white/80 backdrop-blur-sm rounded-xl border border-slate-200/60 p-4 hover:bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200">
                 <div class="flex gap-4 items-start">
                     <div class="relative w-56 aspect-video overflow-hidden rounded-lg bg-slate-100 flex-shrink-0">
                         ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" class="absolute inset-0 w-full h-full object-cover">` : ''}
@@ -271,11 +271,11 @@ class AudioDashboard {
                             </div>
                             <div class="flex items-center gap-2">
                                 ${hasAudio ? `
-                                <button data-control data-play-btn title="Play Audio" class="p-3 rounded-full bg-audio-500 text-white hover:bg-audio-600 focus:ring-2 focus:ring-audio-500 transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105">
+                                <button data-control data-play-btn title="Listen" aria-label="Listen" class="p-3 rounded-full bg-audio-500 text-white hover:bg-audio-600 focus:ring-2 focus:ring-audio-500 transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105">
                                     <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                                 </button>
                                 ` : ''}
-                                <a data-control href="${href}" class="text-sm text-audio-600 hover:text-audio-700">View →</a>
+                                
                             </div>
                         </div>
 
@@ -296,7 +296,7 @@ class AudioDashboard {
         const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
         const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
         return `
-        <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" tabindex="0" class="group cursor-pointer bg-white/80 rounded-xl border border-slate-200/60 hover:bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+        <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" title="Open summary" tabindex="0" class="group cursor-pointer bg-white/80 rounded-xl border border-slate-200/60 hover:bg-white hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
             <div class="relative aspect-video bg-slate-100">
                 ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" class="absolute inset-0 w-full h-full object-cover">` : ''}
             </div>
@@ -313,10 +313,10 @@ class AudioDashboard {
                     <span>${item.analysis?.language || 'en'}</span>
                 </div>
                 <div class="mt-2 flex items-center justify-between">
-                    <button data-control data-play-btn title="Play Audio" class="p-2.5 rounded-full bg-audio-500 text-white hover:bg-audio-600 transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105">
+                    <button data-control data-play-btn title="Listen" aria-label="Listen" class="p-2.5 rounded-full bg-audio-500 text-white hover:bg-audio-600 transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105">
                         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                     </button>
-                    <a data-control href="${href}" class="text-xs text-audio-600 hover:text-audio-700">View →</a>
+                    
                 </div>
             </div>
         </div>`;
