@@ -146,18 +146,37 @@ class AudioDashboard {
     // Settings / Theme
     toggleSettings() { if (!this.settingsMenu) return; this.settingsMenu.classList.toggle('hidden'); }
     closeSettings() { if (!this.settingsMenu) return; this.settingsMenu.classList.add('hidden'); }
-    setTheme(mode) { this.themeMode = mode || 'system'; localStorage.setItem('ytv2.theme', this.themeMode); this.applyTheme(this.themeMode); this.updateThemeChecks(); }
+    setTheme(mode) { 
+        this.themeMode = mode || 'system'; 
+        localStorage.setItem('ytv2.theme', this.themeMode); 
+        this.applyTheme(this.themeMode); 
+        this.updateThemeChecks(); 
+    }
+    
     applyTheme(mode) {
         const root = document.documentElement;
         const mq = window.matchMedia('(prefers-color-scheme: dark)');
         const wantsDark = mode === 'dark' || (mode === 'system' && mq.matches);
+        
+        // Apply dark class to root element
         root.classList.toggle('dark', wantsDark);
-        if (!this._mqBound) { mq.addEventListener('change', () => { if ((localStorage.getItem('ytv2.theme') || 'system') === 'system') this.applyTheme('system'); }); this._mqBound = true; }
+        
+        // Bind media query listener for system mode
+        if (!this._mqBound) { 
+            mq.addEventListener('change', () => { 
+                if ((localStorage.getItem('ytv2.theme') || 'system') === 'system') {
+                    this.applyTheme('system'); 
+                }
+            }); 
+            this._mqBound = true; 
+        }
     }
     updateThemeChecks() {
-        const id = `themeCheck-${this.themeMode}`;
-        ['system','light','dark'].forEach(k => {
-            const el = document.getElementById(`themeCheck-${k}`); if (el) el.textContent = (k===this.themeMode?'✓':'');
+        ['system', 'light', 'dark'].forEach(k => {
+            const el = document.getElementById(`themeCheck-${k}`);
+            if (el) {
+                el.textContent = (k === this.themeMode) ? '✓' : '';
+            }
         });
     }
 
