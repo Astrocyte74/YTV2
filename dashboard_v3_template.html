@@ -108,8 +108,11 @@
                     <div id="nowPlayingPreview" class="bg-gradient-to-r from-audio-500 to-audio-600 rounded-xl p-4 text-white shadow-md">
                         <div class="flex items-start gap-3">
                             <div class="shrink-0 w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center">
-                                <img src="/images/icon_headphones-32.png" alt="Play" class="w-6 h-6" onerror="this.style.display='none'; this.nextElementSibling.classList.remove('hidden')">
-                                <svg class="w-6 h-6 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                                <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M4 12a8 8 0 1116 0"/>
+                                    <path d="M7 12v3a1 1 0 001 1h1a1 1 0 001-1V9a1 1 0 00-1-1H8a1 1 0 00-1 1v3"/>
+                                    <path d="M17 12v3a1 1 0 01-1 1h-1a1 1 0 01-1-1V9a1 1 0 011-1h1a1 1 0 011 1v3"/>
+                                </svg>
                             </div>
                             <div class="flex-1 min-w-0">
                                 <p class="text-sm font-medium truncate" id="nowPlayingTitle">Select an audio summary</p>
