@@ -1268,17 +1268,18 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def handle_delete_reports(self):
         """Handle POST request to delete selected reports"""
         try:
-            # Check sync secret for authentication
-            sync_secret = os.getenv('SYNC_SECRET')
-            if not sync_secret:
-                self.send_error(500, "Sync not configured")
-                return
-            
-            auth_header = self.headers.get('X-Sync-Secret', '')
-            if auth_header != sync_secret:
-                logger.warning(f"Delete rejected: Invalid sync secret from {self.client_address[0]}")
-                self.send_error(401, "Unauthorized")
-                return
+            # Optional auth (can be disabled for single-user deployments)
+            disable_auth = os.getenv('DISABLE_DELETE_AUTH', '1') == '1'
+            if not disable_auth:
+                sync_secret = os.getenv('SYNC_SECRET')
+                if not sync_secret:
+                    self.send_error(500, "Sync not configured")
+                    return
+                auth_header = self.headers.get('X-Sync-Secret', '')
+                if auth_header != sync_secret:
+                    logger.warning(f"Delete rejected: Invalid sync secret from {self.client_address[0]}")
+                    self.send_error(401, "Unauthorized")
+                    return
             
             # Read request body
             content_length = int(self.headers['Content-Length'])
