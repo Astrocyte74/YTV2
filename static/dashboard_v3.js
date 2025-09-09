@@ -396,7 +396,13 @@ class AudioDashboard {
         // Set id and control linkage
         if (!region.id) region.id = `expand-${id}`;
         const readBtn = card.querySelector('[data-action="read"]');
-        if (readBtn) { readBtn.setAttribute('aria-controls', region.id); readBtn.setAttribute('aria-expanded', 'true'); }
+        if (readBtn) { 
+            readBtn.setAttribute('aria-controls', region.id); 
+            readBtn.setAttribute('aria-expanded', 'true');
+            // Update button text
+            const btnText = readBtn.querySelector('span:first-child');
+            if (btnText) btnText.textContent = 'Close';
+        }
         this.showRegion(region, true);
         // Update URL hash
         this.updateHash(id);
@@ -446,7 +452,12 @@ class AudioDashboard {
         if (!region) { this.currentExpandedId = null; this.updateHash(''); return; }
         this.showRegion(region, false);
         const readBtn = card.querySelector('[data-action="read"]');
-        if (readBtn) readBtn.setAttribute('aria-expanded', 'false');
+        if (readBtn) {
+            readBtn.setAttribute('aria-expanded', 'false');
+            // Update button text back to Read
+            const btnText = readBtn.querySelector('span:first-child');
+            if (btnText) btnText.textContent = 'Read';
+        }
         if (this.currentExpandedId === id) this.currentExpandedId = null;
         // If current hash targets this id, go back to clear hash so Back button collapses naturally
         const target = this.parseHash();
@@ -463,9 +474,8 @@ class AudioDashboard {
             region.setAttribute('aria-live', 'polite');
             region.setAttribute('hidden', '');
             region.dataset.expandRegion = '';
-            // Insert near bottom inside card content
-            const container = card.querySelector('.flex-1.min-w-0') || card;
-            container.appendChild(region);
+            // Insert at card level to span full width
+            card.appendChild(region);
         }
         return region;
     }
@@ -502,7 +512,7 @@ class AudioDashboard {
 
     renderExpandedSkeleton() {
         return `
-          <div class="mt-3 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 w-full md:mx-0">
+          <div class="mt-3 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4">
             <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-3"></div>
             <div class="space-y-2">
               <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded"></div>
@@ -578,7 +588,7 @@ class AudioDashboard {
             .join('') || '<p>No summary available.</p>';
 
         return `
-          <div class="mt-3 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 space-y-4 w-full md:mx-0" data-expanded>
+          <div class="mt-3 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 space-y-4" data-expanded>
             ${badges.length ? `<div class="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-sm flex-wrap">${badges.join('')}</div>` : ''}
             <h4 class="sr-only" data-expanded-title>Summary</h4>
             <div class="prose prose-sm prose-slate dark:prose-invert max-w-none leading-6 w-full break-words">${summary}</div>
