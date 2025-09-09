@@ -1224,6 +1224,22 @@ class AudioDashboard {
             if (this.mobileNowPlayingTitle && this.currentAudio) {
                 this.mobileNowPlayingTitle.textContent = this.currentAudio.title;
             }
+            // Update mobile mini-player thumbnail
+            if (this.mobileNowPlayingThumb && this.currentAudio) {
+                const cardImg = document.querySelector(`[data-report-id="${this.currentAudio.id}"] img`);
+                if (cardImg && cardImg.src) {
+                    this.mobileNowPlayingThumb.src = cardImg.src;
+                    this.mobileNowPlayingThumb.classList.remove('hidden');
+                    // Hide placeholder
+                    const placeholder = this.mobileNowPlayingThumb.nextElementSibling;
+                    if (placeholder) placeholder.style.display = 'none';
+                } else {
+                    this.mobileNowPlayingThumb.classList.add('hidden');
+                    // Show placeholder
+                    const placeholder = this.mobileNowPlayingThumb.nextElementSibling;
+                    if (placeholder) placeholder.style.display = 'flex';
+                }
+            }
             // Micro progress bar on current card (flagged)
             if (this.currentAudio) {
                 const card = document.querySelector(`[data-report-id="${this.currentAudio.id}"]`);
@@ -1292,9 +1308,15 @@ class AudioDashboard {
         if (!this.sortToolbar) return;
         this.sortToolbar.querySelectorAll('[data-sort]').forEach(btn => {
             const active = btn.dataset.sort === this.currentSort;
-            btn.classList.toggle('bg-audio-500', active);
-            btn.classList.toggle('text-white', active);
-            btn.classList.toggle('dark:bg-audio-600', active);
+            if (active) {
+                // Apply selected state
+                btn.classList.add('bg-audio-500', 'text-white', 'dark:bg-audio-600');
+                btn.classList.remove('bg-white', 'dark:bg-slate-700', 'text-slate-700', 'dark:text-slate-200');
+            } else {
+                // Apply unselected state
+                btn.classList.remove('bg-audio-500', 'text-white', 'dark:bg-audio-600');
+                btn.classList.add('bg-white', 'dark:bg-slate-700', 'text-slate-700', 'dark:text-slate-200');
+            }
         });
     }
 
@@ -1607,8 +1629,11 @@ class AudioDashboard {
     openMobileSidebar() {
         const sidebar = document.getElementById('sidebar');
         if (sidebar) {
+            // Force display the sidebar on mobile by overriding responsive classes
             sidebar.classList.remove('hidden');
-            sidebar.classList.add('block');
+            sidebar.classList.add('flex');
+            // Ensure it's shown as overlay on mobile
+            sidebar.style.display = 'block';
             // Prevent body scroll when sidebar is open
             document.body.style.overflow = 'hidden';
         }
@@ -1617,8 +1642,10 @@ class AudioDashboard {
     closeMobileSidebar() {
         const sidebar = document.getElementById('sidebar');
         if (sidebar) {
-            sidebar.classList.remove('block');
+            // Hide the sidebar properly
+            sidebar.classList.remove('flex');
             sidebar.classList.add('hidden');
+            sidebar.style.display = '';
             // Restore body scroll
             document.body.style.overflow = '';
         }
