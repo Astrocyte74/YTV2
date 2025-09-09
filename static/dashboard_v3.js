@@ -162,6 +162,10 @@ class AudioDashboard {
                 this.loadFilters(),
                 this.loadContent()
             ]);
+            // If queue feature is on, make the sidebar visible by default
+            if (this.flags.queueEnabled && this.queueSidebar) {
+                this.queueSidebar.classList.remove('hidden');
+            }
             // Restore queue if enabled
             if (this.flags.queueEnabled) {
                 this.restoreQueue();
