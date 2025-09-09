@@ -188,9 +188,22 @@ class ContentIndex:
         is_new_universal = has_new_universal_fields
         
         if is_new_universal:
-            # NEW Universal format - extract from top-level fields
+            # NEW Universal format - extract from top-level fields with fallbacks
             report_id = report_data.get('id', f"new:{file_stem}")
-            title = report_data.get('title', file_stem.replace('_', ' '))
+            
+            # Title: prefer top-level, fallback to filename cleaning if empty
+            title = report_data.get('title', '').strip()
+            if not title:
+                # Try to extract title from filename (remove video_id and timestamp if present)
+                video_id = youtube_meta.get('video_id', '')
+                if video_id and video_id in file_stem:
+                    # Remove video_id and clean filename
+                    title_parts = file_stem.replace(video_id, '').strip('_').split('_')
+                    title = ' '.join(title_parts[:-2] if len(title_parts) > 2 else title_parts).replace('_', ' ')
+                    title = title.strip()
+                if not title:
+                    title = file_stem.replace('_', ' ')
+            
             content_source = report_data.get('content_source', 'youtube')
             duration_seconds = report_data.get('duration_seconds', 0)
             
@@ -204,10 +217,14 @@ class ContentIndex:
                     # Convert YYYYMMDD to ISO format
                     published_at = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}T00:00:00Z"
             
-            # Extract channel from source_metadata
-            channel = youtube_meta.get('channel_name', '') or youtube_meta.get('uploader_id', '').replace('@', '')
-            if not channel and 'metadata' in report_data:
-                channel = report_data.get('metadata', {}).get('uploader', '')
+            # Extract channel from source_metadata with fallbacks
+            channel = youtube_meta.get('channel_name', '').strip()
+            if not channel or channel == 'Unknown':
+                uploader_id = youtube_meta.get('uploader_id', '').replace('@', '').strip()
+                if uploader_id:
+                    channel = uploader_id
+                elif 'metadata' in report_data:
+                    channel = report_data.get('metadata', {}).get('uploader', '').strip()
             
             # Extract analysis data directly from top-level analysis field
             analysis = report_data.get('analysis', {})
