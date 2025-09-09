@@ -742,24 +742,36 @@ class AudioDashboard {
             // Optimistic UI: show busy state
             const pop = cardEl.querySelector('[data-delete-popover]');
             if (pop) pop.classList.add('pointer-events-none', 'opacity-60');
-            const res = await fetch('/api/delete', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids: [id] })
+            
+            // Use the proper DELETE endpoint format
+            const res = await fetch(`/api/delete/${encodeURIComponent(id)}`, {
+                method: 'DELETE',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    // Add admin secret if available for authentication
+                    ...(localStorage.getItem('ytv2.adminSecret') ? { 'Authorization': `Bearer ${localStorage.getItem('ytv2.adminSecret')}` } : {})
+                }
             });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            await res.json();
+            
+            if (!res.ok) {
+                const errorText = await res.text();
+                throw new Error(`HTTP ${res.status}: ${errorText}`);
+            }
+            
+            const result = await res.json();
+            
             // Smooth remove
             cardEl.classList.add('transition', 'duration-200', 'ease-out', 'opacity-0', 'scale-95');
             setTimeout(() => {
                 cardEl.remove();
                 this.showToast('Deleted successfully', 'success');
             }, 200);
+            
             // Ask server to refresh
             fetch('/api/refresh').catch(() => {});
         } catch (err) {
             console.error('Delete failed', err);
-            this.showToast('Delete failed', 'error');
+            this.showToast(`Delete failed: ${err.message}`, 'error');
         } finally {
             this.toggleDeletePopover(cardEl, false);
         }
@@ -849,16 +861,16 @@ class AudioDashboard {
                                     <span class="whitespace-nowrap">${item.analysis?.language || 'en'}</span>
                                 </div>
                             </div>
-                            <div class="absolute top-3 right-3">
+                            <div class="absolute top-3 right-3 z-20">
                               <button class="p-2 rounded-md hover:bg-slate-200/60 dark:hover:bg-slate-700/60" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
                                 <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
                               </button>
-                              <div class="absolute right-0 mt-2 w-44 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg hidden z-10" data-kebab-menu role="menu">
+                              <div class="absolute right-0 mt-2 w-44 bg-white/95 dark:bg-slate-800/95 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl hidden z-50" data-kebab-menu role="menu">
                                 <button class="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" role="menuitem" data-action="copy-link">Copy link</button>
                                 <button class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors" role="menuitem" data-action="delete">Delete…</button>
                               </div>
                             </div>
-                            <div class="absolute top-12 right-3 hidden z-10" data-delete-popover>
+                            <div class="absolute top-14 right-3 hidden z-50" data-delete-popover>
                               <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-3 text-sm">
                                 <div class="mb-2 text-slate-700 dark:text-slate-200">Delete this summary?</div>
                                 <div class="flex items-center gap-2 justify-end">
@@ -900,16 +912,16 @@ class AudioDashboard {
                 <div class="absolute inset-x-0 bottom-0 h-1 bg-black/20">
                     <div class="h-1 bg-audio-500" style="width:0%" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
                 </div>
-                <div class="absolute top-2 right-2">
+                <div class="absolute top-2 right-2 z-20">
                   <button class="p-1.5 min-w-[36px] min-h-[36px] rounded-md bg-white/70 dark:bg-slate-900/60 hover:bg-white/90" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
                     <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
                   </button>
-                  <div class="absolute right-0 mt-2 w-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg hidden z-10" data-kebab-menu role="menu">
+                  <div class="absolute right-0 mt-2 w-40 bg-white/95 dark:bg-slate-800/95 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl hidden z-50" data-kebab-menu role="menu">
                     <button class="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" role="menuitem" data-action="copy-link">Copy link</button>
                     <button class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors" role="menuitem" data-action="delete">Delete…</button>
                   </div>
                 </div>
-                <div class="absolute top-10 right-2 hidden z-10" data-delete-popover>
+                <div class="absolute top-12 right-2 hidden z-50" data-delete-popover>
                   <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-2 text-xs">
                     <div class="mb-2 text-slate-700 dark:text-slate-200">Delete this summary?</div>
                     <div class="flex items-center gap-2 justify-end">
