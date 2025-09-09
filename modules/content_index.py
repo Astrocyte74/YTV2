@@ -170,10 +170,59 @@ class ContentIndex:
         # Enhanced JSON schema support - get YouTube metadata from source_metadata (available for all formats)
         youtube_meta = report_data.get('source_metadata', {}).get('youtube', {})
         
-        # Detect legacy vs universal schema format
-        is_legacy = not ('metadata' in report_data and 'schema_version' in report_data.get('metadata', {}))
+        # Detect schema format types:
+        # 1. NEW Universal Format: has top-level 'id', 'content_source', 'analysis' fields
+        # 2. OLD Universal Format: has 'metadata.schema_version' 
+        # 3. Legacy Format: has 'video.title' structure
         
-        if is_legacy:
+        has_new_universal_fields = ('id' in report_data and 
+                                   'content_source' in report_data and 
+                                   'analysis' in report_data)
+        has_old_universal_schema = ('metadata' in report_data and 
+                                   'schema_version' in report_data.get('metadata', {}))
+        has_legacy_video_structure = ('video' in report_data and 
+                                     'title' in report_data.get('video', {}))
+        
+        # Determine format priority: NEW universal > OLD universal > Legacy
+        is_legacy = not (has_new_universal_fields or has_old_universal_schema)
+        is_new_universal = has_new_universal_fields
+        
+        if is_new_universal:
+            # NEW Universal format - extract from top-level fields
+            report_id = report_data.get('id', f"new:{file_stem}")
+            title = report_data.get('title', file_stem.replace('_', ' '))
+            content_source = report_data.get('content_source', 'youtube')
+            duration_seconds = report_data.get('duration_seconds', 0)
+            
+            # Extract published date - look in multiple places
+            published_at = report_data.get('published_at', '')
+            if not published_at and 'metadata' in report_data:
+                # Check metadata for date info
+                meta = report_data.get('metadata', {})
+                upload_date = meta.get('upload_date', '')
+                if upload_date and len(upload_date) == 8:
+                    # Convert YYYYMMDD to ISO format
+                    published_at = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:8]}T00:00:00Z"
+            
+            # Extract channel from source_metadata
+            channel = youtube_meta.get('channel_name', '') or youtube_meta.get('uploader_id', '').replace('@', '')
+            if not channel and 'metadata' in report_data:
+                channel = report_data.get('metadata', {}).get('uploader', '')
+            
+            # Extract analysis data directly from top-level analysis field
+            analysis = report_data.get('analysis', {})
+            category = analysis.get('category', ['Technology'])
+            if isinstance(category, str):
+                category = [category]
+            
+            content_type = analysis.get('content_type', 'Discussion')
+            complexity_level = analysis.get('complexity_level', 'Intermediate')
+            language = analysis.get('language', 'en')
+            key_topics = analysis.get('key_topics', [])
+            if isinstance(key_topics, str):
+                key_topics = [key_topics]
+            
+        elif is_legacy:
             # Legacy format - extract from old structure
             video_info = report_data.get('video', {})
             summary_info = report_data.get('summary', {})
@@ -193,8 +242,8 @@ class ContentIndex:
             key_topics = []
             
         else:
-            # Universal schema format
-            report_id = report_data.get('id', f"legacy:{file_stem}")
+            # OLD Universal schema format  
+            report_id = report_data.get('id', f"universal:{file_stem}")
             
             # Prefer explicit top-level title; fall back to enhanced schema; then video.title; then metadata; finally file stem
             title = str(report_data.get('title', '')).strip()
