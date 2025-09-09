@@ -98,6 +98,12 @@
                     
                     <!-- Header Controls -->
                     <div class="flex items-center space-x-3">
+                        <!-- Mobile filters toggle button -->
+                        <button id="mobileFiltersToggle" class="lg:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                            </svg>
+                        </button>
                         <button id="queueToggle" class="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
@@ -137,8 +143,19 @@
         <div class="flex-1 flex">
             
             <!-- Search & Filters Sidebar -->
-            <aside id="sidebar" class="w-80 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm border-r border-slate-200/50 dark:border-slate-700/50 overflow-y-auto sticky top-16 self-start" style="height: calc(100vh - 4rem)">
+            <aside id="sidebar" class="hidden lg:block lg:w-80 lg:bg-white/50 lg:dark:bg-slate-800/50 lg:backdrop-blur-sm lg:border-r lg:border-slate-200/50 lg:dark:border-slate-700/50 lg:overflow-y-auto lg:sticky lg:top-16 lg:self-start 
+                                     fixed inset-0 z-50 bg-white/95 dark:bg-slate-800/95 backdrop-blur lg:relative lg:inset-auto lg:z-auto overflow-y-auto" style="height: calc(100vh - 4rem)">
                 <div class="p-6 space-y-6">
+                    <!-- Mobile close button -->
+                    <div class="lg:hidden flex justify-between items-center -mt-2 mb-4">
+                        <h2 class="text-lg font-semibold">Filters & Audio Player</h2>
+                        <button id="closeSidebar" class="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                    
                     <!-- Mini Player (always visible) -->
                     <div id="nowPlayingPreview" class="bg-gradient-to-r from-audio-500 to-audio-600 rounded-xl p-4 text-white shadow-md">
                         <div class="flex items-start gap-3">
