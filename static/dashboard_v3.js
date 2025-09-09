@@ -499,7 +499,7 @@ class AudioDashboard {
 
     renderExpandedSkeleton() {
         return `
-          <div class="mt-3 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4">
+          <div class="mt-3 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 w-full md:w-3/4 mx-auto">
             <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-3"></div>
             <div class="space-y-2">
               <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded"></div>
@@ -551,7 +551,7 @@ class AudioDashboard {
             .join('') || '<p>No summary available.</p>';
 
         return `
-          <div class="mt-3 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 space-y-4" data-expanded>
+          <div class="mt-3 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 space-y-4 w-full md:w-3/4 mx-auto" data-expanded>
             ${badges.length ? `<div class="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-sm flex-wrap">${badges.join('')}</div>` : ''}
             <h4 class="text-base font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-audio-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 rounded" data-expanded-title>Summary</h4>
             <div class="prose prose-sm prose-slate dark:prose-invert max-w-none leading-6 w-full break-words">${summary}</div>
