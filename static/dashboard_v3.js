@@ -841,7 +841,7 @@ class AudioDashboard {
                     </div>
                     <div class="flex-1 min-w-0">
                         <div class="flex items-start justify-between gap-3">
-                            <div class="flex-1 min-w-0">
+                            <div class="flex-1 min-w-0 pr-12">
                                 <h3 class="text-base sm:text-lg font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 transition-colors line-clamp-2">
                                     ${this.escapeHtml(item.title)}
                                 </h3>
@@ -929,7 +929,7 @@ class AudioDashboard {
                   </div>
                 </div>
             </div>
-            <div class="p-3">
+            <div class="p-3 pr-12">
                 <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 line-clamp-2">${this.escapeHtml(item.title)}</h3>
                 <div class="text-xs text-slate-500 dark:text-slate-300 mt-1 line-clamp-1 flex items-center gap-2">
                     <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-slate-700 text-[9px]">${channelInitial}</span>
