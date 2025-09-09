@@ -5,7 +5,7 @@
 const UI_FLAGS = {
   compactCardActions: true,
   cardExpandInline: true,   // Enabled in Phase 2
-  queueEnabled: true,        // ← enable for test
+  queueEnabled: false,       // drop queue UI per feedback
   showWaveformPreview: true  // ← enable for test
 };
 

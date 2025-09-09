@@ -20,6 +20,9 @@ class AudioDashboard {
         this.currentExpandedId = null;
         // Queue persistence key (Phase 3)
         this.queueKey = 'ytv2.queue';
+        // Telemetry buffer
+        this.telemetryBuf = [];
+        this.telemetryFlushTimer = null;
         
         this.initializeElements();
         this.bindEvents();
@@ -162,9 +165,14 @@ class AudioDashboard {
                 this.loadFilters(),
                 this.loadContent()
             ]);
-            // If queue feature is on, make the sidebar visible by default
-            if (this.flags.queueEnabled && this.queueSidebar) {
-                this.queueSidebar.classList.remove('hidden');
+            // Queue UI visibility based on flag
+            if (this.queueSidebar) {
+                if (this.flags.queueEnabled) this.queueSidebar.classList.remove('hidden');
+                else this.queueSidebar.classList.add('hidden');
+            }
+            if (this.queueToggle) {
+                if (!this.flags.queueEnabled) this.queueToggle.classList.add('hidden');
+                else this.queueToggle.classList.remove('hidden');
             }
             // Restore queue if enabled
             if (this.flags.queueEnabled) {
@@ -349,11 +357,13 @@ class AudioDashboard {
 
     handleRead(id) {
         if (this.flags.cardExpandInline) {
-            this.expandCardInline(id);
-        } else {
-            const href = `/${id}.json?v=2`;
-            window.location.href = href;
+            if (this.currentExpandedId === id) {
+                return this.collapseCardInline(id);
+            }
+            return this.expandCardInline(id);
         }
+        const href = `/${id}.json?v=2`;
+        window.location.href = href;
     }
 
     openYoutube(videoId) {
@@ -390,8 +400,27 @@ class AudioDashboard {
         this.currentExpandedId = id;
         // Fetch details
         try {
-            const res = await fetch(`/api/report/${id}`);
-            const data = await res.json();
+            // Try API endpoints first (both plural and singular), tolerant of non-JSON responses.
+            const apiUrls = [`/api/reports/${id}`, `/api/report/${id}`];
+            let data = null, ok = false;
+            for (const url of apiUrls) {
+                try {
+                    const res = await fetch(url, { credentials: 'same-origin' });
+                    if (!res.ok) continue;
+                    const text = await res.text();
+                    const t = text.trim();
+                    if (t.startsWith('<')) continue; // clearly not JSON (HTML error page)
+                    try { data = JSON.parse(text); ok = true; break; } catch { /* not JSON; try next */ }
+                } catch { /* network; try next */ }
+            }
+            // Fallback to static JSON report (already supported by the app)
+            if (!ok) {
+                try {
+                    const res = await fetch(`/${encodeURIComponent(id)}.json?v=2`, { credentials: 'same-origin' });
+                    if (res.ok) { data = await res.json(); ok = true; }
+                } catch { /* ignore */ }
+            }
+            if (!ok || !data) throw new Error('No detail available');
             region.innerHTML = this.renderExpandedContent(data);
             // Focus region title
             const title = region.querySelector('[data-expanded-title]');
@@ -411,7 +440,7 @@ class AudioDashboard {
         const card = this.contentGrid.querySelector(`[data-report-id="${id}"]`);
         if (!card) return;
         const region = card.querySelector('[data-expand-region]');
-        if (!region) return;
+        if (!region) { this.currentExpandedId = null; this.updateHash(''); return; }
         this.showRegion(region, false);
         const readBtn = card.querySelector('[data-action="read"]');
         if (readBtn) readBtn.setAttribute('aria-expanded', 'false');
@@ -483,9 +512,14 @@ class AudioDashboard {
     renderExpandedContent(data) {
         const badges = [];
         if (data.channel) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.escapeHtml(data.channel)}</span>`);
-        if (data.duration_seconds) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.formatDuration(data.duration_seconds)}</span>`);
+        if (data.duration_seconds || data.duration) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.formatDuration(data.duration_seconds || data.duration)}</span>`);
         if (data.language) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.escapeHtml(data.language)}</span>`);
-        const summary = (data.summary || '').split('\n').filter(Boolean).map(p => `<p>${this.escapeHtml(p)}</p>`).join('');
+        const summaryRaw = (data && (data.summary ?? data.analysis?.summary ?? data.analysis?.summary_text ?? data.summary_preview ?? '')) || '';
+        const summary = String(summaryRaw)
+            .split('\n')
+            .filter(Boolean)
+            .map(p => `<p>${this.escapeHtml(p)}</p>`)
+            .join('') || '<p>No summary available.</p>';
         return `
           <div class="mt-3 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 space-y-4" data-expanded>
             <div class="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-sm flex-wrap">${badges.join('')}</div>
@@ -1347,6 +1381,7 @@ class AudioDashboard {
 
     // Telemetry batching + sampling
     queueTelemetry(evt) {
+        if (!this.telemetryBuf) this.telemetryBuf = [];
         this.telemetryBuf.push(evt);
         if (!this.telemetryFlushTimer) {
             this.telemetryFlushTimer = setTimeout(() => this.flushTelemetry(), 5000);
