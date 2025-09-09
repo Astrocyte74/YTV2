@@ -510,23 +510,52 @@ class AudioDashboard {
     }
 
     renderExpandedContent(data) {
+        // Badges (omit duration here)
         const badges = [];
         if (data.channel) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.escapeHtml(data.channel)}</span>`);
-        if (data.duration_seconds || data.duration) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.formatDuration(data.duration_seconds || data.duration)}</span>`);
         if (data.language) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.escapeHtml(data.language)}</span>`);
-        const summaryRaw = (data && (data.summary ?? data.analysis?.summary ?? data.analysis?.summary_text ?? data.summary_preview ?? '')) || '';
-        const summary = String(summaryRaw)
+
+        // Tolerant summary extraction across shapes
+        let summaryRaw = '';
+        if (typeof data.summary === 'string') {
+            summaryRaw = data.summary;
+        } else if (data.summary && typeof data.summary === 'object') {
+            if (typeof data.summary.content === 'string') summaryRaw = data.summary.content;
+            else if (data.summary.content && typeof data.summary.content.summary === 'string') summaryRaw = data.summary.content.summary;
+            else if (Array.isArray(data.summary.content)) summaryRaw = data.summary.content.join('\n');
+        }
+        if (!summaryRaw) summaryRaw = data.analysis?.summary || data.analysis?.summary_text || data.summary_preview || '';
+        // Additional fallbacks: bullets / key points arrays
+        if (!summaryRaw && Array.isArray(data.summary?.bullets)) {
+            summaryRaw = data.summary.bullets
+                .map(b => (typeof b === 'string' ? `• ${b}` : ''))
+                .filter(Boolean)
+                .join('\n');
+        }
+        if (!summaryRaw && Array.isArray(data.analysis?.key_points)) {
+            summaryRaw = data.analysis.key_points.map(b => typeof b === 'string' ? `• ${b}` : '').filter(Boolean).join('\n');
+        }
+        if (typeof summaryRaw !== 'string') {
+            try { summaryRaw = String(summaryRaw.summary || ''); } catch (_) {}
+        }
+        if (typeof summaryRaw !== 'string') {
+            try { summaryRaw = JSON.stringify(summaryRaw); } catch (_) { summaryRaw = ''; }
+        }
+        // Normalize and trim, collapse blank lines
+        summaryRaw = String(summaryRaw).replace(/\r\n?/g, '\n').trim();
+        const summary = summaryRaw
             .split('\n')
+            .map(s => s.trim())
             .filter(Boolean)
             .map(p => `<p>${this.escapeHtml(p)}</p>`)
             .join('') || '<p>No summary available.</p>';
+
         return `
           <div class="mt-3 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 space-y-4" data-expanded>
-            <div class="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-sm flex-wrap">${badges.join('')}</div>
-            <h4 class="text-base font-semibold text-slate-800 dark:text-slate-100" data-expanded-title>Summary</h4>
-            <div class="prose prose-sm prose-slate dark:prose-invert max-w-none leading-6">${summary || '<p>No summary available.</p>'}</div>
-            <div class="flex items-center justify-between">
-              <button class="ybtn px-3 py-1.5 rounded-md bg-audio-500 text-white hover:bg-audio-600" data-action="listen">▶ Listen</button>
+            ${badges.length ? `<div class="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-sm flex-wrap">${badges.join('')}</div>` : ''}
+            <h4 class="text-base font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-audio-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-900 rounded" data-expanded-title>Summary</h4>
+            <div class="prose prose-sm prose-slate dark:prose-invert max-w-none leading-6 w-full break-words">${summary}</div>
+            <div class="flex items-center justify-end">
               <button class="ybtn ybtn-ghost px-3 py-1.5 rounded-md" data-action="collapse">Collapse</button>
             </div>
           </div>`;
