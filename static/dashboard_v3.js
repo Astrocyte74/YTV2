@@ -9,11 +9,17 @@ class AudioDashboard {
         this.playlist = [];
         this.currentTrackIndex = -1;
         this.isPlaying = false;
+        // Read UI feature flags (non-breaking if missing)
+        this.flags = (typeof window !== 'undefined' && window.UI_FLAGS) ? window.UI_FLAGS : {};
         this.currentFilters = {};
         this.currentPage = 1;
         this.currentSort = 'newest';
         this.searchQuery = '';
         this.viewMode = (localStorage.getItem('ytv2.viewMode') || 'list');
+        // Inline expand state
+        this.currentExpandedId = null;
+        // Queue persistence key (Phase 3)
+        this.queueKey = 'ytv2.queue';
         
         this.initializeElements();
         this.bindEvents();
@@ -64,7 +70,9 @@ class AudioDashboard {
         this.queueSidebar = document.getElementById('queueSidebar');
         this.queueToggle = document.getElementById('queueToggle');
         this.audioQueue = document.getElementById('audioQueue');
+        this.queueClearBtn = document.getElementById('queueClearBtn');
         this.nowPlayingPreview = document.getElementById('nowPlayingPreview');
+        this.nowPlayingThumb = document.getElementById('nowPlayingThumb');
         this.nowPlayingTitle = document.getElementById('nowPlayingTitle');
         this.nowPlayingMeta = document.getElementById('nowPlayingMeta');
         this.nowPlayingProgress = document.getElementById('nowPlayingProgress');
@@ -86,7 +94,7 @@ class AudioDashboard {
         // Audio events
         this.audioElement.addEventListener('loadedmetadata', () => this.updateDuration());
         this.audioElement.addEventListener('timeupdate', () => this.updateProgress());
-        this.audioElement.addEventListener('ended', () => this.playNext());
+        this.audioElement.addEventListener('ended', () => this.playNext('auto'));
         this.audioElement.addEventListener('canplay', () => this.handleCanPlay());
         this.audioElement.addEventListener('error', () => this.handleAudioError());
         
@@ -113,6 +121,7 @@ class AudioDashboard {
         
         // UI controls
         this.queueToggle.addEventListener('click', () => this.toggleQueue());
+        if (this.queueClearBtn) this.queueClearBtn.addEventListener('click', () => this.clearQueue());
         // Play All button removed - auto-playlist handles this
         if (this.listViewBtn) this.listViewBtn.addEventListener('click', () => this.setViewMode('list'));
         if (this.gridViewBtn) this.gridViewBtn.addEventListener('click', () => this.setViewMode('grid'));
@@ -121,6 +130,27 @@ class AudioDashboard {
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyboard(e));
         this.audioElement.addEventListener('volumechange', () => this.updateMuteIcon());
+
+        // Delegated card actions
+        if (this.contentGrid) {
+            this.contentGrid.addEventListener('click', (e) => this.onClickCardAction(e));
+        }
+        // URL hash handling for deep links
+        window.addEventListener('hashchange', () => this.onHashChange());
+        // Telemetry flush on unload/hidden
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden' && this.telemetryBuf && this.telemetryBuf.length) {
+                try {
+                    const payload = { batch: this.telemetryBuf, ts: Date.now() };
+                    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+                    if (navigator.sendBeacon) navigator.sendBeacon('/api/telemetry', blob);
+                } catch (_) {
+                    // ignore
+                } finally {
+                    this.telemetryBuf = [];
+                }
+            }
+        });
     }
 
     async loadInitialData() {
@@ -132,6 +162,10 @@ class AudioDashboard {
                 this.loadFilters(),
                 this.loadContent()
             ]);
+            // Restore queue if enabled
+            if (this.flags.queueEnabled) {
+                this.restoreQueue();
+            }
             // Default select first item (do not autoplay)
             if (!this.currentAudio && this.currentItems && this.currentItems.length > 0) {
                 const first = this.currentItems[0];
@@ -251,41 +285,12 @@ class AudioDashboard {
             ? `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(i => this.createGridCard(i)).join('')}</div>`
             : items.map(i => this.createContentCard(i)).join('');
         this.contentGrid.innerHTML = html;
-        
-        // Bind play buttons
-        this.contentGrid.querySelectorAll('[data-play-btn]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const reportId = e.target.closest('[data-report-id]').dataset.reportId;
-                this.playAudio(reportId);
-            });
-        });
-        
-        // Bind add to queue buttons
-        this.contentGrid.querySelectorAll('[data-queue-btn]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const reportId = e.target.closest('[data-report-id]').dataset.reportId;
-                this.addToQueue(reportId);
-            });
-        });
-
-        // Bind delete buttons
-        this.contentGrid.querySelectorAll('[data-delete-btn]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const card = e.target.closest('[data-report-id]');
-                const stem = card.dataset.reportId;
-                const title = card.querySelector('h3')?.textContent?.trim() || stem;
-                this.openConfirm(stem, title);
-            });
-        });
 
         // Make whole card clickable (except controls)
         this.contentGrid.querySelectorAll('[data-card]').forEach(card => {
             card.addEventListener('click', (e) => {
                 // Ignore if click on a control
-                if (e.target.closest('[data-control]')) return;
+                if (e.target.closest('[data-control]') || e.target.closest('[data-action]')) return;
                 const href = card.dataset.href;
                 if (href) window.location.href = href;
             });
@@ -299,6 +304,277 @@ class AudioDashboard {
 
         // Highlight currently playing
         this.updatePlayingCard();
+
+        // Apply deep-link expansion if present
+        this.applyHashDeepLink();
+
+        // After render, ensure currentAudio still exists; if not, advance or clear
+        if (this.currentAudio) {
+            const exists = (this.currentItems || []).some(x => x.file_stem === this.currentAudio.id && x.media?.has_audio);
+            if (!exists) {
+                if (this.playlist && this.playlist.length > 1) this.playNext('auto');
+                else { this.audioElement.pause(); this.isPlaying = false; this.currentAudio = null; this.updatePlayButton(); this.updateNowPlayingPreview(); }
+            }
+        }
+    }
+
+    onClickCardAction(e) {
+        const btn = e.target.closest('[data-action]');
+        if (!btn) return;
+        const card = btn.closest('[data-report-id]');
+        if (!card) return;
+        e.stopPropagation();
+        if (btn.dataset.busy) return;
+        btn.dataset.busy = '1';
+        setTimeout(() => { try { delete btn.dataset.busy; } catch(_){} }, 400);
+        const action = btn.dataset.action;
+        const id = card.dataset.reportId;
+        if (action === 'listen') {
+            const hasAudio = card.getAttribute('data-has-audio') === 'true';
+            if (!hasAudio) { this.showToast('No audio for this item', 'warn'); return; }
+            this.playAudio(id);
+            this.sendTelemetry('cta_listen', { id });
+        }
+        if (action === 'read') { this.handleRead(id); this.sendTelemetry('cta_read', { id }); }
+        if (action === 'watch') { this.openYoutube(card.dataset.videoId); this.sendTelemetry('cta_watch', { id, video_id: card.dataset.videoId }); }
+        if (action === 'delete') { this._lastDeleteTrigger = btn; this.toggleDeletePopover(card, true); }
+        if (action === 'confirm-delete') { this.handleDelete(id, card); this.sendTelemetry('cta_delete', { id }); }
+        if (action === 'cancel-delete') this.toggleDeletePopover(card, false);
+        if (action === 'collapse') this.collapseCardInline(id);
+    }
+
+    handleRead(id) {
+        if (this.flags.cardExpandInline) {
+            this.expandCardInline(id);
+        } else {
+            const href = `/${id}.json?v=2`;
+            window.location.href = href;
+        }
+    }
+
+    openYoutube(videoId) {
+        if (!videoId) {
+            this.showToast('No YouTube link available', 'warn');
+            return;
+        }
+        const url = `https://www.youtube.com/watch?v=${videoId}`;
+        window.open(url, '_blank');
+    }
+
+    async expandCardInline(id) {
+        const card = this.contentGrid.querySelector(`[data-report-id="${id}"]`);
+        if (!card) return;
+        // Collapse any other expanded
+        if (this.currentExpandedId && this.currentExpandedId !== id) {
+            this.collapseCardInline(this.currentExpandedId);
+        }
+        const region = this.ensureExpandRegion(card);
+        if (!region) return;
+
+        // If already visible, do nothing
+        if (!region.hasAttribute('hidden')) return;
+
+        // Load content
+        region.innerHTML = this.renderExpandedSkeleton();
+        // Set id and control linkage
+        if (!region.id) region.id = `expand-${id}`;
+        const readBtn = card.querySelector('[data-action="read"]');
+        if (readBtn) { readBtn.setAttribute('aria-controls', region.id); readBtn.setAttribute('aria-expanded', 'true'); }
+        this.showRegion(region, true);
+        // Update URL hash
+        this.updateHash(id);
+        this.currentExpandedId = id;
+        // Fetch details
+        try {
+            const res = await fetch(`/api/report/${id}`);
+            const data = await res.json();
+            region.innerHTML = this.renderExpandedContent(data);
+            // Focus region title
+            const title = region.querySelector('[data-expanded-title]');
+            if (title) {
+                title.setAttribute('tabindex', '-1');
+                title.focus();
+            }
+        } catch (err) {
+            console.error('Failed to load report', err);
+            region.innerHTML = `<div class="mt-3 rounded-xl bg-red-50 border border-red-200 text-red-700 p-4">Failed to load summary.</div>`;
+        }
+        // Scroll into view
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    collapseCardInline(id) {
+        const card = this.contentGrid.querySelector(`[data-report-id="${id}"]`);
+        if (!card) return;
+        const region = card.querySelector('[data-expand-region]');
+        if (!region) return;
+        this.showRegion(region, false);
+        const readBtn = card.querySelector('[data-action="read"]');
+        if (readBtn) readBtn.setAttribute('aria-expanded', 'false');
+        if (this.currentExpandedId === id) this.currentExpandedId = null;
+        // If current hash targets this id, go back to clear hash so Back button collapses naturally
+        const target = this.parseHash();
+        if (target === id) {
+            try { history.back(); } catch (_) { this.updateHash(''); }
+        }
+    }
+
+    ensureExpandRegion(card) {
+        let region = card.querySelector('[data-expand-region]');
+        if (!region) {
+            region = document.createElement('section');
+            region.setAttribute('role', 'region');
+            region.setAttribute('aria-live', 'polite');
+            region.setAttribute('hidden', '');
+            region.dataset.expandRegion = '';
+            // Insert near bottom inside card content
+            const container = card.querySelector('.flex-1.min-w-0') || card;
+            container.appendChild(region);
+        }
+        return region;
+    }
+
+    showRegion(region, show) {
+        if (show) {
+            region.hidden = false;
+            region.style.overflow = 'hidden';
+            region.style.maxHeight = '0px';
+            region.style.opacity = '0';
+            region.offsetHeight; // reflow
+            region.style.transition = 'max-height 250ms ease, opacity 200ms ease';
+            region.style.maxHeight = region.scrollHeight + 'px';
+            region.style.opacity = '1';
+            setTimeout(() => {
+                region.style.maxHeight = '';
+                region.style.overflow = '';
+            }, 260);
+        } else {
+            region.style.overflow = 'hidden';
+            region.style.maxHeight = region.scrollHeight + 'px';
+            region.offsetHeight;
+            region.style.transition = 'max-height 220ms ease, opacity 200ms ease';
+            region.style.maxHeight = '0px';
+            region.style.opacity = '0';
+            setTimeout(() => {
+                region.hidden = true;
+                region.style.maxHeight = '';
+                region.style.opacity = '';
+                region.style.overflow = '';
+            }, 230);
+        }
+    }
+
+    renderExpandedSkeleton() {
+        return `
+          <div class="mt-3 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4">
+            <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-3"></div>
+            <div class="space-y-2">
+              <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded"></div>
+              <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded w-5/6"></div>
+              <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded w-2/3"></div>
+            </div>
+          </div>`;
+    }
+
+    renderExpandedContent(data) {
+        const badges = [];
+        if (data.channel) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.escapeHtml(data.channel)}</span>`);
+        if (data.duration_seconds) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.formatDuration(data.duration_seconds)}</span>`);
+        if (data.language) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.escapeHtml(data.language)}</span>`);
+        const summary = (data.summary || '').split('\n').filter(Boolean).map(p => `<p>${this.escapeHtml(p)}</p>`).join('');
+        return `
+          <div class="mt-3 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 space-y-4" data-expanded>
+            <div class="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-sm flex-wrap">${badges.join('')}</div>
+            <h4 class="text-base font-semibold text-slate-800 dark:text-slate-100" data-expanded-title>Summary</h4>
+            <div class="prose prose-sm prose-slate dark:prose-invert max-w-none leading-6">${summary || '<p>No summary available.</p>'}</div>
+            <div class="flex items-center justify-between">
+              <button class="ybtn px-3 py-1.5 rounded-md bg-audio-500 text-white hover:bg-audio-600" data-action="listen">▶ Listen</button>
+              <button class="ybtn ybtn-ghost px-3 py-1.5 rounded-md" data-action="collapse">Collapse</button>
+            </div>
+          </div>`;
+    }
+
+    updateHash(id) {
+        if (!id) {
+            history.pushState('', document.title, window.location.pathname + window.location.search);
+            return;
+        }
+        const newHash = `#report=${encodeURIComponent(id)}`;
+        if (window.location.hash !== newHash) {
+            window.location.hash = newHash;
+        }
+    }
+
+    parseHash() {
+        const h = window.location.hash || '';
+        const m = h.match(/^#report=([^&]+)/);
+        return m ? decodeURIComponent(m[1]) : '';
+    }
+
+    onHashChange() {
+        const id = this.parseHash();
+        if (id) {
+            this.expandCardInline(id);
+        } else if (this.currentExpandedId) {
+            const prev = this.currentExpandedId;
+            this.collapseCardInline(prev);
+        }
+    }
+
+    applyHashDeepLink() {
+        const id = this.parseHash();
+        if (!id) return;
+        if (this.flags.cardExpandInline) {
+            const card = this.contentGrid.querySelector(`[data-report-id="${id}"]`);
+            if (card) this.expandCardInline(id);
+        }
+    }
+
+    toggleDeletePopover(card, show) {
+        const pop = card.querySelector('[data-delete-popover]');
+        if (!pop) return;
+        if (show) {
+            pop.setAttribute('role', 'dialog');
+            pop.setAttribute('aria-modal', 'true');
+            pop.classList.remove('hidden');
+            // focus first button
+            const firstBtn = pop.querySelector('button');
+            if (firstBtn) firstBtn.focus();
+        } else {
+            pop.classList.add('hidden');
+            // restore focus
+            if (this._lastDeleteTrigger && this._lastDeleteTrigger.focus) {
+                this._lastDeleteTrigger.focus();
+            }
+        }
+    }
+
+    async handleDelete(id, cardEl) {
+        try {
+            // Optimistic UI: show busy state
+            const pop = cardEl.querySelector('[data-delete-popover]');
+            if (pop) pop.classList.add('pointer-events-none', 'opacity-60');
+            const res = await fetch('/api/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: [id] })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            await res.json();
+            // Smooth remove
+            cardEl.classList.add('transition', 'duration-200', 'ease-out', 'opacity-0', 'scale-95');
+            setTimeout(() => {
+                cardEl.remove();
+                this.showToast('Deleted successfully', 'success');
+            }, 200);
+            // Ask server to refresh
+            fetch('/api/refresh').catch(() => {});
+        } catch (err) {
+            console.error('Delete failed', err);
+            this.showToast('Delete failed', 'error');
+        } finally {
+            this.toggleDeletePopover(cardEl, false);
+        }
     }
 
     openConfirm(stem, title) {
@@ -357,10 +633,13 @@ class AudioDashboard {
         const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
         const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
         return `
-            <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" title="Open summary" tabindex="0" class="group cursor-pointer bg-white/80 dark:bg-slate-800/60 backdrop-blur-sm rounded-xl border border-slate-200/60 dark:border-slate-700 p-4 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200">
+            <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative cursor-pointer bg-white/80 dark:bg-slate-800/60 backdrop-blur-sm rounded-xl border border-slate-200/60 dark:border-slate-700 p-4 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200">
                 <div class="flex gap-4 items-start">
                     <div class="relative w-56 aspect-video overflow-hidden rounded-lg bg-slate-100 flex-shrink-0">
-                        ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" class="absolute inset-0 w-full h-full object-cover">` : ''}
+                        ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
+                        <div class="absolute inset-x-0 bottom-0 h-1 bg-black/20">
+                            <div class="h-1 bg-audio-500" style="width:0%" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+                        </div>
                     </div>
                     <div class="flex-1 min-w-0">
                         <div class="flex items-start justify-between gap-3">
@@ -382,15 +661,29 @@ class AudioDashboard {
                                     <span>${item.analysis?.language || 'en'}</span>
                                 </div>
                             </div>
-                            <div class="flex items-center gap-2">
+                            <div class="flex items-center gap-2 absolute top-3 right-3">
                                 ${hasAudio ? `
-                                <button data-control data-play-btn title="Listen" aria-label="Listen" class="p-3 rounded-full bg-audio-500 text-white hover:bg-audio-600 focus:ring-2 focus:ring-audio-500 transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105">
-                                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                <button class="ybtn ybtn-ghost p-2 min-w-[40px] min-h-[40px] rounded-md bg-transparent hover:bg-slate-200/60 dark:hover:bg-slate-700/60" data-action="listen" title="Listen (L)" aria-label="Listen">
+                                  <span class="i">▶</span><span class="sr-only">Listen</span>
+                                </button>` : ''}
+                                <button class="ybtn ybtn-ghost p-2 min-w-[40px] min-h-[40px] rounded-md bg-transparent hover:bg-slate-200/60 dark:hover:bg-slate-700/60" data-action="read" title="Read (R)" aria-label="Read summary">
+                                  <span class="i">☰</span><span class="sr-only">Read</span>
                                 </button>
-                                ` : ''}
-                                <button data-control data-delete-btn title="Delete Report" aria-label="Delete Report" class="p-2.5 rounded-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 focus:ring-2 focus:ring-red-500 focus:ring-offset-1 transition-all duration-200 shadow-sm hover:shadow-md hover:scale-105 opacity-0 group-hover:opacity-100">
-                                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 6h18"/><path d="M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"/><path d="M10 11v6M14 11v6"/><path d="M9 6l1-2h4l1 2"/></svg>
+                                <button class="ybtn ybtn-ghost p-2 min-w-[40px] min-h-[40px] rounded-md bg-transparent hover:bg-slate-200/60 dark:hover:bg-slate-700/60" data-action="watch" title="Watch on YouTube (W)" aria-label="Watch on YouTube">
+                                  <span class="i">▣</span><span class="sr-only">Watch on YouTube</span>
                                 </button>
+                                <button class="p-2 rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 opacity-0 group-hover:opacity-100 focus:opacity-100 transition" data-action="delete" title="Delete">
+                                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"/><path d="M10 11v6M14 11v6"/><path d="M9 6l1-2h4l1 2"/></svg>
+                                </button>
+                            </div>
+                            <div class="absolute top-12 right-3 hidden z-10" data-delete-popover>
+                              <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-3 text-sm">
+                                <div class="mb-2 text-slate-700 dark:text-slate-200">Delete this summary?</div>
+                                <div class="flex items-center gap-2 justify-end">
+                                  <button class="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700" data-action="cancel-delete">Cancel</button>
+                                  <button class="px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700" data-action="confirm-delete">Delete</button>
+                                </div>
+                              </div>
                             </div>
                         </div>
 
@@ -399,6 +692,7 @@ class AudioDashboard {
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-audio-100 dark:bg-slate-700 text-audio-800 dark:text-slate-300">${this.escapeHtml(cat)}</span>
                             `).join('')}
                         </div>
+                        <section role="region" aria-live="polite" hidden data-expand-region></section>
                     </div>
                 </div>
             </div>
@@ -411,9 +705,27 @@ class AudioDashboard {
         const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
         const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
         return `
-        <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-href="${href}" title="Open summary" tabindex="0" class="group cursor-pointer bg-white/80 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+        <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-has-audio="${(item.media && item.media.has_audio) ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative cursor-pointer bg-white/80 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
             <div class="relative aspect-video bg-slate-100">
-                ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" class="absolute inset-0 w-full h-full object-cover">` : ''}
+                ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
+                <div class="absolute inset-x-0 bottom-0 h-1 bg-black/20">
+                    <div class="h-1 bg-audio-500" style="width:0%" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+                </div>
+                <div class="absolute top-2 right-2 flex items-center gap-1">
+                    ${(item.media && item.media.has_audio) ? `<button class=\"p-1.5 min-w-[40px] min-h-[40px] rounded-md bg-white/70 dark:bg-slate-900/60 hover:bg-white/90\" data-action=\"listen\" title=\"Listen (L)\" aria-label=\"Listen\">▶</button>` : ''}
+                    <button class="p-1.5 min-w-[40px] min-h-[40px] rounded-md bg-white/70 dark:bg-slate-900/60 hover:bg-white/90" data-action="read" title="Read (R)" aria-label="Read summary">☰</button>
+                    <button class="p-1.5 min-w-[40px] min-h-[40px] rounded-md bg-white/70 dark:bg-slate-900/60 hover:bg-white/90" data-action="watch" title="Watch (W)" aria-label="Watch on YouTube">▣</button>
+                    <button class="p-1.5 min-w-[40px] min-h-[40px] rounded-md text-red-600 bg-white/70 dark:bg-slate-900/60 hover:bg-red-50" data-action="delete" title="Delete">🗑️</button>
+                </div>
+                <div class="absolute top-10 right-2 hidden z-10" data-delete-popover>
+                  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-2 text-xs">
+                    <div class="mb-2 text-slate-700 dark:text-slate-200">Delete this summary?</div>
+                    <div class="flex items-center gap-2 justify-end">
+                      <button class="px-2 py-1 rounded border border-slate-200 dark:border-slate-700" data-action="cancel-delete">Cancel</button>
+                      <button class="px-2 py-1 rounded bg-red-600 text-white" data-action="confirm-delete">Delete</button>
+                    </div>
+                  </div>
+                </div>
             </div>
             <div class="p-3">
                 <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 line-clamp-2">${this.escapeHtml(item.title)}</h3>
@@ -427,14 +739,7 @@ class AudioDashboard {
                     <span>•</span>
                     <span>${item.analysis?.language || 'en'}</span>
                 </div>
-                <div class="mt-2 flex items-center justify-between">
-                    <button data-control data-play-btn title="Listen" aria-label="Listen" class="p-2.5 rounded-full bg-audio-500 text-white hover:bg-audio-600 transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-105">
-                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                    </button>
-                    <button data-control data-delete-btn title="Delete" aria-label="Delete" class="p-2 rounded-lg text-red-600 hover:bg-red-50 focus:ring-2 focus:ring-red-500">
-                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"/><path d="M10 11v6M14 11v6"/><path d="M9 6l1-2h4l1 2"/></svg>
-                    </button>
-                </div>
+                <section role="region" aria-live="polite" hidden data-expand-region></section>
             </div>
         </div>`;
     }
@@ -521,6 +826,8 @@ class AudioDashboard {
             // Use server-side resolver to map videoId to latest audio file
             const audioSrc = videoId ? `/exports/by_video/${videoId}.mp3` : `/exports/${reportId}.mp3`;
             
+            // Reset per-card progress bars
+            try { document.querySelectorAll('[data-card-progress]').forEach(el => { el.style.width = '0%'; el.setAttribute('aria-valuenow', '0'); }); } catch(_) {}
             // Update current track info
             this.currentAudio = {
                 id: reportId,
@@ -528,9 +835,23 @@ class AudioDashboard {
                 src: audioSrc
             };
 
+            // Queue management (Phase 3)
+            if (this.flags.queueEnabled && Array.isArray(this.currentItems)) {
+                this.playlist = this.currentItems.map(i => i.file_stem);
+                this.currentTrackIndex = this.playlist.indexOf(reportId);
+                if (this.currentTrackIndex < 0) this.currentTrackIndex = 0;
+                this.renderQueue();
+                this.saveQueue();
+            }
+
             // Update player info
             if (this.nowPlayingTitle) this.nowPlayingTitle.textContent = title;
             if (this.nowPlayingMeta) this.nowPlayingMeta.textContent = 'Loading...';
+            const cardImg = reportCard.querySelector('img');
+            if (this.nowPlayingThumb && cardImg && cardImg.src) {
+                this.nowPlayingThumb.src = cardImg.src;
+                this.nowPlayingThumb.classList.remove('hidden');
+            }
             
             // Load and play audio (user initiated)
             this.audioElement.src = audioSrc;
@@ -622,6 +943,10 @@ class AudioDashboard {
         this.currentAudio = { id: reportId, title, src: audioSrc };
         if (this.nowPlayingTitle) this.nowPlayingTitle.textContent = title;
         if (this.nowPlayingMeta) this.nowPlayingMeta.textContent = 'Ready';
+        if (this.nowPlayingThumb && item.thumbnail_url) {
+            this.nowPlayingThumb.src = item.thumbnail_url;
+            this.nowPlayingThumb.classList.remove('hidden');
+        }
         // Do not autoplay here; will load when user hits play
         this.audioElement.src = audioSrc;
         this.audioElement.load();
@@ -666,6 +991,27 @@ class AudioDashboard {
             }
             if (this.nowPlayingMeta) {
                 this.nowPlayingMeta.textContent = `${this.formatDuration(currentTime)} / ${this.formatDuration(duration)}`;
+            }
+            // Micro progress bar on current card (flagged)
+            if (this.currentAudio) {
+                const card = document.querySelector(`[data-report-id="${this.currentAudio.id}"]`);
+                const bar = card && card.querySelector('[data-card-progress]');
+                if (bar) {
+                    if (this.flags.showWaveformPreview) {
+                        bar.style.width = `${progress}%`;
+                        bar.setAttribute('aria-valuenow', String(Math.round(progress)));
+                    } else {
+                        bar.style.width = '0%';
+                        bar.setAttribute('aria-valuenow', '0');
+                    }
+                }
+            }
+        } else {
+            // If no valid duration, ensure progress bar is reset
+            if (this.flags.showWaveformPreview && this.currentAudio) {
+                const card = document.querySelector(`[data-report-id="${this.currentAudio.id}"]`);
+                const bar = card && card.querySelector('[data-card-progress]');
+                if (bar) { bar.style.width = '0%'; bar.setAttribute('aria-valuenow', '0'); }
             }
         }
         
@@ -741,9 +1087,16 @@ class AudioDashboard {
     }
 
     addToQueue(reportId) {
-        // Implementation for adding to queue
-        console.log('Adding to queue:', reportId);
-        // This would integrate with a playlist system
+        if (!this.flags.queueEnabled) return;
+        if (!this.playlist) this.playlist = [];
+        const item = (this.currentItems || []).find(x => x.file_stem === reportId);
+        if (!item || !item.media?.has_audio) { this.showToast('No audio for this item', 'warn'); return; }
+        if (!this.playlist.includes(reportId)) {
+            this.playlist.push(reportId);
+            this.saveQueue();
+            this.renderQueue();
+            this.showToast('Added to queue', 'success');
+        }
     }
 
     playAllResults() {
@@ -753,16 +1106,38 @@ class AudioDashboard {
         this.playAudio(this.playlist[0]);
     }
 
-    playNext() {
-        if (!this.playlist || this.playlist.length === 0) return;
+    playNext(source = 'user') {
+        if (!this.playlist || this.playlist.length <= 1) return;
         this.currentTrackIndex = (this.currentTrackIndex + 1) % this.playlist.length;
+        let safety = 0;
+        while (safety < this.playlist.length) {
+            const id = this.playlist[this.currentTrackIndex];
+            const item = (this.currentItems || []).find(x => x.file_stem === id);
+            if (item && item.media?.has_audio) break;
+            this.currentTrackIndex = (this.currentTrackIndex + 1) % this.playlist.length;
+            safety++;
+        }
+        if (safety >= this.playlist.length) return this.showToast('No playable items in queue', 'warn');
+        this.saveQueue();
         this.playAudio(this.playlist[this.currentTrackIndex]);
+        this.sendTelemetry(source === 'auto' ? 'auto_advance' : 'next', { index: this.currentTrackIndex });
     }
 
     playPrevious() {
-        if (!this.playlist || this.playlist.length === 0) return;
+        if (!this.playlist || this.playlist.length <= 1) return;
         this.currentTrackIndex = (this.currentTrackIndex - 1 + this.playlist.length) % this.playlist.length;
+        let safety = 0;
+        while (safety < this.playlist.length) {
+            const id = this.playlist[this.currentTrackIndex];
+            const item = (this.currentItems || []).find(x => x.file_stem === id);
+            if (item && item.media?.has_audio) break;
+            this.currentTrackIndex = (this.currentTrackIndex - 1 + this.playlist.length) % this.playlist.length;
+            safety++;
+        }
+        if (safety >= this.playlist.length) return this.showToast('No playable items in queue', 'warn');
+        this.saveQueue();
         this.playAudio(this.playlist[this.currentTrackIndex]);
+        this.sendTelemetry('prev', { index: this.currentTrackIndex });
     }
 
     toggleMute() {
@@ -805,12 +1180,52 @@ class AudioDashboard {
                     this.playNext();
                 }
                 break;
+            case 'KeyN':
+                if (this.currentAudio) {
+                    event.preventDefault();
+                    this.playNext();
+                }
+                break;
+            case 'KeyP':
+                if (this.currentAudio) {
+                    event.preventDefault();
+                    this.playPrevious();
+                }
+                break;
             case 'KeyM':
                 if (this.currentAudio) {
                     event.preventDefault();
                     this.toggleMute();
                 }
                 break;
+            case 'KeyD': {
+                const active = document.activeElement;
+                const card = active && active.closest && active.closest('[data-card]');
+                if (!card) break;
+                event.preventDefault();
+                this.toggleDeletePopover(card, true);
+                break;
+            }
+            case 'Escape':
+                if (this.currentExpandedId) {
+                    event.preventDefault();
+                    this.collapseCardInline(this.currentExpandedId);
+                }
+                break;
+            // Card shortcuts while a card has focus
+            case 'KeyL':
+            case 'KeyR':
+            case 'KeyW': {
+                const active = document.activeElement;
+                const card = active && active.closest && active.closest('[data-card]');
+                if (!card) return;
+                event.preventDefault();
+                const id = card.dataset.reportId;
+                if (event.code === 'KeyL') this.playAudio(id);
+                if (event.code === 'KeyR') this.handleRead(id);
+                if (event.code === 'KeyW') this.openYoutube(card.dataset.videoId);
+                break;
+            }
         }
     }
 
@@ -845,6 +1260,114 @@ class AudioDashboard {
         // Simple error display - could be enhanced with toast notifications
         console.error(message);
         // In a real implementation, show a user-friendly error message
+    }
+
+    showToast(message, type = 'info') {
+        const el = document.createElement('div');
+        const colors = {
+            success: 'bg-emerald-600',
+            error: 'bg-red-600',
+            warn: 'bg-amber-600',
+            info: 'bg-slate-800'
+        };
+        el.className = `fixed top-4 left-1/2 -translate-x-1/2 z-50 px-3 py-2 rounded-lg text-white shadow ${colors[type] || colors.info}`;
+        el.textContent = message;
+        document.body.appendChild(el);
+        // SR live update
+        const sr = document.getElementById('srLive');
+        if (sr) sr.textContent = message;
+        setTimeout(() => {
+            el.classList.add('opacity-0', 'transition', 'duration-200');
+            setTimeout(() => el.remove(), 220);
+        }, 1600);
+    }
+
+    // Queue rendering/persistence (Phase 3)
+    renderQueue() {
+        if (!this.audioQueue) return;
+        const items = this.playlist || [];
+        const html = items.map((id, idx) => {
+            const item = (this.currentItems || []).find(x => x.file_stem === id);
+            const title = item ? this.escapeHtml(item.title) : id;
+            const isCurrent = idx === this.currentTrackIndex;
+            const aria = isCurrent ? ' aria-current="true"' : '';
+            return `
+              <button data-queue-index="${idx}"${aria} class="w-full text-left px-3 py-2 rounded-lg border ${isCurrent ? 'border-audio-400 bg-audio-50' : 'border-slate-200 hover:bg-slate-50'} text-sm truncate">
+                <span class="text-slate-600">${(idx+1).toString().padStart(2,'0')}.</span>
+                <span class="ml-2 ${isCurrent ? 'text-audio-700 font-medium' : 'text-slate-700'}">${title}</span>
+              </button>`;
+        }).join('');
+        this.audioQueue.innerHTML = html;
+        this.audioQueue.querySelectorAll('[data-queue-index]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const i = parseInt(btn.dataset.queueIndex);
+                if (isNaN(i)) return;
+                this.currentTrackIndex = i;
+                this.saveQueue();
+                this.playAudio(this.playlist[this.currentTrackIndex]);
+                this.sendTelemetry('queue_jump', { index: i });
+            });
+        });
+    }
+
+    clearQueue() {
+        this.playlist = [];
+        this.currentTrackIndex = -1;
+        this.saveQueue();
+        this.renderQueue();
+        this.sendTelemetry('queue_clear', {});
+    }
+
+    saveQueue() {
+        try {
+            const data = { playlist: this.playlist || [], index: this.currentTrackIndex };
+            sessionStorage.setItem(this.queueKey, JSON.stringify(data));
+        } catch (_) {}
+    }
+
+    restoreQueue() {
+        try {
+            const raw = sessionStorage.getItem(this.queueKey);
+            if (!raw) return;
+            const data = JSON.parse(raw);
+            if (Array.isArray(data.playlist) && typeof data.index === 'number') {
+                this.playlist = data.playlist;
+                this.currentTrackIndex = Math.min(Math.max(0, data.index), this.playlist.length - 1);
+                const id = this.playlist[this.currentTrackIndex];
+                const item = (this.currentItems || []).find(x => x.file_stem === id) || this.currentItems[0];
+                if (item) this.setCurrentFromItem(item);
+                this.renderQueue();
+            }
+        } catch (_) {}
+    }
+
+    // Telemetry batching + sampling
+    queueTelemetry(evt) {
+        this.telemetryBuf.push(evt);
+        if (!this.telemetryFlushTimer) {
+            this.telemetryFlushTimer = setTimeout(() => this.flushTelemetry(), 5000);
+        }
+    }
+
+    async flushTelemetry() {
+        const buf = this.telemetryBuf.splice(0, this.telemetryBuf.length);
+        this.telemetryFlushTimer = null;
+        if (!buf.length) return;
+        try {
+            await fetch('/api/telemetry', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ batch: buf, ts: Date.now() })
+            });
+        } catch (e) {
+            console.log('[telemetry:batch]', buf);
+        }
+    }
+
+    sendTelemetry(eventName, payload = {}) {
+        const sampled = ['cta_listen','cta_watch'].includes(eventName) ? (Math.random() < 0.25) : true;
+        if (!sampled) return;
+        this.queueTelemetry({ event: eventName, ...payload, t: Date.now() });
     }
 }
 
