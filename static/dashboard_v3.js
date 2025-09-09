@@ -512,7 +512,7 @@ class AudioDashboard {
 
     renderExpandedSkeleton() {
         return `
-          <div class="mt-3 mx-[-1rem] rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4">
+          <div class="mt-3 mx-[-1rem] md:mx-[-1rem] sm:mx-0 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3 md:p-4">
             <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-3"></div>
             <div class="space-y-2">
               <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded"></div>
@@ -588,10 +588,10 @@ class AudioDashboard {
             .join('') || '<p>No summary available.</p>';
 
         return `
-          <div class="mt-3 mx-[-1rem] rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 space-y-4" data-expanded>
+          <div class="mt-3 mx-[-1rem] md:mx-[-1rem] sm:mx-0 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3 md:p-4 space-y-3 md:space-y-4" data-expanded>
             ${badges.length ? `<div class="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-sm flex-wrap">${badges.join('')}</div>` : ''}
             <h4 class="sr-only" data-expanded-title>Summary</h4>
-            <div class="prose prose-sm prose-slate dark:prose-invert max-w-none leading-6 w-full break-words">${summary}</div>
+            <div class="prose prose-sm sm:prose-base prose-slate dark:prose-invert max-w-none leading-6 sm:leading-7 w-full break-words">${summary}</div>
             <div class="flex items-center justify-end">
               <button class="ybtn ybtn-ghost px-3 py-1.5 rounded-md" data-action="collapse">Collapse</button>
             </div>
@@ -784,9 +784,9 @@ class AudioDashboard {
         const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
         const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
         return `
-            <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative list-layout cursor-pointer bg-white/80 dark:bg-slate-800/60 backdrop-blur-sm rounded-xl border border-slate-200/60 dark:border-slate-700 p-4 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200" style="--thumbW: 240px;">
-                <div class="flex gap-4 items-start">
-                    <div class="relative w-56 aspect-video overflow-hidden rounded-lg bg-slate-100 flex-shrink-0">
+            <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative list-layout cursor-pointer bg-white/80 dark:bg-slate-800/60 backdrop-blur-sm rounded-xl border border-slate-200/60 dark:border-slate-700 p-3 sm:p-4 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200" style="--thumbW: 240px;">
+                <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start">
+                    <div class="relative w-full sm:w-56 aspect-video overflow-hidden rounded-lg bg-slate-100 flex-shrink-0">
                         ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
                         <div class="absolute inset-x-0 bottom-0 h-1 bg-black/20">
                             <div class="h-1 bg-audio-500" style="width:0%" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
@@ -795,21 +795,21 @@ class AudioDashboard {
                     <div class="flex-1 min-w-0">
                         <div class="flex items-start justify-between gap-3">
                             <div class="flex-1 min-w-0">
-                                <h3 class="text-lg font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 transition-colors line-clamp-2">
+                                <h3 class="text-base sm:text-lg font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 transition-colors line-clamp-2">
                                     ${this.escapeHtml(item.title)}
                                 </h3>
                                 <div class="text-sm text-slate-500 dark:text-slate-300 mt-0.5 line-clamp-1 flex items-center gap-2">
                                     <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-200 text-slate-700 text-[10px]">${channelInitial}</span>
-                                    ${this.escapeHtml(item.channel || '')}
-                                    ${isPlaying ? '<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-audio-100 text-audio-700">Now Playing</span>' : ''}
+                                    <span class="truncate">${this.escapeHtml(item.channel || '')}</span>
+                                    ${isPlaying ? '<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-audio-100 text-audio-700 whitespace-nowrap">Now Playing</span>' : ''}
                                 </div>
-                                <div class="mt-1 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                                    <span>🎬 ${duration}</span>
-                                    ${item.media?.audio_duration_seconds ? `<span>•</span><span>🎵 ${this.formatDuration(item.media.audio_duration_seconds)}</span>` : ''}
-                                    <span>•</span>
-                                    <span>${item.analysis?.complexity_level || 'Intermediate'}</span>
-                                    <span>•</span>
-                                    <span>${item.analysis?.language || 'en'}</span>
+                                <div class="mt-1 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-slate-500 dark:text-slate-400 flex-wrap">
+                                    <span class="whitespace-nowrap">🎬 ${duration}</span>
+                                    ${item.media?.audio_duration_seconds ? `<span class="hidden sm:inline">•</span><span class="whitespace-nowrap">🎵 ${this.formatDuration(item.media.audio_duration_seconds)}</span>` : ''}
+                                    <span class="hidden sm:inline">•</span>
+                                    <span class="whitespace-nowrap">${item.analysis?.complexity_level || 'Intermediate'}</span>
+                                    <span class="hidden sm:inline">•</span>
+                                    <span class="whitespace-nowrap">${item.analysis?.language || 'en'}</span>
                                 </div>
                             </div>
                             <div class="absolute top-3 right-3">
@@ -838,10 +838,10 @@ class AudioDashboard {
                             `).join('')}
                         </div>
                         <!-- CTA row under meta -->
-                        <div class="mt-3 flex items-center gap-2 text-sm">
-                          <button class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium" data-action="read"><span>Read</span><span aria-hidden="true">›</span></button>
-                          ${hasAudio ? `<button class=\"inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium\" data-action=\"listen\"><span>Listen</span><span aria-hidden=\"true\">›</span></button>` : ''}
-                          <button class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium" data-action="watch"><span>Watch</span><span aria-hidden="true">›</span></button>
+                        <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                          <button class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm" data-action="read"><span>Read</span><span aria-hidden="true">›</span></button>
+                          ${hasAudio ? `<button class=\"inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm\" data-action=\"listen\"><span>Listen</span><span aria-hidden=\"true\">›</span></button>` : ''}
+                          <button class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm" data-action="watch"><span>Watch</span><span aria-hidden="true">›</span></button>
                         </div>
 
                         <section role="region" aria-live="polite" hidden data-expand-region></section>
