@@ -127,6 +127,24 @@ class AudioDashboard {
         if (this.queueClearBtn) this.queueClearBtn.addEventListener('click', () => this.clearQueue());
         // Play All button removed - auto-playlist handles this
         if (this.listViewBtn) this.listViewBtn.addEventListener('click', () => this.setViewMode('list'));
+        
+        // Mobile sidebar controls
+        const mobileFiltersToggle = document.getElementById('mobileFiltersToggle');
+        const closeSidebar = document.getElementById('closeSidebar');
+        const sidebar = document.getElementById('sidebar');
+        
+        if (mobileFiltersToggle) {
+            mobileFiltersToggle.addEventListener('click', () => this.openMobileSidebar());
+        }
+        if (closeSidebar) {
+            closeSidebar.addEventListener('click', () => this.closeMobileSidebar());
+        }
+        // Close sidebar when clicking outside on mobile
+        if (sidebar) {
+            sidebar.addEventListener('click', (e) => {
+                if (e.target === sidebar) this.closeMobileSidebar();
+            });
+        }
         if (this.gridViewBtn) this.gridViewBtn.addEventListener('click', () => this.setViewMode('grid'));
         this.updateViewToggle();
         
@@ -1529,6 +1547,27 @@ class AudioDashboard {
         const sampled = ['cta_listen','cta_watch'].includes(eventName) ? (Math.random() < 0.25) : true;
         if (!sampled) return;
         this.queueTelemetry({ event: eventName, ...payload, t: Date.now() });
+    }
+
+    // Mobile sidebar methods
+    openMobileSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar) {
+            sidebar.classList.remove('hidden');
+            sidebar.classList.add('block');
+            // Prevent body scroll when sidebar is open
+            document.body.style.overflow = 'hidden';
+        }
+    }
+
+    closeMobileSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar) {
+            sidebar.classList.remove('block');
+            sidebar.classList.add('hidden');
+            // Restore body scroll
+            document.body.style.overflow = '';
+        }
     }
 }
 
