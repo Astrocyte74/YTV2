@@ -45,6 +45,19 @@ class AudioDashboard {
         this.progressBar = document.getElementById('progressBar');
         this.currentTimeEl = document.getElementById('currentTime');
         this.totalTimeEl = document.getElementById('totalTime');
+        
+        // Mobile mini-player elements
+        this.mobileMiniPlayer = document.getElementById('mobileMiniPlayer');
+        this.mobilePlayPauseBtn = document.getElementById('mobilePlayPauseBtn');
+        this.mobilePlayIcon = document.getElementById('mobilePlayIcon');
+        this.mobilePauseIcon = document.getElementById('mobilePauseIcon');
+        this.mobilePrevBtn = document.getElementById('mobilePrevBtn');
+        this.mobileNextBtn = document.getElementById('mobileNextBtn');
+        this.mobileProgressContainer = document.getElementById('mobileProgressContainer');
+        this.mobileProgressBar = document.getElementById('mobileProgressBar');
+        this.mobileCurrentTimeEl = document.getElementById('mobileCurrentTime');
+        this.mobileNowPlayingTitle = document.getElementById('mobileNowPlayingTitle');
+        this.mobileNowPlayingThumb = document.getElementById('mobileNowPlayingThumb');
         this.volumeBtn = document.getElementById('volumeBtn');
         this.volumeOnIcon = document.getElementById('volumeOnIcon');
         this.volumeOffIcon = document.getElementById('volumeOffIcon');
@@ -107,6 +120,12 @@ class AudioDashboard {
         this.nextBtn.addEventListener('click', () => this.playNext());
         this.progressContainer.addEventListener('click', (e) => this.seekTo(e));
         if (this.volumeBtn) this.volumeBtn.addEventListener('click', () => this.toggleMute());
+        
+        // Mobile mini-player controls
+        if (this.mobilePlayPauseBtn) this.mobilePlayPauseBtn.addEventListener('click', () => this.togglePlayPause());
+        if (this.mobilePrevBtn) this.mobilePrevBtn.addEventListener('click', () => this.playPrevious());
+        if (this.mobileNextBtn) this.mobileNextBtn.addEventListener('click', () => this.playNext());
+        if (this.mobileProgressContainer) this.mobileProgressContainer.addEventListener('click', (e) => this.seekToMobile(e));
         if (this.settingsToggle) this.settingsToggle.addEventListener('click', (e) => { e.stopPropagation(); this.toggleSettings(); });
         if (this.settingsMenu) document.addEventListener('click', (e) => { if (!e.target.closest('#settingsMenu') && !e.target.closest('#settingsToggle')) this.closeSettings(); });
         if (this.themeButtons) this.themeButtons.forEach(btn => btn.addEventListener('click', () => this.setTheme(btn.dataset.theme)));
@@ -1092,6 +1111,30 @@ class AudioDashboard {
             this.playIcon.classList.remove('hidden');
             this.pauseIcon.classList.add('hidden');
         }
+        
+        // Update mobile play button
+        if (this.mobilePlayIcon && this.mobilePauseIcon) {
+            if (this.isPlaying) {
+                this.mobilePlayIcon.classList.add('hidden');
+                this.mobilePauseIcon.classList.remove('hidden');
+            } else {
+                this.mobilePlayIcon.classList.remove('hidden');
+                this.mobilePauseIcon.classList.add('hidden');
+            }
+        }
+        
+        // Show/hide mobile mini-player
+        if (this.mobileMiniPlayer) {
+            if (this.currentAudio) {
+                this.mobileMiniPlayer.classList.remove('hidden', 'translate-y-full');
+                this.mobileMiniPlayer.classList.add('translate-y-0');
+            } else {
+                this.mobileMiniPlayer.classList.add('translate-y-full');
+                setTimeout(() => {
+                    this.mobileMiniPlayer.classList.add('hidden');
+                }, 300);
+            }
+        }
     }
 
     setViewMode(mode) {
@@ -1169,6 +1212,17 @@ class AudioDashboard {
             }
             if (this.nowPlayingMeta) {
                 this.nowPlayingMeta.textContent = `${this.formatDuration(currentTime)} / ${this.formatDuration(duration)}`;
+            }
+            
+            // Update mobile mini-player
+            if (this.mobileProgressBar) {
+                this.mobileProgressBar.style.width = `${progress}%`;
+            }
+            if (this.mobileCurrentTimeEl) {
+                this.mobileCurrentTimeEl.textContent = this.formatDuration(currentTime);
+            }
+            if (this.mobileNowPlayingTitle && this.currentAudio) {
+                this.mobileNowPlayingTitle.textContent = this.currentAudio.title;
             }
             // Micro progress bar on current card (flagged)
             if (this.currentAudio) {
@@ -1567,6 +1621,17 @@ class AudioDashboard {
             sidebar.classList.add('hidden');
             // Restore body scroll
             document.body.style.overflow = '';
+        }
+    }
+
+    // Mobile progress bar seek
+    seekToMobile(event) {
+        const rect = this.mobileProgressContainer.getBoundingClientRect();
+        const percentage = (event.clientX - rect.left) / rect.width;
+        const duration = this.audioElement.duration;
+        
+        if (duration && percentage >= 0 && percentage <= 1) {
+            this.audioElement.currentTime = percentage * duration;
         }
     }
 }
