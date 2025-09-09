@@ -167,6 +167,9 @@ class ContentIndex:
     def _index_report(self, report_data: Dict[str, Any], file_stem: str) -> None:
         """Index a single report into the search structures"""
         
+        # Enhanced JSON schema support - get YouTube metadata from source_metadata (available for all formats)
+        youtube_meta = report_data.get('source_metadata', {}).get('youtube', {})
+        
         # Detect legacy vs universal schema format
         is_legacy = not ('metadata' in report_data and 'schema_version' in report_data.get('metadata', {}))
         
@@ -192,9 +195,6 @@ class ContentIndex:
         else:
             # Universal schema format
             report_id = report_data.get('id', f"legacy:{file_stem}")
-            
-            # Enhanced JSON schema support - get YouTube metadata from source_metadata
-            youtube_meta = report_data.get('source_metadata', {}).get('youtube', {})
             
             # Prefer explicit top-level title; fall back to enhanced schema; then video.title; then metadata; finally file stem
             title = str(report_data.get('title', '')).strip()
