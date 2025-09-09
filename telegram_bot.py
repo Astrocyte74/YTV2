@@ -834,7 +834,16 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         
         # Extract summary content - handle both old and new structures
         summary_content = summary.get('content', {})
-        if isinstance(summary_content, dict):
+        
+        # Check if this is NEW format (summary directly at top level)
+        if not summary_content and 'summary' in summary:
+            # NEW format: summary.summary, summary.headline
+            summary_text = summary.get('summary', 'No summary available')
+            headline = summary.get('headline', '')
+            vocabulary = []  # NEW format doesn't have vocabulary in same location
+            glossary = []    # NEW format doesn't have glossary in same location
+        elif isinstance(summary_content, dict):
+            # OLD format: summary.content.summary, summary.content.headline  
             summary_text = (summary_content.get('comprehensive') or 
                           summary_content.get('audio') or
                           summary_content.get('bullet_points') or
