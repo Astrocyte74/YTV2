@@ -380,10 +380,14 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         summary_html = ""
         summary_content = summary.get('content', {})
         
-        # Check if this is NEW format (summary directly at top level)
+        # Check if this is NEW format (summary directly at top level)  
         if not summary_content and 'summary' in summary:
             # NEW format: summary.summary
             summary_html = summary.get('summary', '')
+        elif not summary_content and ('comprehensive' in summary or 'audio' in summary):
+            # NEW format: summary.comprehensive or summary.audio
+            summary_html = (summary.get('comprehensive') or 
+                           summary.get('audio') or '')
         elif isinstance(summary_content, dict):
             # OLD format: summary.content.summary
             summary_html = (summary_content.get('comprehensive') or 
@@ -848,6 +852,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             summary_text = summary.get('summary', 'No summary available')
             headline = summary.get('headline', '')
             vocabulary = []  # NEW format doesn't have vocabulary in same location
+            glossary = []    # NEW format doesn't have glossary in same location
+        elif not summary_content and ('comprehensive' in summary or 'audio' in summary):
+            # NEW format: summary.comprehensive, summary.audio
+            summary_text = (summary.get('comprehensive') or 
+                           summary.get('audio') or 'No summary available')
+            headline = summary.get('headline', '')
+            vocabulary = []  # NEW format doesn't have vocabulary in same location  
             glossary = []    # NEW format doesn't have glossary in same location
         elif isinstance(summary_content, dict):
             # OLD format: summary.content.summary, summary.content.headline  

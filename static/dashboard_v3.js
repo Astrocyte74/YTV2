@@ -527,6 +527,13 @@ class AudioDashboard {
             if (typeof data.summary.summary === 'string') {
                 summaryRaw = data.summary.summary;
             }
+            // Try NEW format direct comprehensive/audio
+            else if (typeof data.summary.comprehensive === 'string') {
+                summaryRaw = data.summary.comprehensive;
+            }
+            else if (typeof data.summary.audio === 'string') {
+                summaryRaw = data.summary.audio;
+            }
             // Then try OLD format (summary.content.*)
             else if (typeof data.summary.content === 'string') {
                 summaryRaw = data.summary.content;
