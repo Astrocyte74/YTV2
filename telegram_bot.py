@@ -468,8 +468,17 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_delete_reports()
         elif self.path == '/api/upload-report':
             self.handle_upload_report()
+        elif self.path.startswith('/api/delete'):
+            self.handle_delete_request()
         else:
             self.send_error(404, "Endpoint not found")
+    
+    def do_DELETE(self):
+        """Handle DELETE requests for the new delete API endpoint"""
+        if self.path.startswith('/api/delete/'):
+            self.handle_delete_request()
+        else:
+            self.send_error(404, "DELETE endpoint not found")
     
     def serve_dashboard(self):
         """Serve the modern dashboard using templates"""
@@ -1745,6 +1754,193 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 }
         
         return files
+    
+    def _auth_ok(self) -> bool:
+        """Check bearer token authentication for delete operations"""
+        sync_secret = os.getenv('SYNC_SECRET')
+        if not sync_secret:
+            logger.warning("SYNC_SECRET not configured - delete requests blocked")
+            return False
+        
+        auth_header = self.headers.get('Authorization', '')
+        expected_bearer = f'Bearer {sync_secret}'
+        
+        if auth_header != expected_bearer:
+            logger.warning(f"Delete rejected: Invalid authorization from {self.client_address[0]}")
+            return False
+        
+        return True
+    
+    def _delete_one(self, report_id: str) -> dict:
+        """Delete a single report by ID (idempotent)
+        
+        Args:
+            report_id: The report ID (without extension)
+            
+        Returns:
+            dict: Status information about the deletion
+        """
+        deleted_files = []
+        errors = []
+        
+        # Search for report files in multiple directories
+        search_dirs = [
+            Path('./data/reports'),  # JSON reports (primary)
+            Path('./exports'),       # HTML reports (legacy)
+            Path('.')               # Current directory (legacy)
+        ]
+        
+        video_id_for_audio = None
+        
+        # Delete report files
+        for search_dir in search_dirs:
+            if not search_dir.exists():
+                continue
+                
+            for ext in ['.json', '.html']:
+                file_path = search_dir / f"{report_id}{ext}"
+                if file_path.exists():
+                    try:
+                        # Extract video_id from JSON files for audio cleanup
+                        if ext == '.json':
+                            try:
+                                with open(file_path, 'r', encoding='utf-8') as f:
+                                    data = json.load(f)
+                                # Look in multiple possible locations for video_id
+                                video_info = data.get('video', {})
+                                youtube_meta = (data.get('source_metadata', {}) or {}).get('youtube', {})
+                                video_id_for_audio = (
+                                    video_info.get('video_id') or 
+                                    youtube_meta.get('video_id') or
+                                    None
+                                )
+                            except Exception as e:
+                                logger.warning(f"Could not extract video_id from {file_path}: {e}")
+                                video_id_for_audio = None
+                        
+                        file_path.unlink()
+                        deleted_files.append(str(file_path))
+                        logger.info(f"Deleted report: {file_path}")
+                    except Exception as e:
+                        errors.append(f"Failed to delete {file_path}: {e}")
+        
+        # Delete associated audio files if video_id was found
+        if video_id_for_audio:
+            audio_dirs = [
+                Path('/app/data/exports'),  # Render deployment
+                Path('./exports')           # Local development
+            ]
+            
+            for audio_dir in audio_dirs:
+                if not audio_dir.exists():
+                    continue
+                    
+                # Search for audio files with different patterns
+                patterns = [
+                    f'audio_{video_id_for_audio}_*.mp3',  # Standard pattern
+                    f'{video_id_for_audio}_*.mp3',        # Legacy pattern  
+                    f'*{video_id_for_audio}*.mp3'         # Flexible pattern
+                ]
+                
+                for pattern in patterns:
+                    for audio_path in audio_dir.glob(pattern):
+                        try:
+                            audio_path.unlink()
+                            deleted_files.append(str(audio_path))
+                            logger.info(f"Deleted audio: {audio_path}")
+                        except Exception as e:
+                            errors.append(f"Failed to delete audio {audio_path}: {e}")
+        
+        return {
+            'report_id': report_id,
+            'deleted_files': deleted_files,
+            'errors': errors,
+            'found_video_id': video_id_for_audio,
+            'success': len(deleted_files) > 0 or len(errors) == 0  # Success if we deleted something OR no errors (idempotent)
+        }
+    
+    def handle_delete_request(self):
+        """Handle DELETE requests for /api/delete/:id endpoint"""
+        try:
+            # Check authentication
+            if not self._auth_ok():
+                self.send_error(401, "Unauthorized")
+                return
+            
+            # Extract report ID from URL path
+            # Supports both /api/delete/:id and /api/delete?id=:id patterns
+            if '/api/delete/' in self.path:
+                # DELETE /api/delete/:id
+                report_id = self.path.split('/api/delete/')[-1]
+            else:
+                # POST /api/delete or DELETE /api/delete?id=:id
+                parsed_url = urlparse(self.path)
+                query_params = parse_qs(parsed_url.query)
+                
+                if 'id' in query_params:
+                    report_id = query_params['id'][0]
+                else:
+                    # Try reading from request body for POST requests
+                    if self.command == 'POST':
+                        content_length = int(self.headers.get('Content-Length', 0))
+                        if content_length > 0:
+                            post_data = self.rfile.read(content_length)
+                            try:
+                                request_data = json.loads(post_data.decode('utf-8'))
+                                report_id = request_data.get('id', '')
+                            except json.JSONDecodeError:
+                                report_id = ''
+                        else:
+                            report_id = ''
+                    else:
+                        report_id = ''
+            
+            if not report_id:
+                self.send_error(400, "Missing report ID")
+                return
+            
+            # URL decode the report_id to handle special characters
+            import urllib.parse
+            report_id = urllib.parse.unquote(report_id)
+            
+            # Perform deletion
+            result = self._delete_one(report_id)
+            
+            # Return response
+            if result['success'] or len(result['deleted_files']) > 0:
+                response_data = {
+                    'status': 'success',
+                    'message': f"Successfully processed delete request for '{report_id}'",
+                    'deleted_files': len(result['deleted_files']),
+                    'errors': result['errors'],
+                    'idempotent': len(result['deleted_files']) == 0 and len(result['errors']) == 0
+                }
+                self.send_response(200)
+                logger.info(f"✅ Delete successful for {report_id}: {len(result['deleted_files'])} files deleted")
+            else:
+                response_data = {
+                    'status': 'error',
+                    'message': f"Could not delete '{report_id}'",
+                    'errors': result['errors']
+                }
+                self.send_response(404 if 'not found' in str(result['errors']).lower() else 500)
+                logger.warning(f"❌ Delete failed for {report_id}: {result['errors']}")
+            
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data, indent=2).encode())
+            
+        except Exception as e:
+            logger.error(f"Error handling delete request: {e}")
+            error_response = {
+                'status': 'error',
+                'message': 'Delete request failed',
+                'error': str(e)
+            }
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(error_response, indent=2).encode())
 
 def start_http_server():
     """Start the HTTP server for dashboard access"""
