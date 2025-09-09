@@ -376,14 +376,21 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                           "definition": item.get("definition", "")} 
                          for item in vocab if item.get("word") or item.get("term")]
         
-        # Get summary HTML
+        # Get summary HTML - handle both NEW and OLD format
         summary_html = ""
-        if isinstance(summary.get('content'), dict):
-            summary_html = (summary['content'].get('comprehensive') or 
-                           summary['content'].get('audio') or
-                           summary['content'].get('summary') or "")
+        summary_content = summary.get('content', {})
+        
+        # Check if this is NEW format (summary directly at top level)
+        if not summary_content and 'summary' in summary:
+            # NEW format: summary.summary
+            summary_html = summary.get('summary', '')
+        elif isinstance(summary_content, dict):
+            # OLD format: summary.content.summary
+            summary_html = (summary_content.get('comprehensive') or 
+                           summary_content.get('audio') or
+                           summary_content.get('summary') or "")
         else:
-            summary_html = str(summary.get('content', ''))
+            summary_html = str(summary_content) if summary_content else ''
         
         # Format summary for better readability
         if summary_html and not summary_html.startswith('<'):

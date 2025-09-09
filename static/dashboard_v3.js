@@ -502,7 +502,7 @@ class AudioDashboard {
 
     renderExpandedSkeleton() {
         return `
-          <div class="mt-3 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 w-full md:max-w-[78ch] md:mx-0">
+          <div class="mt-3 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 w-full md:mx-0">
             <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-3"></div>
             <div class="space-y-2">
               <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded"></div>
@@ -518,14 +518,31 @@ class AudioDashboard {
         if (data.channel) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.escapeHtml(data.channel)}</span>`);
         if (data.language) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.escapeHtml(data.language)}</span>`);
 
-        // Tolerant summary extraction across shapes
+        // Tolerant summary extraction across shapes - handle NEW and OLD formats
         let summaryRaw = '';
         if (typeof data.summary === 'string') {
             summaryRaw = data.summary;
         } else if (data.summary && typeof data.summary === 'object') {
-            if (typeof data.summary.content === 'string') summaryRaw = data.summary.content;
-            else if (data.summary.content && typeof data.summary.content.summary === 'string') summaryRaw = data.summary.content.summary;
-            else if (Array.isArray(data.summary.content)) summaryRaw = data.summary.content.join('\n');
+            // Try NEW format first (summary.summary)
+            if (typeof data.summary.summary === 'string') {
+                summaryRaw = data.summary.summary;
+            }
+            // Then try OLD format (summary.content.*)
+            else if (typeof data.summary.content === 'string') {
+                summaryRaw = data.summary.content;
+            }
+            else if (data.summary.content && typeof data.summary.content.summary === 'string') {
+                summaryRaw = data.summary.content.summary;
+            }
+            else if (data.summary.content && typeof data.summary.content.audio === 'string') {
+                summaryRaw = data.summary.content.audio;
+            }
+            else if (data.summary.content && typeof data.summary.content.comprehensive === 'string') {
+                summaryRaw = data.summary.content.comprehensive;
+            }
+            else if (Array.isArray(data.summary.content)) {
+                summaryRaw = data.summary.content.join('\n');
+            }
         }
         if (!summaryRaw) summaryRaw = data.analysis?.summary || data.analysis?.summary_text || data.summary_preview || '';
         // Additional fallbacks: bullets / key points arrays
@@ -554,7 +571,7 @@ class AudioDashboard {
             .join('') || '<p>No summary available.</p>';
 
         return `
-          <div class="mt-3 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 space-y-4 w-full md:max-w-[78ch] md:mx-0" data-expanded>
+          <div class="mt-3 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 space-y-4 w-full md:mx-0" data-expanded>
             ${badges.length ? `<div class="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-sm flex-wrap">${badges.join('')}</div>` : ''}
             <h4 class="sr-only" data-expanded-title>Summary</h4>
             <div class="prose prose-sm prose-slate dark:prose-invert max-w-none leading-6 w-full break-words">${summary}</div>
