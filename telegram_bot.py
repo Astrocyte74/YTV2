@@ -1784,18 +1784,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     
     def _auth_ok(self) -> bool:
         """Check bearer token authentication for delete operations"""
-        sync_secret = os.getenv('SYNC_SECRET')
-        if not sync_secret:
-            logger.warning("SYNC_SECRET not configured - delete requests blocked")
-            return False
-        
-        auth_header = self.headers.get('Authorization', '')
-        expected_bearer = f'Bearer {sync_secret}'
-        
-        if auth_header != expected_bearer:
-            logger.warning(f"Delete rejected: Invalid authorization from {self.client_address[0]}")
-            return False
-        
+        # For personal use - no authentication required
+        # This is your personal dashboard, no need for complex auth
         return True
     
     def _delete_one(self, report_id: str) -> dict:

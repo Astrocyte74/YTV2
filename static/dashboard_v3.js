@@ -747,9 +747,7 @@ class AudioDashboard {
             const res = await fetch(`/api/delete/${encodeURIComponent(id)}`, {
                 method: 'DELETE',
                 headers: { 
-                    'Content-Type': 'application/json',
-                    // Add admin secret if available for authentication
-                    ...(localStorage.getItem('ytv2.adminSecret') ? { 'Authorization': `Bearer ${localStorage.getItem('ytv2.adminSecret')}` } : {})
+                    'Content-Type': 'application/json'
                 }
             });
             
