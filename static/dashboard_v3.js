@@ -399,9 +399,9 @@ class AudioDashboard {
         if (readBtn) { 
             readBtn.setAttribute('aria-controls', region.id); 
             readBtn.setAttribute('aria-expanded', 'true');
-            // Update button text
-            const btnText = readBtn.querySelector('span:first-child');
-            if (btnText) btnText.textContent = 'Close';
+            // Update arrow to point down when expanded
+            const arrow = readBtn.querySelector('span[aria-hidden="true"]');
+            if (arrow) arrow.innerHTML = '▼';
         }
         this.showRegion(region, true);
         // Update URL hash
@@ -454,9 +454,9 @@ class AudioDashboard {
         const readBtn = card.querySelector('[data-action="read"]');
         if (readBtn) {
             readBtn.setAttribute('aria-expanded', 'false');
-            // Update button text back to Read
-            const btnText = readBtn.querySelector('span:first-child');
-            if (btnText) btnText.textContent = 'Read';
+            // Update arrow back to right when collapsed
+            const arrow = readBtn.querySelector('span[aria-hidden="true"]');
+            if (arrow) arrow.innerHTML = '›';
         }
         if (this.currentExpandedId === id) this.currentExpandedId = null;
         // If current hash targets this id, go back to clear hash so Back button collapses naturally
@@ -512,7 +512,7 @@ class AudioDashboard {
 
     renderExpandedSkeleton() {
         return `
-          <div class="mt-3 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4">
+          <div class="mt-3 mx-[-1rem] rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4">
             <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-3"></div>
             <div class="space-y-2">
               <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded"></div>
@@ -588,7 +588,7 @@ class AudioDashboard {
             .join('') || '<p>No summary available.</p>';
 
         return `
-          <div class="mt-3 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 space-y-4" data-expanded>
+          <div class="mt-3 mx-[-1rem] rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-4 space-y-4" data-expanded>
             ${badges.length ? `<div class="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-sm flex-wrap">${badges.join('')}</div>` : ''}
             <h4 class="sr-only" data-expanded-title>Summary</h4>
             <div class="prose prose-sm prose-slate dark:prose-invert max-w-none leading-6 w-full break-words">${summary}</div>
