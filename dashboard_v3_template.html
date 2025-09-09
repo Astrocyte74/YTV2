@@ -68,6 +68,14 @@
         }
         /* Subtle paragraph spacing inside inline expanded summaries */
         .prose.prose-sm p { margin: 0.4rem 0; }
+        /* Offset expanded inline region under text column for list cards */
+        @media (min-width: 768px) {
+          .list-layout .expand-offset {
+            margin-left: var(--thumbW, 240px);
+            margin-right: 1.5rem; /* ~24px */
+            max-width: 78ch;
+          }
+        }
     </style>
 </head>
 
