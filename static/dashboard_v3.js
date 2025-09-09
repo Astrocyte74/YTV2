@@ -350,6 +350,9 @@ class AudioDashboard {
         if (action === 'read') { this.handleRead(id); this.sendTelemetry('cta_read', { id }); }
         if (action === 'watch') { this.openYoutube(card.dataset.videoId); this.sendTelemetry('cta_watch', { id, video_id: card.dataset.videoId }); }
         if (action === 'delete') { this._lastDeleteTrigger = btn; this.toggleDeletePopover(card, true); }
+        if (action === 'menu') { this.toggleKebabMenu(card, true, btn); }
+        if (action === 'menu-close') { this.toggleKebabMenu(card, false); }
+        if (action === 'copy-link') { this.copyLink(card, id); this.toggleKebabMenu(card, false); }
         if (action === 'confirm-delete') { this.handleDelete(id, card); this.sendTelemetry('cta_delete', { id }); }
         if (action === 'cancel-delete') this.toggleDeletePopover(card, false);
         if (action === 'collapse') this.collapseCardInline(id);
@@ -616,6 +619,35 @@ class AudioDashboard {
         }
     }
 
+    toggleKebabMenu(card, show, trigger) {
+        const menu = card.querySelector('[data-kebab-menu]');
+        if (!menu) return;
+        if (show) {
+            menu.classList.remove('hidden');
+            this._lastMenuTrigger = trigger;
+            const close = (ev) => {
+                if (!ev.target.closest('[data-kebab-menu]') && !ev.target.closest('[data-action="menu"]')) {
+                    menu.classList.add('hidden');
+                    document.removeEventListener('click', close, true);
+                }
+            };
+            setTimeout(() => document.addEventListener('click', close, true), 0);
+        } else {
+            menu.classList.add('hidden');
+            if (this._lastMenuTrigger && this._lastMenuTrigger.focus) this._lastMenuTrigger.focus();
+        }
+    }
+
+    async copyLink(card, id) {
+        try {
+            const url = `${location.origin}/${encodeURIComponent(id)}.json?v=2`;
+            await navigator.clipboard.writeText(url);
+            this.showToast('Link copied');
+        } catch (e) {
+            this.showToast('Copy failed', 'warn');
+        }
+    }
+
     async handleDelete(id, cardEl) {
         try {
             // Optimistic UI: show busy state
@@ -728,20 +760,14 @@ class AudioDashboard {
                                     <span>${item.analysis?.language || 'en'}</span>
                                 </div>
                             </div>
-                            <div class="flex items-center gap-2 absolute top-3 right-3">
-                                ${hasAudio ? `
-                                <button class="ybtn ybtn-ghost p-2 min-w-[40px] min-h-[40px] rounded-md bg-transparent hover:bg-slate-200/60 dark:hover:bg-slate-700/60" data-action="listen" title="Listen (L)" aria-label="Listen">
-                                  <span class="i">▶</span><span class="sr-only">Listen</span>
-                                </button>` : ''}
-                                <button class="ybtn ybtn-ghost p-2 min-w-[40px] min-h-[40px] rounded-md bg-transparent hover:bg-slate-200/60 dark:hover:bg-slate-700/60" data-action="read" title="Read (R)" aria-label="Read summary">
-                                  <span class="i">☰</span><span class="sr-only">Read</span>
-                                </button>
-                                <button class="ybtn ybtn-ghost p-2 min-w-[40px] min-h-[40px] rounded-md bg-transparent hover:bg-slate-200/60 dark:hover:bg-slate-700/60" data-action="watch" title="Watch on YouTube (W)" aria-label="Watch on YouTube">
-                                  <span class="i">▣</span><span class="sr-only">Watch on YouTube</span>
-                                </button>
-                                <button class="p-2 rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 opacity-0 group-hover:opacity-100 focus:opacity-100 transition" data-action="delete" title="Delete">
-                                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"/><path d="M10 11v6M14 11v6"/><path d="M9 6l1-2h4l1 2"/></svg>
-                                </button>
+                            <div class="absolute top-3 right-3">
+                              <button class="p-2 rounded-md hover:bg-slate-200/60 dark:hover:bg-slate-700/60" data-action="menu" aria-label="More options">
+                                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+                              </button>
+                              <div class="absolute right-0 mt-2 w-44 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg hidden" data-kebab-menu>
+                                <button class="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700" data-action="copy-link">Copy link</button>
+                                <button class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30" data-action="delete">Delete…</button>
+                              </div>
                             </div>
                             <div class="absolute top-12 right-3 hidden z-10" data-delete-popover>
                               <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-3 text-sm">
@@ -759,6 +785,13 @@ class AudioDashboard {
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-audio-100 dark:bg-slate-700 text-audio-800 dark:text-slate-300">${this.escapeHtml(cat)}</span>
                             `).join('')}
                         </div>
+                        <!-- CTA row under meta -->
+                        <div class="mt-3 flex items-center gap-2 text-sm">
+                          <button class="px-2.5 py-1 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700" data-action="read">Read</button>
+                          ${hasAudio ? `<button class=\"px-2.5 py-1 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700\" data-action=\"listen\">Listen</button>` : ''}
+                          <button class="px-2.5 py-1 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700" data-action="watch">Watch</button>
+                        </div>
+
                         <section role="region" aria-live="polite" hidden data-expand-region></section>
                     </div>
                 </div>
@@ -778,11 +811,14 @@ class AudioDashboard {
                 <div class="absolute inset-x-0 bottom-0 h-1 bg-black/20">
                     <div class="h-1 bg-audio-500" style="width:0%" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
                 </div>
-                <div class="absolute top-2 right-2 flex items-center gap-1">
-                    ${(item.media && item.media.has_audio) ? `<button class=\"p-1.5 min-w-[40px] min-h-[40px] rounded-md bg-white/70 dark:bg-slate-900/60 hover:bg-white/90\" data-action=\"listen\" title=\"Listen (L)\" aria-label=\"Listen\">▶</button>` : ''}
-                    <button class="p-1.5 min-w-[40px] min-h-[40px] rounded-md bg-white/70 dark:bg-slate-900/60 hover:bg-white/90" data-action="read" title="Read (R)" aria-label="Read summary">☰</button>
-                    <button class="p-1.5 min-w-[40px] min-h-[40px] rounded-md bg-white/70 dark:bg-slate-900/60 hover:bg-white/90" data-action="watch" title="Watch (W)" aria-label="Watch on YouTube">▣</button>
-                    <button class="p-1.5 min-w-[40px] min-h-[40px] rounded-md text-red-600 bg-white/70 dark:bg-slate-900/60 hover:bg-red-50" data-action="delete" title="Delete">🗑️</button>
+                <div class="absolute top-2 right-2">
+                  <button class="p-1.5 min-w-[36px] min-h-[36px] rounded-md bg-white/70 dark:bg-slate-900/60 hover:bg-white/90" data-action="menu" aria-label="More options">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+                  </button>
+                  <div class="absolute right-0 mt-2 w-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg hidden" data-kebab-menu>
+                    <button class="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700" data-action="copy-link">Copy link</button>
+                    <button class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30" data-action="delete">Delete…</button>
+                  </div>
                 </div>
                 <div class="absolute top-10 right-2 hidden z-10" data-delete-popover>
                   <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-2 text-xs">
@@ -805,6 +841,11 @@ class AudioDashboard {
                     <span>${duration}</span>
                     <span>•</span>
                     <span>${item.analysis?.language || 'en'}</span>
+                </div>
+                <div class="mt-2 flex items-center gap-2 text-xs px-3 pb-2">
+                    <button class="px-2 py-0.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700" data-action="read">Read</button>
+                    ${(item.media && item.media.has_audio) ? `<button class=\"px-2 py-0.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700\" data-action=\"listen\">Listen</button>` : ''}
+                    <button class="px-2 py-0.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700" data-action="watch">Watch</button>
                 </div>
                 <section role="region" aria-live="polite" hidden data-expand-region></section>
             </div>
