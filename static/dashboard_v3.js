@@ -142,14 +142,15 @@ class AudioDashboard {
             });
         }
         
-        // Radio button sort controls in sidebar
-        document.querySelectorAll('input[name="sortBy"]').forEach(radio => {
-            radio.addEventListener('change', () => {
-                if (radio.checked) {
+        // Radio button sort controls in sidebar - use delegation for dynamic content
+        document.addEventListener('click', (e) => {
+            const label = e.target.closest('label');
+            if (label && label.querySelector('input[name="sortBy"]')) {
+                const radio = label.querySelector('input[name="sortBy"]');
+                if (radio && !radio.checked) {
                     this.setSortMode(radio.value);
-                    this.updateRadioSortUI();
                 }
-            });
+            }
         });
         
         // Show more sort options toggle
@@ -311,7 +312,7 @@ class AudioDashboard {
     }
 
     renderFilterSection(items, container, filterType) {
-        container.innerHTML = items.slice(0, 8).map(item => `
+        container.innerHTML = items.slice(0, 3).map(item => `
             <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
                 <input type="checkbox" 
                        value="${this.escapeHtml(item.value)}" 
@@ -338,9 +339,9 @@ class AudioDashboard {
             return;
         }
         
-        // Show first 5 languages in main area
-        const mainLanguages = languages.slice(0, 5);
-        const additionalLanguages = languages.slice(5);
+        // Show first 3 languages in main area
+        const mainLanguages = languages.slice(0, 3);
+        const additionalLanguages = languages.slice(3);
         
         // Render main languages (preserve the showMoreLanguages structure)
         const mainHTML = mainLanguages.map(item => `
