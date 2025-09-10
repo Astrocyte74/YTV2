@@ -738,16 +738,20 @@ class ContentIndex:
         """Apply sorting to reports"""
         
         def _parse_datetime(date_str: str) -> datetime:
-            """Parse datetime string, return datetime.min if invalid"""
+            """Parse datetime string, return timezone-aware datetime.min if invalid"""
             if not date_str:
-                return datetime.min
+                return datetime.min.replace(tzinfo=timezone.utc)
             try:
                 if date_str.endswith('Z'):
                     return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
                 else:
-                    return datetime.fromisoformat(date_str)
+                    # Assume UTC if no timezone info
+                    dt = datetime.fromisoformat(date_str)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
             except:
-                return datetime.min
+                return datetime.min.replace(tzinfo=timezone.utc)
         
         def _get_duration(report: Dict[str, Any]) -> int:
             """Get duration for sorting, prioritizing MP3 duration when has_audio"""
