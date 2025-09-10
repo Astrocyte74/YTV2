@@ -852,9 +852,6 @@ class AudioDashboard {
                                     ${isPlaying ? '<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-audio-100 text-audio-700 whitespace-nowrap">Now Playing</span>' : ''}
                                 </div>
                                 <div class="mt-1 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-slate-500 dark:text-slate-400 flex-wrap">
-                                    <span class="whitespace-nowrap">🎬 ${duration}</span>
-                                    ${item.media?.audio_duration_seconds ? `<span class="hidden sm:inline">•</span><span class="whitespace-nowrap">🎵 ${this.formatDuration(item.media.audio_duration_seconds)}</span>` : ''}
-                                    <span class="hidden sm:inline">•</span>
                                     <span class="whitespace-nowrap">${item.analysis?.complexity_level || 'Intermediate'}</span>
                                     <span class="hidden sm:inline">•</span>
                                     <span class="whitespace-nowrap">${item.analysis?.language || 'en'}</span>
@@ -939,7 +936,7 @@ class AudioDashboard {
                     ${isPlaying ? '<span class="ml-2 text-[10px] px-1 py-0.5 rounded bg-audio-100 text-audio-700">Now Playing</span>' : ''}
                 </div>
                 <div class="mt-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                    <span>${duration}</span>
+                    <span>${item.analysis?.complexity_level || 'Intermediate'}</span>
                     <span>•</span>
                     <span>${item.analysis?.language || 'en'}</span>
                 </div>
@@ -1514,9 +1511,22 @@ class AudioDashboard {
     getButtonDurations(item) {
         const durations = {};
         
-        // Read duration from media_metadata.estimated_reading_minutes
+        // Debug: Log the item structure to see what's available
+        if (item.file_stem === 'first_look_at_the_apple_airpods_3_packed_with_new__iqDbIzsJMiU') {
+            console.log('DEBUG: Item structure for airpods:', {
+                media_metadata: item.media_metadata,
+                word_count: item.word_count,
+                media: item.media
+            });
+        }
+        
+        // Read duration from media_metadata.estimated_reading_minutes or calculate from word_count
         if (item.media_metadata?.estimated_reading_minutes) {
             durations.read = this.formatReadingTime(item.media_metadata.estimated_reading_minutes);
+        } else if (item.word_count) {
+            // Fallback: calculate reading time from word_count (200 words per minute)
+            const readingMinutes = Math.max(1, Math.round(item.word_count / 200));
+            durations.read = this.formatReadingTime(readingMinutes);
         }
         
         // Listen duration from media_metadata.mp3_duration_seconds
