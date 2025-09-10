@@ -337,6 +337,9 @@ class ContentIndex:
         media = report_data.get('media', {})
         has_audio = media.get('has_audio', True)  # YouTube default
         
+        # Media metadata for durations and reading time
+        media_metadata = report_data.get('media_metadata', {})
+        
         # Extract year from published date
         year = None
         if published_at:
@@ -388,6 +391,7 @@ class ContentIndex:
                 'has_audio': has_audio,
                 'audio_duration_seconds': media.get('audio_duration_seconds', duration_seconds)
             },
+            'media_metadata': media_metadata,
             'year': year,
             'file_stem': file_stem,
             'video_id': video_id,

@@ -827,6 +827,7 @@ class AudioDashboard {
         const categories = item.analysis?.category?.slice(0, 2) || ['General'];
         const hasAudio = item.media?.has_audio;
         const href = `/${item.file_stem}.json?v=2`;
+        const buttonDurations = this.getButtonDurations(item);
         
         const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
         const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
@@ -886,9 +887,9 @@ class AudioDashboard {
                         </div>
                         <!-- CTA row under meta -->
                         <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                          <button class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm" data-action="read"><span>Read</span><span aria-hidden="true">›</span></button>
-                          ${hasAudio ? `<button class=\"inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm\" data-action=\"listen\"><span>Listen</span><span aria-hidden=\"true\">›</span></button>` : ''}
-                          <button class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm" data-action="watch"><span>Watch</span><span aria-hidden="true">›</span></button>
+                          <button class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm" data-action="read"><span>Read${buttonDurations.read ? ` ${buttonDurations.read}` : ''}</span><span aria-hidden="true">›</span></button>
+                          ${hasAudio ? `<button class=\"inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm\" data-action=\"listen\"><span>Listen${buttonDurations.listen ? ` ${buttonDurations.listen}` : ''}</span><span aria-hidden=\"true\">›</span></button>` : ''}
+                          <button class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm" data-action="watch"><span>Watch${buttonDurations.watch ? ` ${buttonDurations.watch}` : ''}</span><span aria-hidden="true">›</span></button>
                         </div>
 
                         <section role="region" aria-live="polite" hidden data-expand-region></section>
@@ -903,6 +904,7 @@ class AudioDashboard {
         const href = `/${item.file_stem}.json?v=2`;
         const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
         const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
+        const buttonDurations = this.getButtonDurations(item);
         return `
         <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-has-audio="${(item.media && item.media.has_audio) ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative cursor-pointer bg-white/80 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
             <div class="relative aspect-video bg-slate-100">
@@ -942,9 +944,9 @@ class AudioDashboard {
                     <span>${item.analysis?.language || 'en'}</span>
                 </div>
                 <div class="mt-2 flex items-center gap-2 text-xs px-3 pb-2">
-                    <button class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium" data-action="read"><span>Read</span><span aria-hidden=\"true\">›</span></button>
-                    ${(item.media && item.media.has_audio) ? `<button class=\"inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium\" data-action=\"listen\"><span>Listen</span><span aria-hidden=\"true\">›</span></button>` : ''}
-                    <button class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium" data-action="watch"><span>Watch</span><span aria-hidden=\"true\">›</span></button>
+                    <button class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium" data-action="read"><span>Read${buttonDurations.read ? ` ${buttonDurations.read}` : ''}</span><span aria-hidden=\"true\">›</span></button>
+                    ${(item.media && item.media.has_audio) ? `<button class=\"inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium\" data-action=\"listen\"><span>Listen${buttonDurations.listen ? ` ${buttonDurations.listen}` : ''}</span><span aria-hidden=\"true\">›</span></button>` : ''}
+                    <button class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium" data-action="watch"><span>Watch${buttonDurations.watch ? ` ${buttonDurations.watch}` : ''}</span><span aria-hidden=\"true\">›</span></button>
                 </div>
                 <section role="region" aria-live="polite" hidden data-expand-region></section>
             </div>
@@ -1500,6 +1502,35 @@ class AudioDashboard {
         const minutes = Math.floor(seconds / 60);
         const remainingSeconds = Math.floor(seconds % 60);
         return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }
+
+    formatReadingTime(minutes) {
+        if (!minutes || isNaN(minutes)) return null;
+        
+        if (minutes < 1) return '< 1 min';
+        return `${minutes} min`;
+    }
+
+    getButtonDurations(item) {
+        const durations = {};
+        
+        // Read duration from media_metadata.estimated_reading_minutes
+        if (item.media_metadata?.estimated_reading_minutes) {
+            durations.read = this.formatReadingTime(item.media_metadata.estimated_reading_minutes);
+        }
+        
+        // Listen duration from media_metadata.mp3_duration_seconds
+        if (item.media_metadata?.mp3_duration_seconds) {
+            durations.listen = this.formatDuration(item.media_metadata.mp3_duration_seconds);
+        }
+        
+        // Watch duration from media_metadata.video_duration_seconds or fallback to duration_seconds
+        const videoDuration = item.media_metadata?.video_duration_seconds || item.duration_seconds;
+        if (videoDuration) {
+            durations.watch = this.formatDuration(videoDuration);
+        }
+        
+        return durations;
     }
 
     escapeHtml(text) {
