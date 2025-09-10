@@ -13,7 +13,7 @@ class AudioDashboard {
         this.flags = (typeof window !== 'undefined' && window.UI_FLAGS) ? window.UI_FLAGS : {};
         this.currentFilters = {};
         this.currentPage = 1;
-        this.currentSort = 'newest';
+        this.currentSort = 'added_desc';
         this.searchQuery = '';
         this.viewMode = (localStorage.getItem('ytv2.viewMode') || 'list');
         // Inline expand state
@@ -73,6 +73,7 @@ class AudioDashboard {
         this.categoryFilters = document.getElementById('categoryFilters');
         this.contentTypeFilters = document.getElementById('contentTypeFilters');
         this.complexityFilters = document.getElementById('complexityFilters');
+        this.languageFilters = document.getElementById('languageFilters');
         
         // Content area
         this.contentGrid = document.getElementById('contentGrid');
@@ -138,6 +139,38 @@ class AudioDashboard {
         if (this.sortToolbar) {
             this.sortToolbar.querySelectorAll('[data-sort]').forEach(btn => {
                 btn.addEventListener('click', () => this.setSortMode(btn.dataset.sort));
+            });
+        }
+        
+        // Radio button sort controls in sidebar
+        document.querySelectorAll('input[name="sortBy"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                if (radio.checked) {
+                    this.setSortMode(radio.value);
+                    this.updateRadioSortUI();
+                }
+            });
+        });
+        
+        // Show more sort options toggle
+        const toggleMoreSorts = document.getElementById('toggleMoreSorts');
+        const showMoreSorts = document.getElementById('showMoreSorts');
+        if (toggleMoreSorts && showMoreSorts) {
+            toggleMoreSorts.addEventListener('click', () => {
+                const isHidden = showMoreSorts.classList.contains('hidden');
+                showMoreSorts.classList.toggle('hidden');
+                toggleMoreSorts.textContent = isHidden ? 'Show less' : 'Show more';
+            });
+        }
+        
+        // Show more languages toggle
+        const toggleMoreLanguages = document.getElementById('toggleMoreLanguages');
+        const showMoreLanguages = document.getElementById('showMoreLanguages');
+        if (toggleMoreLanguages && showMoreLanguages) {
+            toggleMoreLanguages.addEventListener('click', () => {
+                const isHidden = showMoreLanguages.classList.contains('hidden');
+                showMoreLanguages.classList.toggle('hidden');
+                toggleMoreLanguages.textContent = isHidden ? 'Show less' : 'Show more';
             });
         }
         
@@ -271,6 +304,7 @@ class AudioDashboard {
             this.renderFilterSection(filters.category, this.categoryFilters, 'category');
             this.renderFilterSection(filters.content_type, this.contentTypeFilters, 'content_type');
             this.renderFilterSection(filters.complexity_level, this.complexityFilters, 'complexity');
+            this.renderLanguageFilters(filters.language || []);
         } catch (error) {
             console.error('Failed to load filters:', error);
         }
@@ -290,6 +324,67 @@ class AudioDashboard {
 
         // Bind filter change events
         container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+            checkbox.addEventListener('change', () => this.handleFilterChange());
+        });
+    }
+
+    renderLanguageFilters(languages) {
+        const mainContainer = this.languageFilters;
+        const showMoreContainer = document.getElementById('showMoreLanguages');
+        const toggleButton = document.getElementById('toggleMoreLanguages');
+        
+        if (!languages || languages.length === 0) {
+            mainContainer.innerHTML = '<p class="text-xs text-slate-500 dark:text-slate-400">No language data available</p>';
+            return;
+        }
+        
+        // Show first 5 languages in main area
+        const mainLanguages = languages.slice(0, 5);
+        const additionalLanguages = languages.slice(5);
+        
+        // Render main languages (preserve the showMoreLanguages structure)
+        const mainHTML = mainLanguages.map(item => `
+            <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
+                <input type="checkbox" 
+                       value="${this.escapeHtml(item.value)}" 
+                       data-filter="language"
+                       class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
+                <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
+                <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
+            </label>
+        `).join('');
+        
+        // Update main container while preserving structure
+        const existingStructure = mainContainer.innerHTML;
+        const showMoreIndex = existingStructure.indexOf('<div id="showMoreLanguages"');
+        if (showMoreIndex !== -1) {
+            mainContainer.innerHTML = mainHTML + existingStructure.substring(showMoreIndex);
+        } else {
+            mainContainer.innerHTML = mainHTML;
+        }
+        
+        // Render additional languages in show more section
+        if (additionalLanguages.length > 0 && showMoreContainer) {
+            showMoreContainer.innerHTML = additionalLanguages.map(item => `
+                <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
+                    <input type="checkbox" 
+                           value="${this.escapeHtml(item.value)}" 
+                           data-filter="language"
+                           class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
+                    <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
+                    <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
+                </label>
+            `).join('');
+            
+            // Show the toggle button
+            if (toggleButton) toggleButton.classList.remove('hidden');
+        } else {
+            // Hide toggle button if no additional languages
+            if (toggleButton) toggleButton.classList.add('hidden');
+        }
+        
+        // Add event listeners to all language checkboxes
+        mainContainer.querySelectorAll('input[type="checkbox"][data-filter="language"]').forEach(checkbox => {
             checkbox.addEventListener('change', () => this.handleFilterChange());
         });
     }
@@ -1310,6 +1405,7 @@ class AudioDashboard {
         this.currentSort = mode;
         this.currentPage = 1;
         this.updateSortToggle();
+        this.updateRadioSortUI();
         this.loadContent();
     }
 
@@ -1325,6 +1421,29 @@ class AudioDashboard {
                 // Apply unselected state
                 btn.classList.remove('bg-audio-500', 'text-white', 'dark:bg-audio-600');
                 btn.classList.add('bg-white', 'dark:bg-slate-700', 'text-slate-700', 'dark:text-slate-200');
+            }
+        });
+    }
+
+    updateRadioSortUI() {
+        // Update radio button states
+        document.querySelectorAll('input[name="sortBy"]').forEach(radio => {
+            const isSelected = radio.value === this.currentSort;
+            const radioDiv = radio.nextElementSibling;
+            const innerDiv = radioDiv.querySelector('div');
+            
+            if (isSelected) {
+                radio.checked = true;
+                radioDiv.classList.remove('border-slate-300', 'dark:border-slate-600');
+                radioDiv.classList.add('border-audio-500');
+                innerDiv.classList.remove('bg-transparent');
+                innerDiv.classList.add('bg-audio-500');
+            } else {
+                radio.checked = false;
+                radioDiv.classList.remove('border-audio-500');
+                radioDiv.classList.add('border-slate-300', 'dark:border-slate-600');
+                innerDiv.classList.remove('bg-audio-500');
+                innerDiv.classList.add('bg-transparent');
             }
         });
     }

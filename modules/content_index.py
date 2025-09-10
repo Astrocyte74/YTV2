@@ -150,6 +150,24 @@ class ContentIndex:
                 with open(json_file, 'r', encoding='utf-8') as f:
                     report_data = json.load(f)
                 
+                # Add indexed_at if missing (for new files)
+                if 'indexed_at' not in report_data:
+                    from datetime import timezone
+                    indexed_at = datetime.fromtimestamp(
+                        json_file.stat().st_mtime, tz=timezone.utc
+                    ).isoformat(timespec="seconds").replace("+00:00", "Z")
+                    report_data['indexed_at'] = indexed_at
+                    
+                    # Write back to persist indexed_at
+                    import tempfile
+                    import os
+                    tmp_path = json_file.with_suffix(".json.tmp")
+                    with open(tmp_path, "w", encoding="utf-8") as f:
+                        json.dump(report_data, f, indent=2, ensure_ascii=False)
+                        f.flush()
+                        os.fsync(f.fileno())
+                    tmp_path.replace(json_file)
+                
                 # Process and index the report
                 self._index_report(report_data, json_file.stem)
                 processed_count += 1
@@ -340,6 +358,14 @@ class ContentIndex:
         # Media metadata for durations and reading time
         media_metadata = report_data.get('media_metadata', {})
         
+        # Extract language fields
+        original_language = report_data.get('original_language', 'en')
+        summary_language = report_data.get('summary_language', language)  # Use analysis language as fallback
+        audio_language = report_data.get('audio_language', summary_language)
+        
+        # Extract indexed_at (when report was first added)
+        indexed_at = report_data.get('indexed_at', '')
+        
         # Extract year from published date
         year = None
         if published_at:
@@ -376,6 +402,7 @@ class ContentIndex:
             'title': title[:300],  # Limit title length
             'content_source': content_source,
             'published_at': published_at,
+            'indexed_at': indexed_at,
             'duration_seconds': duration_seconds,
             'thumbnail_url': thumbnail_url,
             'canonical_url': canonical_url,
@@ -392,6 +419,9 @@ class ContentIndex:
                 'audio_duration_seconds': media.get('audio_duration_seconds', duration_seconds)
             },
             'media_metadata': media_metadata,
+            'original_language': original_language,
+            'summary_language': summary_language,
+            'audio_language': audio_language,
             'year': year,
             'file_stem': file_stem,
             'video_id': video_id,
@@ -453,7 +483,23 @@ class ContentIndex:
         
         for report in reports:
             facet_counts['content_source'][report['content_source']] += 1
-            facet_counts['language'][report['analysis']['language']] += 1
+            
+            # Count all language fields for facets
+            report_languages = set()
+            if report.get('original_language'):
+                report_languages.add(report['original_language'])
+            if report.get('summary_language'):
+                report_languages.add(report['summary_language'])
+            if report.get('audio_language'):
+                report_languages.add(report['audio_language'])
+            # Fallback to analysis.language for backward compatibility
+            if report.get('analysis', {}).get('language') and not report_languages:
+                report_languages.add(report['analysis']['language'])
+            
+            for lang in report_languages:
+                if lang and lang.strip():  # Only count non-empty languages
+                    facet_counts['language'][lang] += 1
+            
             facet_counts['content_type'][report['analysis']['content_type']] += 1
             facet_counts['complexity_level'][report['analysis']['complexity_level']] += 1
             facet_counts['has_audio'][report['media']['has_audio']] += 1
@@ -547,10 +593,11 @@ class ContentIndex:
         """Validate sort parameter"""
         valid_sorts = {
             'newest', 'oldest',
-            'title', 'title_asc', 'title_desc',
-            'duration', 'duration_desc', 'duration_asc'
+            'title', 'title_asc', 'title_desc', 'title_az', 'title_za',
+            'duration', 'duration_desc', 'duration_asc',
+            'added_desc', 'added_asc', 'video_newest', 'video_oldest'
         }
-        return sort if sort in valid_sorts else 'newest'
+        return sort if sort in valid_sorts else 'added_desc'
     
     def _validate_filters(self, filters: Dict[str, Any]) -> Dict[str, Any]:
         """Validate and sanitize filter parameters"""
@@ -589,9 +636,24 @@ class ContentIndex:
                 if report['content_source'] not in filters['source']:
                     match = False
             
-            # Language filter
+            # Language filter - check original, summary, and audio languages
             if 'language' in filters and filters['language']:
-                if report['analysis']['language'] not in filters['language']:
+                report_languages = set()
+                # Add original language
+                if report.get('original_language'):
+                    report_languages.add(report['original_language'])
+                # Add summary language  
+                if report.get('summary_language'):
+                    report_languages.add(report['summary_language'])
+                # Add audio language
+                if report.get('audio_language'):
+                    report_languages.add(report['audio_language'])
+                # Fallback to analysis.language for backward compatibility
+                if report.get('analysis', {}).get('language'):
+                    report_languages.add(report['analysis']['language'])
+                
+                # Check if any report language matches filter
+                if not any(lang in filters['language'] for lang in report_languages):
                     match = False
             
             # Category filter
@@ -675,21 +737,57 @@ class ContentIndex:
     def _apply_sorting(self, sort: str, reports: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Apply sorting to reports"""
         
-        if sort == 'newest':
-            return sorted(reports, key=lambda r: r.get('published_at', ''), reverse=True)
+        def _parse_datetime(date_str: str) -> datetime:
+            """Parse datetime string, return datetime.min if invalid"""
+            if not date_str:
+                return datetime.min
+            try:
+                if date_str.endswith('Z'):
+                    return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                else:
+                    return datetime.fromisoformat(date_str)
+            except:
+                return datetime.min
+        
+        def _get_duration(report: Dict[str, Any]) -> int:
+            """Get duration for sorting, prioritizing MP3 duration when has_audio"""
+            media_metadata = report.get('media_metadata', {})
+            if report.get('media', {}).get('has_audio') and media_metadata.get('mp3_duration_seconds'):
+                return int(media_metadata['mp3_duration_seconds'])
+            return int(media_metadata.get('video_duration_seconds') or report.get('duration_seconds', 0))
+        
+        # New sort options
+        if sort == 'added_desc':
+            return sorted(reports, key=lambda r: _parse_datetime(r.get('indexed_at', '')), reverse=True)
+        elif sort == 'added_asc':
+            return sorted(reports, key=lambda r: _parse_datetime(r.get('indexed_at', '')))
+        elif sort == 'video_newest':
+            return sorted(reports, key=lambda r: _parse_datetime(r.get('published_at', '')), reverse=True)
+        elif sort == 'video_oldest':
+            return sorted(reports, key=lambda r: _parse_datetime(r.get('published_at', '')))
+        elif sort == 'title_az':
+            return sorted(reports, key=lambda r: r.get('title', '').lower())
+        elif sort == 'title_za':
+            return sorted(reports, key=lambda r: r.get('title', '').lower(), reverse=True)
+        elif sort == 'duration_desc':
+            return sorted(reports, key=_get_duration, reverse=True)
+        elif sort == 'duration_asc':
+            return sorted(reports, key=_get_duration)
+        
+        # Legacy sort options (for backward compatibility)
+        elif sort == 'newest':
+            return sorted(reports, key=lambda r: _parse_datetime(r.get('published_at', '')), reverse=True)
         elif sort == 'oldest':
-            return sorted(reports, key=lambda r: r.get('published_at', ''))
+            return sorted(reports, key=lambda r: _parse_datetime(r.get('published_at', '')))
         elif sort == 'title' or sort == 'title_asc':
             return sorted(reports, key=lambda r: r.get('title', '').lower())
         elif sort == 'title_desc':
             return sorted(reports, key=lambda r: r.get('title', '').lower(), reverse=True)
-        elif sort == 'duration' or sort == 'duration_desc':
-            return sorted(reports, key=lambda r: r.get('duration_seconds', 0), reverse=True)
-        elif sort == 'duration_asc':
-            return sorted(reports, key=lambda r: r.get('duration_seconds', 0))
+        elif sort == 'duration':
+            return sorted(reports, key=_get_duration, reverse=True)
         else:
-            # Default to newest
-            return sorted(reports, key=lambda r: r.get('published_at', ''), reverse=True)
+            # Default to recently added
+            return sorted(reports, key=lambda r: _parse_datetime(r.get('indexed_at', '')), reverse=True)
     
     def _format_report_for_api(self, report: Dict[str, Any]) -> Dict[str, Any]:
         """Format report for API response"""
@@ -706,6 +804,10 @@ class ContentIndex:
             'media_metadata': report.get('media_metadata', {}),
             'file_stem': report['file_stem'],
             'video_id': report.get('video_id', ''),
+            'indexed_at': report.get('indexed_at', ''),
+            'original_language': report.get('original_language', ''),
+            'summary_language': report.get('summary_language', ''),
+            'audio_language': report.get('audio_language', ''),
         }
     
     def get_report_count(self) -> int:
