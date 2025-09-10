@@ -292,7 +292,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             youtube_meta.get('duration') or 0
         )
         
-        audio_duration_seconds = report_data.get('media', {}).get('audio_duration_seconds', 0)
+        # Get precise audio duration from media_metadata first, then fallback
+        media_metadata = report_data.get('media_metadata', {})
+        audio_duration_seconds = (
+            media_metadata.get('mp3_duration_seconds') or
+            report_data.get('media', {}).get('audio_duration_seconds', 0)
+        )
         
         # Format video duration
         if video_duration_seconds:
@@ -306,7 +311,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         else:
             video_duration_str = ""
         
-        # Format audio duration
+        # Format audio duration - prioritize precise media_metadata
         if audio_duration_seconds and audio_duration_seconds > 0:
             audio_minutes = audio_duration_seconds // 60
             audio_seconds = audio_duration_seconds % 60
