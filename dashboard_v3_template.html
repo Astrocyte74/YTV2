@@ -231,6 +231,81 @@
                         </div>
                     </div>
 
+                    <!-- Sort By Section -->
+                    <div>
+                        <h3 class="text-sm font-medium text-slate-800 dark:text-slate-200 mb-3">Sort by</h3>
+                        <div class="space-y-2" id="sortOptions">
+                            <label class="flex items-center cursor-pointer">
+                                <input type="radio" name="sortBy" value="added_desc" class="sr-only" checked>
+                                <div class="w-4 h-4 border-2 border-audio-500 rounded-full flex items-center justify-center mr-3">
+                                    <div class="w-2 h-2 bg-audio-500 rounded-full"></div>
+                                </div>
+                                <span class="text-sm text-slate-700 dark:text-slate-300">Recently Added</span>
+                            </label>
+                            <label class="flex items-center cursor-pointer">
+                                <input type="radio" name="sortBy" value="video_newest" class="sr-only">
+                                <div class="w-4 h-4 border-2 border-slate-300 dark:border-slate-600 rounded-full flex items-center justify-center mr-3">
+                                    <div class="w-2 h-2 bg-transparent rounded-full"></div>
+                                </div>
+                                <span class="text-sm text-slate-700 dark:text-slate-300">Video Newest</span>
+                            </label>
+                            <label class="flex items-center cursor-pointer">
+                                <input type="radio" name="sortBy" value="video_oldest" class="sr-only">
+                                <div class="w-4 h-4 border-2 border-slate-300 dark:border-slate-600 rounded-full flex items-center justify-center mr-3">
+                                    <div class="w-2 h-2 bg-transparent rounded-full"></div>
+                                </div>
+                                <span class="text-sm text-slate-700 dark:text-slate-300">Video Oldest</span>
+                            </label>
+                            <label class="flex items-center cursor-pointer">
+                                <input type="radio" name="sortBy" value="title_az" class="sr-only">
+                                <div class="w-4 h-4 border-2 border-slate-300 dark:border-slate-600 rounded-full flex items-center justify-center mr-3">
+                                    <div class="w-2 h-2 bg-transparent rounded-full"></div>
+                                </div>
+                                <span class="text-sm text-slate-700 dark:text-slate-300">Title A→Z</span>
+                            </label>
+                            <label class="flex items-center cursor-pointer">
+                                <input type="radio" name="sortBy" value="title_za" class="sr-only">
+                                <div class="w-4 h-4 border-2 border-slate-300 dark:border-slate-600 rounded-full flex items-center justify-center mr-3">
+                                    <div class="w-2 h-2 bg-transparent rounded-full"></div>
+                                </div>
+                                <span class="text-sm text-slate-700 dark:text-slate-300">Title Z→A</span>
+                            </label>
+                            <div id="showMoreSorts" class="hidden">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio" name="sortBy" value="duration_desc" class="sr-only">
+                                    <div class="w-4 h-4 border-2 border-slate-300 dark:border-slate-600 rounded-full flex items-center justify-center mr-3">
+                                        <div class="w-2 h-2 bg-transparent rounded-full"></div>
+                                    </div>
+                                    <span class="text-sm text-slate-700 dark:text-slate-300">Longest First</span>
+                                </label>
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio" name="sortBy" value="duration_asc" class="sr-only">
+                                    <div class="w-4 h-4 border-2 border-slate-300 dark:border-slate-600 rounded-full flex items-center justify-center mr-3">
+                                        <div class="w-2 h-2 bg-transparent rounded-full"></div>
+                                    </div>
+                                    <span class="text-sm text-slate-700 dark:text-slate-300">Shortest First</span>
+                                </label>
+                            </div>
+                            <button id="toggleMoreSorts" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">
+                                Show more
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Language Filter Section -->
+                    <div>
+                        <h3 class="text-sm font-medium text-slate-800 dark:text-slate-200 mb-3">Language</h3>
+                        <div class="space-y-2" id="languageFilters">
+                            <!-- Dynamic language filters will be inserted here -->
+                            <div id="showMoreLanguages" class="hidden">
+                                <!-- Additional languages will be shown here -->
+                            </div>
+                            <button id="toggleMoreLanguages" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors hidden">
+                                Show more
+                            </button>
+                        </div>
+                    </div>
+
                 </div>
             </aside>
 
@@ -245,29 +320,8 @@
                             <p class="text-sm sm:text-base text-slate-500 dark:text-slate-400 mt-1" id="resultsCount">Loading summaries...</p>
                         </div>
                         
-                        <!-- Sort & View Options -->
+                        <!-- View Options -->
                         <div class="flex items-center gap-2 sm:gap-3 overflow-x-auto">
-                            <!-- Sort icons -->
-                            <div id="sortToolbar" class="inline-flex border border-slate-200 dark:border-slate-600 rounded-lg overflow-hidden flex-shrink-0">
-                                <button data-sort="newest" class="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors" title="Newest">
-                                    <svg class="w-3 sm:w-4 h-3 sm:h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 7h10M7 12h7M7 17h4" stroke-width="2" stroke-linecap="round"/></svg>
-                                </button>
-                                <button data-sort="oldest" class="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-l border-slate-200 dark:border-slate-600 transition-colors" title="Oldest">
-                                    <svg class="w-3 sm:w-4 h-3 sm:h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 17h10M7 12h7M7 7h4" stroke-width="2" stroke-linecap="round"/></svg>
-                                </button>
-                                <button data-sort="title_asc" class="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-l border-slate-200 dark:border-slate-600 transition-colors" title="Title A→Z">
-                                    <span class="text-[10px] sm:text-xs">A→Z</span>
-                                </button>
-                                <button data-sort="title_desc" class="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-l border-slate-200 dark:border-slate-600 transition-colors" title="Title Z→A">
-                                    <span class="text-[10px] sm:text-xs">Z→A</span>
-                                </button>
-                                <button data-sort="duration_desc" class="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-l border-slate-200 dark:border-slate-600 transition-colors" title="Longest">
-                                    <svg class="w-3 sm:w-4 h-3 sm:h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M5 12l4-4m-4 4l4 4" stroke-width="2" stroke-linecap="round"/></svg>
-                                </button>
-                                <button data-sort="duration_asc" class="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-l border-slate-200 dark:border-slate-600 transition-colors" title="Shortest">
-                                    <svg class="w-3 sm:w-4 h-3 sm:h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 12H5m14 0l-4-4m4 4l-4 4" stroke-width="2" stroke-linecap="round"/></svg>
-                                </button>
-                            </div>
                             <div class="hidden lg:inline-flex border border-slate-200 dark:border-slate-600 rounded-lg overflow-hidden flex-shrink-0">
                                 <button id="listViewBtn" class="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200">List</button>
                                 <button id="gridViewBtn" class="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-l border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200">Grid</button>
