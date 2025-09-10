@@ -175,6 +175,28 @@ class AudioDashboard {
             });
         }
         
+        // Show more categories toggle
+        const toggleMoreCategories = document.getElementById('toggleMoreCategories');
+        const showMoreCategories = document.getElementById('showMoreCategories');
+        if (toggleMoreCategories && showMoreCategories) {
+            toggleMoreCategories.addEventListener('click', () => {
+                const isHidden = showMoreCategories.classList.contains('hidden');
+                showMoreCategories.classList.toggle('hidden');
+                toggleMoreCategories.textContent = isHidden ? 'Show less' : 'Show more';
+            });
+        }
+        
+        // Show more content types toggle
+        const toggleMoreContentTypes = document.getElementById('toggleMoreContentTypes');
+        const showMoreContentTypes = document.getElementById('showMoreContentTypes');
+        if (toggleMoreContentTypes && showMoreContentTypes) {
+            toggleMoreContentTypes.addEventListener('click', () => {
+                const isHidden = showMoreContentTypes.classList.contains('hidden');
+                showMoreContentTypes.classList.toggle('hidden');
+                toggleMoreContentTypes.textContent = isHidden ? 'Show less' : 'Show more';
+            });
+        }
+        
         // UI controls
         this.queueToggle.addEventListener('click', () => this.toggleQueue());
         if (this.queueClearBtn) this.queueClearBtn.addEventListener('click', () => this.clearQueue());
@@ -312,7 +334,27 @@ class AudioDashboard {
     }
 
     renderFilterSection(items, container, filterType) {
-        container.innerHTML = items.slice(0, 3).map(item => `
+        // Determine show more container and toggle button based on filter type
+        let showMoreContainer, toggleButton;
+        if (filterType === 'category') {
+            showMoreContainer = document.getElementById('showMoreCategories');
+            toggleButton = document.getElementById('toggleMoreCategories');
+        } else if (filterType === 'content_type') {
+            showMoreContainer = document.getElementById('showMoreContentTypes');
+            toggleButton = document.getElementById('toggleMoreContentTypes');
+        }
+        
+        if (!items || items.length === 0) {
+            container.innerHTML = '<p class="text-xs text-slate-500 dark:text-slate-400">No data available</p>';
+            return;
+        }
+        
+        // Show first 3 items in main area
+        const mainItems = items.slice(0, 3);
+        const additionalItems = items.slice(3);
+        
+        // Create filter HTML
+        const createFilterHTML = (item) => `
             <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
                 <input type="checkbox" 
                        value="${this.escapeHtml(item.value)}" 
@@ -321,9 +363,37 @@ class AudioDashboard {
                 <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
                 <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
             </label>
-        `).join('');
+        `;
+        
+        // Render main items (preserve the showMore structure if it exists)
+        const mainHTML = mainItems.map(createFilterHTML).join('');
+        
+        if (showMoreContainer) {
+            // Update main container while preserving structure
+            const existingStructure = container.innerHTML;
+            const showMoreIndex = existingStructure.indexOf(`<div id="showMore${filterType === 'category' ? 'Categories' : 'ContentTypes'}"`);
+            if (showMoreIndex !== -1) {
+                container.innerHTML = mainHTML + existingStructure.substring(showMoreIndex);
+            } else {
+                container.innerHTML = mainHTML;
+            }
+            
+            // Render additional items in show more section
+            if (additionalItems.length > 0) {
+                showMoreContainer.innerHTML = additionalItems.map(createFilterHTML).join('');
+                
+                // Show the toggle button
+                if (toggleButton) toggleButton.classList.remove('hidden');
+            } else {
+                // Hide toggle button if no additional items
+                if (toggleButton) toggleButton.classList.add('hidden');
+            }
+        } else {
+            // No show more functionality, render all items
+            container.innerHTML = items.map(createFilterHTML).join('');
+        }
 
-        // Bind filter change events
+        // Bind filter change events to all checkboxes in both main and show more sections
         container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
             checkbox.addEventListener('change', () => this.handleFilterChange());
         });
@@ -1631,14 +1701,6 @@ class AudioDashboard {
     getButtonDurations(item) {
         const durations = {};
         
-        // Debug: Log the item structure to see what's available
-        if (item.file_stem === 'first_look_at_the_apple_airpods_3_packed_with_new__iqDbIzsJMiU') {
-            console.log('DEBUG: Item structure for airpods:', {
-                media_metadata: item.media_metadata,
-                word_count: item.word_count,
-                media: item.media
-            });
-        }
         
         // Read duration from media_metadata.estimated_reading_minutes or calculate from word_count
         if (item.media_metadata?.estimated_reading_minutes) {
