@@ -197,6 +197,46 @@ class AudioDashboard {
             });
         }
         
+        // Select All / Clear All buttons for Categories
+        const selectAllCategories = document.getElementById('selectAllCategories');
+        const clearAllCategories = document.getElementById('clearAllCategories');
+        if (selectAllCategories) {
+            selectAllCategories.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="category"]').forEach(cb => {
+                    cb.checked = true;
+                });
+                this.handleFilterChange();
+            });
+        }
+        if (clearAllCategories) {
+            clearAllCategories.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="category"]').forEach(cb => {
+                    cb.checked = false;
+                });
+                this.handleFilterChange();
+            });
+        }
+        
+        // Select All / Clear All buttons for Content Types
+        const selectAllContentTypes = document.getElementById('selectAllContentTypes');
+        const clearAllContentTypes = document.getElementById('clearAllContentTypes');
+        if (selectAllContentTypes) {
+            selectAllContentTypes.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="content_type"]').forEach(cb => {
+                    cb.checked = true;
+                });
+                this.handleFilterChange();
+            });
+        }
+        if (clearAllContentTypes) {
+            clearAllContentTypes.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="content_type"]').forEach(cb => {
+                    cb.checked = false;
+                });
+                this.handleFilterChange();
+            });
+        }
+        
         // UI controls
         this.queueToggle.addEventListener('click', () => this.toggleQueue());
         if (this.queueClearBtn) this.queueClearBtn.addEventListener('click', () => this.clearQueue());
@@ -334,16 +374,6 @@ class AudioDashboard {
     }
 
     renderFilterSection(items, container, filterType) {
-        // Determine show more container and toggle button based on filter type
-        let showMoreContainer, toggleButton;
-        if (filterType === 'category') {
-            showMoreContainer = document.getElementById('showMoreCategories');
-            toggleButton = document.getElementById('toggleMoreCategories');
-        } else if (filterType === 'content_type') {
-            showMoreContainer = document.getElementById('showMoreContentTypes');
-            toggleButton = document.getElementById('toggleMoreContentTypes');
-        }
-        
         if (!items || items.length === 0) {
             container.innerHTML = '<p class="text-xs text-slate-500 dark:text-slate-400">No data available</p>';
             return;
@@ -353,33 +383,38 @@ class AudioDashboard {
         const mainItems = items.slice(0, 3);
         const additionalItems = items.slice(3);
         
-        // Create filter HTML
+        // Create filter HTML - default all filters to checked
         const createFilterHTML = (item) => `
             <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
                 <input type="checkbox" 
                        value="${this.escapeHtml(item.value)}" 
                        data-filter="${filterType}"
+                       checked
                        class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                 <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
                 <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
             </label>
         `;
         
-        // Render main items (preserve the showMore structure if it exists)
+        // Render main items - insert before existing show more structure
         const mainHTML = mainItems.map(createFilterHTML).join('');
         
-        if (showMoreContainer) {
-            // Update main container while preserving structure
-            const existingStructure = container.innerHTML;
-            const showMoreIndex = existingStructure.indexOf(`<div id="showMore${filterType === 'category' ? 'Categories' : 'ContentTypes'}"`);
-            if (showMoreIndex !== -1) {
-                container.innerHTML = mainHTML + existingStructure.substring(showMoreIndex);
-            } else {
-                container.innerHTML = mainHTML;
-            }
+        // Find the existing structure elements 
+        const existingShowMore = container.querySelector(`[id^="showMore"]`);
+        const existingToggle = container.querySelector(`[id^="toggleMore"]`);
+        
+        if (existingShowMore && existingToggle) {
+            // Replace everything before the show more div
+            const showMoreHTML = existingShowMore.outerHTML;
+            const toggleHTML = existingToggle.outerHTML;
+            container.innerHTML = mainHTML + showMoreHTML + toggleHTML;
+            
+            // Re-get elements after innerHTML change
+            const showMoreContainer = container.querySelector(`[id^="showMore"]`);
+            const toggleButton = container.querySelector(`[id^="toggleMore"]`);
             
             // Render additional items in show more section
-            if (additionalItems.length > 0) {
+            if (additionalItems.length > 0 && showMoreContainer) {
                 showMoreContainer.innerHTML = additionalItems.map(createFilterHTML).join('');
                 
                 // Show the toggle button
@@ -393,7 +428,7 @@ class AudioDashboard {
             container.innerHTML = items.map(createFilterHTML).join('');
         }
 
-        // Bind filter change events to all checkboxes in both main and show more sections
+        // Bind filter change events to all checkboxes
         container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
             checkbox.addEventListener('change', () => this.handleFilterChange());
         });
@@ -413,12 +448,13 @@ class AudioDashboard {
         const mainLanguages = languages.slice(0, 3);
         const additionalLanguages = languages.slice(3);
         
-        // Render main languages (preserve the showMoreLanguages structure)
+        // Render main languages (preserve the showMoreLanguages structure) - default all to checked
         const mainHTML = mainLanguages.map(item => `
             <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
                 <input type="checkbox" 
                        value="${this.escapeHtml(item.value)}" 
                        data-filter="language"
+                       checked
                        class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                 <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
                 <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
@@ -441,6 +477,7 @@ class AudioDashboard {
                     <input type="checkbox" 
                            value="${this.escapeHtml(item.value)}" 
                            data-filter="language"
+                           checked
                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                     <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
                     <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
