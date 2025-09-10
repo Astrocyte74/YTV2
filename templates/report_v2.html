@@ -84,20 +84,24 @@
   <!-- Page container -->
   <main class="mx-auto max-w-[1100px] space-y-4 px-4 py-4 lg:space-y-6 lg:px-8 lg:py-8">
 
-    <!-- Header grid -->
+    <!-- Title spanning full width -->
+    <section class="mb-6">
+      <h1 class="text-xl font-bold leading-tight sm:text-2xl lg:text-3xl break-words hyphens-auto">
+        {{ title }}
+      </h1>
+    </section>
+
+    <!-- Content grid -->
     <section class="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,500px)_1fr] lg:gap-8">
       <!-- Hero -->
-      <div class="order-2 lg:order-1 aspect-video overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900/50">
+      <div class="aspect-video overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900/50">
         {% if thumbnail %}
           <img src="{{ thumbnail }}" alt="" class="h-full w-full object-cover" />
         {% endif %}
       </div>
 
       <!-- Meta + player -->
-      <div class="order-1 lg:order-2 min-w-0">
-        <h1 class="mb-4 text-xl font-bold leading-tight sm:text-2xl lg:text-3xl break-words hyphens-auto">
-          {{ title }}
-        </h1>
+      <div class="min-w-0">
 
         <!-- compact info grid -->
         <div class="rounded-lg border border-slate-200 bg-slate-50/50 p-3 dark:border-slate-700 dark:bg-slate-800/80">
