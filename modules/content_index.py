@@ -703,6 +703,7 @@ class ContentIndex:
             'duration_seconds': report['duration_seconds'],
             'analysis': report['analysis'],
             'media': report['media'],
+            'media_metadata': report.get('media_metadata', {}),
             'file_stem': report['file_stem'],
             'video_id': report.get('video_id', ''),
         }
