@@ -1905,15 +1905,8 @@ class AudioDashboard {
         const buf = this.telemetryBuf.splice(0, this.telemetryBuf.length);
         this.telemetryFlushTimer = null;
         if (!buf.length) return;
-        try {
-            await fetch('/api/telemetry', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ batch: buf, ts: Date.now() })
-            });
-        } catch (e) {
-            console.log('[telemetry:batch]', buf);
-        }
+        // Telemetry disabled to avoid 404 errors
+        console.log('[telemetry:batch]', buf);
     }
 
     sendTelemetry(eventName, payload = {}) {
