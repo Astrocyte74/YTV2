@@ -175,27 +175,8 @@ class AudioDashboard {
             });
         }
         
-        // Show more categories toggle
-        const toggleMoreCategories = document.getElementById('toggleMoreCategories');
-        const showMoreCategories = document.getElementById('showMoreCategories');
-        if (toggleMoreCategories && showMoreCategories) {
-            toggleMoreCategories.addEventListener('click', () => {
-                const isHidden = showMoreCategories.classList.contains('hidden');
-                showMoreCategories.classList.toggle('hidden');
-                toggleMoreCategories.textContent = isHidden ? 'Show less' : 'Show more';
-            });
-        }
-        
-        // Show more content types toggle
-        const toggleMoreContentTypes = document.getElementById('toggleMoreContentTypes');
-        const showMoreContentTypes = document.getElementById('showMoreContentTypes');
-        if (toggleMoreContentTypes && showMoreContentTypes) {
-            toggleMoreContentTypes.addEventListener('click', () => {
-                const isHidden = showMoreContentTypes.classList.contains('hidden');
-                showMoreContentTypes.classList.toggle('hidden');
-                toggleMoreContentTypes.textContent = isHidden ? 'Show less' : 'Show more';
-            });
-        }
+        // Show more categories toggle - bind after content loads
+        this.bindShowMoreToggles();
         
         // Select All / Clear All buttons for Categories
         const selectAllCategories = document.getElementById('selectAllCategories');
@@ -368,8 +349,35 @@ class AudioDashboard {
             this.renderFilterSection(filters.content_type, this.contentTypeFilters, 'content_type');
             this.renderFilterSection(filters.complexity_level, this.complexityFilters, 'complexity');
             this.renderLanguageFilters(filters.language || []);
+            
+            // Bind show more toggles after content is loaded
+            this.bindShowMoreToggles();
         } catch (error) {
             console.error('Failed to load filters:', error);
+        }
+    }
+    
+    bindShowMoreToggles() {
+        // Show more categories toggle
+        const toggleMoreCategories = document.getElementById('toggleMoreCategories');
+        const showMoreCategories = document.getElementById('showMoreCategories');
+        if (toggleMoreCategories && showMoreCategories) {
+            toggleMoreCategories.addEventListener('click', () => {
+                const isHidden = showMoreCategories.classList.contains('hidden');
+                showMoreCategories.classList.toggle('hidden');
+                toggleMoreCategories.textContent = isHidden ? 'Show less' : 'Show more';
+            });
+        }
+        
+        // Show more content types toggle
+        const toggleMoreContentTypes = document.getElementById('toggleMoreContentTypes');
+        const showMoreContentTypes = document.getElementById('showMoreContentTypes');
+        if (toggleMoreContentTypes && showMoreContentTypes) {
+            toggleMoreContentTypes.addEventListener('click', () => {
+                const isHidden = showMoreContentTypes.classList.contains('hidden');
+                showMoreContentTypes.classList.toggle('hidden');
+                toggleMoreContentTypes.textContent = isHidden ? 'Show less' : 'Show more';
+            });
         }
     }
 
