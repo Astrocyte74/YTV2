@@ -46,7 +46,12 @@ except ImportError as e:
 
 # Import dashboard components only
 from modules.report_generator import JSONReportGenerator
-from modules.content_index import ContentIndex
+try:
+    from modules.sqlite_content_index import SQLiteContentIndex as ContentIndex
+    USING_SQLITE = True
+except ImportError:
+    from modules.content_index import ContentIndex
+    USING_SQLITE = False
 
 # Load environment variables from .env file and stack.env
 load_dotenv()
@@ -101,13 +106,22 @@ logger = logging.getLogger(__name__)
 
 # Initialize global content index for Phase 2 API
 try:
-    # Determine reports directory - check for Render deployment vs local
-    if Path('/app/data/reports').exists():
-        content_index = ContentIndex('/app/data/reports')
-        logger.info("📊 ContentIndex initialized with Render data directory")
+    if USING_SQLITE:
+        # Determine SQLite database path - check for Render deployment vs local
+        if Path('/app/ytv2_content.db').exists():
+            content_index = ContentIndex('/app/ytv2_content.db')
+            logger.info("📊 SQLiteContentIndex initialized with Render database")
+        else:
+            content_index = ContentIndex('./ytv2_content.db')
+            logger.info("📊 SQLiteContentIndex initialized with local database")
     else:
-        content_index = ContentIndex('./data/reports')
-        logger.info("📊 ContentIndex initialized with local data directory")
+        # Fallback to JSON-based index
+        if Path('/app/data/reports').exists():
+            content_index = ContentIndex('/app/data/reports')
+            logger.info("📊 ContentIndex initialized with Render data directory")
+        else:
+            content_index = ContentIndex('./data/reports')
+            logger.info("📊 ContentIndex initialized with local data directory")
 except Exception as e:
     logger.warning(f"⚠️ ContentIndex initialization failed: {e}")
     content_index = None
