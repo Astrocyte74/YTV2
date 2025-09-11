@@ -1522,6 +1522,18 @@ class AudioDashboard {
         this.currentPage = 1;
         this.updateSortToggle();
         this.updateRadioSortUI();
+        
+        // Scroll to top of results to make sorting change visible
+        const mainContent = document.querySelector('main');
+        if (mainContent) {
+            mainContent.scrollTop = 0;
+        }
+        
+        // Clear current content and show loading to indicate change
+        if (this.contentGrid) {
+            this.contentGrid.innerHTML = '<div class="col-span-full text-center py-8 text-slate-500">Loading sorted results...</div>';
+        }
+        
         this.loadContent();
     }
 
