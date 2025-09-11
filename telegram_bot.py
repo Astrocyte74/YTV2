@@ -498,6 +498,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_delete_reports()
         elif self.path == '/api/upload-report':
             self.handle_upload_report()
+        elif self.path == '/api/upload-database':
+            self.handle_upload_database()
         elif self.path.startswith('/api/delete'):
             self.handle_delete_request()
         else:
@@ -1894,6 +1896,87 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             'found_video_id': video_id_for_audio,
             'success': len(deleted_files) > 0 or len(errors) == 0  # Success if we deleted something OR no errors (idempotent)
         }
+    
+    def handle_upload_database(self):
+        """Handle POST request to upload SQLite database from NAS"""
+        try:
+            # Check sync secret for authentication
+            sync_secret = os.getenv('SYNC_SECRET')
+            if not sync_secret:
+                self.send_error(500, "Sync not configured")
+                return
+            
+            auth_header = self.headers.get('Authorization', '')
+            if not auth_header.startswith('Bearer ') or auth_header[7:] != sync_secret:
+                logger.warning(f"Database upload rejected: Invalid auth from {self.client_address[0]}")
+                self.send_error(401, "Unauthorized")
+                return
+            
+            # Parse multipart form data
+            content_type = self.headers.get('Content-Type', '')
+            if not content_type.startswith('multipart/form-data'):
+                self.send_error(400, "Expected multipart/form-data")
+                return
+            
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_error(400, "No data received")
+                return
+            if content_length > 50 * 1024 * 1024:  # 50MB limit for database
+                self.send_error(413, "Database too large")
+                return
+            
+            post_data = self.rfile.read(content_length)
+            
+            # Parse form data
+            import cgi
+            import io
+            
+            form_data = cgi.FieldStorage(
+                fp=io.BytesIO(post_data),
+                headers=self.headers,
+                environ={'REQUEST_METHOD': 'POST'}
+            )
+            
+            if 'database' not in form_data:
+                self.send_error(400, "No database file provided")
+                return
+            
+            database_field = form_data['database']
+            if not hasattr(database_field, 'file') or not database_field.file:
+                self.send_error(400, "Invalid database file")
+                return
+            
+            # Save database file
+            db_path = Path('ytv2_content.db')
+            backup_path = Path('ytv2_content.db.backup')
+            
+            # Create backup of existing database
+            if db_path.exists():
+                import shutil
+                shutil.copy2(db_path, backup_path)
+                logger.info(f"Created database backup: {backup_path}")
+            
+            # Write new database
+            with open(db_path, 'wb') as f:
+                database_field.file.seek(0)
+                f.write(database_field.file.read())
+            
+            logger.info(f"✅ SQLite database updated: {db_path}")
+            
+            # Send success response
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                'success': True,
+                'message': 'Database updated successfully',
+                'size': db_path.stat().st_size
+            }).encode())
+            
+        except Exception as e:
+            logger.error(f"Database upload error: {e}")
+            self.send_error(500, f"Database upload failed: {str(e)}")
     
     def handle_delete_request(self):
         """Handle DELETE requests for /api/delete/:id endpoint"""
