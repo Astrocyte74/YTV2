@@ -524,7 +524,7 @@ class AudioDashboard {
         try {
             const response = await fetch(`/api/reports?${params}`);
             const data = await response.json();
-            this.currentItems = data.data;
+            this.currentItems = data.reports || data.data || [];
             this.renderContent(this.currentItems);
             this.renderPagination(data.pagination);
             this.updateResultsInfo(data.pagination);
@@ -541,6 +541,13 @@ class AudioDashboard {
     }
 
     renderContent(items) {
+        // Safety check for undefined items
+        if (!items || !Array.isArray(items)) {
+            console.warn('renderContent called with invalid items:', items);
+            this.contentGrid.innerHTML = '<div class="text-center py-8 text-gray-400">No summaries available</div>';
+            return;
+        }
+        
         const html = this.viewMode === 'grid'
             ? `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(i => this.createGridCard(i)).join('')}</div>`
             : items.map(i => this.createContentCard(i)).join('');
