@@ -1245,8 +1245,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 'added_desc', 'added_asc', 'video_newest', 'video_oldest',
                 'title_az', 'title_za'
             ]
+            original_sort = sort
             if sort not in valid_sorts:
                 sort = 'newest'
+            
+            # Debug logging for sort validation
+            logger.info(f"🔍 Sort validation: requested='{original_sort}', validated='{sort}', valid_sorts={valid_sorts}")
             
             # Pagination
             try:
