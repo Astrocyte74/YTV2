@@ -339,31 +339,54 @@ class SQLiteContentIndex:
         finally:
             conn.close()
     
-    def search_reports(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """Search reports by title and content."""
-        if not query or len(query.strip()) < 2:
-            return []
+    def search_reports(self, 
+                      filters: Optional[Dict[str, Any]] = None,
+                      query: Optional[str] = None,
+                      sort: str = 'newest',
+                      page: int = 1,
+                      size: int = 20) -> Dict[str, Any]:
+        """Search and filter reports with pagination - matches original API signature."""
         
-        conn = self._get_connection()
-        try:
-            search_term = f"%{query.strip()}%"
-            
-            # Search in titles and summaries
-            cursor = conn.execute("""
-                SELECT c.* FROM content c
-                LEFT JOIN content_summaries s ON c.id = s.content_id
-                WHERE c.title LIKE ? OR s.summary_text LIKE ?
-                ORDER BY 
-                    CASE WHEN c.title LIKE ? THEN 1 ELSE 2 END,
-                    c.indexed_at DESC
-                LIMIT ?
-            """, (search_term, search_term, search_term, limit))
-            
-            rows = cursor.fetchall()
-            return [self._format_report_for_api(row) for row in rows]
-            
-        finally:
-            conn.close()
+        # For search queries, use get_reports with filters instead
+        if query and len(query.strip()) >= 2:
+            # Simple search implementation - could be enhanced later
+            conn = self._get_connection()
+            try:
+                search_term = f"%{query.strip()}%"
+                
+                # Search in titles and summaries
+                cursor = conn.execute("""
+                    SELECT c.* FROM content c
+                    LEFT JOIN content_summaries s ON c.id = s.content_id
+                    WHERE c.title LIKE ? OR s.summary_text LIKE ?
+                    ORDER BY 
+                        CASE WHEN c.title LIKE ? THEN 1 ELSE 2 END,
+                        c.indexed_at DESC
+                    LIMIT ?
+                """, (search_term, search_term, search_term, min(size, 50)))
+                
+                rows = cursor.fetchall()
+                reports = [self._format_report_for_api(row) for row in rows]
+                
+                return {
+                    'reports': reports,
+                    'pagination': {
+                        'page': page,
+                        'size': size,
+                        'total_count': len(reports),
+                        'total_pages': 1,
+                        'has_next': False,
+                        'has_prev': False
+                    },
+                    'sort': sort,
+                    'filters': filters or {}
+                }
+                
+            finally:
+                conn.close()
+        else:
+            # No query, use standard get_reports
+            return self.get_reports(page=page, size=size, sort=sort, filters=filters)
     
     def needs_refresh(self) -> bool:
         """SQLite doesn't need refresh like file-based system."""
