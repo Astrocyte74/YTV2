@@ -342,7 +342,7 @@ class SQLiteContentIndex:
     def search_reports(self, 
                       filters: Optional[Dict[str, Any]] = None,
                       query: Optional[str] = None,
-                      sort: str = 'newest',
+                      sort: str = 'added_desc',
                       page: int = 1,
                       size: int = 20) -> Dict[str, Any]:
         """Search and filter reports with pagination - matches original API signature."""
