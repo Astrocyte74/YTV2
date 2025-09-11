@@ -1238,7 +1238,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             
             # Sorting
             sort = query_params.get('sort', ['newest'])[0]
-            valid_sorts = ['newest', 'oldest', 'title', 'title_asc', 'title_desc', 'duration', 'duration_desc', 'duration_asc']
+            valid_sorts = [
+                'newest', 'oldest', 'title', 'title_asc', 'title_desc', 
+                'duration', 'duration_desc', 'duration_asc',
+                # SQLite backend specific sorts
+                'added_desc', 'added_asc', 'video_newest', 'video_oldest',
+                'title_az', 'title_za'
+            ]
             if sort not in valid_sorts:
                 sort = 'newest'
             
