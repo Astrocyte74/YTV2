@@ -105,26 +105,49 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Initialize global content index for Phase 2 API
+logger.info(f"🔍 Backend available: SQLite={USING_SQLITE}")
+
 try:
     if USING_SQLITE:
-        # Determine SQLite database path - check for Render deployment vs local
-        if Path('/app/ytv2_content.db').exists():
-            content_index = ContentIndex('/app/ytv2_content.db')
-            logger.info("📊 SQLiteContentIndex initialized with Render database")
-        else:
-            content_index = ContentIndex('./ytv2_content.db')
-            logger.info("📊 SQLiteContentIndex initialized with local database")
-    else:
-        # Fallback to JSON-based index
+        # Check multiple possible database locations on Render
+        db_paths = [
+            Path('/app/ytv2_content.db'),      # Root app directory
+            Path('./ytv2_content.db'),         # Current directory
+            Path('./data/ytv2_content.db'),    # Data subdirectory
+            Path('/app/data/ytv2_content.db')  # App data directory
+        ]
+        
+        database_found = False
+        for db_path in db_paths:
+            if db_path.exists():
+                content_index = ContentIndex(str(db_path))
+                logger.info(f"✅ SQLiteContentIndex initialized with database: {db_path}")
+                database_found = True
+                break
+        
+        if not database_found:
+            logger.warning(f"⚠️ No SQLite database found in paths: {[str(p) for p in db_paths]}")
+            # Fallback to JSON backend
+            USING_SQLITE = False
+            logger.info("🔄 Falling back to JSON backend")
+    
+    if not USING_SQLITE:
+        # Use JSON-based index as fallback
         if Path('/app/data/reports').exists():
             content_index = ContentIndex('/app/data/reports')
-            logger.info("📊 ContentIndex initialized with Render data directory")
+            logger.info("📊 JSON ContentIndex initialized with Render data directory")
         else:
             content_index = ContentIndex('./data/reports')
-            logger.info("📊 ContentIndex initialized with local data directory")
+            logger.info("📊 JSON ContentIndex initialized with local data directory")
+            
 except Exception as e:
-    logger.warning(f"⚠️ ContentIndex initialization failed: {e}")
+    logger.error(f"❌ ContentIndex initialization failed: {e}")
     content_index = None
+
+# Log final backend status
+if content_index:
+    backend_type = "SQLite" if USING_SQLITE else "JSON"
+    logger.info(f"🎯 Using {backend_type} backend for content management")
 
 # Template loading utility
 def load_template(template_name: str) -> Optional[str]:
@@ -1963,6 +1986,17 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 f.write(database_field.file.read())
             
             logger.info(f"✅ SQLite database updated: {db_path}")
+            
+            # Reinitialize content index with new database
+            global content_index, USING_SQLITE
+            try:
+                if USING_SQLITE:
+                    content_index = ContentIndex(str(db_path))
+                    logger.info(f"🔄 Content index reinitialized with new database")
+                else:
+                    logger.warning("⚠️ SQLite backend not available, cannot reinitialize")
+            except Exception as reinit_error:
+                logger.error(f"❌ Failed to reinitialize content index: {reinit_error}")
             
             # Send success response
             self.send_response(200)
