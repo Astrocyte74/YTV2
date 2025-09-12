@@ -1113,13 +1113,15 @@ class AudioDashboard {
                 <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start">
                     <div class="relative w-full sm:w-56 aspect-video overflow-hidden rounded-lg bg-slate-100 flex-shrink-0">
                         ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
-                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none" data-card-eq style="display: flex">
-                            <div class="flex items-end gap-1">
-                                <span class="w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar-outlined" style="--delay:0"></span>
-                                <span class="w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar-outlined" style="--delay:1"></span>
-                                <span class="w-0.5 sm:w-1 h-6 sm:h-8 waveform-bar-outlined" style="--delay:2"></span>
-                                <span class="w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar-outlined" style="--delay:3"></span>
-                                <span class="w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar-outlined" style="--delay:4"></span>
+                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none ${isPlaying ? '' : 'hidden'}" data-card-eq>
+                            <div class="px-2 py-1 rounded-md bg-black/50 backdrop-blur-sm">
+                                <div class="flex items-end gap-1 text-white">
+                                    <span class="w-0.5 sm:w-1 h-3 sm:h-4 bg-current waveform-bar" style="--delay:0"></span>
+                                    <span class="w-0.5 sm:w-1 h-4 sm:h-6 bg-current waveform-bar" style="--delay:1"></span>
+                                    <span class="w-0.5 sm:w-1 h-6 sm:h-8 bg-current waveform-bar" style="--delay:2"></span>
+                                    <span class="w-0.5 sm:w-1 h-4 sm:h-6 bg-current waveform-bar" style="--delay:3"></span>
+                                    <span class="w-0.5 sm:w-1 h-3 sm:h-4 bg-current waveform-bar" style="--delay:4"></span>
+                                </div>
                             </div>
                         </div>
                         <div class="absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer" data-card-progress-container data-total-seconds="${totalSecs}">
@@ -1557,13 +1559,8 @@ class AudioDashboard {
         // Toggle thumbnail equalizer overlay on active playing card
         this.contentGrid.querySelectorAll('[data-card] [data-card-eq]').forEach(eq => {
             const isOnActive = !!(active && active.contains(eq));
-            if (isOnActive && this.isPlaying) {
-                eq.style.display = 'flex';
-                eq.classList.remove('hidden');
-            } else {
-                eq.style.display = 'none';
-                eq.classList.add('hidden');
-            }
+            if (isOnActive && this.isPlaying) eq.classList.remove('hidden');
+            else eq.classList.add('hidden');
         });
     }
 
