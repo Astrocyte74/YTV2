@@ -63,14 +63,14 @@
     <style>
         /* Custom audio waveform animation */
         .waveform-bar {
-            animation: waveform 2s ease-in-out infinite;
-            animation-delay: calc(var(--delay) * 0.1s);
+            animation: waveform 0.9s ease-in-out infinite;
+            animation-delay: calc(var(--delay) * 0.08s);
             transform-origin: bottom center;
         }
         /* Explicit keyframes so animation works without Tailwind utility */
         @keyframes waveform {
-            0%, 100% { transform: scaleY(0.6); }
-            50% { transform: scaleY(1.2); }
+            0%, 100% { transform: scaleY(0.45); }
+            50% { transform: scaleY(1.6); }
         }
         /* Subtle paragraph spacing inside inline expanded summaries */
         .prose.prose-sm p { margin: 0.4rem 0; }
