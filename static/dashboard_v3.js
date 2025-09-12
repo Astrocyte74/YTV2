@@ -254,6 +254,15 @@ class AudioDashboard {
         // Delegated card actions
         if (this.contentGrid) {
             this.contentGrid.addEventListener('click', (e) => this.onClickCardAction(e));
+            // Seek on thumbnail progress or inline mini scrub
+            this.contentGrid.addEventListener('click', (e) => {
+                const scrub = e.target.closest('[data-card-scrub]');
+                const thumb = e.target.closest('[data-card-progress-container]');
+                const el = scrub || thumb;
+                if (!el) return;
+                e.stopPropagation();
+                this.seekOnCardScrub(el, e);
+            });
         }
         // URL hash handling for deep links
         window.addEventListener('hashchange', () => this.onHashChange());
@@ -1054,6 +1063,9 @@ class AudioDashboard {
         const hasAudio = item.media?.has_audio;
         const href = `/${item.file_stem}.json?v=2`;
         const buttonDurations = this.getButtonDurations(item);
+        const totalDur = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
+            ? this.formatDuration(item.media_metadata.mp3_duration_seconds)
+            : (item.duration_seconds ? this.formatDuration(item.duration_seconds) : '');
         
         const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
         const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
@@ -1062,8 +1074,8 @@ class AudioDashboard {
                 <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start">
                     <div class="relative w-full sm:w-56 aspect-video overflow-hidden rounded-lg bg-slate-100 flex-shrink-0">
                         ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
-                        <div class="absolute inset-x-0 bottom-0 h-1 bg-black/20">
-                            <div class="h-1 bg-audio-500" style="width:0%" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+                        <div class="absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer" data-card-progress-container>
+                            <div class="h-1.5 sm:h-2 bg-audio-500" style="width:0%" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
                         </div>
                     </div>
                     <div class="flex-1 min-w-0">
@@ -1112,6 +1124,13 @@ class AudioDashboard {
                         <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
                           <button class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm" data-action="read"><span>Read${buttonDurations.read ? ` ${buttonDurations.read}` : ''}</span><span aria-hidden="true">›</span></button>
                           ${hasAudio ? `<button class=\"inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm\" data-action=\"listen\"><span>Listen${buttonDurations.listen ? ` ${buttonDurations.listen}` : ''}</span><span aria-hidden=\"true\">›</span></button>` : ''}
+                          <div class="hidden md:flex items-center gap-2 ml-1 min-w-[150px] max-w-[220px] flex-1" data-card-mini>
+                            <span class="text-[10px] tabular-nums text-slate-500 dark:text-slate-300" data-card-time>0:00</span>
+                            <div class="flex-1 h-1.5 rounded-full bg-slate-300/60 dark:bg-slate-700/60 cursor-pointer" data-card-scrub title="Seek">
+                              <div class="h-1.5 rounded-full bg-audio-500" style="width:0%" data-card-scrubbar></div>
+                            </div>
+                            <span class="text-[10px] tabular-nums text-slate-500 dark:text-slate-300" data-card-total>${totalDur || ''}</span>
+                          </div>
                           <button class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm" data-action="watch"><span>Watch${buttonDurations.watch ? ` ${buttonDurations.watch}` : ''}</span><span aria-hidden="true">›</span></button>
                         </div>
 
@@ -1128,12 +1147,15 @@ class AudioDashboard {
         const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
         const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
         const buttonDurations = this.getButtonDurations(item);
+        const totalDur = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
+            ? this.formatDuration(item.media_metadata.mp3_duration_seconds)
+            : (item.duration_seconds ? this.formatDuration(item.duration_seconds) : '');
         return `
         <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-has-audio="${(item.media && item.media.has_audio) ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative cursor-pointer bg-white/80 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
             <div class="relative aspect-video bg-slate-100">
                 ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
-                <div class="absolute inset-x-0 bottom-0 h-1 bg-black/20">
-                    <div class="h-1 bg-audio-500" style="width:0%" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+                <div class="absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer" data-card-progress-container>
+                    <div class="h-1.5 sm:h-2 bg-audio-500" style="width:0%" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
                 </div>
                 <div class="absolute top-2 right-2 z-20">
                   <button class="p-1.5 min-w-[36px] min-h-[36px] rounded-md bg-white/70 dark:bg-slate-900/60 hover:bg-white/90" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
@@ -1169,6 +1191,13 @@ class AudioDashboard {
                 <div class="mt-2 flex items-center gap-2 text-xs px-3 pb-2">
                     <button class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm" data-action="read"><span>Read${buttonDurations.read ? ` ${buttonDurations.read}` : ''}</span><span aria-hidden=\"true\">›</span></button>
                     ${(item.media && item.media.has_audio) ? `<button class=\"inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm\" data-action=\"listen\"><span>Listen${buttonDurations.listen ? ` ${buttonDurations.listen}` : ''}</span><span aria-hidden=\"true\">›</span></button>` : ''}
+                    <div class="hidden lg:flex items-center gap-2 ml-1 min-w-[140px] max-w-[200px] flex-1" data-card-mini>
+                        <span class="text-[10px] tabular-nums text-slate-500 dark:text-slate-300" data-card-time>0:00</span>
+                        <div class="flex-1 h-1.5 rounded-full bg-slate-300/60 dark:bg-slate-700/60 cursor-pointer" data-card-scrub title="Seek">
+                          <div class="h-1.5 rounded-full bg-audio-500" style="width:0%" data-card-scrubbar></div>
+                        </div>
+                        <span class="text-[10px] tabular-nums text-slate-500 dark:text-slate-300" data-card-total>${totalDur || ''}</span>
+                    </div>
                     <button class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm" data-action="watch"><span>Watch${buttonDurations.watch ? ` ${buttonDurations.watch}` : ''}</span><span aria-hidden=\"true\">›</span></button>
                 </div>
                 <section role="region" aria-live="polite" hidden data-expand-region></section>
@@ -1335,6 +1364,13 @@ class AudioDashboard {
             }).finally(() => {
                 this.userInitiatedPlay = false;
             });
+        }
+        // Apply any pending seek set by a card-scrub on a non-active card
+        if (typeof this._pendingSeek === 'number') {
+            const duration = this.audioElement.duration;
+            const pct = Math.max(0, Math.min(1, this._pendingSeek));
+            if (duration && !isNaN(duration)) this.audioElement.currentTime = pct * duration;
+            this._pendingSeek = null;
         }
     }
 
@@ -1524,6 +1560,13 @@ class AudioDashboard {
                         bar.setAttribute('aria-valuenow', '0');
                     }
                 }
+                // Update inline mini scrub + time
+                const timeEl = card && card.querySelector('[data-card-time]');
+                const totalEl = card && card.querySelector('[data-card-total]');
+                const scrubBar = card && card.querySelector('[data-card-scrubbar]');
+                if (timeEl) timeEl.textContent = this.formatDuration(currentTime);
+                if (totalEl && duration) totalEl.textContent = this.formatDuration(duration);
+                if (scrubBar) scrubBar.style.width = `${progress}%`;
             }
         } else {
             // If no valid duration, ensure progress bar is reset
@@ -1560,6 +1603,24 @@ class AudioDashboard {
         if (duration && !isNaN(duration)) {
             this.audioElement.currentTime = percentage * duration;
         }
+    }
+
+    // Seek when clicking on a card's progress or mini scrub
+    seekOnCardScrub(el, event) {
+        const card = el.closest('[data-report-id]');
+        if (!card) return;
+        const id = card.dataset.reportId;
+        const rect = el.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+        // If this card is already active, seek immediately
+        if (this.currentAudio && this.currentAudio.id === id) {
+            const duration = this.audioElement.duration;
+            if (duration && !isNaN(duration)) this.audioElement.currentTime = pct * duration;
+            return;
+        }
+        // Otherwise, start playing this card and apply seek when ready
+        this._pendingSeek = pct;
+        this.playAudio(id);
     }
 
     handleSearch() {
