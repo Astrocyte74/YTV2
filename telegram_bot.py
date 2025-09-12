@@ -588,6 +588,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.serve_db_status()
         elif path == '/api/db-reset':
             self.serve_db_reset()
+        elif path == '/api/migrate-audio':
+            self.serve_audio_migration()
         elif path.startswith('/api/'):
             self.serve_api()
         elif path.endswith('.css'):
@@ -1394,6 +1396,70 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Database reset error: {e}")
             error_data = {"error": "Database reset failed", "message": str(e)}
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(error_data).encode())
+    
+    def serve_audio_migration(self):
+        """Migrate audio files from ephemeral to persistent storage"""
+        try:
+            ephemeral_exports = Path('./exports')
+            persistent_exports = Path('/app/data/exports')
+            
+            if not ephemeral_exports.exists():
+                response = {"status": "info", "message": "No ephemeral exports directory found"}
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(response).encode())
+                return
+            
+            # Create persistent directory
+            persistent_exports.mkdir(parents=True, exist_ok=True)
+            
+            # Find all audio files in ephemeral storage
+            audio_files = list(ephemeral_exports.glob('*.mp3'))
+            migrated = []
+            errors = []
+            
+            for audio_file in audio_files:
+                try:
+                    dest_path = persistent_exports / audio_file.name
+                    
+                    # Copy file to persistent storage
+                    import shutil
+                    shutil.copy2(audio_file, dest_path)
+                    
+                    # Verify the copy worked
+                    if dest_path.exists() and dest_path.stat().st_size == audio_file.stat().st_size:
+                        migrated.append(audio_file.name)
+                        logger.info(f"✅ Migrated audio: {audio_file.name}")
+                    else:
+                        errors.append(f"Copy verification failed for {audio_file.name}")
+                        
+                except Exception as e:
+                    errors.append(f"Failed to migrate {audio_file.name}: {str(e)}")
+                    
+            response = {
+                "status": "success" if not errors else "partial",
+                "message": f"Audio migration completed",
+                "migrated_count": len(migrated),
+                "error_count": len(errors),
+                "migrated_files": migrated[:10],  # Show first 10
+                "errors": errors[:5] if errors else [],  # Show first 5 errors
+                "persistent_path": str(persistent_exports),
+                "ephemeral_path": str(ephemeral_exports)
+            }
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response, indent=2).encode())
+            
+        except Exception as e:
+            logger.error(f"Audio migration error: {e}")
+            error_data = {"error": "Audio migration failed", "message": str(e)}
             self.send_response(500)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
@@ -2396,9 +2462,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(400, "No audio filename provided")
                 return
             
-            # Save audio file
-            exports_dir = Path('./exports')
-            exports_dir.mkdir(exist_ok=True)
+            # Save audio file to persistent storage
+            exports_dir = Path('/app/data/exports') if Path('/app/data').exists() else Path('./exports')
+            exports_dir.mkdir(parents=True, exist_ok=True)
             
             audio_path = exports_dir / audio_field.filename
             with open(audio_path, 'wb') as f:
