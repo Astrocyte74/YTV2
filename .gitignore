@@ -60,6 +60,12 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+# YTV2 Database files (should not be in Git - managed by persistent disk)
+ytv2_content.db
+ytv2_content.db-journal
+*.db
+*.db-journal
+
 # Flask stuff:
 instance/
 .webassets-cache
