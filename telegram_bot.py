@@ -2567,11 +2567,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         id, title, canonical_url, thumbnail_url, published_at, indexed_at,
                         duration_seconds, word_count, has_audio, audio_duration_seconds,
                         has_transcript, transcript_chars, video_id, channel_name, channel_id,
-                        view_count, like_count, comment_count, category, content_type,
+                        view_count, like_count, comment_count, category, subcategory, content_type,
                         complexity_level, language, key_topics, named_entities,
                         format_source, processing_status, created_at, updated_at
                     ) VALUES (
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                     )
                     ON CONFLICT(id) DO UPDATE SET
                         title = excluded.title,
@@ -2591,6 +2591,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         like_count = excluded.like_count,
                         comment_count = excluded.comment_count,
                         category = excluded.category,
+                        subcategory = excluded.subcategory,
                         content_type = excluded.content_type,
                         complexity_level = excluded.complexity_level,
                         language = excluded.language,
@@ -2619,6 +2620,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     content_data.get('like_count', 0),
                     content_data.get('comment_count', 0),
                     json.dumps(content_data.get('category', [])),
+                    content_data.get('subcategory'),
                     content_data.get('content_type', ''),
                     content_data.get('complexity_level', ''),
                     content_data.get('language', 'en'),
