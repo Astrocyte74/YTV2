@@ -150,7 +150,7 @@ def create_empty_ytv2_database(db_path: Path):
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS content_summaries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content_id TEXT,
+            content_id TEXT UNIQUE,
             summary_text TEXT,
             summary_type TEXT DEFAULT 'comprehensive',
             created_at TEXT,
