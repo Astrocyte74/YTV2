@@ -173,8 +173,7 @@ try:
         # Check multiple possible database locations on Render
         # Prioritize persistent disk if it exists
         db_paths = [
-            Path('/opt/render/project/src/data/ytv2_content.db'),  # Persistent disk mount
-            Path('/app/data/ytv2_content.db'), # App data directory
+            Path('/app/data/ytv2_content.db'), # Render persistent disk mount
             Path('./data/ytv2_content.db'),    # Local data subdirectory
             Path('/app/ytv2_content.db'),      # Root app directory
             Path('./ytv2_content.db')          # Current directory (fallback)
@@ -1277,12 +1276,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         try:
             # Check all possible database locations
             db_paths = [
-                Path('/app/ytv2_content.db'),           # Root app directory
-                Path('./ytv2_content.db'),              # Current directory  
+                Path('/app/data/ytv2_content.db'),      # Render persistent disk mount
                 Path('./data/ytv2_content.db'),         # Data subdirectory
-                Path('/app/data/ytv2_content.db'),      # App data directory
-                Path('/opt/render/project/src/data/ytv2_content.db'),  # Render persistent disk
-                Path('/opt/render/project/src/ytv2_content.db'),       # Render app root
+                Path('/app/ytv2_content.db'),           # Root app directory
+                Path('./ytv2_content.db')               # Current directory
             ]
             
             db_info = {
@@ -2407,8 +2404,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             
             # UPSERT into SQLite database - find database path
             db_paths = [
-                Path('/opt/render/project/src/data/ytv2_content.db'),  # Persistent disk mount
-                Path('/app/data/ytv2_content.db'), # App data directory  
+                Path('/app/data/ytv2_content.db'), # Render persistent disk mount 
                 Path('./data/ytv2_content.db'),    # Local data subdirectory
                 Path('/app/ytv2_content.db'),      # Root app directory
                 Path('./ytv2_content.db')          # Current directory (fallback)
