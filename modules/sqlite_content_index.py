@@ -235,25 +235,52 @@ class SQLiteContentIndex:
                 for row in cursor.fetchall()
             ]
             
-            # Category filter (parse JSON arrays)
+            # Category filter with subcategory support
             cursor = conn.execute("""
-                SELECT category, COUNT(*) as count
+                SELECT category, subcategory, COUNT(*) as count
                 FROM content 
                 WHERE category IS NOT NULL AND category != '' AND category != '[]'
-                GROUP BY category
+                GROUP BY category, subcategory
                 ORDER BY count DESC
             """)
             
-            category_counts = {}
+            # Build hierarchical category structure
+            category_hierarchy = {}
             for row in cursor.fetchall():
                 categories = self._parse_json_field(row['category'])
+                subcategory = row['subcategory']
+                count = row['count']
+                
                 for cat in categories:
-                    category_counts[cat] = category_counts.get(cat, 0) + row['count']
+                    if cat not in category_hierarchy:
+                        category_hierarchy[cat] = {
+                            'count': 0,
+                            'subcategories': {}
+                        }
+                    
+                    category_hierarchy[cat]['count'] += count
+                    
+                    if subcategory:
+                        if subcategory not in category_hierarchy[cat]['subcategories']:
+                            category_hierarchy[cat]['subcategories'][subcategory] = 0
+                        category_hierarchy[cat]['subcategories'][subcategory] += count
             
-            filters['category'] = [
-                {'value': cat, 'count': count}
-                for cat, count in sorted(category_counts.items(), key=lambda x: x[1], reverse=True)
-            ]
+            # Convert to API format
+            filters['category'] = []
+            for cat, data in sorted(category_hierarchy.items(), key=lambda x: x[1]['count'], reverse=True):
+                category_item = {
+                    'value': cat,
+                    'count': data['count']
+                }
+                
+                # Add subcategories if they exist
+                if data['subcategories']:
+                    category_item['subcategories'] = [
+                        {'value': subcat, 'count': subcount}
+                        for subcat, subcount in sorted(data['subcategories'].items(), key=lambda x: x[1], reverse=True)
+                    ]
+                
+                filters['category'].append(category_item)
             
             # Content type filter
             cursor = conn.execute("""

@@ -1086,6 +1086,144 @@ body {
     flex: 1;
 }
 
+/* ================================================
+   HIERARCHICAL CATEGORY STYLING
+   ================================================ */
+
+.category-group {
+    margin-bottom: var(--space-2);
+}
+
+.category-group .flex {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border-radius: var(--radius-lg);
+    transition: all var(--transition-fast);
+}
+
+.category-group .flex:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.category-expand-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+    color: var(--gray-500);
+}
+
+.category-expand-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: var(--gray-700);
+}
+
+.category-expand-btn svg {
+    transition: transform var(--transition-fast);
+}
+
+.category-expand-btn.expanded svg {
+    transform: rotate(90deg);
+}
+
+.subcategory-list {
+    margin-left: 2rem;
+    margin-top: var(--space-2);
+    overflow: hidden;
+    transition: all var(--transition-base);
+    border-left: 2px solid rgba(255, 255, 255, 0.2);
+    padding-left: var(--space-3);
+}
+
+.subcategory-list.collapsed {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.subcategory-list.expanded {
+    max-height: 500px;
+    opacity: 1;
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    padding-bottom: var(--space-2);
+}
+
+.subcategory-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border-radius: var(--radius-lg);
+    transition: all var(--transition-fast);
+    margin-bottom: var(--space-1);
+}
+
+.subcategory-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateX(2px);
+}
+
+.subcategory-item:last-child {
+    margin-bottom: 0;
+}
+
+/* Checkbox styling for both parent and child categories */
+input[type="checkbox"][data-category-parent],
+input[type="checkbox"][data-category-child] {
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--primary-500);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+}
+
+/* Indeterminate state for parent checkboxes */
+input[type="checkbox"][data-category-parent]:indeterminate {
+    background: linear-gradient(135deg, var(--primary-400), var(--primary-500));
+}
+
+input[type="checkbox"][data-category-parent]:indeterminate::after {
+    content: '−';
+    position: absolute;
+    color: white;
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+/* Dark mode adjustments for hierarchical categories */
+.dark .category-expand-btn {
+    color: var(--gray-400);
+}
+
+.dark .category-expand-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--gray-200);
+}
+
+.dark .subcategory-list {
+    border-left-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .category-group .flex:hover,
+.dark .subcategory-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
 /* Empty state styling */
 .empty-state {
     display: flex;

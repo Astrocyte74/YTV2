@@ -436,11 +436,60 @@ class AudioDashboard {
             return;
         }
         
+        // Check if this is hierarchical data (categories with subcategories)
+        const isHierarchical = filterType === 'category' && items.some(item => item.subcategories && item.subcategories.length > 0);
+        
         // Show first 3 items in main area
         const mainItems = items.slice(0, 3);
         const additionalItems = items.slice(3);
         
-        // Create filter HTML - default all filters to checked
+        // Create hierarchical filter HTML for categories with subcategories
+        const createHierarchicalHTML = (item) => {
+            const hasSubcategories = item.subcategories && item.subcategories.length > 0;
+            const categoryId = `category-${item.value.replace(/[^a-zA-Z0-9]/g, '-')}`;
+            
+            let html = `
+                <div class="category-group mb-2">
+                    <div class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
+                        <input type="checkbox" 
+                               value="${this.escapeHtml(item.value)}" 
+                               data-filter="${filterType}"
+                               data-category-parent="${this.escapeHtml(item.value)}"
+                               checked
+                               class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
+                        ${hasSubcategories ? `
+                            <button class="category-expand-btn text-slate-400 hover:text-slate-600 p-1" 
+                                    data-category-target="${categoryId}">
+                                <svg class="w-3 h-3 transform transition-transform" viewBox="0 0 12 12">
+                                    <path d="M4 2L8 6L4 10" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                                </svg>
+                            </button>
+                        ` : '<div class="w-5"></div>'}
+                        <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
+                        <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
+                    </div>
+                    ${hasSubcategories ? `
+                        <div id="${categoryId}" class="subcategory-list ml-8 mt-1 hidden">
+                            ${item.subcategories.map(sub => `
+                                <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
+                                    <input type="checkbox" 
+                                           value="${this.escapeHtml(sub.value)}" 
+                                           data-filter="subcategory"
+                                           data-parent-category="${this.escapeHtml(item.value)}"
+                                           checked
+                                           class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
+                                    <span class="text-sm text-slate-600 dark:text-slate-300 flex-1">${this.escapeHtml(sub.value)}</span>
+                                    <span class="text-xs text-slate-400 dark:text-slate-500">${sub.count}</span>
+                                </label>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            return html;
+        };
+        
+        // Create simple filter HTML for non-hierarchical items
         const createFilterHTML = (item) => `
             <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
                 <input type="checkbox" 
@@ -453,8 +502,11 @@ class AudioDashboard {
             </label>
         `;
         
+        // Choose the appropriate HTML creator
+        const htmlCreator = isHierarchical ? createHierarchicalHTML : createFilterHTML;
+        
         // Render main items - insert before existing show more structure
-        const mainHTML = mainItems.map(createFilterHTML).join('');
+        const mainHTML = mainItems.map(htmlCreator).join('');
         
         // Find the existing structure elements 
         const existingShowMore = container.querySelector(`[id^="showMore"]`);
@@ -472,7 +524,7 @@ class AudioDashboard {
             
             // Render additional items in show more section
             if (additionalItems.length > 0 && showMoreContainer) {
-                showMoreContainer.innerHTML = additionalItems.map(createFilterHTML).join('');
+                showMoreContainer.innerHTML = additionalItems.map(htmlCreator).join('');
                 
                 // Show the toggle button
                 if (toggleButton) toggleButton.classList.remove('hidden');
@@ -482,12 +534,71 @@ class AudioDashboard {
             }
         } else {
             // No show more functionality, render all items
-            container.innerHTML = items.map(createFilterHTML).join('');
+            container.innerHTML = items.map(htmlCreator).join('');
         }
 
         // Bind filter change events to all checkboxes
         container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
             checkbox.addEventListener('change', () => this.handleFilterChange());
+        });
+        
+        // Add expand/collapse functionality for hierarchical categories
+        if (isHierarchical) {
+            container.querySelectorAll('.category-expand-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const targetId = btn.dataset.categoryTarget;
+                    const subcategoryList = document.getElementById(targetId);
+                    const arrow = btn.querySelector('svg');
+                    
+                    if (subcategoryList) {
+                        const isHidden = subcategoryList.classList.contains('hidden');
+                        subcategoryList.classList.toggle('hidden');
+                        arrow.style.transform = isHidden ? 'rotate(90deg)' : 'rotate(0deg)';
+                    }
+                });
+            });
+            
+            // Handle parent-child checkbox relationships
+            this.bindCategoryCheckboxLogic(container);
+        }
+    }
+    
+    bindCategoryCheckboxLogic(container) {
+        // Handle parent category checkbox changes
+        container.querySelectorAll('input[data-category-parent]').forEach(parentCheckbox => {
+            parentCheckbox.addEventListener('change', () => {
+                const categoryName = parentCheckbox.dataset.categoryParent;
+                const subcategoryCheckboxes = container.querySelectorAll(`input[data-parent-category="${categoryName}"]`);
+                
+                // When parent is checked/unchecked, update all subcategories
+                subcategoryCheckboxes.forEach(subCheckbox => {
+                    subCheckbox.checked = parentCheckbox.checked;
+                });
+                
+                this.handleFilterChange();
+            });
+        });
+        
+        // Handle subcategory checkbox changes  
+        container.querySelectorAll('input[data-parent-category]').forEach(subCheckbox => {
+            subCheckbox.addEventListener('change', () => {
+                const categoryName = subCheckbox.dataset.parentCategory;
+                const parentCheckbox = container.querySelector(`input[data-category-parent="${categoryName}"]`);
+                const allSubcategoryCheckboxes = container.querySelectorAll(`input[data-parent-category="${categoryName}"]`);
+                
+                if (parentCheckbox) {
+                    // Check if all subcategories are checked
+                    const allChecked = Array.from(allSubcategoryCheckboxes).every(cb => cb.checked);
+                    const someChecked = Array.from(allSubcategoryCheckboxes).some(cb => cb.checked);
+                    
+                    // Update parent checkbox state
+                    parentCheckbox.checked = allChecked;
+                    parentCheckbox.indeterminate = !allChecked && someChecked;
+                }
+                
+                this.handleFilterChange();
+            });
         });
     }
 
