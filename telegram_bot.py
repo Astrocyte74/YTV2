@@ -2606,6 +2606,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 # Always close the database connection
                 if conn:
                     conn.close()
+                    
+        except Exception as e:
+            logger.error(f"Content API outer error: {e}")
+            self.send_error(500, f"Content API failed: {str(e)}")
     
     def handle_content_update_api(self):
         """Handle PUT /api/content/{id} - Update specific content fields"""
