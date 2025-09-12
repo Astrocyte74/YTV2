@@ -2405,13 +2405,38 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     self.send_error(400, f"Missing required field: {field}")
                     return
             
-            # UPSERT into SQLite database
-            if not content_index or not hasattr(content_index, 'db_path'):
-                self.send_error(500, "SQLite database not available")
+            # UPSERT into SQLite database - find database path
+            db_paths = [
+                Path('/opt/render/project/src/data/ytv2_content.db'),  # Persistent disk mount
+                Path('/app/data/ytv2_content.db'), # App data directory  
+                Path('./data/ytv2_content.db'),    # Local data subdirectory
+                Path('/app/ytv2_content.db'),      # Root app directory
+                Path('./ytv2_content.db')          # Current directory (fallback)
+            ]
+            
+            db_path = None
+            for path in db_paths:
+                if path.exists():
+                    db_path = path
+                    break
+                    
+            if not db_path:
+                # Create database in persistent disk location if possible
+                for path in db_paths:
+                    try:
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        create_empty_ytv2_database(path)
+                        db_path = path
+                        break
+                    except:
+                        continue
+                        
+            if not db_path:
+                self.send_error(500, "Cannot create or find SQLite database")
                 return
             
             import sqlite3
-            conn = sqlite3.connect(content_index.db_path)
+            conn = sqlite3.connect(str(db_path))
             cursor = conn.cursor()
             
             # Check if record exists first to determine action
