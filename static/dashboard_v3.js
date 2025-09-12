@@ -258,6 +258,7 @@ class AudioDashboard {
             this.contentGrid.addEventListener('click', (e) => {
                 const el = e.target.closest('[data-card-progress-container]');
                 if (!el) return;
+                if (this._dragEndedAt && (Date.now() - this._dragEndedAt) < 300) { return; }
                 e.stopPropagation();
                 this.seekOnCardScrub(el, e);
                 // Guard against card click navigation following the seek
@@ -1692,6 +1693,7 @@ class AudioDashboard {
             window.removeEventListener('touchend', up);
             this._dragState = null;
             this._dragAutoStarted = false;
+            this._dragEndedAt = Date.now();
             setTimeout(() => { this._suppressOpen = false; }, 250);
         };
         window.addEventListener('mousemove', move);
@@ -1719,13 +1721,15 @@ class AudioDashboard {
         // Prefer live duration if this is the active card
         let seconds = 0;
         const card = container.closest('[data-report-id]');
+        let total = 0;
         if (this.currentAudio && card && this.currentAudio.id === card.dataset.reportId && this.audioElement.duration) {
-            seconds = this.audioElement.duration * pct;
+            total = this.audioElement.duration;
+            seconds = total * pct;
         } else {
-            const total = parseFloat(container.getAttribute('data-total-seconds') || '0');
+            total = parseFloat(container.getAttribute('data-total-seconds') || '0');
             seconds = total * pct;
         }
-        el.textContent = this.formatDuration(seconds);
+        el.textContent = `${this.formatDuration(seconds)} / ${this.formatDuration(total)}`;
         el.style.left = Math.round(clientX + 8) + 'px';
         el.style.top = Math.round(rect.top - 18) + 'px';
         el.classList.remove('hidden');
