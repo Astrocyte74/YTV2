@@ -1138,3 +1138,28 @@ body {
         text-shadow: none;
     }
 }
+
+/* Waveform Animation Styles */
+.waveform-bar-outlined {
+    background-color: white;
+    border: 1px solid rgba(0, 0, 0, 0.8);
+    border-radius: 1px;
+    animation: waveform-pulse 1.2s ease-in-out infinite;
+    animation-delay: calc(var(--delay) * 0.15s);
+}
+
+.waveform-bar {
+    animation: waveform-pulse 1.2s ease-in-out infinite;
+    animation-delay: calc(var(--delay) * 0.15s);
+}
+
+@keyframes waveform-pulse {
+    0%, 100% { 
+        transform: scaleY(0.4);
+        opacity: 0.7;
+    }
+    50% { 
+        transform: scaleY(1);
+        opacity: 1;
+    }
+}

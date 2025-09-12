@@ -1114,12 +1114,12 @@ class AudioDashboard {
                     <div class="relative w-full sm:w-56 aspect-video overflow-hidden rounded-lg bg-slate-100 flex-shrink-0">
                         ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
                         <div class="absolute inset-0 flex items-center justify-center pointer-events-none ${isPlaying ? '' : 'hidden'}" data-card-eq>
-                            <div class="flex items-end gap-1 text-white/80 drop-shadow">
-                                <span class="w-0.5 sm:w-1 h-3 sm:h-4 bg-current waveform-bar" style="--delay:0"></span>
-                                <span class="w-0.5 sm:w-1 h-4 sm:h-6 bg-current waveform-bar" style="--delay:1"></span>
-                                <span class="w-0.5 sm:w-1 h-6 sm:h-8 bg-current waveform-bar" style="--delay:2"></span>
-                                <span class="w-0.5 sm:w-1 h-4 sm:h-6 bg-current waveform-bar" style="--delay:3"></span>
-                                <span class="w-0.5 sm:w-1 h-3 sm:h-4 bg-current waveform-bar" style="--delay:4"></span>
+                            <div class="flex items-end gap-1">
+                                <span class="w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar-outlined" style="--delay:0"></span>
+                                <span class="w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar-outlined" style="--delay:1"></span>
+                                <span class="w-0.5 sm:w-1 h-6 sm:h-8 waveform-bar-outlined" style="--delay:2"></span>
+                                <span class="w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar-outlined" style="--delay:3"></span>
+                                <span class="w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar-outlined" style="--delay:4"></span>
                             </div>
                         </div>
                         <div class="absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer" data-card-progress-container data-total-seconds="${totalSecs}">
@@ -1196,12 +1196,12 @@ class AudioDashboard {
             <div class="relative aspect-video bg-slate-100">
                 ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
                 <div class="absolute inset-0 flex items-center justify-center pointer-events-none ${isPlaying ? '' : 'hidden'}" data-card-eq>
-                    <div class="flex items-end gap-1 text-white/80 drop-shadow">
-                        <span class="w-0.5 sm:w-1 h-3 sm:h-4 bg-current waveform-bar" style="--delay:0"></span>
-                        <span class="w-0.5 sm:w-1 h-4 sm:h-6 bg-current waveform-bar" style="--delay:1"></span>
-                        <span class="w-0.5 sm:w-1 h-6 sm:h-8 bg-current waveform-bar" style="--delay:2"></span>
-                        <span class="w-0.5 sm:w-1 h-4 sm:h-6 bg-current waveform-bar" style="--delay:3"></span>
-                        <span class="w-0.5 sm:w-1 h-3 sm:h-4 bg-current waveform-bar" style="--delay:4"></span>
+                    <div class="flex items-end gap-1">
+                        <span class="w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar-outlined" style="--delay:0"></span>
+                        <span class="w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar-outlined" style="--delay:1"></span>
+                        <span class="w-0.5 sm:w-1 h-6 sm:h-8 waveform-bar-outlined" style="--delay:2"></span>
+                        <span class="w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar-outlined" style="--delay:3"></span>
+                        <span class="w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar-outlined" style="--delay:4"></span>
                     </div>
                 </div>
                 <div class="absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer" data-card-progress-container data-total-seconds="${totalSecs}">
