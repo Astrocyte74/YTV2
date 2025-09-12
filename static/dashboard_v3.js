@@ -116,7 +116,13 @@ class AudioDashboard {
         this.audioElement.addEventListener('error', () => this.handleAudioError());
         // Reflect play/pause immediately in card buttons and controls
         this.audioElement.addEventListener('play', () => { this.isPlaying = true; this.updatePlayButton(); this.updatePlayingCard(); });
-        this.audioElement.addEventListener('pause', () => { this.isPlaying = false; this.updatePlayButton(); this.updatePlayingCard(); });
+        this.audioElement.addEventListener('pause', () => { 
+            this.isPlaying = false; 
+            this.updatePlayButton(); 
+            this.updatePlayingCard();
+            // Clean up scrub state when pausing to prevent conflicts
+            this._cleanupScrubState();
+        });
         
         // Player controls
         this.playPauseBtn.addEventListener('click', () => this.togglePlayPause());
@@ -1314,6 +1320,9 @@ class AudioDashboard {
 
     async playAudio(reportId) {
         try {
+            // Clean up any leftover state from previous sessions
+            this._cleanupScrubState();
+            
             // Find the report data
             const reportCard = document.querySelector(`[data-report-id="${reportId}"]`);
             if (!reportCard) return;
@@ -1675,6 +1684,10 @@ class AudioDashboard {
     beginCardScrubDrag(el, startX) {
         const card = el.closest('[data-report-id]');
         if (!card) return;
+        
+        // Prevent conflicting drag operations
+        if (this._dragState) return;
+        
         const id = card.dataset.reportId;
         this._dragState = { el, id };
         this._suppressOpen = true; // prevent card open after drag-end click
@@ -2195,9 +2208,20 @@ class AudioDashboard {
         if (duration) this.audioElement.currentTime = percentage * duration;
     }
 
+    // Clean up scrubbing state variables to prevent conflicts between sessions
+    _cleanupScrubState() {
+        this._pendingSeek = null;
+        this._dragState = null;
+        this._suppressOpen = false;
+        this._dragEndedAt = null;
+    }
+
     // Progress bar drag handling for both desktop and mobile mini players
     beginProgressDrag(event, isMobile) {
         if (!this.audioElement || !this.currentAudio) return;
+        
+        // Prevent conflicting drag operations
+        if (this._dragState) return;
         
         event.preventDefault();
         const container = isMobile ? this.mobileProgressContainer : this.progressContainer;
