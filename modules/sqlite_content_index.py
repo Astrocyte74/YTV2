@@ -81,7 +81,7 @@ class SQLiteContentIndex:
             'duration_seconds': row['duration_seconds'] or 0,
             'analysis': {
                 'category': self._parse_json_field(row['category']),
-                'subcategory': row.get('subcategory') if hasattr(row, 'keys') and 'subcategory' in row.keys() else None,
+                'subcategory': row['subcategory'] if 'subcategory' in row.keys() else None,
                 'content_type': row['content_type'] or '',
                 'complexity_level': row['complexity_level'] or '',
                 'language': row['language'] or 'en',
