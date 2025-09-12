@@ -671,7 +671,19 @@ class AudioDashboard {
         // Add search query
         if (this.searchQuery) params.append('q', this.searchQuery);
         
-        // Normal behavior: no filters = show all content, filters = show filtered content
+        // Whitelist filtering: no filters selected = show nothing, must select filters to see content
+        const hasActiveFilters = Object.keys(this.currentFilters).some(key => 
+            this.currentFilters[key] && this.currentFilters[key].length > 0
+        );
+        
+        // If no search query and no active filters, show empty discovery state
+        if (!this.searchQuery && !hasActiveFilters) {
+            this.currentItems = [];
+            this.renderContent([]);
+            this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
+            this.updateResultsInfo({ page: 1, size: 12, total_count: 0, total_pages: 0 });
+            return;
+        }
         
         // Add filters to params
         Object.entries(this.currentFilters).forEach(([key, values]) => {
@@ -726,8 +738,8 @@ class AudioDashboard {
             } else {
                 this.contentGrid.innerHTML = `
                     <div class="text-center py-12 text-slate-400">
-                        <div class="text-lg mb-2">No content available</div>
-                        <div class="text-sm">No summaries found in the database</div>
+                        <div class="text-lg mb-2">Ready to explore</div>
+                        <div class="text-sm">Select filters on the left to discover content, or use search above</div>
                     </div>
                 `;
             }
