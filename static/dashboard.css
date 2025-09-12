@@ -1116,6 +1116,16 @@ body {
     max-width: 400px;
 }
 
+/* Action button consistency - ensure uniform shape */
+[data-action="read"],
+[data-action="listen"], 
+[data-action="watch"] {
+    min-width: 4.5rem !important;
+    justify-content: center !important;
+    text-align: center !important;
+    white-space: nowrap !important;
+}
+
 /* High contrast mode support */
 @media (prefers-contrast: high) {
     :root {
