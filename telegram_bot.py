@@ -2251,6 +2251,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             conn = sqlite3.connect(content_index.db_path)
             cursor = conn.cursor()
             
+            # Check if record exists first to determine action
+            check_cursor = conn.cursor()
+            check_cursor.execute("SELECT id FROM content WHERE id = ?", (content_data.get('id'),))
+            existing_record = check_cursor.fetchone()
+            action = "updated" if existing_record else "created"
+            
             # UPSERT content record
             cursor.execute("""
                 INSERT INTO content (
@@ -2348,7 +2354,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 'success': True,
                 'message': 'Content saved successfully',
                 'id': content_data.get('id'),
-                'upserted': True
+                'action': action,
+                'upserted': True,
+                'synced_at': datetime.now().isoformat()
             }).encode())
             
         except Exception as e:
