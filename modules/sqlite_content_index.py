@@ -149,9 +149,22 @@ class SQLiteContentIndex:
                         cat_hyphen = cat.replace('–', '-')  # Convert en dash to hyphen
                         cat_endash = cat.replace('-', '–')  # Convert hyphen to en dash
                         
-                        # Search in both category (JSON array) and subcategory (direct field)
-                        cat_conditions.append("(category LIKE ? OR category LIKE ? OR subcategory = ? OR subcategory = ?)")
-                        params.extend([f'%"{cat_hyphen}"%', f'%"{cat_endash}"%', cat_hyphen, cat_endash])
+                        # Search in multiple ways:
+                        # 1. Direct match in category JSON array (for combined categories like "History – World War II (WWII)")
+                        # 2. Direct match in subcategory field 
+                        # 3. Partial match for parent categories that contain the subcategory
+                        cat_conditions.append("""(
+                            category LIKE ? OR category LIKE ? OR 
+                            subcategory = ? OR subcategory = ? OR
+                            (category LIKE ? AND category LIKE ?) OR 
+                            (category LIKE ? AND category LIKE ?)
+                        )""")
+                        params.extend([
+                            f'%"{cat_hyphen}"%', f'%"{cat_endash}"%',  # Direct JSON array match
+                            cat_hyphen, cat_endash,  # Direct subcategory match
+                            f'%{cat_hyphen}%', '%History%',  # Combined category partial match (hyphen)
+                            f'%{cat_endash}%', '%History%'   # Combined category partial match (en dash)
+                        ])
                     if cat_conditions:
                         where_conditions.append(f"({' OR '.join(cat_conditions)})")
                 
