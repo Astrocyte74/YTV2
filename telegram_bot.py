@@ -139,6 +139,8 @@ def create_empty_ytv2_database(db_path: Path):
             language TEXT DEFAULT 'en',
             key_topics TEXT,
             named_entities TEXT,
+            format_source TEXT DEFAULT 'api',
+            processing_status TEXT DEFAULT 'completed',
             created_at TEXT,
             updated_at TEXT
         )
