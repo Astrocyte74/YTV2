@@ -1095,7 +1095,6 @@ class AudioDashboard {
             : (item.duration_seconds ? this.formatDuration(item.duration_seconds) : '');
         
         const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
-        const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds) ? item.media_metadata.mp3_duration_seconds : (item.duration_seconds || 0);
         const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
         return `
             <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative list-layout cursor-pointer bg-white/80 dark:bg-slate-800/60 backdrop-blur-sm rounded-xl border border-slate-200/60 dark:border-slate-700 p-3 sm:p-4 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200" style="--thumbW: 240px;">
