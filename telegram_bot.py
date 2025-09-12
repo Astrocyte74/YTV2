@@ -586,6 +586,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.serve_health()
         elif path == '/api/db-status':
             self.serve_db_status()
+        elif path == '/api/db-reset':
+            self.serve_db_reset()
         elif path.startswith('/api/'):
             self.serve_api()
         elif path.endswith('.css'):
@@ -1341,6 +1343,57 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error serving database status: {e}")
             error_data = {"error": "Database status check failed", "message": str(e)}
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(error_data).encode())
+    
+    def serve_db_reset(self):
+        """Reset database with correct schema (emergency recovery)"""
+        try:
+            # Find database paths
+            db_paths = [
+                Path('/app/data/ytv2_content.db'), # Render persistent disk mount
+                Path('./data/ytv2_content.db'),    # Local data subdirectory
+                Path('/app/ytv2_content.db'),      # Root app directory
+                Path('./ytv2_content.db')          # Current directory
+            ]
+            
+            db_path = None
+            for path in db_paths:
+                if path.parent.exists():
+                    db_path = path
+                    break
+                    
+            if not db_path:
+                self.send_error(500, "Cannot find suitable database location")
+                return
+                
+            # Backup existing database if it exists
+            if db_path.exists():
+                backup_path = Path(str(db_path) + '.backup.' + str(int(time.time())))
+                db_path.rename(backup_path)
+                logger.info(f"🔄 Backed up existing database to: {backup_path}")
+                
+            # Create new database with correct schema
+            create_empty_ytv2_database(db_path)
+            logger.info(f"✅ Database reset with correct schema: {db_path}")
+            
+            response = {
+                "status": "success",
+                "message": "Database reset with correct schema",
+                "database_path": str(db_path),
+                "backup_created": str(backup_path) if 'backup_path' in locals() else None
+            }
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response, indent=2).encode())
+            
+        except Exception as e:
+            logger.error(f"Database reset error: {e}")
+            error_data = {"error": "Database reset failed", "message": str(e)}
             self.send_response(500)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
