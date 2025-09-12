@@ -307,34 +307,53 @@ class SQLiteContentIndex:
             conn.close()
     
     def get_report_by_id(self, report_id: str) -> Optional[Dict[str, Any]]:
-        """Get a specific report by ID."""
+        """Get individual report with full summary data by ID or video_id."""
         conn = self._get_connection()
         try:
-            cursor = conn.execute("SELECT * FROM content WHERE id = ?", (report_id,))
+            # Query content and summary data with JOIN, search by both id and video_id
+            cursor = conn.execute("""
+                SELECT c.*, s.summary_text, s.summary_type
+                FROM content c
+                LEFT JOIN content_summaries s ON c.id = s.content_id
+                WHERE c.id = ? OR c.video_id = ?
+            """, (report_id, report_id))
+            
             row = cursor.fetchone()
+            if not row:
+                return None
             
-            if row:
-                # Get summary if available
-                summary_cursor = conn.execute(
-                    "SELECT summary_text, summary_type FROM content_summaries WHERE content_id = ?", 
-                    (report_id,)
-                )
-                summary_row = summary_cursor.fetchone()
-                
-                report = self._format_report_for_api(row)
-                
-                # Add summary data
-                if summary_row:
-                    report['summary'] = {
-                        'content': {
-                            'summary': summary_row['summary_text'],
-                            'summary_type': summary_row['summary_type']
-                        }
+            # Convert to full report format
+            report = self._format_report_for_api(row)
+            
+            # Add summary data - support both API format and template format
+            if row['summary_text']:
+                report['summary'] = {
+                    'text': row['summary_text'],
+                    'type': row['summary_type'] or 'audio',
+                    # Also add nested format for template compatibility
+                    'content': {
+                        'summary': row['summary_text'],
+                        'summary_type': row['summary_type'] or 'audio'
                     }
-                
-                return report
+                }
+            else:
+                report['summary'] = {
+                    'text': 'No summary available.',
+                    'type': 'none',
+                    'content': {
+                        'summary': 'No summary available.',
+                        'summary_type': 'none'
+                    }
+                }
             
-            return None
+            # Add processing metadata for compatibility
+            report['processor_info'] = {
+                'model': 'sqlite_backend',
+                'processing_time': 0,
+                'timestamp': report.get('indexed_at', '')
+            }
+            
+            return report
             
         finally:
             conn.close()
@@ -404,45 +423,3 @@ class SQLiteContentIndex:
         """Get facets/filters - alias for get_filters() for compatibility."""
         return self.get_filters()
     
-    def get_report_by_id(self, report_id: str) -> Optional[Dict[str, Any]]:
-        """Get individual report with full summary data by ID."""
-        conn = self._get_connection()
-        try:
-            # Query content and summary data with JOIN
-            cursor = conn.execute("""
-                SELECT c.*, s.summary_text, s.summary_type
-                FROM content c
-                LEFT JOIN content_summaries s ON c.id = s.content_id
-                WHERE c.id = ? OR c.video_id = ?
-            """, (report_id, report_id))
-            
-            row = cursor.fetchone()
-            if not row:
-                return None
-            
-            # Convert to full report format
-            report = self._format_report_for_api(row)
-            
-            # Add summary data
-            if row['summary_text']:
-                report['summary'] = {
-                    'text': row['summary_text'],
-                    'type': row['summary_type'] or 'audio'
-                }
-            else:
-                report['summary'] = {
-                    'text': 'No summary available.',
-                    'type': 'none'
-                }
-            
-            # Add processing metadata for compatibility
-            report['processor_info'] = {
-                'model': 'sqlite_backend',
-                'processing_time': 0,
-                'timestamp': report.get('indexed_at', '')
-            }
-            
-            return report
-            
-        finally:
-            conn.close()
