@@ -525,6 +525,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_upload_database()
         elif self.path == '/api/upload-audio':
             self.handle_upload_audio()
+        elif self.path == '/api/content':
+            self.handle_content_api()
+        elif self.path.startswith('/api/content/'):
+            self.handle_content_update_api()
         elif self.path.startswith('/api/delete'):
             self.handle_delete_request()
         else:
@@ -2202,6 +2206,252 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Audio upload error: {e}")
             self.send_error(500, f"Audio upload failed: {str(e)}")
+    
+    def handle_content_api(self):
+        """Handle POST /api/content - Create or update content with UPSERT logic"""
+        try:
+            # Check sync secret for authentication
+            sync_secret = os.getenv('SYNC_SECRET')
+            if not sync_secret:
+                self.send_error(500, "Sync not configured")
+                return
+            
+            auth_header = self.headers.get('Authorization', '')
+            if not auth_header.startswith('Bearer ') or auth_header[7:] != sync_secret:
+                logger.warning(f"Content API rejected: Invalid auth from {self.client_address[0]}")
+                self.send_error(401, "Unauthorized")
+                return
+            
+            # Read JSON payload
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_error(400, "No data provided")
+                return
+            
+            post_data = self.rfile.read(content_length)
+            try:
+                content_data = json.loads(post_data.decode('utf-8'))
+            except json.JSONDecodeError as e:
+                self.send_error(400, f"Invalid JSON: {e}")
+                return
+            
+            # Validate required fields
+            required_fields = ['id', 'title']
+            for field in required_fields:
+                if field not in content_data:
+                    self.send_error(400, f"Missing required field: {field}")
+                    return
+            
+            # UPSERT into SQLite database
+            if not content_index or not hasattr(content_index, 'db_path'):
+                self.send_error(500, "SQLite database not available")
+                return
+            
+            import sqlite3
+            conn = sqlite3.connect(content_index.db_path)
+            cursor = conn.cursor()
+            
+            # UPSERT content record
+            cursor.execute("""
+                INSERT INTO content (
+                    id, title, canonical_url, thumbnail_url, published_at, indexed_at,
+                    duration_seconds, word_count, has_audio, audio_duration_seconds,
+                    has_transcript, transcript_chars, video_id, channel_name, channel_id,
+                    view_count, like_count, comment_count, category, content_type,
+                    complexity_level, language, key_topics, named_entities,
+                    format_source, processing_status, created_at, updated_at
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
+                ON CONFLICT(id) DO UPDATE SET
+                    title = excluded.title,
+                    canonical_url = excluded.canonical_url,
+                    thumbnail_url = excluded.thumbnail_url,
+                    published_at = excluded.published_at,
+                    duration_seconds = excluded.duration_seconds,
+                    word_count = excluded.word_count,
+                    has_audio = excluded.has_audio,
+                    audio_duration_seconds = excluded.audio_duration_seconds,
+                    has_transcript = excluded.has_transcript,
+                    transcript_chars = excluded.transcript_chars,
+                    video_id = excluded.video_id,
+                    channel_name = excluded.channel_name,
+                    channel_id = excluded.channel_id,
+                    view_count = excluded.view_count,
+                    like_count = excluded.like_count,
+                    comment_count = excluded.comment_count,
+                    category = excluded.category,
+                    content_type = excluded.content_type,
+                    complexity_level = excluded.complexity_level,
+                    language = excluded.language,
+                    key_topics = excluded.key_topics,
+                    named_entities = excluded.named_entities,
+                    format_source = excluded.format_source,
+                    processing_status = excluded.processing_status,
+                    updated_at = excluded.updated_at
+            """, (
+                content_data.get('id'),
+                content_data.get('title'),
+                content_data.get('canonical_url', ''),
+                content_data.get('thumbnail_url', ''),
+                content_data.get('published_at', ''),
+                content_data.get('indexed_at', ''),
+                content_data.get('duration_seconds', 0),
+                content_data.get('word_count', 0),
+                content_data.get('has_audio', False),
+                content_data.get('audio_duration_seconds', 0),
+                content_data.get('has_transcript', False),
+                content_data.get('transcript_chars', 0),
+                content_data.get('video_id', ''),
+                content_data.get('channel_name', ''),
+                content_data.get('channel_id', ''),
+                content_data.get('view_count', 0),
+                content_data.get('like_count', 0),
+                content_data.get('comment_count', 0),
+                json.dumps(content_data.get('category', [])),
+                content_data.get('content_type', ''),
+                content_data.get('complexity_level', ''),
+                content_data.get('language', 'en'),
+                json.dumps(content_data.get('key_topics', [])),
+                json.dumps(content_data.get('named_entities', [])),
+                content_data.get('format_source', 'api'),
+                content_data.get('processing_status', 'complete'),
+                content_data.get('created_at', ''),
+                content_data.get('updated_at', '')
+            ))
+            
+            # UPSERT summary if provided
+            summary_text = content_data.get('summary_text', '')
+            if summary_text:
+                cursor.execute("""
+                    INSERT INTO content_summaries (content_id, summary_text, summary_type)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(content_id) DO UPDATE SET
+                        summary_text = excluded.summary_text,
+                        summary_type = excluded.summary_type
+                """, (
+                    content_data.get('id'),
+                    summary_text,
+                    content_data.get('summary_type', 'audio')
+                ))
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"✅ Content upserted: {content_data.get('id')}")
+            
+            # Send success response
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                'success': True,
+                'message': 'Content saved successfully',
+                'id': content_data.get('id'),
+                'upserted': True
+            }).encode())
+            
+        except Exception as e:
+            logger.error(f"Content API error: {e}")
+            self.send_error(500, f"Content API failed: {str(e)}")
+    
+    def handle_content_update_api(self):
+        """Handle PUT /api/content/{id} - Update specific content fields"""
+        try:
+            # Check authentication
+            sync_secret = os.getenv('SYNC_SECRET')
+            if not sync_secret:
+                self.send_error(500, "Sync not configured")
+                return
+            
+            auth_header = self.headers.get('Authorization', '')
+            if not auth_header.startswith('Bearer ') or auth_header[7:] != sync_secret:
+                logger.warning(f"Content update rejected: Invalid auth from {self.client_address[0]}")
+                self.send_error(401, "Unauthorized")
+                return
+            
+            # Extract content ID from path
+            content_id = self.path.split('/api/content/')[-1]
+            if not content_id:
+                self.send_error(400, "No content ID provided")
+                return
+            
+            # Read JSON payload
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_error(400, "No update data provided")
+                return
+            
+            post_data = self.rfile.read(content_length)
+            try:
+                update_data = json.loads(post_data.decode('utf-8'))
+            except json.JSONDecodeError as e:
+                self.send_error(400, f"Invalid JSON: {e}")
+                return
+            
+            # Update content in database
+            if not content_index or not hasattr(content_index, 'db_path'):
+                self.send_error(500, "SQLite database not available")
+                return
+            
+            import sqlite3
+            from datetime import datetime
+            conn = sqlite3.connect(content_index.db_path)
+            cursor = conn.cursor()
+            
+            # Build dynamic UPDATE query based on provided fields
+            update_fields = []
+            update_values = []
+            
+            updatable_fields = {
+                'has_audio': 'has_audio',
+                'audio_duration_seconds': 'audio_duration_seconds', 
+                'title': 'title',
+                'duration_seconds': 'duration_seconds',
+                'word_count': 'word_count'
+            }
+            
+            for field, column in updatable_fields.items():
+                if field in update_data:
+                    update_fields.append(f"{column} = ?")
+                    update_values.append(update_data[field])
+            
+            if not update_fields:
+                self.send_error(400, "No valid update fields provided")
+                return
+            
+            # Add updated_at timestamp
+            update_fields.append("updated_at = ?")
+            update_values.append(datetime.now().isoformat())
+            update_values.extend([content_id, content_id])
+            
+            cursor.execute(f"""
+                UPDATE content 
+                SET {', '.join(update_fields)}
+                WHERE id = ? OR video_id = ?
+            """, update_values)
+            
+            rows_affected = cursor.rowcount
+            conn.commit()
+            conn.close()
+            
+            if rows_affected > 0:
+                logger.info(f"✅ Content updated: {content_id}")
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    'success': True,
+                    'message': 'Content updated successfully',
+                    'id': content_id,
+                    'rows_affected': rows_affected
+                }).encode())
+            else:
+                self.send_error(404, f"Content not found: {content_id}")
+            
+        except Exception as e:
+            logger.error(f"Content update error: {e}")
+            self.send_error(500, f"Content update failed: {str(e)}")
     
     def handle_delete_request(self):
         """Handle DELETE requests for /api/delete/:id endpoint"""
