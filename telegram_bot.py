@@ -1129,11 +1129,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             
             audio_filename = filename[8:]  # Remove "exports/" prefix
             
-            # Look for audio file in uploaded files directory
+            # Look for audio file in persistent storage ONLY
             audio_path = Path('/app/data/exports') / audio_filename
-            if not audio_path.exists():
-                # Fallback to local exports directory
-                audio_path = Path('./exports') / audio_filename
                 
             if audio_path.exists():
                 self.send_response(200)
@@ -1165,7 +1162,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             video_id = video_id_with_ext.replace('.mp3', '')
 
             # Search for candidate files in common locations
-            search_dirs = [Path('/app/data/exports'), Path('./exports')]
+            search_dirs = [Path('/app/data/exports')]
             patterns = [
                 f'audio_{video_id}_*.mp3',   # standard new pattern
                 f'{video_id}_*.mp3',         # legacy pattern
