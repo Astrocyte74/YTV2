@@ -718,11 +718,18 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         qs: parsed query params (from do_GET)
         """
         try:
-            # Map URL path to data file
-            # We serve JSON reports located under data/reports/*.json
+            # Extract report ID from path
             filename = Path(path.lstrip('/'))               # "_id.json"
-            json_path = Path('data/reports') / filename.name
+            report_id = filename.stem                       # "_id"
             
+            # Check SQLite database first (for new records)
+            if content_index and filename.suffix == '.json':
+                report_data = content_index.get_report_by_id(report_id)
+                if report_data:
+                    return self.serve_sqlite_report(report_data, qs)
+            
+            # Fallback to JSON file (legacy)
+            json_path = Path('data/reports') / filename.name
             if json_path.suffix == '.json' and json_path.exists():
                 return self.serve_json_report(json_path, qs)
             
@@ -807,6 +814,59 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error serving JSON report {json_path}: {e}")
             self.send_error(500, "Error serving JSON report")
+    
+    def serve_sqlite_report(self, report_data: dict, qs: dict = None):
+        """Serve a report from SQLite data with template support"""
+        try:
+            qs = qs or {}
+            v_param = qs.get('v', [''])[0]
+            use_v2 = v_param == '2'
+            
+            # Extract video info and summary from SQLite data
+            video_info = {
+                'video_id': report_data.get('video_id', ''),
+                'title': report_data.get('title', 'Untitled'),
+                'channel_name': report_data.get('channel', ''),
+                'published_at': report_data.get('published_at', ''),
+                'duration_seconds': report_data.get('duration_seconds', 0),
+                'thumbnail_url': report_data.get('thumbnail_url', ''),
+                'canonical_url': report_data.get('canonical_url', '')
+            }
+            
+            summary = report_data.get('summary', {}).get('text', 'No summary available.')
+            processing = report_data.get('processor_info', {})
+            
+            # Discover audio file
+            logger.info(f"🆔 extracted video_id from SQLite: '{video_info['video_id']}'")
+            enhanced_video_info = {**video_info, **report_data}
+            audio_url = self._discover_audio_file(enhanced_video_info)
+            
+            # Generate HTML content
+            if use_v2 and JINJA2_AVAILABLE:
+                # V2 Tailwind Template Path
+                logger.info("🚀 Rendering V2 Tailwind template from SQLite data")
+                
+                ctx = self.to_report_v2_dict(report_data, audio_url)
+                template = jinja_env.get_template("report_v2.html")
+                html_content = template.render(**ctx)
+                
+            else:
+                # Legacy inline HTML path (existing implementation)
+                if use_v2 and not JINJA2_AVAILABLE:
+                    logger.warning("V2 requested but Jinja2 not available, falling back to legacy")
+                
+                html_content = self._render_legacy_report(video_info, summary, processing, audio_url)
+            
+            # Send response
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html; charset=utf-8')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(html_content.encode('utf-8'))
+                
+        except Exception as e:
+            logger.error(f"Error serving SQLite report: {e}")
+            self.send_error(500, "Error serving SQLite report")
     
     def _discover_audio_file(self, video_info: dict) -> str:
         """Discover audio file for a video (extracted from legacy method)"""
@@ -1372,7 +1432,17 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         report_id = self.path.split('/')[-1]
         
         try:
-            # Look for JSON report first
+            # Check SQLite database first (for new records)
+            if content_index:
+                report_data = content_index.get_report_by_id(report_id)
+                if report_data:
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(report_data, ensure_ascii=False, indent=2).encode())
+                    return
+            
+            # Look for JSON report (legacy fallback)
             json_file = Path('./data/reports') / f"{report_id}.json"
             if json_file.exists():
                 report_data = json.loads(json_file.read_text())
