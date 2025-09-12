@@ -671,13 +671,39 @@ class AudioDashboard {
         // Add search query
         if (this.searchQuery) params.append('q', this.searchQuery);
         
-        // Whitelist filtering: no filters selected = show nothing, must select filters to see content
-        const hasActiveFilters = Object.keys(this.currentFilters).some(key => 
-            this.currentFilters[key] && this.currentFilters[key].length > 0
+        // Smart filtering: detect if ALL options in a filter type are selected (treat as no filtering)
+        const effectiveFilters = {};
+        
+        // For each filter type, check if ALL available options are selected
+        Object.entries(this.currentFilters).forEach(([filterType, selectedValues]) => {
+            if (!selectedValues || selectedValues.length === 0) {
+                return; // No values selected for this filter type
+            }
+            
+            // Count total available options for this filter type
+            const totalAvailable = document.querySelectorAll(`input[data-filter="${filterType}"]`).length;
+            
+            // If ALL options are selected, don't send any filter params (show everything)
+            // If SOME options are selected, send them as filters
+            if (selectedValues.length < totalAvailable) {
+                effectiveFilters[filterType] = selectedValues;
+            }
+            // If selectedValues.length === totalAvailable, we omit this filter (show all)
+        });
+        
+        const hasEffectiveFilters = Object.keys(effectiveFilters).length > 0;
+        
+        // Show content when:
+        // 1. Search query is active, OR
+        // 2. Some (but not all) filters are selected, OR  
+        // 3. ALL filters are selected (show everything)
+        // Show nothing only when NO filters are selected (empty discovery state)
+        
+        const noFiltersSelected = Object.keys(this.currentFilters).every(key => 
+            !this.currentFilters[key] || this.currentFilters[key].length === 0
         );
         
-        // If no search query and no active filters, show empty discovery state
-        if (!this.searchQuery && !hasActiveFilters) {
+        if (!this.searchQuery && noFiltersSelected) {
             this.currentItems = [];
             this.renderContent([]);
             this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
@@ -685,8 +711,8 @@ class AudioDashboard {
             return;
         }
         
-        // Add filters to params
-        Object.entries(this.currentFilters).forEach(([key, values]) => {
+        // Add effective filters to params (excludes "select all" cases)
+        Object.entries(effectiveFilters).forEach(([key, values]) => {
             values.forEach(value => params.append(key, value));
         });
         
