@@ -403,3 +403,46 @@ class SQLiteContentIndex:
     def get_facets(self, active_filters: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Get facets/filters - alias for get_filters() for compatibility."""
         return self.get_filters()
+    
+    def get_report_by_id(self, report_id: str) -> Optional[Dict[str, Any]]:
+        """Get individual report with full summary data by ID."""
+        conn = self._get_connection()
+        try:
+            # Query content and summary data with JOIN
+            cursor = conn.execute("""
+                SELECT c.*, s.summary_text, s.summary_type
+                FROM content c
+                LEFT JOIN content_summaries s ON c.id = s.content_id
+                WHERE c.id = ? OR c.video_id = ?
+            """, (report_id, report_id))
+            
+            row = cursor.fetchone()
+            if not row:
+                return None
+            
+            # Convert to full report format
+            report = self._format_report_for_api(row)
+            
+            # Add summary data
+            if row['summary_text']:
+                report['summary'] = {
+                    'text': row['summary_text'],
+                    'type': row['summary_type'] or 'audio'
+                }
+            else:
+                report['summary'] = {
+                    'text': 'No summary available.',
+                    'type': 'none'
+                }
+            
+            # Add processing metadata for compatibility
+            report['processor_info'] = {
+                'model': 'sqlite_backend',
+                'processing_time': 0,
+                'timestamp': report.get('indexed_at', '')
+            }
+            
+            return report
+            
+        finally:
+            conn.close()
