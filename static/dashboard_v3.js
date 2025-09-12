@@ -114,6 +114,9 @@ class AudioDashboard {
         this.audioElement.addEventListener('ended', () => this.playNext('auto'));
         this.audioElement.addEventListener('canplay', () => this.handleCanPlay());
         this.audioElement.addEventListener('error', () => this.handleAudioError());
+        // Reflect play/pause immediately in card buttons and controls
+        this.audioElement.addEventListener('play', () => { this.isPlaying = true; this.updatePlayButton(); this.updatePlayingCard(); });
+        this.audioElement.addEventListener('pause', () => { this.isPlaying = false; this.updatePlayButton(); this.updatePlayingCard(); });
         
         // Player controls
         this.playPauseBtn.addEventListener('click', () => this.togglePlayPause());
@@ -599,7 +602,12 @@ class AudioDashboard {
         if (action === 'listen') {
             const hasAudio = card.getAttribute('data-has-audio') === 'true';
             if (!hasAudio) { this.showToast('No audio for this item', 'warn'); return; }
-            this.playAudio(id);
+            // If tapping Listen on the currently selected item, toggle play/pause
+            if (this.currentAudio && this.currentAudio.id === id) {
+                this.togglePlayPause();
+            } else {
+                this.playAudio(id);
+            }
             this.sendTelemetry('cta_listen', { id });
         }
         if (action === 'read') { this.handleRead(id); this.sendTelemetry('cta_read', { id }); }
@@ -1403,15 +1411,51 @@ class AudioDashboard {
     }
 
     updatePlayingCard() {
+        // Card highlight
         this.contentGrid.querySelectorAll('[data-card]').forEach(card => {
             card.classList.remove('ring-2', 'ring-audio-400');
         });
+        let active = null;
         if (this.currentAudio) {
-            const active = this.contentGrid.querySelector(`[data-report-id="${this.currentAudio.id}"]`);
-            if (active) {
-                active.classList.add('ring-2', 'ring-audio-400');
-            }
+            active = this.contentGrid.querySelector(`[data-report-id="${this.currentAudio.id}"]`);
+            if (active) active.classList.add('ring-2', 'ring-audio-400');
         }
+
+        // Update Listen buttons to reflect playing state
+        const eqIcon = `
+            <span class=\"flex items-end gap-0.5 mr-1\" aria-hidden=\"true\">
+              <span class=\"w-[2px] h-3 bg-current opacity-90 waveform-bar\" style=\"--delay:0\"></span>
+              <span class=\"w-[2px] h-2.5 bg-current opacity-90 waveform-bar\" style=\"--delay:1\"></span>
+              <span class=\"w-[2px] h-3.5 bg-current opacity-90 waveform-bar\" style=\"--delay:2\"></span>
+            </span>`;
+
+        this.contentGrid.querySelectorAll('[data-card] [data-action="listen"]').forEach(btn => {
+            // Ensure original label is stored once
+            if (!btn.dataset.label) {
+                try {
+                    const txt = btn.textContent.trim();
+                    btn.dataset.label = txt || 'Listen';
+                } catch(_) { btn.dataset.label = 'Listen'; }
+            }
+            btn.classList.remove('bg-audio-600','text-white');
+            btn.classList.add('border','border-slate-300/60','dark:border-slate-600/60');
+            // Default label
+            const defaultLabel = btn.dataset.label;
+            // If this is the active card, flip the label depending on play state
+            const isActive = !!(active && active.contains(btn));
+            if (isActive) {
+                if (this.isPlaying) {
+                    btn.innerHTML = `${eqIcon}<span>Pause</span>`;
+                } else {
+                    btn.innerHTML = `<span>Play</span>`;
+                }
+                btn.classList.add('bg-audio-600','text-white');
+                btn.classList.remove('border','border-slate-300/60','dark:border-slate-600/60');
+            } else {
+                // Restore original
+                btn.innerHTML = `<span>${this.escapeHtml(defaultLabel)}</span><span aria-hidden=\"true\">›</span>`;
+            }
+        });
     }
 
     updateDuration() {
