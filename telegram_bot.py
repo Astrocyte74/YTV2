@@ -171,11 +171,13 @@ logger.info(f"🔍 Backend available: SQLite={USING_SQLITE}")
 try:
     if USING_SQLITE:
         # Check multiple possible database locations on Render
+        # Prioritize persistent disk if it exists
         db_paths = [
+            Path('/opt/render/project/src/data/ytv2_content.db'),  # Persistent disk mount
+            Path('/app/data/ytv2_content.db'), # App data directory
+            Path('./data/ytv2_content.db'),    # Local data subdirectory
             Path('/app/ytv2_content.db'),      # Root app directory
-            Path('./ytv2_content.db'),         # Current directory
-            Path('./data/ytv2_content.db'),    # Data subdirectory
-            Path('/app/data/ytv2_content.db')  # App data directory
+            Path('./ytv2_content.db')          # Current directory (fallback)
         ]
         
         database_found = False
