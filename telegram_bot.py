@@ -2487,120 +2487,125 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 return
             
             import sqlite3
-            conn = sqlite3.connect(str(db_path))
-            cursor = conn.cursor()
-            
-            # Check if record exists first to determine action
-            check_cursor = conn.cursor()
-            check_cursor.execute("SELECT id FROM content WHERE id = ?", (content_data.get('id'),))
-            existing_record = check_cursor.fetchone()
-            action = "updated" if existing_record else "created"
-            
-            # UPSERT content record
-            cursor.execute("""
-                INSERT INTO content (
-                    id, title, canonical_url, thumbnail_url, published_at, indexed_at,
-                    duration_seconds, word_count, has_audio, audio_duration_seconds,
-                    has_transcript, transcript_chars, video_id, channel_name, channel_id,
-                    view_count, like_count, comment_count, category, content_type,
-                    complexity_level, language, key_topics, named_entities,
-                    format_source, processing_status, created_at, updated_at
-                ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                )
-                ON CONFLICT(id) DO UPDATE SET
-                    title = excluded.title,
-                    canonical_url = excluded.canonical_url,
-                    thumbnail_url = excluded.thumbnail_url,
-                    published_at = excluded.published_at,
-                    duration_seconds = excluded.duration_seconds,
-                    word_count = excluded.word_count,
-                    has_audio = excluded.has_audio,
-                    audio_duration_seconds = excluded.audio_duration_seconds,
-                    has_transcript = excluded.has_transcript,
-                    transcript_chars = excluded.transcript_chars,
-                    video_id = excluded.video_id,
-                    channel_name = excluded.channel_name,
-                    channel_id = excluded.channel_id,
-                    view_count = excluded.view_count,
-                    like_count = excluded.like_count,
-                    comment_count = excluded.comment_count,
-                    category = excluded.category,
-                    content_type = excluded.content_type,
-                    complexity_level = excluded.complexity_level,
-                    language = excluded.language,
-                    key_topics = excluded.key_topics,
-                    named_entities = excluded.named_entities,
-                    format_source = excluded.format_source,
-                    processing_status = excluded.processing_status,
-                    updated_at = excluded.updated_at
-            """, (
-                content_data.get('id'),
-                content_data.get('title'),
-                content_data.get('canonical_url', ''),
-                content_data.get('thumbnail_url', ''),
-                content_data.get('published_at', ''),
-                content_data.get('indexed_at', ''),
-                content_data.get('duration_seconds', 0),
-                content_data.get('word_count', 0),
-                content_data.get('has_audio', False),
-                content_data.get('audio_duration_seconds', 0),
-                content_data.get('has_transcript', False),
-                content_data.get('transcript_chars', 0),
-                content_data.get('video_id', ''),
-                content_data.get('channel_name', ''),
-                content_data.get('channel_id', ''),
-                content_data.get('view_count', 0),
-                content_data.get('like_count', 0),
-                content_data.get('comment_count', 0),
-                json.dumps(content_data.get('category', [])),
-                content_data.get('content_type', ''),
-                content_data.get('complexity_level', ''),
-                content_data.get('language', 'en'),
-                json.dumps(content_data.get('key_topics', [])),
-                json.dumps(content_data.get('named_entities', [])),
-                content_data.get('format_source', 'api'),
-                content_data.get('processing_status', 'complete'),
-                content_data.get('created_at', ''),
-                content_data.get('updated_at', '')
-            ))
-            
-            # UPSERT summary if provided
-            summary_text = content_data.get('summary_text', '')
-            if summary_text:
+            conn = None
+            try:
+                conn = sqlite3.connect(str(db_path))
+                cursor = conn.cursor()
+                
+                # Check if record exists first to determine action
+                check_cursor = conn.cursor()
+                check_cursor.execute("SELECT id FROM content WHERE id = ?", (content_data.get('id'),))
+                existing_record = check_cursor.fetchone()
+                action = "updated" if existing_record else "created"
+                
+                # UPSERT content record
                 cursor.execute("""
-                    INSERT INTO content_summaries (content_id, summary_text, summary_type)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT(content_id) DO UPDATE SET
-                        summary_text = excluded.summary_text,
-                        summary_type = excluded.summary_type
+                    INSERT INTO content (
+                        id, title, canonical_url, thumbnail_url, published_at, indexed_at,
+                        duration_seconds, word_count, has_audio, audio_duration_seconds,
+                        has_transcript, transcript_chars, video_id, channel_name, channel_id,
+                        view_count, like_count, comment_count, category, content_type,
+                        complexity_level, language, key_topics, named_entities,
+                        format_source, processing_status, created_at, updated_at
+                    ) VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    )
+                    ON CONFLICT(id) DO UPDATE SET
+                        title = excluded.title,
+                        canonical_url = excluded.canonical_url,
+                        thumbnail_url = excluded.thumbnail_url,
+                        published_at = excluded.published_at,
+                        duration_seconds = excluded.duration_seconds,
+                        word_count = excluded.word_count,
+                        has_audio = excluded.has_audio,
+                        audio_duration_seconds = excluded.audio_duration_seconds,
+                        has_transcript = excluded.has_transcript,
+                        transcript_chars = excluded.transcript_chars,
+                        video_id = excluded.video_id,
+                        channel_name = excluded.channel_name,
+                        channel_id = excluded.channel_id,
+                        view_count = excluded.view_count,
+                        like_count = excluded.like_count,
+                        comment_count = excluded.comment_count,
+                        category = excluded.category,
+                        content_type = excluded.content_type,
+                        complexity_level = excluded.complexity_level,
+                        language = excluded.language,
+                        key_topics = excluded.key_topics,
+                        named_entities = excluded.named_entities,
+                        format_source = excluded.format_source,
+                        processing_status = excluded.processing_status,
+                        updated_at = excluded.updated_at
                 """, (
                     content_data.get('id'),
-                    summary_text,
-                    content_data.get('summary_type', 'audio')
+                    content_data.get('title'),
+                    content_data.get('canonical_url', ''),
+                    content_data.get('thumbnail_url', ''),
+                    content_data.get('published_at', ''),
+                    content_data.get('indexed_at', ''),
+                    content_data.get('duration_seconds', 0),
+                    content_data.get('word_count', 0),
+                    content_data.get('has_audio', False),
+                    content_data.get('audio_duration_seconds', 0),
+                    content_data.get('has_transcript', False),
+                    content_data.get('transcript_chars', 0),
+                    content_data.get('video_id', ''),
+                    content_data.get('channel_name', ''),
+                    content_data.get('channel_id', ''),
+                    content_data.get('view_count', 0),
+                    content_data.get('like_count', 0),
+                    content_data.get('comment_count', 0),
+                    json.dumps(content_data.get('category', [])),
+                    content_data.get('content_type', ''),
+                    content_data.get('complexity_level', ''),
+                    content_data.get('language', 'en'),
+                    json.dumps(content_data.get('key_topics', [])),
+                    json.dumps(content_data.get('named_entities', [])),
+                    content_data.get('format_source', 'api'),
+                    content_data.get('processing_status', 'complete'),
+                    content_data.get('created_at', ''),
+                    content_data.get('updated_at', '')
                 ))
+                
+                # UPSERT summary if provided
+                summary_text = content_data.get('summary_text', '')
+                if summary_text:
+                    cursor.execute("""
+                        INSERT INTO content_summaries (content_id, summary_text, summary_type)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(content_id) DO UPDATE SET
+                            summary_text = excluded.summary_text,
+                            summary_type = excluded.summary_type
+                    """, (
+                        content_data.get('id'),
+                        summary_text,
+                        content_data.get('summary_type', 'audio')
+                    ))
             
-            conn.commit()
-            conn.close()
-            
-            logger.info(f"✅ Content upserted: {content_data.get('id')}")
-            
-            # Send success response
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({
-                'success': True,
-                'message': 'Content saved successfully',
-                'id': content_data.get('id'),
-                'action': action,
-                'upserted': True,
-                'synced_at': datetime.now().isoformat()
-            }).encode())
-            
-        except Exception as e:
-            logger.error(f"Content API error: {e}")
-            self.send_error(500, f"Content API failed: {str(e)}")
+                conn.commit()
+                
+                logger.info(f"✅ Content upserted: {content_data.get('id')}")
+                
+                # Send success response
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    'success': True,
+                    'message': 'Content saved successfully',
+                    'id': content_data.get('id'),
+                    'action': action,
+                    'upserted': True,
+                    'synced_at': datetime.now().isoformat()
+                }).encode())
+                
+            except Exception as e:
+                logger.error(f"Content API error: {e}")
+                self.send_error(500, f"Content API failed: {str(e)}")
+            finally:
+                # Always close the database connection
+                if conn:
+                    conn.close()
     
     def handle_content_update_api(self):
         """Handle PUT /api/content/{id} - Update specific content fields"""
