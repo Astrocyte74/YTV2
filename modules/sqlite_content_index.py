@@ -24,11 +24,34 @@ class SQLiteContentIndex:
         self._ensure_database_exists()
         
     def _ensure_database_exists(self):
-        """Ensure the database file exists."""
+        """Ensure the database file exists and run migrations."""
         if not self.db_path.exists():
             raise FileNotFoundError(f"SQLite database not found: {self.db_path}")
         
+        # Run database migration for subcategory column
+        self._run_migrations()
+        
         logger.info(f"Using SQLite database: {self.db_path}")
+    
+    def _run_migrations(self):
+        """Run database migrations to ensure schema is up to date."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            # Migration: Add subcategory column if it doesn't exist
+            try:
+                cursor.execute('ALTER TABLE content ADD COLUMN subcategory TEXT')
+                logger.info("✅ Migration: Added subcategory column to content table")
+                conn.commit()
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" in str(e).lower():
+                    logger.debug("ℹ️ Migration: Subcategory column already exists")
+                else:
+                    logger.warning(f"Migration warning: Could not add subcategory column: {e}")
+                    
+        finally:
+            conn.close()
     
     def _get_connection(self) -> sqlite3.Connection:
         """Get database connection with proper configuration."""
