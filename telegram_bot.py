@@ -523,6 +523,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_upload_report()
         elif self.path == '/api/upload-database':
             self.handle_upload_database()
+        elif self.path == '/api/upload-audio':
+            self.handle_upload_audio()
         elif self.path.startswith('/api/delete'):
             self.handle_delete_request()
         else:
@@ -2094,6 +2096,82 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Database upload error: {e}")
             self.send_error(500, f"Database upload failed: {str(e)}")
+    
+    def handle_upload_audio(self):
+        """Handle POST request to upload audio files from NAS"""
+        try:
+            # Check sync secret for authentication
+            sync_secret = os.getenv('SYNC_SECRET')
+            if not sync_secret:
+                self.send_error(500, "Sync not configured")
+                return
+            
+            auth_header = self.headers.get('Authorization', '')
+            if not auth_header.startswith('Bearer ') or auth_header[7:] != sync_secret:
+                logger.warning(f"Audio upload rejected: Invalid auth from {self.client_address[0]}")
+                self.send_error(401, "Unauthorized")
+                return
+            
+            # Parse multipart form data
+            content_type = self.headers.get('Content-Type', '')
+            if not content_type.startswith('multipart/form-data'):
+                self.send_error(400, "Expected multipart/form-data")
+                return
+            
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_error(400, "No data received")
+                return
+            if content_length > 25 * 1024 * 1024:  # 25MB limit for audio
+                self.send_error(413, "Audio file too large")
+                return
+            
+            post_data = self.rfile.read(content_length)
+            
+            # Parse form data
+            import cgi
+            import io
+            
+            form_data = cgi.FieldStorage(
+                fp=io.BytesIO(post_data),
+                headers=self.headers,
+                environ={'REQUEST_METHOD': 'POST'}
+            )
+            
+            if 'audio' not in form_data:
+                self.send_error(400, "No audio file provided")
+                return
+            
+            audio_field = form_data['audio']
+            if not audio_field.filename:
+                self.send_error(400, "No audio filename provided")
+                return
+            
+            # Save audio file
+            exports_dir = Path('./exports')
+            exports_dir.mkdir(exist_ok=True)
+            
+            audio_path = exports_dir / audio_field.filename
+            with open(audio_path, 'wb') as f:
+                audio_field.file.seek(0)
+                f.write(audio_field.file.read())
+            
+            logger.info(f"✅ Audio file uploaded: {audio_field.filename}")
+            
+            # Send success response
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                'success': True,
+                'message': 'Audio uploaded successfully',
+                'filename': audio_field.filename,
+                'size': audio_path.stat().st_size
+            }).encode())
+            
+        except Exception as e:
+            logger.error(f"Audio upload error: {e}")
+            self.send_error(500, f"Audio upload failed: {str(e)}")
     
     def handle_delete_request(self):
         """Handle DELETE requests for /api/delete/:id endpoint"""
