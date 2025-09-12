@@ -730,6 +730,16 @@ class AudioDashboard {
             });
         });
 
+        // Bind filter chip click handlers
+        this.contentGrid.querySelectorAll('[data-filter-chip]').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent card click
+                const filterType = chip.dataset.filterChip;
+                const filterValue = chip.dataset.filterValue;
+                this.applyFilterFromChip(filterType, filterValue);
+            });
+        });
+
         // Highlight currently playing
         this.updatePlayingCard();
 
@@ -1278,8 +1288,21 @@ class AudioDashboard {
 
                         <div class="mt-3 flex flex-wrap gap-2">
                             ${categories.map(cat => `
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-audio-100 dark:bg-slate-700 text-audio-800 dark:text-slate-300">${this.escapeHtml(cat)}</span>
+                                <button class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-audio-100 dark:bg-slate-700 text-audio-800 dark:text-slate-300 hover:bg-audio-200 dark:hover:bg-slate-600 transition-colors cursor-pointer" 
+                                        data-filter-chip="category" 
+                                        data-filter-value="${this.escapeHtml(cat)}"
+                                        title="Filter by ${this.escapeHtml(cat)}">
+                                    ${this.escapeHtml(cat)}
+                                </button>
                             `).join('')}
+                            ${item.analysis?.subcategory ? `
+                                <button class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-colors cursor-pointer" 
+                                        data-filter-chip="subcategory" 
+                                        data-filter-value="${this.escapeHtml(item.analysis.subcategory)}"
+                                        title="Filter by ${this.escapeHtml(item.analysis.subcategory)}">
+                                    ${this.escapeHtml(item.analysis.subcategory)}
+                                </button>
+                            ` : ''}
                         </div>
                         <!-- CTA row under meta -->
                         <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
@@ -1984,6 +2007,45 @@ class AudioDashboard {
         
         this.currentPage = 1;
         this.loadContent();
+    }
+
+    applyFilterFromChip(filterType, filterValue) {
+        // Clear all current filters
+        this.clearAllFilters();
+        
+        // Apply the clicked filter
+        const checkbox = document.querySelector(`input[data-filter="${filterType}"][value="${filterValue}"]`);
+        if (checkbox) {
+            checkbox.checked = true;
+            // If it's a subcategory, also check its parent category
+            if (filterType === 'subcategory') {
+                const parentCategory = checkbox.dataset.parentCategory;
+                if (parentCategory) {
+                    const parentCheckbox = document.querySelector(`input[data-filter="category"][value="${parentCategory}"]`);
+                    if (parentCheckbox) {
+                        parentCheckbox.checked = true;
+                    }
+                }
+            }
+        }
+        
+        // Trigger filter update
+        this.handleFilterChange();
+        
+        // Show visual feedback that filter was applied
+        this.showFilterAppliedFeedback(filterType, filterValue);
+    }
+
+    clearAllFilters() {
+        document.querySelectorAll('input[type="checkbox"][data-filter]').forEach(cb => {
+            cb.checked = false;
+        });
+    }
+
+    showFilterAppliedFeedback(filterType, filterValue) {
+        // Simple toast notification or could expand the filter drawer
+        console.log(`Applied ${filterType} filter: ${filterValue}`);
+        // Could add a subtle visual indicator here
     }
 
     toggleQueue() {
