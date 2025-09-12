@@ -123,13 +123,18 @@ class AudioDashboard {
         this.prevBtn.addEventListener('click', () => this.playPrevious());
         this.nextBtn.addEventListener('click', () => this.playNext());
         this.progressContainer.addEventListener('click', (e) => this.seekTo(e));
+        this.progressContainer.addEventListener('mousedown', (e) => this.beginProgressDrag(e, false));
         if (this.volumeBtn) this.volumeBtn.addEventListener('click', () => this.toggleMute());
         
         // Mobile mini-player controls
         if (this.mobilePlayPauseBtn) this.mobilePlayPauseBtn.addEventListener('click', () => this.togglePlayPause());
         if (this.mobilePrevBtn) this.mobilePrevBtn.addEventListener('click', () => this.playPrevious());
         if (this.mobileNextBtn) this.mobileNextBtn.addEventListener('click', () => this.playNext());
-        if (this.mobileProgressContainer) this.mobileProgressContainer.addEventListener('click', (e) => this.seekToMobile(e));
+        if (this.mobileProgressContainer) {
+            this.mobileProgressContainer.addEventListener('click', (e) => this.seekToMobile(e));
+            this.mobileProgressContainer.addEventListener('mousedown', (e) => this.beginProgressDrag(e, true));
+            this.mobileProgressContainer.addEventListener('touchstart', (e) => this.beginProgressDrag(e, true), { passive: true });
+        }
         if (this.settingsToggle) this.settingsToggle.addEventListener('click', (e) => { e.stopPropagation(); this.toggleSettings(); });
         if (this.settingsMenu) document.addEventListener('click', (e) => { if (!e.target.closest('#settingsMenu') && !e.target.closest('#settingsToggle')) this.closeSettings(); });
         if (this.themeButtons) this.themeButtons.forEach(btn => btn.addEventListener('click', () => this.setTheme(btn.dataset.theme)));
@@ -1644,7 +1649,7 @@ class AudioDashboard {
         }
     }
 
-    // Seek when clicking on a card's progress or mini scrub
+    // Seek when clicking on a card's progress bar
     seekOnCardScrub(el, event) {
         const card = el.closest('[data-report-id]');
         if (!card) return;
@@ -1652,13 +1657,17 @@ class AudioDashboard {
         const rect = el.getBoundingClientRect();
         const clientX = ('clientX' in event) ? event.clientX : (event.touches && event.touches[0] ? event.touches[0].clientX : 0);
         const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-        // If this card is already active, seek immediately
-        if (this.currentAudio && this.currentAudio.id === id) {
+        
+        // If this card is already playing, seek immediately
+        if (this.currentAudio && this.currentAudio.id === id && this.audioElement) {
             const duration = this.audioElement.duration;
-            if (duration && !isNaN(duration)) this.audioElement.currentTime = pct * duration;
+            if (duration && !isNaN(duration)) {
+                this.audioElement.currentTime = pct * duration;
+            }
             return;
         }
-        // Otherwise, start playing this card and apply seek when ready
+        
+        // Otherwise, start playing this card and seek when ready
         this._pendingSeek = pct;
         this.playAudio(id);
     }
@@ -1669,29 +1678,36 @@ class AudioDashboard {
         const id = card.dataset.reportId;
         this._dragState = { el, id };
         this._suppressOpen = true; // prevent card open after drag-end click
+        
+        let finalSeekPct = 0;
+        const isActiveCard = this.currentAudio && this.currentAudio.id === id;
+        
         const onMove = (clientX) => {
             const rect = el.getBoundingClientRect();
             const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            finalSeekPct = pct;
+            
+            // Update visual progress bar immediately
             const bar = el.querySelector('[data-card-progress]');
             if (bar) bar.style.width = `${pct * 100}%`;
-            // While dragging, only seek immediately if this is the active track.
-            // For other cards, defer playback until drag end to avoid repeated reloads.
-            if (this.currentAudio && this.currentAudio.id === id) {
+            
+            // If this is the currently active card, seek in real-time
+            if (isActiveCard && this.audioElement) {
                 const duration = this.audioElement.duration;
-                if (duration && !isNaN(duration)) this.audioElement.currentTime = pct * duration;
+                if (duration && !isNaN(duration)) {
+                    this.audioElement.currentTime = pct * duration;
+                }
             }
-            this._scrubTarget = { id, pct };
         };
+        
         const move = (e) => onMove(e.clientX);
         const moveTouch = (e) => onMove(e.touches[0].clientX);
+        
         const up = () => {
-            // Commit scrub action: if dragging on a non-active card, start playback once and apply seek
-            if (this._scrubTarget) {
-                const { id: sId, pct } = this._scrubTarget;
-                if (!(this.currentAudio && this.currentAudio.id === sId)) {
-                    this._pendingSeek = pct;
-                    this.playAudio(sId);
-                }
+            // If dragging on a non-active card, start playback at the dragged position
+            if (!isActiveCard) {
+                this._pendingSeek = finalSeekPct;
+                this.playAudio(id);
             }
             cleanup();
         };
@@ -1701,9 +1717,8 @@ class AudioDashboard {
             window.removeEventListener('touchmove', moveTouch);
             window.removeEventListener('touchend', up);
             this._dragState = null;
-            this._dragAutoStarted = false;
             this._dragEndedAt = Date.now();
-            setTimeout(() => { this._suppressOpen = false; }, 250);
+            setTimeout(() => { this._suppressOpen = false; }, 100);
         };
         window.addEventListener('mousemove', move);
         window.addEventListener('mouseup', up);
@@ -2178,6 +2193,48 @@ class AudioDashboard {
         const percentage = Math.max(0, Math.min(1, raw));
         const duration = this.audioElement.duration;
         if (duration) this.audioElement.currentTime = percentage * duration;
+    }
+
+    // Progress bar drag handling for both desktop and mobile mini players
+    beginProgressDrag(event, isMobile) {
+        if (!this.audioElement || !this.currentAudio) return;
+        
+        event.preventDefault();
+        const container = isMobile ? this.mobileProgressContainer : this.progressContainer;
+        const progressBar = isMobile ? this.mobileProgressBar : this.progressBar;
+        
+        const onMove = (clientX) => {
+            const rect = container.getBoundingClientRect();
+            const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            
+            // Update visual progress
+            if (progressBar) progressBar.style.width = `${pct * 100}%`;
+            
+            // Seek audio
+            const duration = this.audioElement.duration;
+            if (duration && !isNaN(duration)) {
+                this.audioElement.currentTime = pct * duration;
+            }
+        };
+        
+        const move = (e) => onMove(e.clientX);
+        const moveTouch = (e) => onMove(e.touches[0].clientX);
+        
+        const cleanup = () => {
+            window.removeEventListener('mousemove', move);
+            window.removeEventListener('mouseup', cleanup);
+            window.removeEventListener('touchmove', moveTouch);
+            window.removeEventListener('touchend', cleanup);
+        };
+        
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', cleanup);
+        window.addEventListener('touchmove', moveTouch, { passive: true });
+        window.addEventListener('touchend', cleanup);
+        
+        // Initial position
+        const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : 0);
+        onMove(clientX);
     }
 }
 
