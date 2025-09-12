@@ -1636,9 +1636,9 @@ class AudioDashboard {
 
     seekTo(event) {
         const rect = this.progressContainer.getBoundingClientRect();
-        const percentage = (event.clientX - rect.left) / rect.width;
+        const raw = (event.clientX - rect.left) / rect.width;
+        const percentage = Math.max(0, Math.min(1, raw));
         const duration = this.audioElement.duration;
-        
         if (duration && !isNaN(duration)) {
             this.audioElement.currentTime = percentage * duration;
         }
@@ -1674,18 +1674,27 @@ class AudioDashboard {
             const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
             const bar = el.querySelector('[data-card-progress]');
             if (bar) bar.style.width = `${pct * 100}%`;
+            // While dragging, only seek immediately if this is the active track.
+            // For other cards, defer playback until drag end to avoid repeated reloads.
             if (this.currentAudio && this.currentAudio.id === id) {
                 const duration = this.audioElement.duration;
                 if (duration && !isNaN(duration)) this.audioElement.currentTime = pct * duration;
-            } else {
-                // Start playback and defer seek
-                this._pendingSeek = pct;
-                if (!this._dragAutoStarted) { this._dragAutoStarted = true; this.playAudio(id); }
             }
+            this._scrubTarget = { id, pct };
         };
         const move = (e) => onMove(e.clientX);
         const moveTouch = (e) => onMove(e.touches[0].clientX);
-        const up = () => { cleanup(); };
+        const up = () => {
+            // Commit scrub action: if dragging on a non-active card, start playback once and apply seek
+            if (this._scrubTarget) {
+                const { id: sId, pct } = this._scrubTarget;
+                if (!(this.currentAudio && this.currentAudio.id === sId)) {
+                    this._pendingSeek = pct;
+                    this.playAudio(sId);
+                }
+            }
+            cleanup();
+        };
         const cleanup = () => {
             window.removeEventListener('mousemove', move);
             window.removeEventListener('mouseup', up);
@@ -2165,12 +2174,10 @@ class AudioDashboard {
     // Mobile progress bar seek
     seekToMobile(event) {
         const rect = this.mobileProgressContainer.getBoundingClientRect();
-        const percentage = (event.clientX - rect.left) / rect.width;
+        const raw = (event.clientX - rect.left) / rect.width;
+        const percentage = Math.max(0, Math.min(1, raw));
         const duration = this.audioElement.duration;
-        
-        if (duration && percentage >= 0 && percentage <= 1) {
-            this.audioElement.currentTime = percentage * duration;
-        }
+        if (duration) this.audioElement.currentTime = percentage * duration;
     }
 }
 
