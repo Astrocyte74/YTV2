@@ -401,6 +401,12 @@ class AudioDashboard {
             
             // Bind show more toggles after content is loaded
             this.bindShowMoreToggles();
+            
+            // Fix 1: Initialize currentFilters after filters render
+            // This ensures visual state (checkboxes) matches internal state
+            this.currentFilters = this.computeFiltersFromDOM();
+            console.log('Initialized currentFilters after render:', this.currentFilters);
+            
         } catch (error) {
             console.error('Failed to load filters:', error);
         }
@@ -665,11 +671,24 @@ class AudioDashboard {
         });
     }
 
+    computeFiltersFromDOM() {
+        const filters = {};
+        document.querySelectorAll('input[data-filter]').forEach(el => {
+            const k = el.getAttribute('data-filter');
+            (filters[k] ||= []);
+            if (el.checked) filters[k].push(el.value);
+        });
+        return filters;
+    }
+
     async loadContent() {
         const params = new URLSearchParams();
         
         // Add search query
         if (this.searchQuery) params.append('q', this.searchQuery);
+        
+        // Fix 2: Recompute state from DOM right before fetching (prevents drift)
+        this.currentFilters = this.computeFiltersFromDOM();
         
         // Helper functions (OpenAI's drop-in solution)
         const getAllOptions = (filterType) =>
@@ -2125,6 +2144,8 @@ class AudioDashboard {
         document.querySelectorAll('input[type="checkbox"][data-filter]').forEach(cb => {
             cb.checked = false;
         });
+        this.currentFilters = {};
+        this.loadContent();
     }
 
     showFilterAppliedFeedback(filterType, filterValue) {
