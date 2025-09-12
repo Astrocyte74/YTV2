@@ -1664,8 +1664,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(500, "Sync not configured")
                 return
             
-            auth_header = self.headers.get('X-Sync-Secret', '')
-            if auth_header != sync_secret:
+            auth_header = self.headers.get('Authorization', '')
+            if not auth_header.startswith('Bearer ') or auth_header[7:] != sync_secret:
                 logger.warning(f"Upload rejected: Invalid sync secret from {self.client_address[0]}")
                 self.send_error(401, "Unauthorized")
                 return
