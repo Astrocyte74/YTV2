@@ -581,6 +581,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.serve_status()
         elif path == '/health':
             self.serve_health()
+        elif path == '/api/db-status':
+            self.serve_db_status()
         elif path.startswith('/api/'):
             self.serve_api()
         elif path.endswith('.css'):
@@ -1266,6 +1268,81 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             error_data = {"status": "unhealthy", "error": str(e)}
+            self.wfile.write(json.dumps(error_data).encode())
+    
+    def serve_db_status(self):
+        """Serve database status endpoint for diagnostics"""
+        try:
+            # Check all possible database locations
+            db_paths = [
+                Path('/app/ytv2_content.db'),           # Root app directory
+                Path('./ytv2_content.db'),              # Current directory  
+                Path('./data/ytv2_content.db'),         # Data subdirectory
+                Path('/app/data/ytv2_content.db'),      # App data directory
+                Path('/opt/render/project/src/data/ytv2_content.db'),  # Render persistent disk
+                Path('/opt/render/project/src/ytv2_content.db'),       # Render app root
+            ]
+            
+            db_info = {
+                "database_backend": "SQLite" if USING_SQLITE else "JSON",
+                "current_database": str(getattr(content_index, 'db_path', 'unknown')) if 'content_index' in globals() else None,
+                "searched_paths": [],
+                "found_databases": [],
+                "persistent_disk_mount": "/opt/render/project/src/data",
+                "environment": {
+                    "PWD": os.getcwd(),
+                    "RENDER_INSTANCE_ID": os.getenv('RENDER_INSTANCE_ID', 'not-set'),
+                    "RENDER_SERVICE_ID": os.getenv('RENDER_SERVICE_ID', 'not-set')
+                }
+            }
+            
+            # Check each path
+            for db_path in db_paths:
+                path_info = {
+                    "path": str(db_path),
+                    "exists": db_path.exists(),
+                    "size_bytes": db_path.stat().st_size if db_path.exists() else 0,
+                    "readable": False,
+                    "record_count": 0
+                }
+                
+                if db_path.exists():
+                    try:
+                        # Try to connect and get record count
+                        import sqlite3
+                        conn = sqlite3.connect(str(db_path))
+                        cursor = conn.execute("SELECT COUNT(*) FROM content")
+                        path_info["record_count"] = cursor.fetchone()[0]
+                        cursor = conn.execute("SELECT COUNT(*) FROM content_summaries") 
+                        path_info["summary_count"] = cursor.fetchone()[0]
+                        conn.close()
+                        path_info["readable"] = True
+                        db_info["found_databases"].append(path_info)
+                    except Exception as e:
+                        path_info["error"] = str(e)
+                        
+                db_info["searched_paths"].append(path_info)
+            
+            # Get current index status
+            if 'content_index' in globals():
+                try:
+                    if hasattr(content_index, 'get_report_count'):
+                        db_info["active_index_count"] = content_index.get_report_count()
+                except Exception as e:
+                    db_info["active_index_error"] = str(e)
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(json.dumps(db_info, indent=2).encode())
+            
+        except Exception as e:
+            logger.error(f"Error serving database status: {e}")
+            error_data = {"error": "Database status check failed", "message": str(e)}
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
             self.wfile.write(json.dumps(error_data).encode())
     
     def serve_api(self):
