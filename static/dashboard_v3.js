@@ -1113,7 +1113,7 @@ class AudioDashboard {
                 <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start">
                     <div class="relative w-full sm:w-56 aspect-video overflow-hidden rounded-lg bg-slate-100 flex-shrink-0">
                         ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
-                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none" data-card-eq style="display: ${isPlaying ? 'flex' : 'none'}">
+                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none" data-card-eq style="display: flex">
                             <div class="flex items-end gap-1">
                                 <span class="w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar-outlined" style="--delay:0"></span>
                                 <span class="w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar-outlined" style="--delay:1"></span>
@@ -1196,7 +1196,7 @@ class AudioDashboard {
         <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-has-audio="${(item.media && item.media.has_audio) ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative cursor-pointer bg-white/80 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
             <div class="relative aspect-video bg-slate-100">
                 ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
-                <div class="absolute inset-0 flex items-center justify-center pointer-events-none" data-card-eq style="display: ${isPlaying ? 'flex' : 'none'}">
+                <div class="absolute inset-0 flex items-center justify-center pointer-events-none" data-card-eq style="display: flex">
                     <div class="flex items-end gap-1">
                         <span class="w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar-outlined" style="--delay:0"></span>
                         <span class="w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar-outlined" style="--delay:1"></span>
@@ -1239,23 +1239,23 @@ class AudioDashboard {
                     <span>•</span>
                     <span>${item.analysis?.language || 'en'}</span>
                 </div>
-                <div class="mt-3 grid grid-cols-3 gap-2 px-3 pb-3">
-                    <button class="flex flex-col items-center justify-center py-2 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" data-action="read">
-                        <span class="text-xs font-medium text-slate-700 dark:text-slate-200">Read</span>
-                        <span class="text-[10px] text-slate-500 dark:text-slate-400">${buttonDurations.read || '3 min'}</span>
+                <div class="mt-2 flex items-center gap-1.5 px-3 pb-2">
+                    <button class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors" data-action="read">
+                        <span>Read</span>
+                        <span class="text-[10px] opacity-70">${buttonDurations.read || '3m'}</span>
                     </button>
                     ${(item.media && item.media.has_audio) ? `
-                    <button class="flex flex-col items-center justify-center py-2 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" data-action="listen">
-                        <span class="text-xs font-medium text-slate-700 dark:text-slate-200">Listen</span>
-                        <span class="text-[10px] text-slate-500 dark:text-slate-400">${buttonDurations.listen || totalDur}</span>
+                    <button class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors" data-action="listen">
+                        <span>Listen</span>
+                        <span class="text-[10px] opacity-70">${buttonDurations.listen || totalDur}</span>
                     </button>` : `
-                    <button class="flex flex-col items-center justify-center py-2 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100/50 dark:bg-slate-800/50 cursor-not-allowed opacity-50" disabled>
-                        <span class="text-xs font-medium text-slate-400 dark:text-slate-500">Listen</span>
-                        <span class="text-[10px] text-slate-400 dark:text-slate-500">No Audio</span>
+                    <button class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-slate-50/50 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60" disabled>
+                        <span>Listen</span>
+                        <span class="text-[10px] opacity-70">N/A</span>
                     </button>`}
-                    <button class="flex flex-col items-center justify-center py-2 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" data-action="watch">
-                        <span class="text-xs font-medium text-slate-700 dark:text-slate-200">Watch</span>
-                        <span class="text-[10px] text-slate-500 dark:text-slate-400">${buttonDurations.watch || totalDur}</span>
+                    <button class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors" data-action="watch">
+                        <span>Watch</span>
+                        <span class="text-[10px] opacity-70">${buttonDurations.watch || totalDur}</span>
                     </button>
                 </div>
                 <section role="region" aria-live="polite" hidden data-expand-region></section>
