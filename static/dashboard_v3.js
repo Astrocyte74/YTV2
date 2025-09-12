@@ -671,19 +671,7 @@ class AudioDashboard {
         // Add search query
         if (this.searchQuery) params.append('q', this.searchQuery);
         
-        // Check if we have any active filters
-        const hasActiveFilters = Object.keys(this.currentFilters).some(key => 
-            this.currentFilters[key] && this.currentFilters[key].length > 0
-        );
-        
-        // If no search query and no active filters, show empty view
-        if (!this.searchQuery && !hasActiveFilters) {
-            this.currentItems = [];
-            this.renderContent([]);
-            this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
-            this.updateResultsInfo({ page: 1, size: 12, total_count: 0, total_pages: 0 });
-            return;
-        }
+        // Normal behavior: no filters = show all content, filters = show filtered content
         
         // Add filters to params
         Object.entries(this.currentFilters).forEach(([key, values]) => {
@@ -728,18 +716,18 @@ class AudioDashboard {
                 this.currentFilters[key] && this.currentFilters[key].length > 0
             );
             
-            if (!this.searchQuery && !hasActiveFilters) {
+            if (hasActiveFilters || this.searchQuery) {
                 this.contentGrid.innerHTML = `
                     <div class="text-center py-12 text-slate-400">
-                        <div class="text-lg mb-2">Ready to explore</div>
-                        <div class="text-sm">Use the filters on the left to discover content, or search above</div>
+                        <div class="text-lg mb-2">No matches found</div>
+                        <div class="text-sm">Try adjusting your filters or search terms</div>
                     </div>
                 `;
             } else {
                 this.contentGrid.innerHTML = `
                     <div class="text-center py-12 text-slate-400">
-                        <div class="text-lg mb-2">No matches found</div>
-                        <div class="text-sm">Try adjusting your filters or search terms</div>
+                        <div class="text-lg mb-2">No content available</div>
+                        <div class="text-sm">No summaries found in the database</div>
                     </div>
                 `;
             }
