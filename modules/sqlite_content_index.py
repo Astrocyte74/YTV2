@@ -145,8 +145,13 @@ class SQLiteContentIndex:
                 if 'category' in filters and filters['category']:
                     cat_conditions = []
                     for cat in filters['category']:
-                        cat_conditions.append("category LIKE ?")
-                        params.append(f'%"{cat}"%')
+                        # Handle both hyphen (-) and en dash (–) variations for robust matching
+                        cat_hyphen = cat.replace('–', '-')  # Convert en dash to hyphen
+                        cat_endash = cat.replace('-', '–')  # Convert hyphen to en dash
+                        
+                        # Search in both category (JSON array) and subcategory (direct field)
+                        cat_conditions.append("(category LIKE ? OR category LIKE ? OR subcategory = ? OR subcategory = ?)")
+                        params.extend([f'%"{cat_hyphen}"%', f'%"{cat_endash}"%', cat_hyphen, cat_endash])
                     if cat_conditions:
                         where_conditions.append(f"({' OR '.join(cat_conditions)})")
                 
