@@ -67,6 +67,11 @@
             animation-delay: calc(var(--delay) * 0.1s);
             transform-origin: bottom center;
         }
+        /* Explicit keyframes so animation works without Tailwind utility */
+        @keyframes waveform {
+            0%, 100% { transform: scaleY(0.6); }
+            50% { transform: scaleY(1.2); }
+        }
         /* Subtle paragraph spacing inside inline expanded summaries */
         .prose.prose-sm p { margin: 0.4rem 0; }
         /* Offset expanded inline region under text column for list cards */

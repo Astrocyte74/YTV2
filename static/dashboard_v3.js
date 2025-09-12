@@ -260,6 +260,9 @@ class AudioDashboard {
                 if (!el) return;
                 e.stopPropagation();
                 this.seekOnCardScrub(el, e);
+                // Guard against card click navigation following the seek
+                this._suppressOpen = true;
+                setTimeout(() => { this._suppressOpen = false; }, 200);
             });
             // Drag seek on thumbnail bar
             this.contentGrid.addEventListener('mousedown', (e) => {
@@ -274,6 +277,17 @@ class AudioDashboard {
                 const t = e.touches[0];
                 this.beginCardScrubDrag(el, t.clientX);
             }, { passive: true });
+            // Hover tooltip for timestamp while moving over the bar
+            this.contentGrid.addEventListener('mousemove', (e) => {
+                const el = e.target.closest('[data-card-progress-container]');
+                if (!el) { this.hideScrubTooltip(); return; }
+                this.showScrubTooltip(el, e);
+            });
+            this.contentGrid.addEventListener('mouseleave', (e) => {
+                if (!e.relatedTarget || !e.currentTarget.contains(e.relatedTarget)) {
+                    this.hideScrubTooltip();
+                }
+            });
         }
         // URL hash handling for deep links
         window.addEventListener('hashchange', () => this.onHashChange());
@@ -579,6 +593,7 @@ class AudioDashboard {
         // Make whole card clickable (except controls)
         this.contentGrid.querySelectorAll('[data-card]').forEach(card => {
             card.addEventListener('click', (e) => {
+                if (this._suppressOpen) { e.preventDefault(); e.stopPropagation(); return; }
                 // Ignore if click on a control
                 if (e.target.closest('[data-control]') || e.target.closest('[data-action]')) return;
                 const href = card.dataset.href;
@@ -1074,11 +1089,13 @@ class AudioDashboard {
         const hasAudio = item.media?.has_audio;
         const href = `/${item.file_stem}.json?v=2`;
         const buttonDurations = this.getButtonDurations(item);
+        const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds) ? item.media_metadata.mp3_duration_seconds : (item.duration_seconds || 0);
         const totalDur = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
             ? this.formatDuration(item.media_metadata.mp3_duration_seconds)
             : (item.duration_seconds ? this.formatDuration(item.duration_seconds) : '');
         
         const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
+        const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds) ? item.media_metadata.mp3_duration_seconds : (item.duration_seconds || 0);
         const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
         return `
             <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative list-layout cursor-pointer bg-white/80 dark:bg-slate-800/60 backdrop-blur-sm rounded-xl border border-slate-200/60 dark:border-slate-700 p-3 sm:p-4 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200" style="--thumbW: 240px;">
@@ -1094,7 +1111,7 @@ class AudioDashboard {
                                 <span class="w-0.5 sm:w-1 h-3 sm:h-4 bg-current waveform-bar" style="--delay:4"></span>
                             </div>
                         </div>
-                        <div class="absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer" data-card-progress-container>
+                        <div class="absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer" data-card-progress-container data-total-seconds="${totalSecs}">
                             <div class="h-1.5 sm:h-2 bg-audio-500" style="width:0%" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
                         </div>
                     </div>
@@ -1176,7 +1193,7 @@ class AudioDashboard {
                         <span class="w-0.5 sm:w-1 h-3 sm:h-4 bg-current waveform-bar" style="--delay:4"></span>
                     </div>
                 </div>
-                <div class="absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer" data-card-progress-container>
+                <div class="absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer" data-card-progress-container data-total-seconds="${totalSecs}">
                     <div class="h-1.5 sm:h-2 bg-audio-500" style="width:0%" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
                 </div>
                 <div class="absolute top-2 right-2 z-20">
@@ -1651,6 +1668,7 @@ class AudioDashboard {
         if (!card) return;
         const id = card.dataset.reportId;
         this._dragState = { el, id };
+        this._suppressOpen = true; // prevent card open after drag-end click
         const onMove = (clientX) => {
             const rect = el.getBoundingClientRect();
             const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
@@ -1675,12 +1693,47 @@ class AudioDashboard {
             window.removeEventListener('touchend', up);
             this._dragState = null;
             this._dragAutoStarted = false;
+            setTimeout(() => { this._suppressOpen = false; }, 250);
         };
         window.addEventListener('mousemove', move);
         window.addEventListener('mouseup', up);
         window.addEventListener('touchmove', moveTouch, { passive: true });
         window.addEventListener('touchend', up);
         onMove(startX);
+    }
+
+    ensureScrubTooltip() {
+        if (this.scrubTooltipEl) return this.scrubTooltipEl;
+        const el = document.createElement('div');
+        el.id = 'scrubTooltip';
+        el.className = 'pointer-events-none fixed text-[10px] px-1.5 py-0.5 rounded bg-black/70 text-white hidden z-50';
+        document.body.appendChild(el);
+        this.scrubTooltipEl = el;
+        return el;
+    }
+
+    showScrubTooltip(container, event) {
+        const el = this.ensureScrubTooltip();
+        const rect = container.getBoundingClientRect();
+        const clientX = event.clientX;
+        const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        // Prefer live duration if this is the active card
+        let seconds = 0;
+        const card = container.closest('[data-report-id]');
+        if (this.currentAudio && card && this.currentAudio.id === card.dataset.reportId && this.audioElement.duration) {
+            seconds = this.audioElement.duration * pct;
+        } else {
+            const total = parseFloat(container.getAttribute('data-total-seconds') || '0');
+            seconds = total * pct;
+        }
+        el.textContent = this.formatDuration(seconds);
+        el.style.left = Math.round(clientX + 8) + 'px';
+        el.style.top = Math.round(rect.top - 18) + 'px';
+        el.classList.remove('hidden');
+    }
+
+    hideScrubTooltip() {
+        if (this.scrubTooltipEl) this.scrubTooltipEl.classList.add('hidden');
     }
 
     handleSearch() {
