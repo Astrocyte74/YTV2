@@ -1523,9 +1523,9 @@ class AudioDashboard {
         // Update Listen buttons to reflect playing state
         const eqIcon = `
             <span class=\"flex items-end gap-0.5 mr-1\" aria-hidden=\"true\">
-              <span class=\"w-[2px] h-3 bg-current opacity-90 waveform-bar\" style=\"--delay:0\"></span>
-              <span class=\"w-[2px] h-2.5 bg-current opacity-90 waveform-bar\" style=\"--delay:1\"></span>
-              <span class=\"w-[2px] h-3.5 bg-current opacity-90 waveform-bar\" style=\"--delay:2\"></span>
+              <span class=\"w-[1.5px] h-2 bg-current opacity-90 waveform-bar\" style=\"--delay:0\"></span>
+              <span class=\"w-[1.5px] h-1.5 bg-current opacity-90 waveform-bar\" style=\"--delay:1\"></span>
+              <span class=\"w-[1.5px] h-2.5 bg-current opacity-90 waveform-bar\" style=\"--delay:2\"></span>
             </span>`;
 
         this.contentGrid.querySelectorAll('[data-card] [data-action="listen"]').forEach(btn => {
@@ -1710,7 +1710,6 @@ class AudioDashboard {
         this._suppressOpen = true; // prevent card open after drag-end click
         
         let finalSeekPct = 0;
-        const isActiveCard = this.currentAudio && this.currentAudio.id === id;
         
         const onMove = (clientX) => {
             const rect = el.getBoundingClientRect();
@@ -1721,8 +1720,9 @@ class AudioDashboard {
             const bar = el.querySelector('[data-card-progress]');
             if (bar) bar.style.width = `${pct * 100}%`;
             
-            // If this is the currently active card, seek in real-time
-            if (isActiveCard && this.audioElement) {
+            // Check if this is the currently active card (dynamic check during drag)
+            const isCurrentlyActive = this.currentAudio && this.currentAudio.id === id && this.isPlaying;
+            if (isCurrentlyActive && this.audioElement) {
                 const duration = this.audioElement.duration;
                 if (duration && !isNaN(duration)) {
                     this.audioElement.currentTime = pct * duration;
@@ -1734,8 +1734,9 @@ class AudioDashboard {
         const moveTouch = (e) => onMove(e.touches[0].clientX);
         
         const up = () => {
-            // If dragging on a non-active card, start playback at the dragged position
-            if (!isActiveCard) {
+            // Check if this was a non-active card drag that needs to start playback
+            const wasActiveCard = this.currentAudio && this.currentAudio.id === id && this.isPlaying;
+            if (!wasActiveCard) {
                 this._pendingSeek = finalSeekPct;
                 this.playAudio(id);
             }
@@ -2231,6 +2232,13 @@ class AudioDashboard {
         this._dragState = null;
         this._suppressOpen = false;
         this._dragEndedAt = null;
+        
+        // Clean up any lingering event listeners
+        try {
+            ['mousemove', 'mouseup', 'touchmove', 'touchend'].forEach(event => {
+                window.removeEventListener(event, this._tempHandler);
+            });
+        } catch(e) { /* ignore */ }
     }
 
     // Progress bar drag handling for both desktop and mobile mini players
