@@ -755,8 +755,8 @@ class AudioDashboard {
         this.contentGrid.querySelectorAll('[data-card]').forEach(card => {
             card.addEventListener('click', (e) => {
                 if (this._suppressOpen) { e.preventDefault(); e.stopPropagation(); return; }
-                // Ignore if click on a control
-                if (e.target.closest('[data-control]') || e.target.closest('[data-action]')) return;
+                // Ignore if click on a control, action, or filter chip
+                if (e.target.closest('[data-control]') || e.target.closest('[data-action]') || e.target.closest('[data-filter-chip]')) return;
                 const href = card.dataset.href;
                 if (href) window.location.href = href;
             });
@@ -1326,18 +1326,18 @@ class AudioDashboard {
 
                         <div class="mt-3 flex flex-wrap gap-2">
                             ${categories.map(cat => `
-                                <button class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-audio-100 dark:bg-slate-700 text-audio-800 dark:text-slate-300 hover:bg-audio-200 dark:hover:bg-slate-600 transition-colors cursor-pointer" 
+                                <button class="relative z-10 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-audio-100 dark:bg-slate-700 text-audio-800 dark:text-slate-300 hover:bg-audio-200 dark:hover:bg-slate-600 transition-all cursor-pointer hover:scale-105 active:scale-95" 
                                         data-filter-chip="category" 
                                         data-filter-value="${this.escapeHtml(cat)}"
-                                        title="Filter by ${this.escapeHtml(cat)}">
+                                        title="Click to filter by ${this.escapeHtml(cat)}">
                                     ${this.escapeHtml(cat)}
                                 </button>
                             `).join('')}
                             ${item.analysis?.subcategory ? `
-                                <button class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-colors cursor-pointer" 
+                                <button class="relative z-10 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-all cursor-pointer hover:scale-105 active:scale-95" 
                                         data-filter-chip="subcategory" 
                                         data-filter-value="${this.escapeHtml(item.analysis.subcategory)}"
-                                        title="Filter by ${this.escapeHtml(item.analysis.subcategory)}">
+                                        title="Click to filter by ${this.escapeHtml(item.analysis.subcategory)}">
                                     ${this.escapeHtml(item.analysis.subcategory)}
                                 </button>
                             ` : ''}
@@ -1366,6 +1366,7 @@ class AudioDashboard {
         const totalDur = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
             ? this.formatDuration(item.media_metadata.mp3_duration_seconds)
             : (item.duration_seconds ? this.formatDuration(item.duration_seconds) : '');
+        const categories = item.analysis?.category?.slice(0, 2) || ['General'];
         return `
         <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-has-audio="${(item.media && item.media.has_audio) ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative cursor-pointer bg-white/80 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
             <div class="relative aspect-video bg-slate-100">
@@ -1412,6 +1413,25 @@ class AudioDashboard {
                     <span>${item.analysis?.complexity_level || 'Intermediate'}</span>
                     <span>•</span>
                     <span>${item.analysis?.language || 'en'}</span>
+                </div>
+                <!-- Category chips for grid view -->
+                <div class="mt-2 flex flex-wrap gap-1">
+                    ${categories.map(cat => `
+                        <button class="relative z-10 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-audio-100 dark:bg-slate-700 text-audio-800 dark:text-slate-300 hover:bg-audio-200 dark:hover:bg-slate-600 transition-all cursor-pointer hover:scale-105 active:scale-95" 
+                                data-filter-chip="category" 
+                                data-filter-value="${this.escapeHtml(cat)}"
+                                title="Click to filter by ${this.escapeHtml(cat)}">
+                            ${this.escapeHtml(cat)}
+                        </button>
+                    `).join('')}
+                    ${item.analysis?.subcategory ? `
+                        <button class="relative z-10 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-all cursor-pointer hover:scale-105 active:scale-95" 
+                                data-filter-chip="subcategory" 
+                                data-filter-value="${this.escapeHtml(item.analysis.subcategory)}"
+                                title="Click to filter by ${this.escapeHtml(item.analysis.subcategory)}">
+                            ${this.escapeHtml(item.analysis.subcategory)}
+                        </button>
+                    ` : ''}
                 </div>
                 <div class="mt-2 flex items-center gap-1.5 px-3 pb-2">
                     <button class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors" data-action="read">
