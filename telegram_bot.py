@@ -158,6 +158,16 @@ def create_empty_ytv2_database(db_path: Path):
         )
     ''')
     
+    # Add subcategory column if it doesn't exist (migration for hierarchical categories)
+    try:
+        cursor.execute('ALTER TABLE content ADD COLUMN subcategory TEXT')
+        logger.info("✅ Added subcategory column to content table")
+    except sqlite3.OperationalError as e:
+        if "duplicate column name" in str(e).lower():
+            logger.info("ℹ️ Subcategory column already exists")
+        else:
+            logger.warning(f"Could not add subcategory column: {e}")
+    
     # Create indexes for performance
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_content_video_id ON content (video_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_content_indexed_at ON content (indexed_at)')
