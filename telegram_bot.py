@@ -21,6 +21,7 @@ import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import socket
+import sqlite3
 
 # V2 template engine imports
 try:
@@ -104,6 +105,66 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def create_empty_ytv2_database(db_path: Path):
+    """Create empty YTV2 database with proper schema."""
+    logger.info(f"🗄️ Creating database schema at: {db_path}")
+    
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    # Create content table with universal schema
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS content (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            canonical_url TEXT,
+            thumbnail_url TEXT,
+            published_at TEXT,
+            indexed_at TEXT,
+            duration_seconds INTEGER DEFAULT 0,
+            word_count INTEGER DEFAULT 0,
+            has_audio BOOLEAN DEFAULT 0,
+            audio_duration_seconds INTEGER DEFAULT 0,
+            has_transcript BOOLEAN DEFAULT 0,
+            transcript_chars INTEGER DEFAULT 0,
+            video_id TEXT,
+            channel_name TEXT,
+            channel_id TEXT,
+            view_count INTEGER DEFAULT 0,
+            like_count INTEGER DEFAULT 0,
+            comment_count INTEGER DEFAULT 0,
+            category TEXT,
+            content_type TEXT,
+            complexity_level TEXT,
+            language TEXT DEFAULT 'en',
+            key_topics TEXT,
+            named_entities TEXT,
+            created_at TEXT,
+            updated_at TEXT
+        )
+    ''')
+    
+    # Create summaries table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS content_summaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            content_id TEXT,
+            summary_text TEXT,
+            summary_type TEXT DEFAULT 'comprehensive',
+            created_at TEXT,
+            FOREIGN KEY (content_id) REFERENCES content (id)
+        )
+    ''')
+    
+    # Create indexes for performance
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_content_video_id ON content (video_id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_content_indexed_at ON content (indexed_at)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_summaries_content_id ON content_summaries (content_id)')
+    
+    conn.commit()
+    conn.close()
+    logger.info(f"✅ Empty database created with YTV2 schema")
+
 # Initialize global content index for Phase 2 API
 logger.info(f"🔍 Backend available: SQLite={USING_SQLITE}")
 
@@ -127,9 +188,32 @@ try:
         
         if not database_found:
             logger.warning(f"⚠️ No SQLite database found in paths: {[str(p) for p in db_paths]}")
-            # Fallback to JSON backend
-            USING_SQLITE = False
-            logger.info("🔄 Falling back to JSON backend")
+            # Try to create empty database with proper schema
+            logger.info("🗄️ Creating empty database with YTV2 schema...")
+            try:
+                # Use the first path that exists or can be created
+                target_path = None
+                for db_path in db_paths:
+                    try:
+                        db_path.parent.mkdir(parents=True, exist_ok=True)
+                        target_path = db_path
+                        break
+                    except:
+                        continue
+                
+                if target_path:
+                    create_empty_ytv2_database(target_path)
+                    content_index = ContentIndex(str(target_path))
+                    logger.info(f"✅ Created and initialized empty database: {target_path}")
+                    database_found = True
+                else:
+                    raise Exception("Could not create database in any path")
+                    
+            except Exception as e:
+                logger.error(f"❌ Failed to create database: {e}")
+                # Fallback to JSON backend
+                USING_SQLITE = False
+                logger.info("🔄 Falling back to JSON backend")
     
     if not USING_SQLITE:
         # Use JSON-based index as fallback
