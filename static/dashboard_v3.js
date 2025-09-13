@@ -766,17 +766,32 @@ class AudioDashboard {
         const noneSelected = (filters) =>
             !anySelected(filters);
 
-        // REQUIRE Category OR Channel selection specifically (not any selection)
-        const hasChannelSelection = this.currentFilters.channel && this.currentFilters.channel.length > 0;
-        if (!this.searchQuery && (!facet.categories || facet.categories.length === 0) && !hasChannelSelection) {
+        // REQUIRE Category selection (original logic)
+        if (!this.searchQuery && (!facet.categories || facet.categories.length === 0)) {
             this.currentItems = [];
             this.renderContent([]);
             this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
             this.updateResultsInfo({ page: 1, size: 12, total_count: 0, total_pages: 0 });
             this.contentGrid.innerHTML = `
                 <div class="text-center py-12 text-slate-400">
-                    <div class="text-lg mb-2">Choose one or more categories or channels</div>
-                    <div class="text-sm">Clear Categories + Clear Channels = no selection → no results</div>
+                    <div class="text-lg mb-2">Choose one or more categories</div>
+                    <div class="text-sm">Clear Categories = no categories selected → no results</div>
+                </div>`;
+            return;
+        }
+
+        // REQUIRE Channel selection when any channels exist but none selected
+        const hasChannelSelection = this.currentFilters.channel && this.currentFilters.channel.length > 0;
+        const hasChannelOptions = document.querySelectorAll('input[data-filter="channel"]').length > 0;
+        if (!this.searchQuery && hasChannelOptions && !hasChannelSelection) {
+            this.currentItems = [];
+            this.renderContent([]);
+            this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
+            this.updateResultsInfo({ page: 1, size: 12, total_count: 0, total_pages: 0 });
+            this.contentGrid.innerHTML = `
+                <div class="text-center py-12 text-slate-400">
+                    <div class="text-lg mb-2">Choose one or more channels</div>
+                    <div class="text-sm">Clear Channels = no channels selected → no results</div>
                 </div>`;
             return;
         }
