@@ -647,43 +647,84 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def serve_dashboard(self):
         """Serve the modern dashboard using templates"""
         try:
-            # Get report files from multiple directories (JSON preferred, HTML legacy)
-            report_dirs = [
-                Path('./data/reports'),  # JSON reports (primary)
-                Path('./exports'),       # HTML reports (legacy)
-                Path('.')               # Current directory (legacy)
-            ]
-            
-            all_report_files = []
-            
-            for report_dir in report_dirs:
-                if report_dir.exists():
-                    # Get JSON reports (preferred)
-                    json_files = [f for f in report_dir.glob('*.json') 
-                                   if not f.name.startswith('._')
-                                   and not f.name.startswith('.')]
-                    all_report_files.extend(json_files)
-                    
-                    # Get HTML reports (legacy support)
-                    html_files = [f for f in report_dir.glob('*.html') 
-                                   if f.name not in ['dashboard_template.html', 'report_template.html']
-                                   and not f.name.startswith('._')
-                                   and not f.name.startswith('.')]
-                    all_report_files.extend(html_files)
-            
-            # Remove duplicates and sort by modification time (newest first)
-            unique_files = list(set(all_report_files))
-            sorted_files = sorted(unique_files, key=lambda f: f.stat().st_mtime, reverse=True)
-            
-            # Extract metadata from all reports
+            # Use SQLite data when available (for proper category structure)
             reports_data = []
-            for file_path in sorted_files:
+            
+            if content_index and USING_SQLITE:
+                # Get reports from SQLite with proper category structure
                 try:
-                    metadata = extract_report_metadata(file_path)
-                    reports_data.append(metadata)
+                    sqlite_results = content_index.search_reports(
+                        filters=None,
+                        query=None,
+                        sort='indexed_at',  # Sort by most recent
+                        page=1,
+                        size=100  # Get first 100 reports
+                    )
+                    
+                    # Convert SQLite data to format expected by dashboard_v3.js
+                    for item in sqlite_results.get('reports', []):
+                        # The dashboard_v3.js expects this structure
+                        report_data = {
+                            'file_stem': item.get('file_stem', item.get('id', '')),
+                            'title': item.get('title', 'Unknown Title'),
+                            'channel': item.get('channel_name', 'Unknown Channel'),
+                            'thumbnail_url': item.get('thumbnail_url', ''),
+                            'duration_seconds': item.get('duration_seconds', 0),
+                            'video_id': item.get('video_id', ''),
+                            'analysis': item.get('analysis', {}),  # This contains the categories structure
+                            'media': item.get('media', {}),
+                            'media_metadata': item.get('media_metadata', {}),
+                            'created_date': item.get('indexed_at', '')[:10] if item.get('indexed_at') else '',
+                            'created_time': item.get('indexed_at', '')[11:16] if item.get('indexed_at') else ''
+                        }
+                        reports_data.append(report_data)
+                    
+                    logger.info(f"✅ Dashboard using SQLite data: {len(reports_data)} reports")
+                    
                 except Exception as e:
-                    logger.warning(f"Skipping file {file_path.name}: {e}")
-                    continue
+                    logger.error(f"❌ SQLite dashboard data failed: {e}")
+                    # Fall back to file-based approach
+                    reports_data = []
+            
+            # Fallback to file-based approach if SQLite unavailable or failed
+            if not reports_data:
+                logger.info("🔄 Dashboard falling back to file-based data")
+                # Get report files from multiple directories (JSON preferred, HTML legacy)
+                report_dirs = [
+                    Path('./data/reports'),  # JSON reports (primary)
+                    Path('./exports'),       # HTML reports (legacy)
+                    Path('.')               # Current directory (legacy)
+                ]
+                
+                all_report_files = []
+                
+                for report_dir in report_dirs:
+                    if report_dir.exists():
+                        # Get JSON reports (preferred)
+                        json_files = [f for f in report_dir.glob('*.json') 
+                                       if not f.name.startswith('._')
+                                       and not f.name.startswith('.')]
+                        all_report_files.extend(json_files)
+                        
+                        # Get HTML reports (legacy support)
+                        html_files = [f for f in report_dir.glob('*.html') 
+                                       if f.name not in ['dashboard_template.html', 'report_template.html']
+                                       and not f.name.startswith('._')
+                                       and not f.name.startswith('.')]
+                        all_report_files.extend(html_files)
+                
+                # Remove duplicates and sort by modification time (newest first)
+                unique_files = list(set(all_report_files))
+                sorted_files = sorted(unique_files, key=lambda f: f.stat().st_mtime, reverse=True)
+                
+                # Extract metadata from all reports
+                for file_path in sorted_files:
+                    try:
+                        metadata = extract_report_metadata(file_path)
+                        reports_data.append(metadata)
+                    except Exception as e:
+                        logger.warning(f"Skipping file {file_path.name}: {e}")
+                        continue
             
             # Load dashboard template
             # Try V3 template first, fallback to original
