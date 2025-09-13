@@ -283,6 +283,18 @@ class AudioDashboard {
         document.addEventListener('keydown', (e) => this.handleKeyboard(e));
         this.audioElement.addEventListener('volumechange', () => this.updateMuteIcon());
 
+        // Delegated filter "only" button handlers  
+        document.addEventListener('click', (e) => {
+            const onlyBtn = e.target.closest('[data-filter-only]');
+            if (!onlyBtn) return;
+            e.stopPropagation();
+            const filterType = onlyBtn.dataset.filterOnly;
+            const filterValue = onlyBtn.dataset.filterOnlyValue;
+            const parentCategory = onlyBtn.dataset.parentCategory || null;
+            console.log('🔍 Only button clicked:', { filterType, filterValue, parentCategory });
+            this.applyFilterFromChip(filterType, filterValue, parentCategory);
+        });
+
         // Delegated card actions
         if (this.contentGrid) {
             this.contentGrid.addEventListener('click', (e) => this.onClickCardAction(e));
@@ -516,7 +528,11 @@ class AudioDashboard {
                             </button>
                         ` : '<div class="w-5"></div>'}
                         <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
-                        <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
+                        <span class="text-xs text-slate-400 dark:text-slate-500 mr-2">${item.count}</span>
+                        <button class="filter-only-btn text-xs text-audio-600 hover:text-audio-700 hover:underline" 
+                                data-filter-only="category" 
+                                data-filter-only-value="${this.escapeHtml(item.value)}"
+                                title="Show only ${this.escapeHtml(item.value)}">only</button>
                     </div>
                     ${hasSubcategories ? `
                         <div id="${categoryId}" class="subcategory-list ml-8 mt-1 hidden">
@@ -529,7 +545,12 @@ class AudioDashboard {
                                            checked
                                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                                     <span class="text-sm text-slate-600 dark:text-slate-300 flex-1">${this.escapeHtml(sub.value)}</span>
-                                    <span class="text-xs text-slate-400 dark:text-slate-500">${sub.count}</span>
+                                    <span class="text-xs text-slate-400 dark:text-slate-500 mr-2">${sub.count}</span>
+                                    <button class="filter-only-btn text-xs text-audio-600 hover:text-audio-700 hover:underline" 
+                                            data-filter-only="subcategory" 
+                                            data-filter-only-value="${this.escapeHtml(sub.value)}"
+                                            data-parent-category="${this.escapeHtml(item.value)}"
+                                            title="Show only ${this.escapeHtml(sub.value)}">only</button>
                                 </label>
                             `).join('')}
                         </div>
@@ -541,15 +562,21 @@ class AudioDashboard {
         
         // Create simple filter HTML for non-hierarchical items
         const createFilterHTML = (item) => `
-            <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
-                <input type="checkbox" 
-                       value="${this.escapeHtml(item.value)}" 
-                       data-filter="${filterType}"
-                       checked
-                       class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
-                <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
-                <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
-            </label>
+            <div class="flex items-center space-x-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
+                <label class="flex items-center space-x-2 cursor-pointer flex-1">
+                    <input type="checkbox" 
+                           value="${this.escapeHtml(item.value)}" 
+                           data-filter="${filterType}"
+                           checked
+                           class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
+                    <span class="text-sm text-slate-700 dark:text-slate-200">${this.escapeHtml(item.value)}</span>
+                    <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
+                </label>
+                <button class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors cursor-pointer" 
+                        data-filter-only="${filterType}" 
+                        data-filter-value="${this.escapeHtml(item.value)}"
+                        title="Show only ${this.escapeHtml(item.value)}">only</button>
+            </div>
         `;
         
         // Choose the appropriate HTML creator
