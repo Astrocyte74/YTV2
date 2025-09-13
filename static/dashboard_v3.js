@@ -574,7 +574,7 @@ class AudioDashboard {
                 </label>
                 <button class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors cursor-pointer" 
                         data-filter-only="${filterType}" 
-                        data-filter-value="${this.escapeHtml(item.value)}"
+                        data-filter-only-value="${this.escapeHtml(item.value)}"
                         title="Show only ${this.escapeHtml(item.value)}">only</button>
             </div>
         `;
