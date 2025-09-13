@@ -1400,7 +1400,7 @@ class AudioDashboard {
 
     createContentCard(item) {
         const duration = this.formatDuration(item.duration_seconds || 0);
-        const { categories, subcats, subcatPairs } = this.extractCatsAndSubcats(item);
+        
         const hasAudio = item.media?.has_audio;
         const href = `/${item.file_stem}.json?v=2`;
         const buttonDurations = this.getButtonDurations(item);
