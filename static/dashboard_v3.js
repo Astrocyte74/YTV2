@@ -197,18 +197,16 @@ class AudioDashboard {
         const clearAllCategories = document.getElementById('clearAllCategories');
         if (selectAllCategories) {
             selectAllCategories.addEventListener('click', () => {
-                document.querySelectorAll('input[data-filter="category"]').forEach(cb => {
-                    cb.checked = true;
-                });
+                document.querySelectorAll('input[data-filter="category"]').forEach(cb => { cb.checked = true; });
+                document.querySelectorAll('input[data-filter="subcategory"]').forEach(cb => { cb.checked = true; });
                 this.currentFilters = this.computeFiltersFromDOM();
                 this.loadContent();
             });
         }
         if (clearAllCategories) {
             clearAllCategories.addEventListener('click', () => {
-                document.querySelectorAll('input[data-filter="category"]').forEach(cb => {
-                    cb.checked = false;
-                });
+                document.querySelectorAll('input[data-filter="category"]').forEach(cb => { cb.checked = false; });
+                document.querySelectorAll('input[data-filter="subcategory"]').forEach(cb => { cb.checked = false; });
                 this.currentFilters = this.computeFiltersFromDOM();
                 this.loadContent();
             });
@@ -736,6 +734,20 @@ class AudioDashboard {
 
         const noneSelected = (filters) =>
             !anySelected(filters);
+
+        // REQUIRE Category selection specifically (not any selection)
+        if (!this.searchQuery && (!facet.categories || facet.categories.length === 0)) {
+            this.currentItems = [];
+            this.renderContent([]);
+            this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
+            this.updateResultsInfo({ page: 1, size: 12, total_count: 0, total_pages: 0 });
+            this.contentGrid.innerHTML = `
+                <div class="text-center py-12 text-slate-400">
+                    <div class="text-lg mb-2">Choose one or more categories</div>
+                    <div class="text-sm">Clear Categories = no categories selected → no results</div>
+                </div>`;
+            return;
+        }
 
         // Build effectiveFilters by treating "ALL selected" as no filter for that type
         const effectiveFilters = {};
