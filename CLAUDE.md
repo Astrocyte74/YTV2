@@ -170,6 +170,41 @@ sqlite3 ytv2_content.db
 - ✅ NAS processing pipeline working
 - ✅ SQLite database enhanced with multi-categories
 - ✅ Dashboard backend serving data correctly
-- ⚠️ Frontend display limiting categories (current issue)
+- ✅ Dashboard cards showing all subcategories (FIXED September 13, 2025)
+- ✅ Individual report pages showing subcategories (FIXED September 13, 2025)
 
-**Last Safe Commit**: 88e4dcf (September 12, 2025 8:10 PM)
+## Context Preservation Tips for Future Claude Sessions
+
+### Critical Architecture Files
+- **Main Template**: `dashboard_v3_template.html` (loads dashboard_v3.js)
+- **Main JavaScript**: `static/dashboard_v3.js` (the ONLY dashboard JS file)
+- **Main Server**: `telegram_bot.py` (dashboard-only mode, no Telegram)
+- **Database**: SQLite via `modules/sqlite_content_index.py`
+
+### Debugging Quick Reference
+```bash
+# Check which template is being used
+grep -r "dashboard_v3_template\|dashboard_template" telegram_bot.py
+
+# Check what JavaScript is loaded
+grep "dashboard.*js" dashboard_v3_template.html
+
+# Verify data format being sent to dashboard
+curl "https://ytv2-vy9k.onrender.com/api/reports?size=1" | jq '.reports[0].analysis'
+
+# Check console for debug logs
+# Search for: "Multi-category Debug:" in browser dev tools
+```
+
+### Common Pitfalls Avoided
+1. ❌ **Wrong File**: Don't edit `dashboard.js` - it's not loaded
+2. ❌ **Wrong Template**: Dashboard uses `dashboard_v3_template.html`
+3. ❌ **Data Format**: SQLite uses `analysis.category` (array), `analysis.subcategory` (string)
+4. ❌ **File Paths**: CSS/JS served without `static/` prefix in template URLs
+
+**Last Safe Commit**: 79c0223 (September 13, 2025) - Dashboard cards subcategory display fixed
+
+### Latest Work (September 13, 2025)
+- ✅ **Individual Report Pages**: Added subcategory display to report_v2.html template
+- ✅ **Backend Enhancement**: Modified to_report_v2_dict() to extract subcategory_pairs
+- ✅ **Template Integration**: Added purple subcategory badges between Categories and Key Topics sections

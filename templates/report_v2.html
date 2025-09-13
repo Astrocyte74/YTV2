@@ -190,6 +190,20 @@
             </div>
             {% endif %}
             
+            {% if subcategory_pairs and subcategory_pairs|length > 0 %}
+            <div class="flex items-center gap-2 lg:col-span-2">
+              <span class="text-slate-400">📋</span>
+              <span class="text-slate-600 dark:text-slate-400">Subcategories</span>
+              <div class="flex flex-wrap gap-1">
+                {% for pair in subcategory_pairs %}
+                  <span class="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                    {{ pair[1] }}
+                  </span>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+            
             {% if key_topics and key_topics|length > 0 %}
             <div class="flex items-center gap-2 lg:col-span-2">
               <span class="text-slate-400">🔖</span>
