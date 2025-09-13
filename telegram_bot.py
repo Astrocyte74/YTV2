@@ -1599,6 +1599,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 active_filters['content_type'] = query_params['content_type']
             if 'complexity' in query_params:
                 active_filters['complexity'] = query_params['complexity']
+            if 'channel' in query_params:
+                active_filters['channel'] = query_params['channel']
             if 'has_audio' in query_params:
                 # Convert string to boolean
                 has_audio_str = query_params['has_audio'][0].lower()
@@ -1633,7 +1635,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             filters = {}
             
             # Filter parameters with validation
-            for param in ['source', 'language', 'category', 'content_type', 'complexity']:
+            for param in ['source', 'language', 'category', 'channel', 'content_type', 'complexity']:
                 if param in query_params:
                     # Limit array size and sanitize strings
                     values = query_params[param][:10]  # Max 10 items

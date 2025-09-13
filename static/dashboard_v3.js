@@ -71,6 +71,7 @@ class AudioDashboard {
         this.searchInput = document.getElementById('searchInput');
         this.sortToolbar = document.getElementById('sortToolbar');
         this.categoryFilters = document.getElementById('categoryFilters');
+        this.channelFilters = document.getElementById('channelFilters');
         this.contentTypeFilters = document.getElementById('contentTypeFilters');
         this.complexityFilters = document.getElementById('complexityFilters');
         this.languageFilters = document.getElementById('languageFilters');
@@ -207,6 +208,24 @@ class AudioDashboard {
             clearAllCategories.addEventListener('click', () => {
                 document.querySelectorAll('input[data-filter="category"]').forEach(cb => { cb.checked = false; });
                 document.querySelectorAll('input[data-filter="subcategory"]').forEach(cb => { cb.checked = false; });
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.loadContent();
+            });
+        }
+
+        // Select All / Clear All buttons for Channels
+        const selectAllChannels = document.getElementById('selectAllChannels');
+        const clearAllChannels = document.getElementById('clearAllChannels');
+        if (selectAllChannels) {
+            selectAllChannels.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="channel"]').forEach(cb => { cb.checked = true; });
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.loadContent();
+            });
+        }
+        if (clearAllChannels) {
+            clearAllChannels.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="channel"]').forEach(cb => { cb.checked = false; });
                 this.currentFilters = this.computeFiltersFromDOM();
                 this.loadContent();
             });
@@ -408,6 +427,7 @@ class AudioDashboard {
             const filters = await response.json();
             
             this.renderFilterSection(filters.category, this.categoryFilters, 'category');
+            this.renderFilterSection(filters.channel, this.channelFilters, 'channel');
             this.renderFilterSection(filters.content_type, this.contentTypeFilters, 'content_type');
             this.renderFilterSection(filters.complexity_level, this.complexityFilters, 'complexity');
             this.renderLanguageFilters(filters.language || []);
@@ -437,6 +457,17 @@ class AudioDashboard {
             });
         }
         
+        // Show more channels toggle
+        const toggleMoreChannels = document.getElementById('toggleMoreChannels');
+        const showMoreChannels = document.getElementById('showMoreChannels');
+        if (toggleMoreChannels && showMoreChannels) {
+            toggleMoreChannels.addEventListener('click', () => {
+                const isHidden = showMoreChannels.classList.contains('hidden');
+                showMoreChannels.classList.toggle('hidden');
+                toggleMoreChannels.textContent = isHidden ? 'Show less' : 'Show more';
+            });
+        }
+
         // Show more content types toggle
         const toggleMoreContentTypes = document.getElementById('toggleMoreContentTypes');
         const showMoreContentTypes = document.getElementById('showMoreContentTypes');
@@ -1440,7 +1471,7 @@ class AudioDashboard {
                                 </h3>
                                 <div class="text-sm text-slate-500 dark:text-slate-300 mt-0.5 line-clamp-1 flex items-center gap-2">
                                     <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-200 text-slate-700 text-[10px]">${channelInitial}</span>
-                                    <span class="truncate">${this.escapeHtml(item.channel || '')}</span>
+                                    <button class="truncate hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-value="${this.escapeHtml(item.channel || '')}" title="Filter by ${this.escapeHtml(item.channel || '')}">${this.escapeHtml(item.channel || '')}</button>
                                     ${this.renderLanguageChip(item.analysis?.language)}
                                     ${isPlaying ? '<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-audio-100 text-audio-700 whitespace-nowrap">Now Playing</span>' : ''}
                                 </div>
@@ -1538,7 +1569,7 @@ class AudioDashboard {
                 <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 line-clamp-2">${this.escapeHtml(item.title)}</h3>
                 <div class="text-xs text-slate-500 dark:text-slate-300 mt-1 line-clamp-1 flex items-center gap-2">
                     <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-slate-700 text-[9px]">${channelInitial}</span>
-                    ${this.escapeHtml(item.channel || '')}
+                    <button class="hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-value="${this.escapeHtml(item.channel || '')}" title="Filter by ${this.escapeHtml(item.channel || '')}">${this.escapeHtml(item.channel || '')}</button>
                     ${this.renderLanguageChip(item.analysis?.language)}
                     ${isPlaying ? '<span class="ml-2 text-[10px] px-1 py-0.5 rounded bg-audio-100 text-audio-700">Now Playing</span>' : ''}
                 </div>
