@@ -200,7 +200,8 @@ class AudioDashboard {
                 document.querySelectorAll('input[data-filter="category"]').forEach(cb => {
                     cb.checked = true;
                 });
-                this.handleFilterChange();
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.loadContent();
             });
         }
         if (clearAllCategories) {
@@ -208,7 +209,8 @@ class AudioDashboard {
                 document.querySelectorAll('input[data-filter="category"]').forEach(cb => {
                     cb.checked = false;
                 });
-                this.handleFilterChange();
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.loadContent();
             });
         }
         
@@ -220,7 +222,8 @@ class AudioDashboard {
                 document.querySelectorAll('input[data-filter="content_type"]').forEach(cb => {
                     cb.checked = true;
                 });
-                this.handleFilterChange();
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.loadContent();
             });
         }
         if (clearAllContentTypes) {
@@ -228,7 +231,8 @@ class AudioDashboard {
                 document.querySelectorAll('input[data-filter="content_type"]').forEach(cb => {
                     cb.checked = false;
                 });
-                this.handleFilterChange();
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.loadContent();
             });
         }
         
@@ -717,9 +721,14 @@ class AudioDashboard {
             // if sel.length === allValues.length → treat as unfiltered for this type
         });
 
+        // Quick sanity logs (temporarily)
+        console.debug('DOM->currentFilters:', this.currentFilters);
+        console.debug('effectiveFilters:', effectiveFilters);
+
         // ✅ Require selection model:
         // none selected across ALL types → show nothing and stop
         if (noneSelected(this.currentFilters) && !this.searchQuery) {
+            console.debug('Hit empty state: no filters selected');
             this.currentItems = [];
             this.renderContent([]);
             this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
@@ -736,6 +745,8 @@ class AudioDashboard {
         Object.entries(effectiveFilters).forEach(([key, values]) => {
             values.forEach(v => params.append(key, v));
         });
+        
+        console.debug('Final URL params:', params.toString());
         
         // Add pagination and sorting
         params.append('page', this.currentPage.toString());
