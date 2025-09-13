@@ -1490,6 +1490,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_config()
             elif path == '/api/refresh':
                 self.serve_api_refresh()
+            elif path == '/api/backup':
+                self.serve_api_backup()
+            elif path.startswith('/api/backup/'):
+                self.serve_backup_file()
             else:
                 self.send_error(404, "API endpoint not found")
         except Exception as e:
@@ -1838,6 +1842,93 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps(error_data).encode())
+    
+    def serve_api_backup(self):
+        """Create and serve database backup"""
+        try:
+            # Import the backup functionality
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("backup_database", "backup_database.py")
+            backup_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(backup_module)
+            
+            # Create backup
+            result = backup_module.create_database_backup()
+            
+            if result['success']:
+                # Return backup info with download links
+                backup_path = Path(result['backup_path'])
+                info_path = Path(result['info_path'])
+                
+                response_data = {
+                    "status": "success",
+                    "message": "Database backup created successfully",
+                    "backup_info": result['statistics'],
+                    "downloads": {
+                        "database": f"/api/backup/{backup_path.name}",
+                        "metadata": f"/api/backup/{info_path.name}"
+                    },
+                    "timestamp": datetime.now().isoformat()
+                }
+            else:
+                response_data = {
+                    "status": "error",
+                    "message": "Backup creation failed",
+                    "error": result.get('error', 'Unknown error'),
+                    "timestamp": datetime.now().isoformat()
+                }
+            
+            self.send_response(200 if result['success'] else 500)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data, indent=2).encode())
+            
+        except Exception as e:
+            logger.error(f"Error creating backup: {e}")
+            error_data = {"error": "Failed to create backup", "message": str(e)}
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(error_data).encode())
+    
+    def serve_backup_file(self):
+        """Serve backup files for download"""
+        try:
+            # Extract filename from path
+            path_parts = self.path.split('/')
+            if len(path_parts) < 4:
+                self.send_error(404, "Invalid backup file path")
+                return
+                
+            filename = path_parts[-1]
+            file_path = Path("data") / filename
+            
+            # Security check - only allow backup files
+            if not (filename.startswith(('ytv2_backup_', 'backup_info_')) and 
+                   filename.endswith(('.db', '.json'))):
+                self.send_error(403, "Access denied")
+                return
+            
+            if not file_path.exists():
+                self.send_error(404, "Backup file not found")
+                return
+            
+            # Serve the file
+            content_type = 'application/octet-stream' if filename.endswith('.db') else 'application/json'
+            
+            self.send_response(200)
+            self.send_header('Content-Type', content_type)
+            self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
+            self.send_header('Content-Length', str(file_path.stat().st_size))
+            self.end_headers()
+            
+            with open(file_path, 'rb') as f:
+                self.wfile.write(f.read())
+                
+        except Exception as e:
+            logger.error(f"Error serving backup file: {e}")
+            self.send_error(500, "Failed to serve backup file")
     
     def handle_delete_reports(self):
         """Handle POST request to delete selected reports"""
