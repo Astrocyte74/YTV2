@@ -1399,10 +1399,17 @@ class AudioDashboard {
 
     createContentCard(item) {
         const duration = this.formatDuration(item.duration_seconds || 0);
-        const categories = item.analysis?.category?.slice(0, 2) || ['General'];
+        const categoriesAll = Array.isArray(item.analysis?.category) ? item.analysis.category : (item.analysis?.category ? [item.analysis.category] : []);
+        const categories = categoriesAll.slice(0, 3);
+        const subcatsAll = Array.isArray(item.analysis?.subcategories) ? item.analysis.subcategories : (item.analysis?.subcategory ? [item.analysis.subcategory] : []);
+        const subcats = subcatsAll; // show all available subcategories
         const hasAudio = item.media?.has_audio;
         const href = `/${item.file_stem}.json?v=2`;
         const buttonDurations = this.getButtonDurations(item);
+        const categoriesAll = Array.isArray(item.analysis?.category) ? item.analysis.category : (item.analysis?.category ? [item.analysis.category] : []);
+        const categories = categoriesAll.slice(0, 3);
+        const subcatsAll = Array.isArray(item.analysis?.subcategories) ? item.analysis.subcategories : (item.analysis?.subcategory ? [item.analysis.subcategory] : []);
+        const subcats = subcatsAll;
         const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds) ? item.media_metadata.mp3_duration_seconds : (item.duration_seconds || 0);
         const totalDur = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
             ? this.formatDuration(item.media_metadata.mp3_duration_seconds)
@@ -1439,13 +1446,17 @@ class AudioDashboard {
                                 <div class="text-sm text-slate-500 dark:text-slate-300 mt-0.5 line-clamp-1 flex items-center gap-2">
                                     <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-200 text-slate-700 text-[10px]">${channelInitial}</span>
                                     <span class="truncate">${this.escapeHtml(item.channel || '')}</span>
+                                    ${this.renderLanguageChip(item.analysis?.language)}
                                     ${isPlaying ? '<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-audio-100 text-audio-700 whitespace-nowrap">Now Playing</span>' : ''}
                                 </div>
-                                <div class="mt-1 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-slate-500 dark:text-slate-400 flex-wrap">
-                                    <span class="whitespace-nowrap">${item.analysis?.complexity_level || 'Intermediate'}</span>
-                                    <span class="hidden sm:inline">•</span>
-                                    <span class="whitespace-nowrap">${item.analysis?.language || 'en'}</span>
-                                </div>
+                                ${categories.length ? `
+                                  <div class=\"mt-2 flex items-center gap-1.5 flex-wrap\">
+                                    ${categories.map(cat => this.renderChip(cat, 'category')).join('')}
+                                  </div>` : ''}
+                                ${subcats.length ? `
+                                  <div class=\"mt-1 flex items-center gap-1.5 flex-wrap\">
+                                    ${subcats.map(sc => this.renderChip(sc, 'subcategory')).join('')}
+                                  </div>` : ''}
                             </div>
                             <div class="absolute top-3 right-3 z-20">
                               <button class="p-2 rounded-md hover:bg-slate-200/60 dark:hover:bg-slate-700/60" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
@@ -1550,32 +1561,15 @@ class AudioDashboard {
                 <div class="text-xs text-slate-500 dark:text-slate-300 mt-1 line-clamp-1 flex items-center gap-2">
                     <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-slate-700 text-[9px]">${channelInitial}</span>
                     ${this.escapeHtml(item.channel || '')}
+                    ${this.renderLanguageChip(item.analysis?.language)}
                     ${isPlaying ? '<span class="ml-2 text-[10px] px-1 py-0.5 rounded bg-audio-100 text-audio-700">Now Playing</span>' : ''}
                 </div>
-                <div class="mt-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                    <span>${item.analysis?.complexity_level || 'Intermediate'}</span>
-                    <span>•</span>
-                    <span>${item.analysis?.language || 'en'}</span>
-                </div>
-                <!-- Category chips for grid view -->
-                <div class="mt-2 flex flex-wrap gap-1">
-                    ${categories.map(cat => `
-                        <button class="relative z-10 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-audio-100 dark:bg-slate-700 text-audio-800 dark:text-slate-300 hover:bg-audio-200 dark:hover:bg-slate-600 transition-all cursor-pointer hover:scale-105 active:scale-95" 
-                                data-filter-chip="category" 
-                                data-filter-value="${this.escapeHtml(cat)}"
-                                title="Click to filter by ${this.escapeHtml(cat)}">
-                            ${this.escapeHtml(cat)}
-                        </button>
-                    `).join('')}
-                    ${item.analysis?.subcategory ? `
-                        <button class="relative z-10 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-all cursor-pointer hover:scale-105 active:scale-95" 
-                                data-filter-chip="subcategory" 
-                                data-filter-value="${this.escapeHtml(item.analysis.subcategory)}"
-                                title="Click to filter by ${this.escapeHtml(item.analysis.subcategory)}">
-                            ${this.escapeHtml(item.analysis.subcategory)}
-                        </button>
-                    ` : ''}
-                </div>
+                ${categories.length ? `
+                  <div class=\"mt-2 flex flex-wrap gap-1\">${categories.map(cat => this.renderChip(cat, 'category', true)).join('')}</div>
+                ` : ''}
+                ${subcats.length ? `
+                  <div class=\"mt-1 flex flex-wrap gap-1\">${subcats.map(sc => this.renderChip(sc, 'subcategory', true)).join('')}</div>
+                ` : ''}
                 <div class="mt-2 flex items-center gap-1.5 px-3 pb-2">
                     <button class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors" data-action="read">
                         <span>Read</span>
@@ -1989,6 +1983,33 @@ class AudioDashboard {
         if (wasPlaying !== this.isPlaying) {
             this.updatePlayButton();
         }
+    }
+
+    // UI helpers
+    getLangFlag(lang) {
+        const code = String(lang || '').toLowerCase();
+        const map = {
+            en: '🇬🇧', fr: '🇫🇷', es: '🇪🇸', de: '🇩🇪', it: '🇮🇹', pt: '🇵🇹',
+            ru: '🇷🇺', ja: '🇯🇵', zh: '🇨🇳', ko: '🇰🇷', hi: '🇮🇳', nl: '🇳🇱',
+            sv: '🇸🇪', no: '🇳🇴', da: '🇩🇰', fi: '🇫🇮', pl: '🇵🇱', tr: '🇹🇷'
+        };
+        return map[code] || '';
+    }
+
+    renderLanguageChip(lang) {
+        if (!lang) return '';
+        const flag = this.getLangFlag(lang);
+        const label = flag ? `${flag}` : this.escapeHtml(lang);
+        return `<span class="inline-flex items-center text-[11px] px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200">${label}</span>`;
+    }
+
+    renderChip(text, type = 'category', small = false) {
+        const base = small ? 'text-[10px] px-2 py-0.5' : 'text-xs px-2.5 py-0.5';
+        const color = type === 'subcategory'
+            ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300'
+            : 'bg-audio-100 dark:bg-slate-700 text-audio-800 dark:text-slate-300';
+        const t = this.escapeHtml(text || '');
+        return `<button class="relative z-10 inline-flex items-center ${base} rounded-full font-medium ${color} hover:opacity-90 transition-all cursor-pointer" data-filter-chip="${type}" data-filter-value="${t}" title="Click to filter by ${t}">${t}</button>`;
     }
 
     updateNowPlayingPreview() {
