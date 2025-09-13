@@ -3,6 +3,68 @@
  * Phase 3 implementation with integrated audio player and modern UX
  */
 
+// Subcategory to parent category mapping (authoritative source from youtube_summarizer.py)
+const SUBCATEGORY_PARENTS = {
+    // Education subcategories
+    "Academic Subjects": "Education",
+    "Online Learning": "Education", 
+    "Tutorials & Courses": "Education",
+    "Teaching Methods": "Education",
+    "Educational Technology": "Education",
+    "Student Life": "Education",
+    
+    // Technology subcategories  
+    "Programming & Software Development": "Technology",
+    "Web Development": "Technology",
+    "Mobile Development": "Technology", 
+    "DevOps & Infrastructure": "Technology",
+    "Databases & Data Science": "Technology",
+    "Cybersecurity": "Technology",
+    "Tech Reviews & Comparisons": "Technology",
+    "Software Tutorials": "Technology",
+    "Tech News & Trends": "Technology",
+    
+    // AI Software Development subcategories
+    "Model Selection & Evaluation": "AI Software Development",
+    "Prompt Engineering & RAG": "AI Software Development",
+    "Training & Fine-Tuning": "AI Software Development", 
+    "Deployment & Serving": "AI Software Development",
+    "Agents & MCP/Orchestration": "AI Software Development",
+    "APIs & SDKs": "AI Software Development",
+    "Data Engineering & ETL": "AI Software Development",
+    "Testing & Observability": "AI Software Development", 
+    "Security & Safety": "AI Software Development",
+    "Cost Optimisation": "AI Software Development",
+    
+    // History subcategories
+    "Ancient Civilizations": "History",
+    "Medieval History": "History",
+    "Modern History": "History",
+    "Cultural Heritage": "History", 
+    "Historical Analysis": "History",
+    "Biographies": "History",
+    
+    // WWII subcategories  
+    "Causes & Prelude": "World War II (WWII)",
+    "European Theatre": "World War II (WWII)",
+    "Pacific Theatre": "World War II (WWII)",
+    "Home Front & Society": "World War II (WWII)",
+    "Technology & Weapons": "World War II (WWII)",
+    "Intelligence & Codebreaking": "World War II (WWII)",
+    "Holocaust & War Crimes": "World War II (WWII)",
+    "Diplomacy & Conferences (Yalta, Potsdam)": "World War II (WWII)",
+    "Biographies & Commanders": "World War II (WWII)",
+    "Aftermath & Reconstruction": "World War II (WWII)",
+    
+    // Business subcategories
+    "Industry Analysis": "Business",
+    "Career Development": "Business",
+    
+    // General subcategories
+    "Miscellaneous": "General",
+    "Other": "General"
+};
+
 class AudioDashboard {
     constructor() {
         this.currentAudio = null;
@@ -2086,11 +2148,18 @@ class AudioDashboard {
             : (item?.analysis?.subcategory ? [item.analysis.subcategory] : []);
         const legacyPairs = [];
         if (categories.length && legacySubs.length) {
-            // Create pairs for each category with each subcategory
-            for (const category of categories) {
-                for (const subcategory of legacySubs) {
-                    if (subcategory && !categories.includes(subcategory)) {
-                        legacyPairs.push([category, subcategory]);
+            // Smart pairing: only pair subcategories with their correct parent category
+            for (const subcategory of legacySubs) {
+                if (subcategory && !categories.includes(subcategory)) {
+                    // Find the correct parent category for this subcategory
+                    const correctParent = SUBCATEGORY_PARENTS[subcategory];
+                    
+                    if (correctParent && categories.includes(correctParent)) {
+                        // Pair with correct parent if it's in the categories list
+                        legacyPairs.push([correctParent, subcategory]);
+                    } else if (categories.length > 0) {
+                        // Fall back to first category if correct parent not found/available
+                        legacyPairs.push([categories[0], subcategory]);
                     }
                 }
             }
