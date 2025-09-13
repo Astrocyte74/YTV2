@@ -1494,11 +1494,11 @@ class AudioDashboard {
         const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
         const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
         const buttonDurations = this.getButtonDurations(item);
+        const { categories, subcats, subcatPairs } = this.extractCatsAndSubcats(item);
         const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds) ? item.media_metadata.mp3_duration_seconds : (item.duration_seconds || 0);
         const totalDur = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
             ? this.formatDuration(item.media_metadata.mp3_duration_seconds)
             : (item.duration_seconds ? this.formatDuration(item.duration_seconds) : '');
-        const categories = item.analysis?.category?.slice(0, 2) || ['General'];
         return `
         <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-has-audio="${(item.media && item.media.has_audio) ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative cursor-pointer bg-white/80 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
             <div class="relative aspect-video bg-slate-100">
