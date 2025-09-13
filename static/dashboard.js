@@ -2030,7 +2030,19 @@ class AudioDashboard {
             return true;
         });
         const subcats = Array.from(new Set(subcatPairs.map(([, s]) => s)));
-
+        
+        // Debug logging for XAI video
+        if (item.title && item.title.toLowerCase().includes('xai')) {
+            console.log('XAI Debug:', {
+                title: item.title,
+                categories,
+                legacySubs,
+                legacyPairs,
+                subcatPairs,
+                subcats
+            });
+        }
+        
         return { categories, subcats, subcatPairs };
     }
 
