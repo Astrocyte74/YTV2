@@ -2173,7 +2173,28 @@ class AudioDashboard {
         const catsLegacy = Array.isArray(item?.analysis?.category)
             ? item.analysis.category
             : (item?.analysis?.category ? [item.analysis.category] : []);
-        const categories = Array.from(new Set([...catsRich, ...catsLegacy])).slice(0, 3);
+        
+        // CRITICAL FIX: Ensure categories is always an array of strings, never a string with commas
+        const categories = Array.from(new Set([...catsRich, ...catsLegacy]))
+            .flatMap(cat => {
+                // If we get a comma-separated string, split it into separate categories
+                if (typeof cat === 'string' && cat.includes(',')) {
+                    return cat.split(',').map(c => c.trim()).filter(Boolean);
+                }
+                return [cat];
+            })
+            .filter(Boolean)
+            .slice(0, 3);
+
+        // Debug logging for troubleshooting
+        if (categories.length > 1) {
+            console.log('Multi-category Debug:', {
+                title: item.title,
+                originalCategory: item?.analysis?.category,
+                originalCategories: item?.analysis?.categories,
+                processedCategories: categories
+            });
+        }
 
         // Build [parent, subcat] pairs from rich
         const pairsRich = rich.flatMap(c => {
