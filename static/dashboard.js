@@ -2006,13 +2006,21 @@ class AudioDashboard {
             return (arr || []).map(sc => [parent, sc]);
         });
 
-        // Legacy fallbacks: attach to first category (if any)
+        // Legacy fallbacks: attach subcategory to ALL categories (not just first)
         const legacySubs = Array.isArray(item?.analysis?.subcategories)
             ? item.analysis.subcategories
             : (item?.analysis?.subcategory ? [item.analysis.subcategory] : []);
-        const legacyPairs = (categories.length ? legacySubs : [])
-            .filter(sc => sc && !categories.includes(sc))
-            .map(sc => [categories[0], sc]);
+        const legacyPairs = [];
+        if (categories.length && legacySubs.length) {
+            // Create pairs for each category with each subcategory
+            for (const category of categories) {
+                for (const subcategory of legacySubs) {
+                    if (subcategory && !categories.includes(subcategory)) {
+                        legacyPairs.push([category, subcategory]);
+                    }
+                }
+            }
+        }
 
         const seen = new Set();
         const subcatPairs = [...pairsRich, ...legacyPairs].filter(([p, s]) => {
