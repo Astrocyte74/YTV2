@@ -48,10 +48,11 @@ This is the **dashboard/web interface component** of YTV2 that:
 - **Deployment**: Render with MCP access for database operations
 
 ### Frontend
-- **Template**: `dashboard_template.html` with glass morphism UI
-- **Styling**: `static/dashboard.css` - Modern responsive design
-- **Interactivity**: `static/dashboard.js` - Audio player and filtering
+- **Template**: `dashboard_v3_template.html` with glass morphism UI (ACTIVE VERSION)
+- **Styling**: `static/dashboard_v3.css` - Modern responsive design
+- **Interactivity**: `static/dashboard_v3.js` - Audio player and filtering (ONLY JS FILE LOADED)
 - **Audio Integration**: Embedded player with metadata display
+- **Legacy Files**: `dashboard_template.html` and `static/dashboard.js` were removed to prevent confusion
 
 ## Database Structure (SQLite)
 
@@ -68,15 +69,21 @@ Recent backfill work (September 2025) enhanced the database with:
 2. **Backfill Enhancement**: Gemma 3:12b (via Ollama) for category classification
 3. **Storage**: All data stored in SQLite with JSON fields for complex structures
 
-## Current Challenge
+## Dashboard Features (Completed)
 
-**Issue**: Dashboard cards on Render (https://ytv2-vy9k.onrender.com/) only display:
-- First 2 categories (out of potentially 3)
-- First 1 subcategory (out of multiple per category)
+**Multi-Category & Subcategory Display**: ✅ FULLY IMPLEMENTED
+- Dashboard cards show ALL categories (up to 3) for each video
+- Each category displays its own subcategories as separate chips
+- Individual report pages show subcategories as purple badges
+- Consistent display across list view, grid view, and report pages
 
-**Expected**: Full display of all categories and subcategories like:
-- "Tesla Autopilot" → **AI Software Development** + **Technology** + **Business**
-- Each category showing its own subcategories: ['Security & Safety'] + ['Tech Reviews'] + ['Industry Analysis']
+**Advanced Filtering System**: ✅ FULLY IMPLEMENTED  
+- **Categories**: Hierarchical with subcategory support, show more toggle
+- **Channels**: Clickable channel names, sorted by frequency, show more toggle
+- **Content Types**: Tutorial, Discussion, Review, etc.
+- **Complexity**: Beginner, Intermediate, Advanced
+- **Languages**: Multi-language support
+- **Sort Options**: Recently Added, Video Newest (default), with show more for advanced sorting
 
 ## Environment Configuration
 
@@ -103,17 +110,21 @@ RENDER_DASHBOARD_URL=https://your-app.onrender.com
 ### Essential Dashboard Files
 ```
 YTV2-Dashboard/
-├── telegram_bot.py          # Web server (dashboard-only mode)
-├── dashboard_template.html  # Main UI template
-├── modules/                 # Dashboard utilities
-│   └── sqlite_content_index.py # SQLite database interface
-├── static/                  # Frontend assets
-│   ├── dashboard.css       # UI styling
-│   └── dashboard.js        # Interactive features
-├── data/                   # Local data (if any)
-├── exports/               # Audio files
-└── requirements.txt       # Python dependencies
+├── telegram_bot.py              # Web server (dashboard-only mode)
+├── dashboard_v3_template.html   # Main UI template (ACTIVE VERSION)
+├── templates/                   # Report templates
+│   └── report_v2.html          # Individual report page template
+├── modules/                     # Dashboard utilities
+│   └── sqlite_content_index.py # SQLite database interface (WITH CHANNEL SUPPORT)
+├── static/                      # Frontend assets
+│   ├── dashboard_v3.css        # UI styling (ACTIVE VERSION)
+│   └── dashboard_v3.js         # Interactive features (ONLY JS FILE LOADED)
+├── data/                       # Local data (if any)  
+├── exports/                    # Audio files
+└── requirements.txt            # Python dependencies
 ```
+
+**CRITICAL**: Only the `_v3` versions of files are active. Legacy files were removed to prevent confusion.
 
 ### Key Modules
 - **`modules/sqlite_content_index.py`**: SQLiteContentIndex class for database queries
@@ -166,12 +177,16 @@ sqlite3 ytv2_content.db
 - Perfect JSON output with categories→subcategories structure
 - Successfully uploaded enhanced database to Render
 
-### Architecture Status
+### Architecture Status (Updated September 13, 2025)
 - ✅ NAS processing pipeline working
-- ✅ SQLite database enhanced with multi-categories
+- ✅ SQLite database enhanced with multi-categories  
 - ✅ Dashboard backend serving data correctly
-- ✅ Dashboard cards showing all subcategories (FIXED September 13, 2025)
-- ✅ Individual report pages showing subcategories (FIXED September 13, 2025)
+- ✅ Dashboard cards showing all subcategories (FIXED)
+- ✅ Individual report pages showing subcategories (FIXED) 
+- ✅ Channel filtering system implemented (NEW)
+- ✅ Clickable channel names for instant filtering (NEW)
+- ✅ Reorganized Sort section with show more functionality (NEW)
+- ✅ Grid view error fixed (subcatPairs undefined) (FIXED)
 
 ## Context Preservation Tips for Future Claude Sessions
 
@@ -205,6 +220,354 @@ curl "https://ytv2-vy9k.onrender.com/api/reports?size=1" | jq '.reports[0].analy
 **Last Safe Commit**: 79c0223 (September 13, 2025) - Dashboard cards subcategory display fixed
 
 ### Latest Work (September 13, 2025)
-- ✅ **Individual Report Pages**: Added subcategory display to report_v2.html template
+
+#### Multi-Category Subcategory System (Session 1)
+- ✅ **Dashboard Cards**: Fixed extractCatsAndSubcats() in dashboard_v3.js to show subcategories for ALL categories
+- ✅ **Individual Report Pages**: Added subcategory display to report_v2.html template  
 - ✅ **Backend Enhancement**: Modified to_report_v2_dict() to extract subcategory_pairs
 - ✅ **Template Integration**: Added purple subcategory badges between Categories and Key Topics sections
+- ✅ **Grid View Fix**: Added missing extractCatsAndSubcats() call to createGridCard() function
+
+#### Channel Filtering & UI Improvements (Session 2)
+- ✅ **Channel Filter Sidebar**: Added between Categories and Content Type with All/Clear buttons
+- ✅ **Clickable Channel Names**: Both list and grid cards have clickable channel filter buttons
+- ✅ **Backend API Support**: Added channel parameter to /api/filters and /api/reports endpoints
+- ✅ **Database Integration**: Extended SQLiteContentIndex with channel filtering and facet generation  
+- ✅ **Sort Section Cleanup**: Reorganized to show only "Recently Added" and "Video Newest" by default
+- ✅ **Show More Consistency**: Applied show more pattern to additional sort options
+
+#### AI Processing Enhancement (NAS Component)
+- ✅ **Multi-Category Prompt**: Enhanced AI categorization prompt to encourage multiple categories
+- ✅ **Better Instructions**: Changed from "Choose 1-3 categories" to "Choose the 1-3 BEST categories that pertain to this summary"
+- ✅ **Preference for Multiple**: Added "When content covers multiple distinct areas, PREFER using multiple categories"
+
+**Last Safe Commit**: 5927206 (September 13, 2025) - Channel filtering and sort reorganization complete
+
+## Development Workflow & Architecture Deep Dive
+
+### ⚠️ CRITICAL: Git Workflow
+```bash
+# ALWAYS work from the correct directory 
+cd /Users/markdarby/projects/YTV2-Dashboard
+
+# This is the Dashboard component that deploys to Render
+# The NAS component is at /Volumes/Docker/YTV2/ (separate git repo)
+
+# Standard workflow:
+git add [specific files]
+git commit -m "message"  
+git push origin main  # Triggers automatic Render deployment
+```
+
+### Core Data Flow Architecture
+
+#### 1. SQLite Database Schema (Critical for Understanding)
+```sql
+-- Core content table 
+CREATE TABLE content (
+    video_id TEXT PRIMARY KEY,
+    title TEXT,
+    channel_name TEXT,  -- ⭐ NEW: Used for channel filtering
+    category TEXT,      -- JSON array: ["AI Software Development", "Technology"] 
+    subcategory TEXT,   -- Legacy single string
+    analysis TEXT,      -- ⭐ JSON: {categories: [{category: "X", subcategories: ["Y"]}]}
+    content_type TEXT,  -- Tutorial, Review, Discussion, etc.
+    complexity_level TEXT, -- Beginner, Intermediate, Advanced
+    language TEXT,
+    -- ... other fields
+);
+```
+
+#### 2. Multi-Category Data Format (Essential Understanding)
+```json
+// Rich format (NEW) - stored in analysis.categories
+{
+  "categories": [
+    {
+      "category": "AI Software Development", 
+      "subcategories": ["Security & Safety", "Testing"]
+    },
+    {
+      "category": "Technology",
+      "subcategories": ["Tech Reviews"]  
+    }
+  ]
+}
+
+// Legacy format (OLD) - still supported for backwards compatibility  
+{
+  "category": ["AI Software Development", "Technology"],  // Array in category field
+  "subcategory": "Security & Safety"  // Single string
+}
+```
+
+#### 3. Frontend Data Processing (Critical Function)
+```javascript
+// dashboard_v3.js - extractCatsAndSubcats() function
+// This function handles BOTH rich and legacy formats
+// Returns: { categories, subcats, subcatPairs }
+// subcatPairs format: [["AI Software Development", "Security & Safety"]]
+```
+
+### API Endpoints & Data Flow
+
+#### Key API Endpoints
+```bash
+GET /api/filters              # Returns available filter options with counts
+GET /api/reports?category=X&channel=Y&page=1&size=12  # Filtered reports
+GET /<stem>.json?v=2          # Individual report data
+POST /api/upload-database     # NAS sync endpoint  
+```
+
+#### Filter Parameter Support
+- `category[]`: Multiple categories (e.g., ?category=Technology&category=Business)
+- `channel[]`: Multiple channels (e.g., ?channel=WorldofAI&channel=TechReview)  
+- `content_type[]`: Tutorial, Review, Discussion, etc.
+- `complexity[]`: Beginner, Intermediate, Advanced
+- `language[]`: en, fr, etc.
+- `has_audio`: true/false
+- `sort`: added_desc (default), video_newest, title_az, etc.
+
+### Interactive Features Implementation
+
+#### 1. Clickable Filter Chips  
+```html
+<!-- Channel name becomes clickable filter button -->
+<button class="hover:text-audio-600" 
+        data-filter-chip="channel" 
+        data-value="WorldofAI" 
+        title="Filter by WorldofAI">
+  WorldofAI
+</button>
+```
+
+#### 2. Show More Toggle Pattern
+```javascript
+// Used for Categories, Channels, Content Types, Sort options
+const toggle = document.getElementById('toggleMoreChannels');
+const showMore = document.getElementById('showMoreChannels');
+toggle.addEventListener('click', () => {
+    const isHidden = showMore.classList.contains('hidden');
+    showMore.classList.toggle('hidden');
+    toggle.textContent = isHidden ? 'Show less' : 'Show more';
+});
+```
+
+#### 3. Filter State Management
+```javascript
+// Filters are managed in this.currentFilters object
+// Updated via this.computeFiltersFromDOM() 
+// Applied via this.loadContent()
+```
+
+### Debugging & Troubleshooting Guide
+
+#### Common Issues & Solutions
+1. **"subcatPairs is not defined" error**: 
+   - Missing `extractCatsAndSubcats()` call in card creation functions
+   - Check both `createContentCard()` and `createGridCard()`
+
+2. **Filters not working**:
+   - Check that SQLiteContentIndex supports the filter parameter
+   - Verify API endpoint includes the filter in allowed parameters
+   - Ensure frontend sends correct parameter names
+
+3. **Template not loading**:
+   - Verify `dashboard_v3_template.html` is being served
+   - Check that JavaScript loads `dashboard_v3.js` (not dashboard.js)
+
+4. **Empty data on Render**:  
+   - Database may not be synced from NAS component
+   - Check `/api/reports?size=1` endpoint for data
+   - Verify NAS sync process is working
+
+#### Debug Commands  
+```bash  
+# Check template being used
+grep -r "dashboard_v3_template" telegram_bot.py
+
+# Check JavaScript file loaded
+grep "dashboard.*js" dashboard_v3_template.html
+
+# Test API endpoints
+curl "https://ytv2-vy9k.onrender.com/api/filters" | jq .
+curl "https://ytv2-vy9k.onrender.com/api/reports?size=1" | jq .
+
+# Check database locally (if available)
+sqlite3 ytv2_content.db "SELECT COUNT(*) FROM content;"
+sqlite3 ytv2_content.db "SELECT DISTINCT channel_name FROM content LIMIT 10;"
+```
+
+### Performance & Optimization Notes
+
+- **Database Indexing**: Indexes on `video_id`, `indexed_at`, `channel_name`  
+- **API Caching**: Filters API cached for 60 seconds
+- **Frontend Optimizations**: Debounced search (500ms), efficient DOM updates
+- **Audio Streaming**: Progressive loading, media metadata optimization
+
+## Advanced Filtering System & Clickable Chips (Updated September 13, 2025)
+
+### Clickable Filter Chips Implementation
+
+**How It Works**: Cards display clickable channel names, category chips, and subcategory chips that automatically apply filters when clicked.
+
+#### Channel Filter Chips
+```html
+<button data-filter-chip="channel" data-filter-value="WorldofAI">WorldofAI</button>
+```
+- **Location**: In both list and grid card channel names
+- **Behavior**: Only clears other channel filters, preserves categories
+- **Implementation**: `dashboard_v3.js` lines ~1490, ~1588
+
+#### Category Filter Chips  
+```html
+<button data-filter-chip="category" data-filter-value="Technology">Technology</button>
+```
+- **Generated by**: `renderChip()` method in `dashboard_v3.js`
+- **Behavior**: Clears all category/subcategory filters, preserves channels
+- **Color**: Audio theme colors (`bg-audio-100`)
+
+#### Subcategory Filter Chips
+```html
+<button data-filter-chip="subcategory" data-filter-value="AI Software Development" data-parent-category="Technology">AI Software Development</button>
+```
+- **Generated by**: `renderChip(sc, 'subcategory', false, parent)` 
+- **Behavior**: Clears all category/subcategory filters, selects subcategory + parent category, preserves channels
+- **Color**: Blue theme (`bg-blue-100`)
+- **Parent tracking**: Uses `data-parent-category` attribute
+
+### Smart Filter Clearing Logic (`applyFilterFromChip`)
+
+**Critical Method**: `dashboard_v3.js:2315` - Controls what gets cleared when filter chips are clicked
+
+```javascript
+applyFilterFromChip(filterType, filterValue, parentCategory = null) {
+    // Smart clearing based on filter type:
+    if (filterType === 'channel') {
+        // Only clear other channels (preserve categories, etc.)
+        document.querySelectorAll('input[data-filter="channel"]').forEach(cb => cb.checked = false);
+    } else if (filterType === 'category' || filterType === 'subcategory') {
+        // Clear all category-related filters (preserve channels, etc.)
+        document.querySelectorAll('input[data-filter="category"], input[data-filter="subcategory"]').forEach(cb => cb.checked = false);
+    } else {
+        // Other types only clear their own type
+        document.querySelectorAll(`input[data-filter="${filterType}"]`).forEach(cb => cb.checked = false);
+    }
+    // Then select the clicked filter...
+}
+```
+
+**Key Insight**: Never use `clearAllFilters()` - it nukes everything. Use selective clearing instead.
+
+### Filter Interaction Rules
+
+1. **Channel Clicks**: Keep categories selected, change channel selection
+2. **Category Clicks**: Keep channels selected, change category selection  
+3. **Subcategory Clicks**: Keep channels selected, select subcategory + parent category
+4. **Independent Filtering**: Categories + Channels work together (intersection, not union)
+5. **Empty Filter Behavior**: No categories OR no channels = no results shown
+
+### Database Management & Live Updates
+
+#### Downloading Current Database from Render
+```bash
+# Download current live database
+curl -H "Authorization: Bearer 5397064f171ce0db328066d2ac52022b" \
+     "https://ytv2-vy9k.onrender.com/api/download-database" \
+     -o ytv2_content.db
+```
+
+#### Database Location on Render
+- **Persistent Storage**: `/app/data/ytv2_content.db` (1GB disk mounted)
+- **Download Endpoint**: `/api/download-database` (GET, requires auth)
+- **Upload Endpoint**: `/api/upload-database` (POST, requires auth)
+
+#### Updating Database Records
+```bash
+# 1. Download current database
+curl -H "Authorization: Bearer [SECRET]" [URL]/api/download-database -o ytv2_content.db
+
+# 2. Make changes with SQLite
+sqlite3 ytv2_content.db "UPDATE content SET channel_name = 'New Name' WHERE title LIKE '%pattern%';"
+
+# 3. Sync back using NAS script  
+cp ytv2_content.db /Volumes/Docker/YTV2/data/ytv2_content.db
+cd /Volumes/Docker/YTV2
+SYNC_SECRET=[SECRET] python sync_sqlite_db.py
+```
+
+#### Database Schema (Channel Updates)
+```sql
+-- Core fields for filtering
+channel_name TEXT,     -- Used for channel filtering
+category TEXT,         -- JSON array of categories  
+analysis TEXT,         -- JSON with categories: [{category, subcategories}]
+language TEXT,         -- 'en', 'fr', etc.
+content_type TEXT,     -- Tutorial, Review, Discussion
+complexity_level TEXT  -- Beginner, Intermediate, Advanced
+```
+
+### Recent Fixes & Architecture Updates (September 13, 2025)
+
+#### Channel Filtering System ✅
+- **Problem**: Channel filtering showed all cards when no channels selected
+- **Fix**: Added independent channel requirement logic in `loadContent()`
+- **Result**: No channels selected = no cards shown (consistent with categories)
+
+#### Clickable Filter Chips ✅  
+- **Problem**: All chips cleared ALL filters instead of being selective
+- **Fix**: Implemented smart clearing in `applyFilterFromChip()` 
+- **Result**: Chips preserve other filter types, work independently
+
+#### Database Download/Upload System ✅
+- **Added**: `/api/download-database` GET endpoint with auth
+- **Purpose**: Enable live database updates without NAS access
+- **Security**: Requires `SYNC_SECRET` bearer token authentication
+
+#### Channel Data Cleanup ✅
+- **Fixed**: 6 "Unknown" channel records updated with correct names:
+  - "ShadCN Dropped Something..." → AI LABS
+  - "Amazfit T Rex 3 Pro..." → The Quantified Scientist  
+  - "How Good Is Grok 42..." → Ray Amjad
+  - "Why Do Watches Have Jewels..." → Talking Time
+  - "Why Do The French Always Complain..." → Français avec Nelly (+ lang: fr)
+  - "That Time It Rained..." → PBS Eons
+
+#### UI Polish ✅
+- **Filter Spacing**: Changed from `space-y-2` to `space-y-1` for tighter layout
+- **No Results Logic**: Improved messaging for empty filter states
+
+### Critical Debugging Commands
+
+```bash
+# Check filter chip data attributes
+grep -n "data-filter-chip\|data-filter-value" static/dashboard_v3.js
+
+# Test filter API
+curl "https://ytv2-vy9k.onrender.com/api/filters" | jq .
+
+# Check database content  
+sqlite3 ytv2_content.db "SELECT channel_name, COUNT(*) FROM content GROUP BY channel_name ORDER BY COUNT(*) DESC;"
+
+# Monitor filter clicks (browser console)
+# Look for: "🔍 Filter chip clicked:" debug logs
+```
+
+### Common Issues & Solutions
+
+**Filter Chips Not Working**:
+- ❌ Check `data-filter-value` vs `data-value` (must be `data-filter-value`)
+- ❌ Check if using `clearAllFilters()` (use selective clearing instead)
+- ✅ Verify event handler binding in `bindFilterChipHandlers()`
+
+**Database Updates Not Showing**:  
+- ✅ Download current database first (don't use cached/NAS copy)
+- ✅ Use correct sync script path: `/Volumes/Docker/YTV2/sync_sqlite_db.py`
+- ✅ Ensure database copied to `data/ytv2_content.db` before sync
+
+**Filter Logic Conflicts**:
+- ✅ Categories + Channels = intersection (both must be satisfied)
+- ✅ No categories OR no channels = no results (independent requirements)
+- ✅ Filter chips preserve other filter types (don't clear unrelated filters)
+
+**Last Updated**: September 13, 2025 - All filter chip and database management systems working correctly.
