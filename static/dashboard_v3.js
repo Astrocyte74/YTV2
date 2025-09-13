@@ -696,6 +696,26 @@ class AudioDashboard {
         return filters;
     }
 
+    // Hierarchical facet reader: parents + children grouped by parent
+    computeFacetState() {
+        const categories = new Set();
+        const subcats = {};
+        // Parent categories explicitly checked
+        document.querySelectorAll('input[data-filter="category"]').forEach(el => {
+            const name = el.value;
+            const anyChildChecked = Array.from(document.querySelectorAll(`input[data-filter="subcategory"][data-parent-category="${CSS.escape(name)}"]`)).some(sc => sc.checked);
+            if (el.checked || anyChildChecked) categories.add(name);
+        });
+        // Children grouped by parent
+        document.querySelectorAll('input[data-filter="subcategory"]').forEach(el => {
+            if (!el.checked) return;
+            const parent = el.getAttribute('data-parent-category');
+            if (!parent) return;
+            (subcats[parent] ||= []).push(el.value);
+        });
+        return { categories: Array.from(categories), subcats };
+    }
+
     async loadContent() {
         const params = new URLSearchParams();
         
@@ -704,6 +724,7 @@ class AudioDashboard {
         
         // Fix 2: Recompute state from DOM right before fetching (prevents drift)
         this.currentFilters = this.computeFiltersFromDOM();
+        const facet = this.computeFacetState();
         
         // Helper functions (OpenAI's drop-in solution)
         const getAllOptions = (filterType) =>
@@ -731,6 +752,16 @@ class AudioDashboard {
             }
             // if sel.length === allValues.length → treat as unfiltered for this type
         });
+
+        // Override category logic using hierarchical facets
+        if (facet.categories && facet.categories.length) {
+            const allCats = getAllOptions('category');
+            if (facet.categories.length < allCats.length) {
+                effectiveFilters.category = facet.categories;
+            } else {
+                delete effectiveFilters.category; // all → unfiltered
+            }
+        }
 
         // Quick sanity logs (temporarily)
         console.debug('DOM->currentFilters:', this.currentFilters);
@@ -767,7 +798,39 @@ class AudioDashboard {
         try {
             const response = await fetch(`/api/reports?${params}`);
             const data = await response.json();
-            this.currentItems = data.reports || data.data || [];
+            let items = data.reports || data.data || [];
+
+            // Client-side subcategory narrowing (per parent). Within a selected
+            // parent, if some-but-not-all subcats are checked, keep only those.
+            const restrictingParents = Object.entries(facet.subcats)
+                .filter(([parent, arr]) => {
+                    const total = document.querySelectorAll(`input[data-filter="subcategory"][data-parent-category="${CSS.escape(parent)}"]`).length;
+                    return Array.isArray(arr) && arr.length > 0 && arr.length < total;
+                })
+                .map(([parent]) => parent);
+
+            if (restrictingParents.length) {
+                const allowedByParent = new Map(Object.entries(facet.subcats));
+                items = items.filter(it => {
+                    const cats = Array.isArray(it.analysis?.category) ? it.analysis.category : [it.analysis?.category].filter(Boolean);
+                    const sub = it.analysis?.subcategory || '';
+                    // If item matches any restricting parent, it must satisfy its subcat list
+                    for (const p of restrictingParents) {
+                        if (cats.includes(p)) {
+                            const allowed = allowedByParent.get(p) || [];
+                            return allowed.includes(sub);
+                        }
+                    }
+                    // Otherwise, if item belongs to a selected parent with no subcat restriction, allow
+                    if (facet.categories && facet.categories.length) {
+                        return cats.some(c => facet.categories.includes(c));
+                    }
+                    // If no parents selected (unlikely due to require-selection), keep as-is
+                    return true;
+                });
+            }
+
+            this.currentItems = items;
             this.renderContent(this.currentItems);
             this.renderPagination(data.pagination);
             this.updateResultsInfo(data.pagination);
