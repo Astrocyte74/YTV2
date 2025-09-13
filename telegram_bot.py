@@ -657,6 +657,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_upload_report()
         elif self.path == '/api/upload-database':
             self.handle_upload_database()
+        elif self.path == '/api/download-database':
+            self.handle_download_database()
         elif self.path == '/api/upload-audio':
             self.handle_upload_audio()
         elif self.path == '/api/content':
@@ -2609,6 +2611,62 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Database upload error: {e}")
             self.send_error(500, f"Database upload failed: {str(e)}")
+
+    def handle_download_database(self):
+        """Handle GET request to download SQLite database"""
+        try:
+            # Check sync secret for authentication
+            sync_secret = os.getenv('SYNC_SECRET')
+            if not sync_secret:
+                self.send_error(500, "Sync not configured")
+                return
+            
+            auth_header = self.headers.get('Authorization', '')
+            if not auth_header.startswith('Bearer ') or auth_header[7:] != sync_secret:
+                logger.warning(f"Database download rejected: Invalid auth from {self.client_address[0]}")
+                self.send_error(401, "Unauthorized")
+                return
+            
+            # Find database file
+            db_paths = [
+                Path('/app/data/ytv2_content.db'),  # Render persistent disk mount
+                Path('./data/ytv2_content.db'),     # Local data subdirectory
+                Path('/app/ytv2_content.db'),       # Root app directory
+                Path('./ytv2_content.db')           # Current directory (fallback)
+            ]
+            
+            db_path = None
+            for path in db_paths:
+                if path.exists():
+                    db_path = path
+                    break
+            
+            if not db_path:
+                logger.error("Database file not found")
+                self.send_error(404, "Database not found")
+                return
+            
+            logger.info(f"Downloading database from: {db_path}")
+            
+            # Send database file
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/octet-stream')
+            self.send_header('Content-Disposition', 'attachment; filename="ytv2_content.db"')
+            self.send_header('Content-Length', str(db_path.stat().st_size))
+            self.end_headers()
+            
+            with open(db_path, 'rb') as f:
+                while True:
+                    data = f.read(8192)
+                    if not data:
+                        break
+                    self.wfile.write(data)
+            
+            logger.info(f"✅ Database download completed: {db_path.stat().st_size} bytes")
+            
+        except Exception as e:
+            logger.error(f"Database download error: {e}")
+            self.send_error(500, f"Database download failed: {str(e)}")
     
     def handle_upload_audio(self):
         """Handle POST request to upload audio files from NAS"""
