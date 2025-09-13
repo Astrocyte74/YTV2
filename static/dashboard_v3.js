@@ -2313,8 +2313,28 @@ class AudioDashboard {
     }
 
     applyFilterFromChip(filterType, filterValue, parentCategory = null) {
-        // Clear all current filters
-        this.clearAllFilters();
+        // Only clear filters of the same type (preserve other filter types)
+        if (filterType === 'channel') {
+            // For channels, only clear other channel filters (preserve categories, etc.)
+            document.querySelectorAll('input[data-filter="channel"]').forEach(cb => {
+                cb.checked = false;
+            });
+        } else if (filterType === 'category') {
+            // For categories, only clear category and subcategory filters (preserve channels, etc.)
+            document.querySelectorAll('input[data-filter="category"], input[data-filter="subcategory"]').forEach(cb => {
+                cb.checked = false;
+            });
+        } else if (filterType === 'subcategory') {
+            // For subcategories, only clear subcategory filters (preserve channels, main categories unless parent needs to be set)
+            document.querySelectorAll('input[data-filter="subcategory"]').forEach(cb => {
+                cb.checked = false;
+            });
+        } else {
+            // For other filter types (content_type, complexity, language), only clear that specific type
+            document.querySelectorAll(`input[data-filter="${filterType}"]`).forEach(cb => {
+                cb.checked = false;
+            });
+        }
         
         // Apply the clicked filter
         let checkbox = null;
