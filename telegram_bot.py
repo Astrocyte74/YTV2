@@ -495,10 +495,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         fps_pretty = f"{fps} fps" if fps else ""
         
         # Categories and key_topics from enhanced metadata - match ContentIndex logic 
-        # Check summary.analysis first (the real data), then top-level analysis (usually empty/fallback)
+        # Prioritize SQLite format first (report_data['analysis']), then summary.analysis (JSON format)
         analysis = report_data.get('analysis', {})
         summary_analysis = report_data.get('summary', {}).get('analysis', {})
-        categories = summary_analysis.get('category') or analysis.get('category', ['General'])
+        categories = analysis.get('category') or summary_analysis.get('category', ['General'])
         if isinstance(categories, str):
             categories = [categories]
             
@@ -532,8 +532,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     if subcategory and subcategory not in categories:
                         subcategory_pairs.append([category, subcategory])
             
-        # Extract key topics for additional tagging
-        key_topics = summary_analysis.get('key_topics') or analysis.get('key_topics', [])
+        # Extract key topics for additional tagging - prioritize SQLite format
+        key_topics = analysis.get('key_topics') or summary_analysis.get('key_topics', [])
         if isinstance(key_topics, str):
             key_topics = [key_topics]
         
