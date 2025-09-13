@@ -69,6 +69,18 @@ class SQLiteContentIndex:
         except:
             return []
     
+    def _parse_subcategories_json(self, value: str) -> List[Dict[str, Any]]:
+        """Parse subcategories_json field safely."""
+        if not value:
+            return []
+        try:
+            result = json.loads(value)
+            if isinstance(result, dict) and 'categories' in result:
+                return result['categories']
+            return []
+        except:
+            return []
+    
     def _format_report_for_api(self, row: sqlite3.Row) -> Dict[str, Any]:
         """Convert database row to API format."""
         return {
@@ -82,6 +94,7 @@ class SQLiteContentIndex:
             'analysis': {
                 'category': self._parse_json_field(row['category']),
                 'subcategory': row['subcategory'] if 'subcategory' in row.keys() else None,
+                'categories': self._parse_subcategories_json(row.get('subcategories_json')),
                 'content_type': row['content_type'] or '',
                 'complexity_level': row['complexity_level'] or '',
                 'language': row['language'] or 'en',
