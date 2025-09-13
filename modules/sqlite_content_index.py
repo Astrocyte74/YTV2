@@ -100,6 +100,8 @@ class SQLiteContentIndex:
             },
             'file_stem': self._generate_file_stem(row['video_id'], row['title']),
             'video_id': row['video_id'] or '',
+            # Add new structured subcategories field
+            'subcategories_json': row['subcategories_json'] if 'subcategories_json' in row.keys() else None,
             'indexed_at': row['indexed_at'] or '',
             'original_language': row['language'] or 'en',
             'summary_language': row['language'] or 'en', 
