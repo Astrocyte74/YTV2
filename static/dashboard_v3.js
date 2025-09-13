@@ -1406,10 +1406,6 @@ class AudioDashboard {
         const hasAudio = item.media?.has_audio;
         const href = `/${item.file_stem}.json?v=2`;
         const buttonDurations = this.getButtonDurations(item);
-        const categoriesAll = Array.isArray(item.analysis?.category) ? item.analysis.category : (item.analysis?.category ? [item.analysis.category] : []);
-        const categories = categoriesAll.slice(0, 3);
-        const subcatsAll = Array.isArray(item.analysis?.subcategories) ? item.analysis.subcategories : (item.analysis?.subcategory ? [item.analysis.subcategory] : []);
-        const subcats = subcatsAll;
         const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds) ? item.media_metadata.mp3_duration_seconds : (item.duration_seconds || 0);
         const totalDur = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
             ? this.formatDuration(item.media_metadata.mp3_duration_seconds)
