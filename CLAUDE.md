@@ -11,53 +11,20 @@ This is the **dashboard/web interface component** of YTV2 that:
 - Receives file uploads from the NAS component via API
 - Operates in dashboard-only mode (no processing)
 
-## Development Commands
-
-### Setup and Installation
-```bash
-# Create virtual environment and install dependencies
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### Running the Dashboard Server
-```bash
-# Run the dashboard server locally
-python telegram_bot.py
-
-# Access dashboard at http://localhost:10000
-```
-
-### Testing
-```bash
-# Test API upload endpoint
-curl -X POST http://localhost:10000/api/upload-report \
-  -H "Authorization: Bearer your_sync_secret" \
-  -F "file=@test_report.json"
-
-# Test health endpoint
-curl http://localhost:10000/health
-```
-
-## Architecture Overview
-
-This is the **web interface** component of the YTV2 hybrid architecture:
-
-### YTV2 Hybrid System
-- **NAS Component**: YTV2-NAS - Telegram bot + YouTube processing
+## YTV2 Hybrid System
+- **NAS Component**: /Volumes/Docker/YTV2/ - Telegram bot + YouTube processing
 - **Dashboard Component**: This project - Web interface + audio playback
 
-### Dashboard Server Architecture
+## Dashboard Server Architecture
 
-#### `telegram_bot.py` - Dashboard Server (Not Telegram!)
+### `telegram_bot.py` - Dashboard Server (Not Telegram!)
 - HTTP server that serves the dashboard interface
 - Handles JSON report endpoints (`/<stem>.json`)
 - Serves audio files via `/exports/<filename>`
 - Receives uploads from NAS via `/api/upload-report`
 - **Dashboard-only mode** - No Telegram bot functionality
 
-#### Key HTTP Routes
+### Key HTTP Routes
 - **`/`** - Main dashboard interface (HTML)
 - **`/<stem>.json`** - Individual report data (JSON API)
 - **`/exports/<filename>`** - Audio file streaming
@@ -65,65 +32,55 @@ This is the **web interface** component of the YTV2 hybrid architecture:
 - **`/health`** - Health check endpoint for monitoring
 - **`/delete-reports`** - Bulk report management interface
 
-### Data Flow
+## Data Flow
 
 1. **NAS Processing** → YouTube videos processed with AI summaries
 2. **NAS Sync** → Reports and audio uploaded via `/api/upload-report`
 3. **Dashboard Serving** → Web interface displays reports with audio playback
 4. **User Access** → Beautiful web interface for browsing and listening
 
-### Key Components
+## Technology Stack
 
-#### `telegram_bot.py` - Web Server
-- **Not a Telegram bot!** - Confusing name, but it's the web server
-- Flask/HTTP server handling all dashboard routes
-- Dashboard-only mode detection (empty TELEGRAM_BOT_TOKEN)
-- File serving for reports and audio content
-- API endpoints for NAS synchronization
+### Backend
+- **Database**: SQLite (`ytv2_content.db`) with enhanced multi-category structure
+- **Content Management**: `modules/sqlite_content_index.py` (SQLiteContentIndex)
+- **Server**: Flask/HTTP server in dashboard-only mode
+- **Deployment**: Render with MCP access for database operations
 
-#### `dashboard_template.html` - Main Interface
-- Glass morphism UI with responsive design
-- Interactive report browsing with filtering
-- Integrated audio player with metadata display
-- Mobile-optimized touch interfaces
-- Dark/light theme support
+### Frontend
+- **Template**: `dashboard_template.html` with glass morphism UI
+- **Styling**: `static/dashboard.css` - Modern responsive design
+- **Interactivity**: `static/dashboard.js` - Audio player and filtering
+- **Audio Integration**: Embedded player with metadata display
 
-#### `static/` - Frontend Assets
-- **`dashboard.css`** - Modern styling with glass morphism effects
-- **`dashboard.js`** - Interactive functionality and audio player controls
+## Database Structure (SQLite)
 
-#### `modules/report_generator.py` - Report Handling
-- JSON report parsing and validation
-- Template processing for web display
-- Metadata extraction for audio integration
+### Enhanced Multi-Category System
+Recent backfill work (September 2025) enhanced the database with:
+- **Multiple categories per video**: e.g., "AI Software Development" + "Technology" + "Business"
+- **Multiple subcategories per category**: Each category has its own subcategories array
+- **Structured format**: `{categories: [{category: "X", subcategories: ["Y", "Z"]}]}`
+- **Language tracking**: Separate `video_language` and `summary_language` fields
+- **Complexity levels**: Beginner/Intermediate/Advanced classification
 
-### File Structure
+### Content Processing Pipeline
+1. **Primary AI**: OpenAI for text summaries and TTS
+2. **Backfill Enhancement**: Gemma 3:12b (via Ollama) for category classification
+3. **Storage**: All data stored in SQLite with JSON fields for complex structures
 
-#### Essential Dashboard Files
-```
-YTV2-Dashboard/
-├── telegram_bot.py          # Web server (dashboard-only mode)
-├── dashboard_template.html  # Main UI template
-├── Dockerfile              # Render deployment
-├── render.yaml             # Render configuration
-├── modules/                # Dashboard utilities
-│   └── report_generator.py # Report processing
-├── static/                 # Frontend assets
-│   ├── dashboard.css      # UI styling
-│   └── dashboard.js       # Interactive features
-├── data/                  # Synced JSON reports
-├── exports/              # Synced audio files
-└── requirements.txt      # Python dependencies
-```
+## Current Challenge
 
-#### Archived Content
-- `archive_render/old_*` - Previous versions and unused components
-- `archive_render/unused_processing/` - Processing code moved to NAS
-- `archive_render/old_configs/` - Old deployment configurations
+**Issue**: Dashboard cards on Render (https://ytv2-vy9k.onrender.com/) only display:
+- First 2 categories (out of potentially 3)
+- First 1 subcategory (out of multiple per category)
 
-### Environment Configuration
+**Expected**: Full display of all categories and subcategories like:
+- "Tesla Autopilot" → **AI Software Development** + **Technology** + **Business**
+- Each category showing its own subcategories: ['Security & Safety'] + ['Tech Reviews'] + ['Industry Analysis']
 
-#### Required Variables
+## Environment Configuration
+
+### Required Variables
 ```bash
 # Dashboard-only mode (leave empty!)
 TELEGRAM_BOT_TOKEN=""
@@ -132,7 +89,7 @@ TELEGRAM_BOT_TOKEN=""
 SYNC_SECRET=your_secure_random_string_here
 ```
 
-#### Auto-Configured by Render
+### Auto-Configured by Render
 ```bash
 # Port configuration (handled by Render)
 PORT=10000
@@ -141,66 +98,78 @@ PORT=10000
 RENDER_DASHBOARD_URL=https://your-app.onrender.com
 ```
 
-### NAS Integration
+## File Structure
 
-The dashboard receives content from the NAS component via:
+### Essential Dashboard Files
+```
+YTV2-Dashboard/
+├── telegram_bot.py          # Web server (dashboard-only mode)
+├── dashboard_template.html  # Main UI template
+├── modules/                 # Dashboard utilities
+│   └── sqlite_content_index.py # SQLite database interface
+├── static/                  # Frontend assets
+│   ├── dashboard.css       # UI styling
+│   └── dashboard.js        # Interactive features
+├── data/                   # Local data (if any)
+├── exports/               # Audio files
+└── requirements.txt       # Python dependencies
+```
 
-#### Upload API
-- **Endpoint**: `POST /api/upload-report`
-- **Authentication**: Bearer token using SYNC_SECRET
-- **Content**: JSON reports and audio files
-- **Response**: Success/error status for sync monitoring
+### Key Modules
+- **`modules/sqlite_content_index.py`**: SQLiteContentIndex class for database queries
+- **`modules/report_generator.py`**: Report processing utilities (legacy)
 
-#### Sync Process
-1. **NAS generates** reports and audio files
-2. **NAS uploads** via authenticated API calls
-3. **Dashboard stores** in data/ and exports/ directories
-4. **Web interface** immediately shows new content
+## Deployment
 
-### Deployment
-
-This component deploys to **Render** using Docker:
-
-#### Render Configuration
-- **Environment**: Docker
-- **Dockerfile**: Optimized for dashboard serving
+### Render Configuration
+- **Environment**: Python web service
+- **Database**: SQLite file uploaded via sync API
 - **Build**: Automatic from git push
-- **Domain**: Custom Render subdomain provided
-- **HTTPS**: Included by default
-
-#### Render Benefits
-- **Auto-scaling** handles traffic variations
-- **Global CDN** for fast worldwide access  
-- **Zero-downtime deployments** with health checks
-- **Persistent storage** for synced content
-
-### Dashboard Features
-
-#### Web Interface
-- **Glass morphism design** with modern visual effects
-- **Responsive layout** works on desktop, tablet, mobile
-- **Fast loading** with optimized static assets
-- **Intuitive navigation** through report collections
-
-#### Audio Integration
-- **Embedded audio player** with full controls
-- **Metadata display** shows video info and thumbnails
-- **Progress tracking** and seeking within audio
-- **Mobile-optimized** touch controls
-
-#### Report Display
-- **Syntax highlighting** for JSON content
-- **Collapsible sections** for easy navigation
-- **Search and filtering** across report collections
-- **Direct linking** to individual reports
+- **Domain**: https://ytv2-vy9k.onrender.com/
+- **MCP Access**: Available for database operations
 
 ## Important Implementation Notes
 
 - This is **dashboard-only** - no YouTube processing happens here
 - **Receives content** via sync rather than generating locally
-- **Designed for hybrid architecture** with separate concerns
+- **SQLite backend** - NOT JSON files (critical for context)
 - **No AI dependencies** - just web serving and file handling
 - **Public accessibility** - shareable URL for viewing summaries
 - **Secure uploads only** - authenticated NAS sync required
-- **Docker deployment** optimized for Render platform
-- **Mobile-first design** ensures accessibility across devices
+
+## Development Commands
+
+### Setup
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run dashboard server locally
+python telegram_bot.py
+```
+
+### Database Operations
+```bash
+# Access SQLite database (if present locally)
+sqlite3 ytv2_content.db
+
+# Sync database to/from Render (via NAS component)
+# Done through /api/upload-report endpoint
+```
+
+## Recent Work (September 2025)
+
+### Backfill Enhancement
+- Used Gemma 3:12b via Ollama for enhanced categorization
+- Processed 55 records with multi-category assignments
+- Enhanced prompt with specialized WWII detection rules
+- Perfect JSON output with categories→subcategories structure
+- Successfully uploaded enhanced database to Render
+
+### Architecture Status
+- ✅ NAS processing pipeline working
+- ✅ SQLite database enhanced with multi-categories
+- ✅ Dashboard backend serving data correctly
+- ⚠️ Frontend display limiting categories (current issue)
+
+**Last Safe Commit**: 88e4dcf (September 12, 2025 8:10 PM)

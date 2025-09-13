@@ -176,4 +176,5 @@ archived_*/
 # CloudFlare specific files (keeping original setup separate)
 CLOUDFLARE_SETUP.md
 docker-compose.cloudflare.yml
-setup-cloudflare.sh
+setup-cloudflare.shytv2_content.db
+ytv2_content.db
