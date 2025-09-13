@@ -2468,9 +2468,35 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(400, "Invalid database file")
                 return
             
-            # Save database file
-            db_path = Path('ytv2_content.db')
-            backup_path = Path('ytv2_content.db.backup')
+            # Save database file to persistent disk
+            # Try persistent disk locations first, fallback to current directory
+            persistent_locations = [
+                Path('/app/data/ytv2_content.db'),  # Render persistent disk mount
+                Path('./data/ytv2_content.db'),     # Local data subdirectory  
+                Path('./ytv2_content.db')           # Current directory (fallback)
+            ]
+            
+            db_path = None
+            for location in persistent_locations:
+                try:
+                    # Ensure parent directory exists
+                    location.parent.mkdir(parents=True, exist_ok=True)
+                    # Test write access
+                    test_file = location.parent / '.write_test'
+                    test_file.write_text('test')
+                    test_file.unlink()
+                    db_path = location
+                    break
+                except (OSError, PermissionError):
+                    continue
+            
+            if not db_path:
+                logger.error("No writable location found for database")
+                self.send_error(500, "Cannot save database - no writable location")
+                return
+                
+            backup_path = db_path.parent / f"{db_path.stem}.backup{db_path.suffix}"
+            logger.info(f"Saving database to: {db_path}")
             
             # Create backup of existing database
             if db_path.exists():
