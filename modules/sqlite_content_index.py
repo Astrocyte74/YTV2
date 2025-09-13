@@ -94,7 +94,7 @@ class SQLiteContentIndex:
             'analysis': {
                 'category': self._parse_json_field(row['category']),
                 'subcategory': row['subcategory'] if 'subcategory' in row.keys() else None,
-                'categories': self._parse_subcategories_json(row.get('subcategories_json') if 'subcategories_json' in row.keys() else None),
+                'categories': self._parse_subcategories_json(row['subcategories_json'] if 'subcategories_json' in row.keys() else None),
                 'content_type': row['content_type'] or '',
                 'complexity_level': row['complexity_level'] or '',
                 'language': row['language'] or 'en',
