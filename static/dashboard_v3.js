@@ -1474,24 +1474,7 @@ class AudioDashboard {
                             </div>
                         </div>
 
-                        <div class="mt-3 flex flex-wrap gap-2">
-                            ${categories.map(cat => `
-                                <button class="relative z-10 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-audio-100 dark:bg-slate-700 text-audio-800 dark:text-slate-300 hover:bg-audio-200 dark:hover:bg-slate-600 transition-all cursor-pointer hover:scale-105 active:scale-95" 
-                                        data-filter-chip="category" 
-                                        data-filter-value="${this.escapeHtml(cat)}"
-                                        title="Click to filter by ${this.escapeHtml(cat)}">
-                                    ${this.escapeHtml(cat)}
-                                </button>
-                            `).join('')}
-                            ${item.analysis?.subcategory ? `
-                                <button class="relative z-10 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800/50 transition-all cursor-pointer hover:scale-105 active:scale-95" 
-                                        data-filter-chip="subcategory" 
-                                        data-filter-value="${this.escapeHtml(item.analysis.subcategory)}"
-                                        title="Click to filter by ${this.escapeHtml(item.analysis.subcategory)}">
-                                    ${this.escapeHtml(item.analysis.subcategory)}
-                                </button>
-                            ` : ''}
-                        </div>
+                        <!-- legacy chips row removed; replaced with explicit category/subcategory rows above -->
                         <!-- CTA row under meta -->
                         <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
                           <button class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm" data-action="read"><span>Read${buttonDurations.read ? ` ${buttonDurations.read}` : ''}</span><span aria-hidden="true">›</span></button>
@@ -2006,6 +1989,32 @@ class AudioDashboard {
             : 'bg-audio-100 dark:bg-slate-700 text-audio-800 dark:text-slate-300';
         const t = this.escapeHtml(text || '');
         return `<button class="relative z-10 inline-flex items-center ${base} rounded-full font-medium ${color} hover:opacity-90 transition-all cursor-pointer" data-filter-chip="${type}" data-filter-value="${t}" title="Click to filter by ${t}">${t}</button>`;
+    }
+
+    // Normalize categories & subcategories (prefer rich structure, dedupe, filter)
+    extractCatsAndSubcats(item) {
+        const rich = Array.isArray(item?.analysis?.categories) ? item.analysis.categories : [];
+
+        const catsRich = rich.map(c => c && c.category).filter(Boolean);
+        const catsLegacy = Array.isArray(item?.analysis?.category)
+            ? item.analysis.category
+            : (item?.analysis?.category ? [item.analysis.category] : []);
+        const categories = Array.from(new Set([...catsRich, ...catsLegacy])).slice(0, 3);
+
+        const subcatsRich = rich.flatMap(c => {
+            if (!c) return [];
+            if (Array.isArray(c.subcategories)) return c.subcategories;
+            if (c.subcategory) return [c.subcategory];
+            return [];
+        });
+        const legacyArr = Array.isArray(item?.analysis?.subcategories)
+            ? item.analysis.subcategories
+            : (item?.analysis?.subcategory ? [item.analysis.subcategory] : []);
+
+        const subcats = Array.from(new Set([...subcatsRich, ...legacyArr]
+            .filter(s => s && !categories.includes(s))));
+
+        return { categories, subcats };
     }
 
     updateNowPlayingPreview() {
