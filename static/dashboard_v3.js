@@ -1487,7 +1487,7 @@ class AudioDashboard {
                                 </h3>
                                 <div class="text-sm text-slate-500 dark:text-slate-300 mt-0.5 line-clamp-1 flex items-center gap-2">
                                     <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-200 text-slate-700 text-[10px]">${channelInitial}</span>
-                                    <button class="truncate hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-value="${this.escapeHtml(item.channel || '')}" title="Filter by ${this.escapeHtml(item.channel || '')}">${this.escapeHtml(item.channel || '')}</button>
+                                    <button class="truncate hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-filter-value="${this.escapeHtml(item.channel || '')}" title="Filter by ${this.escapeHtml(item.channel || '')}">${this.escapeHtml(item.channel || '')}</button>
                                     ${this.renderLanguageChip(item.analysis?.language)}
                                     ${isPlaying ? '<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-audio-100 text-audio-700 whitespace-nowrap">Now Playing</span>' : ''}
                                 </div>
@@ -1585,7 +1585,7 @@ class AudioDashboard {
                 <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 line-clamp-2">${this.escapeHtml(item.title)}</h3>
                 <div class="text-xs text-slate-500 dark:text-slate-300 mt-1 line-clamp-1 flex items-center gap-2">
                     <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-slate-700 text-[9px]">${channelInitial}</span>
-                    <button class="hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-value="${this.escapeHtml(item.channel || '')}" title="Filter by ${this.escapeHtml(item.channel || '')}">${this.escapeHtml(item.channel || '')}</button>
+                    <button class="hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-filter-value="${this.escapeHtml(item.channel || '')}" title="Filter by ${this.escapeHtml(item.channel || '')}">${this.escapeHtml(item.channel || '')}</button>
                     ${this.renderLanguageChip(item.analysis?.language)}
                     ${isPlaying ? '<span class="ml-2 text-[10px] px-1 py-0.5 rounded bg-audio-100 text-audio-700">Now Playing</span>' : ''}
                 </div>
@@ -2313,6 +2313,8 @@ class AudioDashboard {
     }
 
     applyFilterFromChip(filterType, filterValue, parentCategory = null) {
+        console.log('🔍 Filter chip clicked:', { filterType, filterValue, parentCategory });
+        
         // Only clear filters of the same type (preserve other filter types)
         if (filterType === 'channel') {
             // For channels, only clear other channel filters (preserve categories, etc.)
@@ -2325,8 +2327,8 @@ class AudioDashboard {
                 cb.checked = false;
             });
         } else if (filterType === 'subcategory') {
-            // For subcategories, only clear subcategory filters (preserve channels, main categories unless parent needs to be set)
-            document.querySelectorAll('input[data-filter="subcategory"]').forEach(cb => {
+            // For subcategories, clear all category-related filters (same as category chips)
+            document.querySelectorAll('input[data-filter="category"], input[data-filter="subcategory"]').forEach(cb => {
                 cb.checked = false;
             });
         } else {
