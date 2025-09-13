@@ -2123,8 +2123,45 @@ class AudioDashboard {
         return `<button class="relative z-10 inline-flex items-center ${base} rounded-full font-medium ${color} hover:opacity-90 transition-all cursor-pointer" data-filter-chip="${type}" data-filter-value="${t}"${dataParent} title="Click to filter by ${t}">${t}</button>`;
     }
 
-    // Normalize categories & subcategories (prefer rich structure, dedupe, filter)
+    // Normalize categories & subcategories (prefer new subcategories_json structure)
     extractCatsAndSubcats(item) {
+        // Check for new structured subcategories_json field first
+        let subcategoriesStructure = null;
+        if (item?.subcategories_json) {
+            try {
+                subcategoriesStructure = JSON.parse(item.subcategories_json);
+            } catch (e) {
+                console.warn('Failed to parse subcategories_json:', e, item.subcategories_json);
+            }
+        }
+
+        // Use new structured data if available
+        if (subcategoriesStructure?.categories?.length) {
+            const categories = subcategoriesStructure.categories
+                .map(c => c?.category)
+                .filter(Boolean)
+                .slice(0, 3);
+
+            const subcatPairs = subcategoriesStructure.categories.flatMap(c => {
+                const parent = c?.category;
+                if (!parent || !Array.isArray(c?.subcategories)) return [];
+                return c.subcategories.map(sc => [parent, sc]);
+            });
+
+            const subcats = Array.from(new Set(subcatPairs.map(([, s]) => s)));
+
+            // Debug logging for new structured data
+            console.log('New Structured Data:', {
+                title: item.title,
+                categories,
+                subcatPairs,
+                subcats
+            });
+
+            return { categories, subcats, subcatPairs };
+        }
+
+        // Fall back to legacy logic if no structured data
         const rich = Array.isArray(item?.analysis?.categories) ? item.analysis.categories : [];
 
         const catsRich = rich.map(c => c?.category).filter(Boolean);
@@ -2174,9 +2211,9 @@ class AudioDashboard {
         });
         const subcats = Array.from(new Set(subcatPairs.map(([, s]) => s)));
         
-        // Debug logging for videos with multiple categories
+        // Debug logging for legacy fallback
         if (categories.length > 1) {
-            console.log('Multi-category Debug:', {
+            console.log('Legacy Fallback Debug:', {
                 title: item.title,
                 categories,
                 legacySubs,
