@@ -328,10 +328,10 @@ class AudioDashboard {
             // Apply theme at startup
             this.applyTheme(this.themeMode);
             this.updateThemeChecks();
-            await Promise.all([
-                this.loadFilters(),
-                this.loadContent()
-            ]);
+            // Load filters first to avoid race with initial content fetch
+            await this.loadFilters();
+            await this.waitForFiltersReady({ min: 1, timeoutMs: 3000 });
+            await this.loadContent();
             // Queue UI visibility based on flag
             if (this.queueSidebar) {
                 if (this.flags.queueEnabled) this.queueSidebar.classList.remove('hidden');
@@ -353,6 +353,17 @@ class AudioDashboard {
         } catch (error) {
             console.error('Failed to load initial data:', error);
             this.showError('Failed to load dashboard data');
+        }
+    }
+
+    // Wait until filters are mounted and at least some have their checked state applied
+    async waitForFiltersReady({ min = 1, timeoutMs = 3000 } = {}) {
+        const start = performance.now();
+        const ready = () => document.querySelectorAll('input[data-filter]').length >= min;
+        const checkedReady = () => Array.from(document.querySelectorAll('input[data-filter]')).some(el => el.checked);
+        while (!(ready() && checkedReady())) {
+            if (performance.now() - start > timeoutMs) break;
+            await new Promise(r => requestAnimationFrame(r));
         }
     }
 
