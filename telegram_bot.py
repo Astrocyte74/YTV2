@@ -498,15 +498,23 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         # Prioritize SQLite format first (report_data['analysis']), then summary.analysis (JSON format)
         analysis = report_data.get('analysis', {})
         summary_analysis = report_data.get('summary', {}).get('analysis', {})
-        categories = analysis.get('category') or summary_analysis.get('category', ['General'])
-        if isinstance(categories, str):
-            categories = [categories]
-            
+        
         # Extract subcategories using same logic as dashboard
         # Rich format: analysis.categories array with subcategories
         rich_cats = analysis.get('categories', [])
         if not rich_cats:
             rich_cats = summary_analysis.get('categories', [])
+        
+        # If we have structured categories, extract categories from them
+        categories = []
+        if isinstance(rich_cats, list) and rich_cats:
+            categories = [cat_obj.get('category') for cat_obj in rich_cats if isinstance(cat_obj, dict) and cat_obj.get('category')]
+        
+        # Fallback to legacy categories if no structured ones
+        if not categories:
+            categories = analysis.get('category') or summary_analysis.get('category', ['General'])
+            if isinstance(categories, str):
+                categories = [categories]
         
         subcategory_pairs = []
         if isinstance(rich_cats, list):
@@ -519,18 +527,19 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                             if subcat:
                                 subcategory_pairs.append([parent, subcat])
         
-        # Legacy fallback: attach subcategory to all categories
-        legacy_subcats = analysis.get('subcategory') or summary_analysis.get('subcategory', [])
-        if isinstance(legacy_subcats, str):
-            legacy_subcats = [legacy_subcats]
-        elif not isinstance(legacy_subcats, list):
-            legacy_subcats = []
-            
-        if categories and legacy_subcats:
-            for category in categories:
-                for subcategory in legacy_subcats:
-                    if subcategory and subcategory not in categories:
-                        subcategory_pairs.append([category, subcategory])
+        # Legacy fallback: attach subcategory to all categories (only if no structured data)
+        if not rich_cats:
+            legacy_subcats = analysis.get('subcategory') or summary_analysis.get('subcategory', [])
+            if isinstance(legacy_subcats, str):
+                legacy_subcats = [legacy_subcats]
+            elif not isinstance(legacy_subcats, list):
+                legacy_subcats = []
+                
+            if categories and legacy_subcats:
+                for category in categories:
+                    for subcategory in legacy_subcats:
+                        if subcategory and subcategory not in categories:
+                            subcategory_pairs.append([category, subcategory])
             
         # Extract key topics for additional tagging - prioritize SQLite format
         key_topics = analysis.get('key_topics') or summary_analysis.get('key_topics', [])
