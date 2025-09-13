@@ -185,6 +185,14 @@ class SQLiteContentIndex:
                     if comp_conditions:
                         where_conditions.append(f"({' OR '.join(comp_conditions)})")
                 
+                if 'channel' in filters and filters['channel']:
+                    channel_conditions = []
+                    for channel in filters['channel']:
+                        channel_conditions.append("channel_name = ?")
+                        params.append(channel)
+                    if channel_conditions:
+                        where_conditions.append(f"({' OR '.join(channel_conditions)})")
+                
                 if 'has_audio' in filters:
                     where_conditions.append("has_audio = ?")
                     params.append(filters['has_audio'])
@@ -347,6 +355,19 @@ class SQLiteContentIndex:
             """)
             filters['complexity_level'] = [
                 {'value': row['complexity_level'], 'count': row['count']}
+                for row in cursor.fetchall()
+            ]
+            
+            # Channel filter
+            cursor = conn.execute("""
+                SELECT channel_name, COUNT(*) as count
+                FROM content 
+                WHERE channel_name IS NOT NULL AND channel_name != ''
+                GROUP BY channel_name 
+                ORDER BY count DESC
+            """)
+            filters['channel'] = [
+                {'value': row['channel_name'], 'count': row['count']}
                 for row in cursor.fetchall()
             ]
             

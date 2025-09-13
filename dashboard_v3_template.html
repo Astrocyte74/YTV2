@@ -233,28 +233,28 @@
                                 </div>
                                 <span class="text-sm text-slate-700 dark:text-slate-300">Video Newest</span>
                             </label>
-                            <label class="flex items-center cursor-pointer">
-                                <input type="radio" name="sortBy" value="video_oldest" class="sr-only">
-                                <div class="w-4 h-4 border-2 border-slate-300 dark:border-slate-600 rounded-full flex items-center justify-center mr-3">
-                                    <div class="w-2 h-2 bg-transparent rounded-full"></div>
-                                </div>
-                                <span class="text-sm text-slate-700 dark:text-slate-300">Video Oldest</span>
-                            </label>
-                            <label class="flex items-center cursor-pointer">
-                                <input type="radio" name="sortBy" value="title_az" class="sr-only">
-                                <div class="w-4 h-4 border-2 border-slate-300 dark:border-slate-600 rounded-full flex items-center justify-center mr-3">
-                                    <div class="w-2 h-2 bg-transparent rounded-full"></div>
-                                </div>
-                                <span class="text-sm text-slate-700 dark:text-slate-300">Title A→Z</span>
-                            </label>
-                            <label class="flex items-center cursor-pointer">
-                                <input type="radio" name="sortBy" value="title_za" class="sr-only">
-                                <div class="w-4 h-4 border-2 border-slate-300 dark:border-slate-600 rounded-full flex items-center justify-center mr-3">
-                                    <div class="w-2 h-2 bg-transparent rounded-full"></div>
-                                </div>
-                                <span class="text-sm text-slate-700 dark:text-slate-300">Title Z→A</span>
-                            </label>
                             <div id="showMoreSorts" class="hidden">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio" name="sortBy" value="video_oldest" class="sr-only">
+                                    <div class="w-4 h-4 border-2 border-slate-300 dark:border-slate-600 rounded-full flex items-center justify-center mr-3">
+                                        <div class="w-2 h-2 bg-transparent rounded-full"></div>
+                                    </div>
+                                    <span class="text-sm text-slate-700 dark:text-slate-300">Video Oldest</span>
+                                </label>
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio" name="sortBy" value="title_az" class="sr-only">
+                                    <div class="w-4 h-4 border-2 border-slate-300 dark:border-slate-600 rounded-full flex items-center justify-center mr-3">
+                                        <div class="w-2 h-2 bg-transparent rounded-full"></div>
+                                    </div>
+                                    <span class="text-sm text-slate-700 dark:text-slate-300">Title A→Z</span>
+                                </label>
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="radio" name="sortBy" value="title_za" class="sr-only">
+                                    <div class="w-4 h-4 border-2 border-slate-300 dark:border-slate-600 rounded-full flex items-center justify-center mr-3">
+                                        <div class="w-2 h-2 bg-transparent rounded-full"></div>
+                                    </div>
+                                    <span class="text-sm text-slate-700 dark:text-slate-300">Title Z→A</span>
+                                </label>
                                 <label class="flex items-center cursor-pointer">
                                     <input type="radio" name="sortBy" value="duration_desc" class="sr-only">
                                     <div class="w-4 h-4 border-2 border-slate-300 dark:border-slate-600 rounded-full flex items-center justify-center mr-3">
@@ -291,6 +291,25 @@
                                 <!-- Additional categories will be shown here -->
                             </div>
                             <button id="toggleMoreCategories" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors hidden">
+                                Show more
+                            </button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-sm font-medium text-slate-800 dark:text-slate-200">Channels</h3>
+                            <div class="space-x-2">
+                                <button id="selectAllChannels" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
+                                <button id="clearAllChannels" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
+                            </div>
+                        </div>
+                        <div class="space-y-2" id="channelFilters">
+                            <!-- Dynamic channel filters will be inserted here -->
+                            <div id="showMoreChannels" class="hidden">
+                                <!-- Additional channels will be shown here -->
+                            </div>
+                            <button id="toggleMoreChannels" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors hidden">
                                 Show more
                             </button>
                         </div>
