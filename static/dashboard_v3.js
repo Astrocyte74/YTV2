@@ -2134,6 +2134,11 @@ class AudioDashboard {
                 console.warn('Failed to parse subcategories_json:', e, item.subcategories_json);
             }
         }
+        
+        // Also check for pre-parsed categories from SQLiteContentIndex
+        if (!subcategoriesStructure && item?.analysis?.categories?.length) {
+            subcategoriesStructure = { categories: item.analysis.categories };
+        }
 
         // Use new structured data if available
         if (subcategoriesStructure?.categories?.length) {
