@@ -2031,9 +2031,9 @@ class AudioDashboard {
         });
         const subcats = Array.from(new Set(subcatPairs.map(([, s]) => s)));
         
-        // Debug logging for XAI video
-        if (item.title && item.title.toLowerCase().includes('xai')) {
-            console.log('XAI Debug:', {
+        // Debug logging for videos with multiple categories
+        if (categories.length > 1) {
+            console.log('Multi-category Debug:', {
                 title: item.title,
                 categories,
                 legacySubs,
