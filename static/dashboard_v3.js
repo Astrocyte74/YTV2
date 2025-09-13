@@ -2169,22 +2169,30 @@ class AudioDashboard {
         // Fall back to legacy logic if no structured data
         const rich = Array.isArray(item?.analysis?.categories) ? item.analysis.categories : [];
 
-        const catsRich = rich.map(c => c?.category).filter(Boolean);
-        const catsLegacy = Array.isArray(item?.analysis?.category)
-            ? item.analysis.category
-            : (item?.analysis?.category ? [item.analysis.category] : []);
+        let categories = [];
         
-        // CRITICAL FIX: Ensure categories is always an array of strings, never a string with commas
-        const categories = Array.from(new Set([...catsRich, ...catsLegacy]))
-            .flatMap(cat => {
-                // If we get a comma-separated string, split it into separate categories
-                if (typeof cat === 'string' && cat.includes(',')) {
-                    return cat.split(',').map(c => c.trim()).filter(Boolean);
-                }
-                return [cat];
-            })
-            .filter(Boolean)
-            .slice(0, 3);
+        // Prefer schema_version >= 2 structured data
+        if (item?.analysis?.schema_version >= 2 && Array.isArray(item?.analysis?.categories)) {
+            categories = item.analysis.categories.map(c => c?.category).filter(Boolean);
+        } else {
+            // Legacy path with comma-split guard
+            const catsRich = rich.map(c => c?.category).filter(Boolean);
+            const catsLegacy = Array.isArray(item?.analysis?.category)
+                ? item.analysis.category
+                : (item?.analysis?.category ? [item.analysis.category] : []);
+            
+            categories = Array.from(new Set([...catsRich, ...catsLegacy]))
+                .flatMap(cat => {
+                    // If we get a comma-separated string, split it into separate categories
+                    if (typeof cat === 'string' && cat.includes(',')) {
+                        return cat.split(',').map(c => c.trim()).filter(Boolean);
+                    }
+                    return [cat];
+                })
+                .filter(Boolean);
+        }
+        
+        categories = categories.slice(0, 3);
 
         // Debug logging for troubleshooting
         if (categories.length > 1) {
