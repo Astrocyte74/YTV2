@@ -1568,6 +1568,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_backup()
             elif path.startswith('/api/backup/'):
                 self.serve_backup_file()
+            elif path == '/api/download-database':
+                self.handle_download_database()
             else:
                 self.send_error(404, "API endpoint not found")
         except Exception as e:
