@@ -1647,8 +1647,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # Parse query parameters
             filters = {}
             
-            # Filter parameters with validation
-            for param in ['source', 'language', 'category', 'channel', 'content_type', 'complexity']:
+            # Filter parameters with validation (CRITICAL: include subcategory and parentCategory per OpenAI recommendation)
+            for param in ['source', 'language', 'category', 'subcategory', 'parentCategory', 'channel', 'content_type', 'complexity']:
                 if param in query_params:
                     # Limit array size and sanitize strings
                     values = query_params[param][:10]  # Max 10 items
