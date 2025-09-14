@@ -36,8 +36,13 @@ try:
     )
     
     # HTML sanitization settings
-    ALLOWED_TAGS = ['p','ul','ol','li','strong','em','br','h3','h4','blockquote','code','pre','a']
-    ALLOWED_ATTRS = {'a': ['href','title','rel','target']}
+    ALLOWED_TAGS = ['p','ul','ol','li','strong','em','br','h3','h4','blockquote','code','pre','a','div']
+    ALLOWED_ATTRS = {
+        'a': ['href','title','rel','target'],
+        'div': ['class'],
+        'ul': ['class'],
+        'li': ['class']
+    }
     
 except ImportError as e:
     JINJA2_AVAILABLE = False
@@ -392,6 +397,82 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     """HTTP request handler with modern template system"""
     
     @staticmethod
+    def format_key_points(raw_text: str) -> str:
+        """Format Key Points with structured markers if present, fallback to normal formatting"""
+        import re
+        import html
+        
+        if not raw_text or not isinstance(raw_text, str):
+            return '<p class="mb-6 leading-relaxed">No summary available.</p>'
+        
+        # Normalize line breaks and trim
+        text = raw_text.replace('\r\n', '\n').replace('\r', '\n').strip()
+        
+        # Check for structured markers
+        has_main_topic = bool(re.search(r'^(?:•\s*)?\*\*Main topic:\*\*\s*.+$', text, re.MULTILINE | re.IGNORECASE))
+        has_key_points = bool(re.search(r'\*\*Key points:\*\*', text, re.IGNORECASE))
+        
+        # If we have structured markers, use special formatting
+        if has_main_topic or has_key_points:
+            return ModernDashboardHTTPRequestHandler._render_structured_key_points(text)
+        
+        # Fallback to normal paragraph formatting
+        paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
+        if not paragraphs:
+            return '<p class="mb-6 leading-relaxed">No summary available.</p>'
+        
+        return ''.join(f'<p class="mb-6 leading-relaxed">{html.escape(p)}</p>' for p in paragraphs)
+    
+    @staticmethod
+    def _render_structured_key_points(text: str) -> str:
+        """Render structured Key Points with proper formatting"""
+        import re
+        import html
+        
+        parts = []
+        
+        # 1) Extract main topic
+        main_topic_match = re.search(r'^(?:•\s*)?\*\*Main topic:\*\*\s*(.+)$', text, re.MULTILINE | re.IGNORECASE)
+        main_topic = main_topic_match.group(1).strip() if main_topic_match else None
+        
+        # 2) Find content after "**Key points:**" marker
+        key_start_match = re.search(r'\*\*Key points:\*\*', text, re.IGNORECASE)
+        bullet_block = ''
+        
+        if key_start_match:
+            # Take everything after the "Key points:" marker
+            bullet_block = text[key_start_match.end():].strip()
+        elif main_topic_match:
+            # No "Key points:" marker, use everything except main topic
+            bullet_block = text.replace(main_topic_match.group(0), '').strip()
+        else:
+            bullet_block = text
+        
+        # 3) Process bullet points
+        lines = [line.strip() for line in bullet_block.split('\n') if line.strip()]
+        
+        bullets = []
+        for line in lines:
+            # Match lines starting with • or - (bullet points)
+            if re.match(r'^(?:•|-)\s+', line):
+                bullet_content = re.sub(r'^(?:•|-)\s+', '', line).strip()
+                bullets.append(bullet_content)
+        
+        # 4) Build HTML
+        if main_topic:
+            parts.append(f'<div class="kp-heading">{html.escape(main_topic)}</div>')
+        
+        if bullets:
+            bullet_html = ''.join(f'<li>{html.escape(bullet)}</li>' for bullet in bullets)
+            parts.append(f'<ul class="kp-list">{bullet_html}</ul>')
+        elif bullet_block:
+            # No clear bullets found, but we have content - preserve with line breaks
+            escaped_content = html.escape(bullet_block).replace('\n', '<br>')
+            parts.append(f'<div class="kp-fallback">{escaped_content}</div>')
+        
+        return ''.join(parts) if parts else '<p class="mb-6 leading-relaxed">No summary available.</p>'
+    
+    @staticmethod
     def to_report_v2_dict(report_data: dict, audio_url: str = "") -> dict:
         """Convert report data to V2 template format with robust fallbacks"""
         # Enhanced metadata (optional)
@@ -574,11 +655,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         else:
             summary_html = str(summary_content) if summary_content else ''
         
-        # Format summary for better readability
+        # Format summary for better readability using Key Points formatter
         if summary_html and not summary_html.startswith('<'):
-            # Plain text - convert to paragraphs with better spacing
-            paragraphs = summary_html.split('\n\n')
-            summary_html = ''.join(f'<p class="mb-6 leading-relaxed">{p.strip()}</p>' for p in paragraphs if p.strip())
+            # Use the new Key Points formatter for structured content
+            summary_html = ModernDashboardHTTPRequestHandler.format_key_points(summary_html)
         
         # Sanitize HTML for security (only if bleach is available)
         if BLEACH_AVAILABLE and summary_html:
