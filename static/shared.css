@@ -15,6 +15,7 @@
     margin: 0;
     padding-left: 1.1rem;
     line-height: 1.5;
+    list-style-type: disc;
 }
 
 .kp-list li {
@@ -23,6 +24,12 @@
 
 .kp-fallback {
     white-space: pre-line;
+    line-height: 1.5;
+}
+
+.kp-takeaway {
+    margin-top: 1rem;
+    font-size: 1rem;
     line-height: 1.5;
 }
 

@@ -2863,19 +2863,33 @@ class AudioDashboard {
         const mainTopicMatch = text.match(/^(?:•\s*)?\*\*Main topic:\*\*\s*(.+)$/mi);
         const mainTopic = mainTopicMatch ? mainTopicMatch[1].trim() : null;
 
-        // 2) Find content after "**Key points:**" marker
+        // 2) Extract takeaway if present
+        const takeawayMatch = text.match(/\*\*Takeaway:\*\*\s*(.+?)(?=\*\*|$)/is);
+        const takeaway = takeawayMatch ? takeawayMatch[1].trim() : null;
+        
+        // 3) Find content after "**Key points:**" marker, before takeaway
         const keyStartIdx = text.search(/\*\*Key points:\*\*/i);
         let bulletBlock = '';
         
         if (keyStartIdx >= 0) {
             // Take everything after the "Key points:" marker
-            bulletBlock = text.slice(keyStartIdx).replace(/\*\*Key points:\*\*/i, '').trim();
+            let bulletText = text.slice(keyStartIdx).replace(/\*\*Key points:\*\*/i, '').trim();
+            // Stop at takeaway marker if present
+            if (takeawayMatch) {
+                const takeawayIdx = bulletText.search(/\*\*Takeaway:\*\*/i);
+                if (takeawayIdx >= 0) {
+                    bulletText = bulletText.slice(0, takeawayIdx).trim();
+                }
+            }
+            bulletBlock = bulletText;
         } else {
-            // No "Key points:" marker, use everything except main topic
+            // No "Key points:" marker, use everything except main topic and takeaway
+            bulletBlock = text;
             if (mainTopicMatch) {
-                bulletBlock = text.replace(mainTopicMatch[0], '').trim();
-            } else {
-                bulletBlock = text;
+                bulletBlock = bulletBlock.replace(mainTopicMatch[0], '').trim();
+            }
+            if (takeawayMatch) {
+                bulletBlock = bulletBlock.replace(takeawayMatch[0], '').trim();
             }
         }
 
@@ -2905,6 +2919,11 @@ class AudioDashboard {
         } else if (bulletBlock) {
             // No clear bullets found, but we have content - preserve with line breaks
             parts.push(`<div class="kp-fallback">${this.escapeHtml(bulletBlock).replace(/\n/g, '<br>')}</div>`);
+        }
+
+        // Add takeaway as bold concluding statement
+        if (takeaway) {
+            parts.push(`<div class="kp-takeaway"><strong>${this.escapeHtml(takeaway)}</strong></div>`);
         }
 
         return parts.length > 0 ? parts.join('') : '<p>No summary available.</p>';
