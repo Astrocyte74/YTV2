@@ -984,6 +984,18 @@ class AudioDashboard {
             }
         });
         
+        // Deduplicate parentCategory parameters (per OpenAI recommendation)
+        const dedupeParam = (key) => {
+            const all = params.getAll(key);
+            if (all.length > 1) {
+                const unique = [...new Set(all)];
+                params.delete(key);
+                unique.forEach(v => params.append(key, v));
+                console.log(`[YTV2] Deduplicated ${key}: ${all.length} -> ${unique.length} values`);
+            }
+        };
+        dedupeParam('parentCategory');
+        
         console.debug('Final URL params:', params.toString());
         
         // Add pagination and sorting
@@ -3022,4 +3034,18 @@ class AudioDashboard {
 // Initialize the dashboard when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.audioDashboard = new AudioDashboard();
+    
+    // Optional: Enable fetch interceptor for debugging (per OpenAI recommendation)
+    // Uncomment the lines below to see all API requests in console
+    /*
+    (async () => {
+        const _fetch = window.fetch;
+        window.fetch = (...args) => {
+            if (String(args[0]).includes('/api/reports?')) {
+                console.log('[YTV2] REQUEST =>', args[0]);
+            }
+            return _fetch(...args);
+        };
+    })();
+    */
 });
