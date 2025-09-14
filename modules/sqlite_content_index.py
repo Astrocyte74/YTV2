@@ -49,6 +49,28 @@ class SQLiteContentIndex:
                     logger.debug("ℹ️ Migration: Subcategory column already exists")
                 else:
                     logger.warning(f"Migration warning: Could not add subcategory column: {e}")
+            
+            # Migration: Add subcategories_json column if it doesn't exist
+            try:
+                cursor.execute('ALTER TABLE content ADD COLUMN subcategories_json TEXT')
+                logger.info("✅ Migration: Added subcategories_json column to content table")
+                conn.commit()
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" in str(e).lower():
+                    logger.debug("ℹ️ Migration: Subcategories_json column already exists")
+                else:
+                    logger.warning(f"Migration warning: Could not add subcategories_json column: {e}")
+            
+            # Migration: Add analysis column if it doesn't exist (for structured data)
+            try:
+                cursor.execute('ALTER TABLE content ADD COLUMN analysis TEXT')
+                logger.info("✅ Migration: Added analysis column to content table")
+                conn.commit()
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" in str(e).lower():
+                    logger.debug("ℹ️ Migration: Analysis column already exists")
+                else:
+                    logger.warning(f"Migration warning: Could not add analysis column: {e}")
                     
         finally:
             conn.close()
