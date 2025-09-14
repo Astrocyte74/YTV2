@@ -204,8 +204,9 @@ class SQLiteContentIndex:
                                         LEFT JOIN json_each(c.value, '$.subcategories') AS s
                                         WHERE json_extract(c.value,'$.category') = ? AND s.value = ?
                                     )) OR (
-                                        content.subcategory = ? AND 
-                                        EXISTS (SELECT 1 FROM json_each(content.category) AS cat WHERE cat.value = ?)
+                                        content.subcategory = ? AND
+                                        (content.category IS NOT NULL AND json_valid(content.category) AND
+                                         EXISTS (SELECT 1 FROM json_each(content.category) AS cat WHERE cat.value = ?))
                                     )
                                 )""")
                                 params.extend([parent_normalized, cat_normalized, cat_normalized, parent_normalized])
@@ -213,7 +214,8 @@ class SQLiteContentIndex:
                         else:
                             # Category-level filter (show all content in this category)
                             cat_conditions.append("""(
-                                EXISTS (SELECT 1 FROM json_each(content.category) AS cat WHERE cat.value = ?) OR
+                                (content.category IS NOT NULL AND json_valid(content.category) AND
+                                 EXISTS (SELECT 1 FROM json_each(content.category) AS cat WHERE cat.value = ?)) OR
                                 (content.subcategories_json IS NOT NULL AND json_valid(content.subcategories_json) AND
                                  EXISTS (
                                     SELECT 1 FROM json_each(content.subcategories_json, '$.categories') AS c
@@ -253,7 +255,8 @@ class SQLiteContentIndex:
                                         )
                                     ) OR (
                                         content.subcategory = ? AND
-                                        EXISTS (SELECT 1 FROM json_each(content.category) cat WHERE cat.value = ?)
+                                        (content.category IS NOT NULL AND json_valid(content.category) AND
+                                         EXISTS (SELECT 1 FROM json_each(content.category) cat WHERE cat.value = ?))
                                     )
                                 """)
                                 params.extend([p_norm, sc_norm, sc_norm, p_norm])
