@@ -322,12 +322,12 @@ class SQLiteContentIndex:
                 for row in cursor.fetchall()
             ]
             
-            # Category filter with subcategory support
+            # Category filter with subcategory support - use structured data when available
             cursor = conn.execute("""
-                SELECT category, subcategory, COUNT(*) as count
+                SELECT category, subcategory, subcategories_json, COUNT(*) as count
                 FROM content 
                 WHERE category IS NOT NULL AND category != '' AND category != '[]'
-                GROUP BY category, subcategory
+                GROUP BY category, subcategory, subcategories_json
                 ORDER BY count DESC
             """)
             
@@ -335,22 +335,49 @@ class SQLiteContentIndex:
             category_hierarchy = {}
             for row in cursor.fetchall():
                 categories = self._parse_json_field(row['category'])
-                subcategory = row['subcategory']
+                legacy_subcategory = row['subcategory'] if 'subcategory' in row.keys() else None
+                subcategories_json = row['subcategories_json'] if 'subcategories_json' in row.keys() else None
                 count = row['count']
                 
-                for cat in categories:
-                    if cat not in category_hierarchy:
-                        category_hierarchy[cat] = {
-                            'count': 0,
-                            'subcategories': {}
-                        }
-                    
-                    category_hierarchy[cat]['count'] += count
-                    
-                    if subcategory:
-                        if subcategory not in category_hierarchy[cat]['subcategories']:
-                            category_hierarchy[cat]['subcategories'][subcategory] = 0
-                        category_hierarchy[cat]['subcategories'][subcategory] += count
+                # Parse structured subcategories if available
+                structured_categories = self._parse_subcategories_json(subcategories_json) if subcategories_json else []
+                
+                # Use structured data if available, otherwise fall back to legacy
+                if structured_categories:
+                    # Use structured format: [{"category": "X", "subcategories": ["Y", "Z"]}]
+                    for cat_obj in structured_categories:
+                        cat_name = cat_obj.get('category', '')
+                        if not cat_name:
+                            continue
+                            
+                        if cat_name not in category_hierarchy:
+                            category_hierarchy[cat_name] = {
+                                'count': 0,
+                                'subcategories': {}
+                            }
+                        
+                        category_hierarchy[cat_name]['count'] += count
+                        
+                        # Add all subcategories for this category
+                        for subcat in cat_obj.get('subcategories', []):
+                            if subcat not in category_hierarchy[cat_name]['subcategories']:
+                                category_hierarchy[cat_name]['subcategories'][subcat] = 0
+                            category_hierarchy[cat_name]['subcategories'][subcat] += count
+                else:
+                    # Fall back to legacy format for backwards compatibility
+                    for cat in categories:
+                        if cat not in category_hierarchy:
+                            category_hierarchy[cat] = {
+                                'count': 0,
+                                'subcategories': {}
+                            }
+                        
+                        category_hierarchy[cat]['count'] += count
+                        
+                        if legacy_subcategory:
+                            if legacy_subcategory not in category_hierarchy[cat]['subcategories']:
+                                category_hierarchy[cat]['subcategories'][legacy_subcategory] = 0
+                            category_hierarchy[cat]['subcategories'][legacy_subcategory] += count
             
             # Convert to API format
             filters['category'] = []
