@@ -243,12 +243,8 @@ class SQLiteContentIndex:
                     parents = [p.replace('–', '-').strip() for p in parents if p and str(p).strip()]
                     parents = sorted(set(parents))  # Deduplicate parent categories
                     
-                    # Guard against empty inputs after normalization
-                    if not subcats:
-                        logger.debug("No valid subcategories after normalization, skipping subcategory filter")
-                    else:
-                        # Build a single OR group for all selected subcategories (union)
-                        or_clauses = []
+                    # Build a single OR group for all selected subcategories (union)
+                    or_clauses = []
                     or_params = []
                     
                     if parents:  # pair each selected subcat with each selected parent
@@ -287,14 +283,10 @@ class SQLiteContentIndex:
                             """)
                             or_params.extend([sc, sc])
                     
-                        if or_clauses:
-                            # Single OR condition for all subcategories (creates union, not intersection)
-                            # Note: At scale, could optimize large OR lists with IN (...) temp table if needed
-                            where_conditions.append(f"({' OR '.join(or_clauses)})")
-                            params.extend(or_params)
-                        elif subcats:
-                            # Edge case: valid subcats but no OR clauses generated (shouldn't happen)
-                            logger.warning(f"Subcategory filter had valid inputs but no OR clauses: {subcats}")
+                    if or_clauses:
+                        # Single OR condition for all subcategories (creates union, not intersection)
+                        where_conditions.append(f"({' OR '.join(or_clauses)})")
+                        params.extend(or_params)
                 
                 # Apply content type filter
                 if 'content_type' in filters and filters['content_type']:
