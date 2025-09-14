@@ -435,18 +435,30 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         main_topic_match = re.search(r'^(?:•\s*)?\*\*Main topic:\*\*\s*(.+)$', text, re.MULTILINE | re.IGNORECASE)
         main_topic = main_topic_match.group(1).strip() if main_topic_match else None
         
-        # 2) Find content after "**Key points:**" marker
+        # 2) Extract takeaway if present
+        takeaway_match = re.search(r'\*\*Takeaway:\*\*\s*(.+?)(?=\*\*|$)', text, re.IGNORECASE | re.DOTALL)
+        takeaway = takeaway_match.group(1).strip() if takeaway_match else None
+        
+        # 3) Find content after "**Key points:**" marker, before takeaway
         key_start_match = re.search(r'\*\*Key points:\*\*', text, re.IGNORECASE)
         bullet_block = ''
         
         if key_start_match:
             # Take everything after the "Key points:" marker
-            bullet_block = text[key_start_match.end():].strip()
+            bullet_text = text[key_start_match.end():].strip()
+            # Stop at takeaway marker if present
+            if takeaway_match:
+                bullet_text = bullet_text[:takeaway_match.start() - key_start_match.end()].strip()
+            bullet_block = bullet_text
         elif main_topic_match:
-            # No "Key points:" marker, use everything except main topic
+            # No "Key points:" marker, use everything except main topic and takeaway
             bullet_block = text.replace(main_topic_match.group(0), '').strip()
+            if takeaway_match:
+                bullet_block = bullet_block.replace(takeaway_match.group(0), '').strip()
         else:
             bullet_block = text
+            if takeaway_match:
+                bullet_block = bullet_block.replace(takeaway_match.group(0), '').strip()
         
         # 3) Process bullet points
         lines = [line.strip() for line in bullet_block.split('\n') if line.strip()]
@@ -469,6 +481,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # No clear bullets found, but we have content - preserve with line breaks
             escaped_content = html.escape(bullet_block).replace('\n', '<br>')
             parts.append(f'<div class="kp-fallback">{escaped_content}</div>')
+        
+        # Add takeaway as bold concluding statement
+        if takeaway:
+            parts.append(f'<div class="kp-takeaway"><strong>{html.escape(takeaway)}</strong></div>')
         
         return ''.join(parts) if parts else '<p class="mb-6 leading-relaxed">No summary available.</p>'
     
