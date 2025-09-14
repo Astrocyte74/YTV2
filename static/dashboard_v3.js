@@ -954,6 +954,10 @@ class AudioDashboard {
                 .substring(0, 100);        // Prevent extremely long parameters
         };
 
+        // Check if server will handle subcategory filtering (to disable client-side narrowing)
+        const hasServerSubcatFilter = Array.isArray(effectiveFilters.subcategory) && effectiveFilters.subcategory.length > 0;
+        console.log(`[YTV2] Server subcategory filtering: ${hasServerSubcatFilter}`);
+        
         // Build params with special handling for subcategories
         Object.entries(effectiveFilters).forEach(([key, values]) => {
             if (key === 'subcategory') {
@@ -1017,36 +1021,45 @@ class AudioDashboard {
             }
             
             let items = data.reports || data.data || [];
+            console.log(`[YTV2] Items from server: ${items.length}`);
 
-            // Client-side subcategory narrowing (per parent). Within a selected
-            // parent, if some-but-not-all subcats are checked, keep only those.
-            const restrictingParents = Object.entries(facet.subcats)
-                .filter(([parent, arr]) => {
-                    const total = document.querySelectorAll(`input[data-filter="subcategory"][data-parent-category="${CSS.escape(parent)}"]`).length;
-                    return Array.isArray(arr) && arr.length > 0 && arr.length < total;
-                })
-                .map(([parent]) => parent);
+            // 🚫 Skip client-side narrowing if server already filtered by subcategory
+            if (hasServerSubcatFilter) {
+                console.log(`[YTV2] Skipping client-side narrowing - server already filtered by subcategory`);
+            } else {
+                console.log(`[YTV2] Applying legacy client-side subcategory narrowing`);
+                // Client-side subcategory narrowing (per parent). Within a selected
+                // parent, if some-but-not-all subcats are checked, keep only those.
+                const restrictingParents = Object.entries(facet.subcats)
+                    .filter(([parent, arr]) => {
+                        const total = document.querySelectorAll(`input[data-filter="subcategory"][data-parent-category="${CSS.escape(parent)}"]`).length;
+                        return Array.isArray(arr) && arr.length > 0 && arr.length < total;
+                    })
+                    .map(([parent]) => parent);
 
-            if (restrictingParents.length) {
-                const allowedByParent = new Map(Object.entries(facet.subcats));
-                items = items.filter(it => {
-                    const cats = Array.isArray(it.analysis?.category) ? it.analysis.category : [it.analysis?.category].filter(Boolean);
-                    const sub = it.analysis?.subcategory || '';
-                    // If item matches any restricting parent, it must satisfy its subcat list
-                    for (const p of restrictingParents) {
-                        if (cats.includes(p)) {
-                            const allowed = allowedByParent.get(p) || [];
-                            return allowed.includes(sub);
+                if (restrictingParents.length) {
+                    const allowedByParent = new Map(Object.entries(facet.subcats));
+                    items = items.filter(it => {
+                        const cats = Array.isArray(it.analysis?.category) ? it.analysis.category : [it.analysis?.category].filter(Boolean);
+                        const sub = it.analysis?.subcategory || '';
+                        // If item matches any restricting parent, it must satisfy its subcat list
+                        for (const p of restrictingParents) {
+                            if (cats.includes(p)) {
+                                const allowed = allowedByParent.get(p) || [];
+                                return allowed.includes(sub);
+                            }
                         }
-                    }
-                    // Otherwise, if item belongs to a selected parent with no subcat restriction, allow
-                    if (facet.categories && facet.categories.length) {
-                        return cats.some(c => facet.categories.includes(c));
-                    }
-                    // If no parents selected (unlikely due to require-selection), keep as-is
-                    return true;
-                });
+                        // Otherwise, if item belongs to a selected parent with no subcat restriction, allow
+                        if (facet.categories && facet.categories.length) {
+                            return cats.some(c => facet.categories.includes(c));
+                        }
+                        // If no parents selected (unlikely due to require-selection), keep as-is
+                        return true;
+                    });
+                }
             }
+            console.log(`[YTV2] Final items after narrowing: ${items.length}`);
+
 
             this.currentItems = items;
             this.renderContent(this.currentItems);
