@@ -658,7 +658,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         # Format summary for better readability using Key Points formatter
         if summary_html and not summary_html.startswith('<'):
             # Use the new Key Points formatter for structured content
+            logger.info(f"🎯 Applying Key Points formatting to summary: {summary_html[:100]}...")
             summary_html = ModernDashboardHTTPRequestHandler.format_key_points(summary_html)
+            logger.info(f"✅ Key Points formatting result: {summary_html[:100]}...")
+        else:
+            logger.info(f"⚠️ Skipping Key Points formatting - already HTML or empty: starts_with_html={summary_html.startswith('<') if summary_html else 'empty'}")
         
         # Sanitize HTML for security (only if bleach is available)
         if BLEACH_AVAILABLE and summary_html:
