@@ -397,6 +397,18 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     """HTTP request handler with modern template system"""
     
     @staticmethod
+    def _maybe_parse_dict_string(value):
+        """Parse dict-as-string format from chunked processing"""
+        if isinstance(value, str) and value.strip().startswith("{") and "comprehensive" in value:
+            try:
+                import ast
+                # Safely parse Python-literal dict string to a real dict
+                return ast.literal_eval(value)
+            except Exception:
+                return value
+        return value
+
+    @staticmethod
     def normalize_summary_content(summary_content, summary_type: str = None) -> str:
         """Normalize summary content - handle both string and object formats from chunked processing"""
         # If already a string, return as-is
@@ -778,21 +790,30 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                           "definition": item.get("definition", "")} 
                          for item in vocab if item.get("word") or item.get("term")]
         
-        # Get summary HTML using new normalization method
+        # Get summary HTML using new normalization method with dict-as-string support
         summary_html = ""
-        summary_type = summary.get('type', '')
+        summary_type = summary.get('type', '') if isinstance(summary, dict) else ""
         
-        # First try content field (object from chunked processing)
-        if summary.get('content'):
-            summary_html = ModernDashboardHTTPRequestHandler.normalize_summary_content(
-                summary['content'], summary_type
-            )
+        # Handle dict-as-string format from chunked processing
+        summary_payload = summary
+        if isinstance(summary, dict) and 'content' in summary:
+            summary_payload = summary['content']
         
-        # Fallback to direct properties
-        if not summary_html:
-            summary_html = ModernDashboardHTTPRequestHandler.normalize_summary_content(
-                summary, summary_type
+        # Parse dict-as-string at nested levels
+        if isinstance(summary_payload, dict) and 'summary' in summary_payload:
+            summary_payload['summary'] = ModernDashboardHTTPRequestHandler._maybe_parse_dict_string(
+                summary_payload['summary']
             )
+        summary_payload = ModernDashboardHTTPRequestHandler._maybe_parse_dict_string(summary_payload)
+        
+        # Normalize to the best text field
+        summary_html = ModernDashboardHTTPRequestHandler.normalize_summary_content(
+            summary_payload, summary_type
+        )
+        
+        # Unescape escaped newlines so formatter can see bullets/headers
+        if isinstance(summary_html, str) and '\\n' in summary_html and '\n' not in summary_html:
+            summary_html = summary_html.replace('\\n', '\n')
         
         # Format summary for better readability using Key Points formatter
         if summary_html and not summary_html.startswith('<'):
