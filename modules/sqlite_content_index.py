@@ -183,23 +183,37 @@ class SQLiteContentIndex:
                 if 'category' in filters and filters['category']:
                     cat_conditions = []
                     for cat in filters['category']:
-                        # Handle both hyphen (-) and en dash (–) variations for robust matching
-                        cat_hyphen = cat.replace('–', '-')  # Convert en dash to hyphen
-                        cat_endash = cat.replace('-', '–')  # Convert hyphen to en dash
+                        # Normalize punctuation (en-dash to hyphen)
+                        cat_normalized = cat.replace('–', '-').strip()
                         
-                        # NEW: Search structured subcategories_json field + legacy fallback
-                        cat_conditions.append("""(
-                            category LIKE ? OR category LIKE ? OR 
-                            subcategory = ? OR subcategory = ? OR
-                            subcategories_json LIKE ? OR subcategories_json LIKE ? OR
-                            (category LIKE ? AND category LIKE ?)
-                        )""")
-                        params.extend([
-                            f'%"{cat_hyphen}"%', f'%"{cat_endash}"%',  # Direct category JSON array match
-                            cat_hyphen, cat_endash,  # Legacy subcategory field match
-                            f'%"{cat_hyphen}"%', f'%"{cat_endash}"%',  # NEW: subcategories_json search
-                            f'%{cat_hyphen}%', '%History%'  # Combined category partial match
-                        ])
+                        # Check if this is a subcategory filter (includes parent context)
+                        parent_category = filters.get('parentCategory') if 'parentCategory' in filters else None
+                        
+                        if parent_category:
+                            # EXACT subcategory match within specific parent category using JSON1
+                            parent_normalized = parent_category.replace('–', '-').strip()
+                            cat_conditions.append("""(
+                                EXISTS (
+                                    SELECT 1 FROM json_each(content.subcategories_json, '$.categories') AS c
+                                    LEFT JOIN json_each(c.value, '$.subcategories') AS s
+                                    WHERE json_extract(c.value,'$.category') = ? AND s.value = ?
+                                ) OR (
+                                    content.subcategory = ? AND 
+                                    EXISTS (SELECT 1 FROM json_each(content.category) AS cat WHERE cat.value = ?)
+                                )
+                            )""")
+                            params.extend([parent_normalized, cat_normalized, cat_normalized, parent_normalized])
+                        else:
+                            # Category-level filter (show all content in this category)
+                            cat_conditions.append("""(
+                                EXISTS (SELECT 1 FROM json_each(content.category) AS cat WHERE cat.value = ?) OR
+                                EXISTS (
+                                    SELECT 1 FROM json_each(content.subcategories_json, '$.categories') AS c
+                                    WHERE json_extract(c.value,'$.category') = ?
+                                )
+                            )""")
+                            params.extend([cat_normalized, cat_normalized])
+                    
                     if cat_conditions:
                         where_conditions.append(f"({' OR '.join(cat_conditions)})")
                 
