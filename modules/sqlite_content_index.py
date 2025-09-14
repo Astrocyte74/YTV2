@@ -187,22 +187,27 @@ class SQLiteContentIndex:
                         cat_normalized = cat.replace('–', '-').strip()
                         
                         # Check if this is a subcategory filter (includes parent context)
-                        parent_category = filters.get('parentCategory') if 'parentCategory' in filters else None
+                        parent_categories = filters.get('parentCategory', [])
+                        if isinstance(parent_categories, str):
+                            parent_categories = [parent_categories]
                         
-                        if parent_category:
-                            # EXACT subcategory match within specific parent category using JSON1
-                            parent_normalized = parent_category.replace('–', '-').strip()
-                            cat_conditions.append("""(
-                                EXISTS (
-                                    SELECT 1 FROM json_each(content.subcategories_json, '$.categories') AS c
-                                    LEFT JOIN json_each(c.value, '$.subcategories') AS s
-                                    WHERE json_extract(c.value,'$.category') = ? AND s.value = ?
-                                ) OR (
-                                    content.subcategory = ? AND 
-                                    EXISTS (SELECT 1 FROM json_each(content.category) AS cat WHERE cat.value = ?)
-                                )
-                            )""")
-                            params.extend([parent_normalized, cat_normalized, cat_normalized, parent_normalized])
+                        if parent_categories:
+                            # EXACT subcategory match within specific parent categories using JSON1
+                            pair_conditions = []
+                            for parent_category in parent_categories:
+                                parent_normalized = parent_category.replace('–', '-').strip()
+                                pair_conditions.append("""(
+                                    EXISTS (
+                                        SELECT 1 FROM json_each(content.subcategories_json, '$.categories') AS c
+                                        LEFT JOIN json_each(c.value, '$.subcategories') AS s
+                                        WHERE json_extract(c.value,'$.category') = ? AND s.value = ?
+                                    ) OR (
+                                        content.subcategory = ? AND 
+                                        EXISTS (SELECT 1 FROM json_each(content.category) AS cat WHERE cat.value = ?)
+                                    )
+                                )""")
+                                params.extend([parent_normalized, cat_normalized, cat_normalized, parent_normalized])
+                            cat_conditions.append(f"({' OR '.join(pair_conditions)})")
                         else:
                             # Category-level filter (show all content in this category)
                             cat_conditions.append("""(
