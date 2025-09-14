@@ -954,13 +954,34 @@ class AudioDashboard {
                 .substring(0, 100);        // Prevent extremely long parameters
         };
 
-        // Otherwise build params normally
+        // Build params with special handling for subcategories
         Object.entries(effectiveFilters).forEach(([key, values]) => {
-            values.forEach(v => {
-                const normalizedValue = normalizeLabel(v);
-                console.log(`[YTV2] Adding param: ${key}=${normalizedValue} (original: ${v})`);
-                params.append(key, normalizedValue);
-            });
+            if (key === 'subcategory') {
+                // For subcategories, we need to send parentCategory instead of category
+                values.forEach(subcatValue => {
+                    const normalizedSubcat = normalizeLabel(subcatValue);
+                    console.log(`[YTV2] Adding param: subcategory=${normalizedSubcat} (original: ${subcatValue})`);
+                    params.append('subcategory', normalizedSubcat);
+                    
+                    // Find the parent category for this subcategory
+                    const subcatInput = document.querySelector(`input[data-filter="subcategory"][value="${CSS.escape(subcatValue)}"]`);
+                    if (subcatInput && subcatInput.dataset.parentCategory) {
+                        const normalizedParent = normalizeLabel(subcatInput.dataset.parentCategory);
+                        console.log(`[YTV2] Adding param: parentCategory=${normalizedParent} (for subcategory: ${subcatValue})`);
+                        params.append('parentCategory', normalizedParent);
+                    }
+                });
+            } else if (key === 'category' && effectiveFilters.subcategory && effectiveFilters.subcategory.length > 0) {
+                // Skip category if we have subcategories (parentCategory will be used instead)
+                console.log(`[YTV2] Skipping category param because subcategories are present`);
+            } else {
+                // Handle all other filter types normally
+                values.forEach(v => {
+                    const normalizedValue = normalizeLabel(v);
+                    console.log(`[YTV2] Adding param: ${key}=${normalizedValue} (original: ${v})`);
+                    params.append(key, normalizedValue);
+                });
+            }
         });
         
         console.debug('Final URL params:', params.toString());
