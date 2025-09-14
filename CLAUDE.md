@@ -211,6 +211,19 @@ sqlite3 ytv2_content.db
 - **Template-specific CSS**: Inline `<style>` blocks in respective templates
 - **HTML Security**: Update `ALLOWED_TAGS`/`ALLOWED_ATTRS` in `telegram_bot.py` for new elements
 
+#### 🚨 CRITICAL: Dual Formatter Pattern
+**Both inline cards AND individual pages must use identical formatting logic to prevent drift:**
+- **Inline cards**: Use `dashboard_v3.js` formatKeyPoints() → renderStructuredKeyPoints()
+- **Individual pages**: Use `telegram_bot.py` format_key_points() → _render_structured_key_points()
+- **Template data flow**: `{{ summary_html | safe }}` in `report_v2.html` comes from format_key_points()
+- **Key insight**: Any formatting changes must be applied to BOTH formatters identically
+
+#### Static File Serving Architecture
+- **CSS serving**: Custom `serve_css()` method in `telegram_bot.py` (line ~921)
+- **Path handling bug pattern**: Watch for `/static/file.css` → `static/static/file.css` duplication
+- **Fix pattern**: Strip `static/` prefix before joining with `Path('static')`
+- **Alternative**: Use Flask's built-in static serving instead of custom handler
+
 ### CSS Architecture (Updated September 14, 2025)
 - **Shared styles** → `/static/shared.css` (Key Points formatting, future common styles)
 - **Dashboard-specific** → `dashboard_v3_template.html` inline `<style>` (waveform, layout offsets)  
@@ -600,16 +613,37 @@ sqlite3 ytv2_content.db "SELECT channel_name, COUNT(*) FROM content GROUP BY cha
 
 ### Key Points Formatting System (September 14, 2025)
 
-**Smart Content Formatting**: Detects structured markers (`**Main topic:**`, `**Key points:**`) and renders clean visual hierarchy:
-- **Before**: `• **Main topic:** Topic text **Key points:** - Bullet 1 - Bullet 2` (ugly labels)
-- **After**: **Topic text** as heading + clean bullet list (no labels)
+**Smart Content Formatting**: Detects structured markers (`**Main topic:**`, `**Key points:**`, `**Takeaway:**`) and renders clean visual hierarchy:
+- **Before**: `• **Main topic:** Topic text **Key points:** - Bullet 1 **Takeaway:** Summary` (ugly labels)
+- **After**: **Topic text** as heading + clean bullet list + bold takeaway (no labels)
 
 **Implementation Locations**:
 - Frontend formatter: `dashboard_v3.js:2835` formatKeyPoints()
 - Backend formatter: `telegram_bot.py:395` format_key_points()  
-- Styling: `dashboard_v3_template.html` `.kp-heading`, `.kp-list`, `.kp-fallback`
+- Styling: `static/shared.css` `.kp-heading`, `.kp-list`, `.kp-takeaway`, `.kp-fallback`
 - Security whitelist: `telegram_bot.py:39` ALLOWED_TAGS + ALLOWED_ATTRS
+
+#### 🚨 CRITICAL: Robust Marker Processing Patterns
+**Lessons learned from September 14, 2025 debugging:**
+- **Dual filtering required**: Extract markers early AND filter from bullet processing
+- **Unicode bullet support**: Use `[•\-–—]` pattern for all bullet types (regular dash, en-dash, em-dash)
+- **Belt-and-suspenders approach**: Strip marker lines with regex BEFORE processing bullets
+- **Precompiled regex**: Use compiled patterns for performance and consistency
+- **Edge case handling**: Partial markers like "• **T" must be filtered out during bullet processing
+- **Identical logic**: Backend Python and frontend JavaScript must use identical regex patterns
+
+**Regex Patterns Used:**
+```javascript
+// Takeaway extraction
+/\*\*Takeaway:\*\*\s*(.+?)(?=\*\*|$)/is
+
+// Takeaway line stripping  
+/^\s*(?:[•\-–—]\s*)?\*\*takeaway:\*\*.*$/gmi
+
+// Takeaway bullet filtering
+/^\s*(?:[•\-–—]\s*)?\*\*takeaway:\*\*/i
+```
 
 **Fallback Behavior**: Content without markers uses normal paragraph formatting
 
-**Last Updated**: September 14, 2025 - Key Points formatting enhancement deployed.
+**Last Updated**: September 14, 2025 - Robust takeaway formatting with OpenAI feedback implemented.
