@@ -204,6 +204,12 @@ sqlite3 ytv2_content.db
 - **Main Server**: `telegram_bot.py` (dashboard-only mode, no Telegram)
 - **Database**: SQLite via `modules/sqlite_content_index.py`
 
+### Content Formatting Architecture
+- **Inline Reader**: `dashboard_v3.js` formatKeyPoints() method (line ~2835)
+- **Detail Pages**: `telegram_bot.py` format_key_points() method (line ~395)
+- **CSS Styling**: Inline `<style>` block in `dashboard_v3_template.html` (not separate CSS file)
+- **HTML Security**: Update `ALLOWED_TAGS`/`ALLOWED_ATTRS` in `telegram_bot.py` for new elements
+
 ### Debugging Quick Reference
 ```bash
 # Check which template is being used
@@ -585,4 +591,18 @@ sqlite3 ytv2_content.db "SELECT channel_name, COUNT(*) FROM content GROUP BY cha
 - ✅ No categories OR no channels = no results (independent requirements)
 - ✅ Filter chips preserve other filter types (don't clear unrelated filters)
 
-**Last Updated**: September 13, 2025 - All filter chip and database management systems working correctly.
+### Key Points Formatting System (September 14, 2025)
+
+**Smart Content Formatting**: Detects structured markers (`**Main topic:**`, `**Key points:**`) and renders clean visual hierarchy:
+- **Before**: `• **Main topic:** Topic text **Key points:** - Bullet 1 - Bullet 2` (ugly labels)
+- **After**: **Topic text** as heading + clean bullet list (no labels)
+
+**Implementation Locations**:
+- Frontend formatter: `dashboard_v3.js:2835` formatKeyPoints()
+- Backend formatter: `telegram_bot.py:395` format_key_points()  
+- Styling: `dashboard_v3_template.html` `.kp-heading`, `.kp-list`, `.kp-fallback`
+- Security whitelist: `telegram_bot.py:39` ALLOWED_TAGS + ALLOWED_ATTRS
+
+**Fallback Behavior**: Content without markers uses normal paragraph formatting
+
+**Last Updated**: September 14, 2025 - Key Points formatting enhancement deployed.
