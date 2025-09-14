@@ -960,6 +960,14 @@ class AudioDashboard {
         try {
             const response = await fetch(`/api/reports?${params}`);
             const data = await response.json();
+            
+            // Handle API errors (per OpenAI recommendation)
+            if (!response.ok) {
+                console.error('API error:', data);
+                this.showError(data?.message || 'Failed to load content');
+                return; // Don't try to process pagination/items
+            }
+            
             let items = data.reports || data.data || [];
 
             // Client-side subcategory narrowing (per parent). Within a selected
