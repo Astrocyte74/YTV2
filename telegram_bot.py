@@ -2858,7 +2858,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         content_type, complexity_level, language, key_topics, named_entities, analysis,
                         format_source, processing_status, created_at, updated_at
                     ) VALUES (
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                     )
                     ON CONFLICT(id) DO UPDATE SET
                         title = excluded.title,
