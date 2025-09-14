@@ -1362,39 +1362,26 @@ class AudioDashboard {
 
         // Tolerant summary extraction across shapes - handle NEW and OLD formats
         let summaryRaw = '';
-        if (typeof data.summary === 'string') {
-            summaryRaw = data.summary;
-        } else if (data.summary && typeof data.summary === 'object') {
-            // Try NEW format first (summary.summary)
-            if (typeof data.summary.summary === 'string') {
-                summaryRaw = data.summary.summary;
-            }
-            // Try NEW format direct comprehensive/audio
-            else if (typeof data.summary.comprehensive === 'string') {
-                summaryRaw = data.summary.comprehensive;
-            }
-            else if (typeof data.summary.audio === 'string') {
-                summaryRaw = data.summary.audio;
-            }
-            // Then try OLD format (summary.content.*)
-            else if (typeof data.summary.content === 'string') {
-                summaryRaw = data.summary.content;
-            }
-            else if (data.summary.content && typeof data.summary.content.summary === 'string') {
-                summaryRaw = data.summary.content.summary;
-            }
-            else if (data.summary.content && typeof data.summary.content.audio === 'string') {
-                summaryRaw = data.summary.content.audio;
-            }
-            else if (data.summary.content && typeof data.summary.content.comprehensive === 'string') {
-                summaryRaw = data.summary.content.comprehensive;
-            }
-            else if (Array.isArray(data.summary.content)) {
-                summaryRaw = data.summary.content.join('\n');
+        // Use new normalization method to handle both string and object summary content
+        let summaryContent = data.summary;
+        let summaryType = data.summary?.type;
+
+        // Handle different data structures
+        if (typeof summaryContent === 'string') {
+            summaryRaw = summaryContent;
+        } else if (summaryContent && typeof summaryContent === 'object') {
+            // First try direct properties (summary.comprehensive, summary.summary, etc.)
+            if (summaryContent.content) {
+                summaryRaw = this.normalizeSummaryContent(summaryContent.content, summaryType);
+            } else {
+                summaryRaw = this.normalizeSummaryContent(summaryContent, summaryType);
             }
         }
+
+        // Additional fallbacks if normalization didn't work
         if (!summaryRaw) summaryRaw = data.analysis?.summary || data.analysis?.summary_text || data.summary_preview || '';
-        // Additional fallbacks: bullets / key points arrays
+        
+        // Fallback to bullet arrays if available
         if (!summaryRaw && Array.isArray(data.summary?.bullets)) {
             summaryRaw = data.summary.bullets
                 .map(b => (typeof b === 'string' ? `• ${b}` : ''))
@@ -1404,14 +1391,9 @@ class AudioDashboard {
         if (!summaryRaw && Array.isArray(data.analysis?.key_points)) {
             summaryRaw = data.analysis.key_points.map(b => typeof b === 'string' ? `• ${b}` : '').filter(Boolean).join('\n');
         }
-        if (typeof summaryRaw !== 'string') {
-            try { summaryRaw = String(summaryRaw.summary || ''); } catch (_) {}
-        }
-        if (typeof summaryRaw !== 'string') {
-            try { summaryRaw = JSON.stringify(summaryRaw); } catch (_) { summaryRaw = ''; }
-        }
-        // Normalize and trim, collapse blank lines
-        summaryRaw = String(summaryRaw).replace(/\r\n?/g, '\n').trim();
+
+        // Final string coercion and cleanup
+        summaryRaw = String(summaryRaw || '').replace(/\r\n?/g, '\n').trim();
         const summary = this.formatKeyPoints(summaryRaw);
 
         return `
@@ -2827,6 +2809,35 @@ class AudioDashboard {
      * Format Key Points with structured markers if present, fallback to normal formatting
      * Detects "**Main topic:**" and "**Key points:**" markers and renders them nicely
      */
+    /**
+     * Normalize summary content - handle both string and object formats from chunked processing
+     */
+    normalizeSummaryContent(summaryContent, summaryType) {
+        // If already a string, return as-is
+        if (typeof summaryContent === 'string') {
+            return summaryContent;
+        }
+
+        // If object, pick the right variant based on summary type
+        if (typeof summaryContent === 'object' && summaryContent) {
+            const type = (summaryType || '').toLowerCase().replace(/[-_\s]/g, '');
+            const pick = (...candidates) => candidates.find(v => typeof v === 'string' && v.trim());
+
+            if (type === 'keypoints' || type === 'bulletpoints') {
+                return pick(summaryContent.bullet_points, summaryContent.key_points, summaryContent.comprehensive) || '';
+            } else if (type === 'comprehensive') {
+                return pick(summaryContent.comprehensive, summaryContent.bullet_points, summaryContent.key_points) || '';
+            } else if (type === 'audio') {
+                return pick(summaryContent.summary, summaryContent.comprehensive, summaryContent.bullet_points, summaryContent.key_points) || '';
+            } else {
+                // Default fallback: prefer bullet_points, then key_points, then comprehensive
+                return pick(summaryContent.bullet_points, summaryContent.key_points, summaryContent.comprehensive) || '';
+            }
+        }
+
+        return String(summaryContent || '');
+    }
+
     formatKeyPoints(rawText) {
         if (!rawText || typeof rawText !== 'string') {
             return '<p>No summary available.</p>';
@@ -2839,9 +2850,16 @@ class AudioDashboard {
         const hasMainTopic = /^(?:•\s*)?\*\*Main topic:\*\*\s*.+$/mi.test(text);
         const hasKeyPoints = /\*\*Key points:\*\*/i.test(text);
 
+        // Check for comprehensive summary structure (headers + bullets)
+        const hasComprehensiveStructure = this.hasComprehensiveStructure(text);
+
         // If we have structured markers, use special formatting
         if (hasMainTopic || hasKeyPoints) {
             return this.renderStructuredKeyPoints(text);
+        }
+        // If we have comprehensive structure, format it nicely
+        else if (hasComprehensiveStructure) {
+            return this.renderComprehensiveContent(text);
         }
 
         // Fallback to normal paragraph formatting
@@ -2934,6 +2952,79 @@ class AudioDashboard {
         // Add takeaway as bold concluding statement
         if (takeaway) {
             parts.push(`<div class="kp-takeaway"><strong>${this.escapeHtml(takeaway)}</strong></div>`);
+        }
+
+        return parts.length > 0 ? parts.join('') : '<p>No summary available.</p>';
+    }
+
+    /**
+     * Detect comprehensive summary structure (headers + organized content)
+     */
+    hasComprehensiveStructure(text) {
+        // Look for patterns that indicate structured comprehensive summaries
+        const hasHeaders = /^[A-Z][^.\n]*\s*$/m.test(text); // Lines that look like headers
+        const hasBulletPoints = /^(?:\s*[-•*]\s+)/m.test(text); // Bullet points
+        const hasStructuredSections = /^(?:Overview|What's New|Key|Main|Summary|Takeaway)[\s:]/mi.test(text);
+        
+        return (hasHeaders && hasBulletPoints) || hasStructuredSections;
+    }
+
+    /**
+     * Render comprehensive content with proper structure
+     */
+    renderComprehensiveContent(text) {
+        const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
+        const parts = [];
+        let currentSection = null;
+        let currentBullets = [];
+
+        for (const line of lines) {
+            // Remove "Comprehensive Summary:" prefix if present
+            if (line.match(/^Comprehensive Summary:\s*/i)) {
+                continue;
+            }
+
+            // Check if this is a header (short line without punctuation, or ends with specific patterns)
+            const isHeader = (
+                (line.length < 80 && !line.endsWith('.') && !line.startsWith('-') && !line.startsWith('•')) ||
+                line.match(/^[A-Z][^.]*:?\s*$/) ||
+                line.match(/^(?:Overview|What's New|Key|Main|Summary|Takeaway|Cameras?|Processing|Workflow)/i)
+            );
+
+            const isBullet = line.match(/^\s*[-•*]\s+/);
+
+            if (isHeader) {
+                // Flush any pending bullets
+                if (currentBullets.length > 0) {
+                    const bulletHtml = currentBullets.map(bullet => `<li>${this.escapeHtml(bullet)}</li>`).join('');
+                    parts.push(`<ul class="kp-list">${bulletHtml}</ul>`);
+                    currentBullets = [];
+                }
+
+                // Add header
+                parts.push(`<div class="kp-heading">${this.escapeHtml(line.replace(/:\s*$/, ''))}</div>`);
+                currentSection = line;
+            } else if (isBullet) {
+                // Extract bullet content
+                const bulletContent = line.replace(/^\s*[-•*]\s+/, '').trim();
+                currentBullets.push(bulletContent);
+            } else if (line.trim()) {
+                // Flush any pending bullets
+                if (currentBullets.length > 0) {
+                    const bulletHtml = currentBullets.map(bullet => `<li>${this.escapeHtml(bullet)}</li>`).join('');
+                    parts.push(`<ul class="kp-list">${bulletHtml}</ul>`);
+                    currentBullets = [];
+                }
+
+                // Add as paragraph
+                parts.push(`<p class="mb-3">${this.escapeHtml(line)}</p>`);
+            }
+        }
+
+        // Flush any remaining bullets
+        if (currentBullets.length > 0) {
+            const bulletHtml = currentBullets.map(bullet => `<li>${this.escapeHtml(bullet)}</li>`).join('');
+            parts.push(`<ul class="kp-list">${bulletHtml}</ul>`);
         }
 
         return parts.length > 0 ? parts.join('') : '<p>No summary available.</p>';

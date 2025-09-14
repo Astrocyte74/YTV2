@@ -397,6 +397,49 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     """HTTP request handler with modern template system"""
     
     @staticmethod
+    def normalize_summary_content(summary_content, summary_type: str = None) -> str:
+        """Normalize summary content - handle both string and object formats from chunked processing"""
+        # If already a string, return as-is
+        if isinstance(summary_content, str):
+            return summary_content
+
+        # If object, pick the right variant based on summary type
+        if isinstance(summary_content, dict):
+            summary_type = (summary_type or '').lower().replace('-', '').replace('_', '').replace(' ', '')
+            
+            def pick(*candidates):
+                return next((v for v in candidates if isinstance(v, str) and v.strip()), '')
+
+            if summary_type in ['keypoints', 'bulletpoints']:
+                return pick(
+                    summary_content.get('bullet_points'),
+                    summary_content.get('key_points'), 
+                    summary_content.get('comprehensive')
+                )
+            elif summary_type == 'comprehensive':
+                return pick(
+                    summary_content.get('comprehensive'),
+                    summary_content.get('bullet_points'),
+                    summary_content.get('key_points')
+                )
+            elif summary_type == 'audio':
+                return pick(
+                    summary_content.get('summary'),
+                    summary_content.get('comprehensive'),
+                    summary_content.get('bullet_points'),
+                    summary_content.get('key_points')
+                )
+            else:
+                # Default fallback: prefer bullet_points, then key_points, then comprehensive
+                return pick(
+                    summary_content.get('bullet_points'),
+                    summary_content.get('key_points'),
+                    summary_content.get('comprehensive')
+                )
+
+        return str(summary_content or '')
+
+    @staticmethod
     def format_key_points(raw_text: str) -> str:
         """Format Key Points with structured markers if present, fallback to normal formatting"""
         import re
@@ -412,9 +455,15 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         has_main_topic = bool(re.search(r'^(?:•\s*)?\*\*Main topic:\*\*\s*.+$', text, re.MULTILINE | re.IGNORECASE))
         has_key_points = bool(re.search(r'\*\*Key points:\*\*', text, re.IGNORECASE))
         
+        # Check for comprehensive summary structure
+        has_comprehensive_structure = ModernDashboardHTTPRequestHandler._has_comprehensive_structure(text)
+        
         # If we have structured markers, use special formatting
         if has_main_topic or has_key_points:
             return ModernDashboardHTTPRequestHandler._render_structured_key_points(text)
+        # If we have comprehensive structure, format it nicely
+        elif has_comprehensive_structure:
+            return ModernDashboardHTTPRequestHandler._render_comprehensive_content(text)
         
         # Fallback to normal paragraph formatting
         paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
@@ -494,6 +543,75 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         # Add takeaway as bold concluding statement
         if takeaway:
             parts.append(f'<div class="kp-takeaway"><strong>{html.escape(takeaway)}</strong></div>')
+        
+        return ''.join(parts) if parts else '<p class="mb-6 leading-relaxed">No summary available.</p>'
+    
+    @staticmethod
+    def _has_comprehensive_structure(text: str) -> bool:
+        """Detect comprehensive summary structure (headers + organized content)"""
+        import re
+        
+        # Look for patterns that indicate structured comprehensive summaries
+        has_headers = bool(re.search(r'^[A-Z][^.\n]*\s*$', text, re.MULTILINE))  # Lines that look like headers
+        has_bullets = bool(re.search(r'^(?:\s*[-•*]\s+)', text, re.MULTILINE))  # Bullet points
+        has_structured_sections = bool(re.search(r'^(?:Overview|What\'s New|Key|Main|Summary|Takeaway|Cameras?|Processing|Workflow)[\s:]', text, re.MULTILINE | re.IGNORECASE))
+        
+        return (has_headers and has_bullets) or has_structured_sections
+    
+    @staticmethod
+    def _render_comprehensive_content(text: str) -> str:
+        """Render comprehensive content with proper structure"""
+        import re
+        import html
+        
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        parts = []
+        current_bullets = []
+        
+        for line in lines:
+            # Remove "Comprehensive Summary:" prefix if present
+            if re.match(r'^Comprehensive Summary:\s*', line, re.IGNORECASE):
+                continue
+            
+            # Check if this is a header
+            is_header = (
+                (len(line) < 80 and not line.endswith('.') and not line.startswith('-') and not line.startswith('•')) or
+                bool(re.match(r'^[A-Z][^.]*:?\s*$', line)) or
+                bool(re.match(r'^(?:Overview|What\'s New|Key|Main|Summary|Takeaway|Cameras?|Processing|Workflow)', line, re.IGNORECASE))
+            )
+            
+            is_bullet = bool(re.match(r'^\s*[-•*]\s+', line))
+            
+            if is_header:
+                # Flush any pending bullets
+                if current_bullets:
+                    bullet_html = ''.join(f'<li>{html.escape(bullet)}</li>' for bullet in current_bullets)
+                    parts.append(f'<ul class="kp-list">{bullet_html}</ul>')
+                    current_bullets = []
+                
+                # Add header
+                clean_header = re.sub(r':\s*$', '', line)
+                parts.append(f'<div class="kp-heading">{html.escape(clean_header)}</div>')
+                
+            elif is_bullet:
+                # Extract bullet content
+                bullet_content = re.sub(r'^\s*[-•*]\s+', '', line).strip()
+                current_bullets.append(bullet_content)
+                
+            elif line.strip():
+                # Flush any pending bullets
+                if current_bullets:
+                    bullet_html = ''.join(f'<li>{html.escape(bullet)}</li>' for bullet in current_bullets)
+                    parts.append(f'<ul class="kp-list">{bullet_html}</ul>')
+                    current_bullets = []
+                
+                # Add as paragraph
+                parts.append(f'<p class="mb-3">{html.escape(line)}</p>')
+        
+        # Flush any remaining bullets
+        if current_bullets:
+            bullet_html = ''.join(f'<li>{html.escape(bullet)}</li>' for bullet in current_bullets)
+            parts.append(f'<ul class="kp-list">{bullet_html}</ul>')
         
         return ''.join(parts) if parts else '<p class="mb-6 leading-relaxed">No summary available.</p>'
     
@@ -660,25 +778,21 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                           "definition": item.get("definition", "")} 
                          for item in vocab if item.get("word") or item.get("term")]
         
-        # Get summary HTML - handle both NEW and OLD format
+        # Get summary HTML using new normalization method
         summary_html = ""
-        summary_content = summary.get('content', {})
+        summary_type = summary.get('type', '')
         
-        # Check if this is NEW format (summary directly at top level)  
-        if not summary_content and 'summary' in summary:
-            # NEW format: summary.summary
-            summary_html = summary.get('summary', '')
-        elif not summary_content and ('comprehensive' in summary or 'audio' in summary):
-            # NEW format: summary.comprehensive or summary.audio
-            summary_html = (summary.get('comprehensive') or 
-                           summary.get('audio') or '')
-        elif isinstance(summary_content, dict):
-            # OLD format: summary.content.summary
-            summary_html = (summary_content.get('comprehensive') or 
-                           summary_content.get('audio') or
-                           summary_content.get('summary') or "")
-        else:
-            summary_html = str(summary_content) if summary_content else ''
+        # First try content field (object from chunked processing)
+        if summary.get('content'):
+            summary_html = ModernDashboardHTTPRequestHandler.normalize_summary_content(
+                summary['content'], summary_type
+            )
+        
+        # Fallback to direct properties
+        if not summary_html:
+            summary_html = ModernDashboardHTTPRequestHandler.normalize_summary_content(
+                summary, summary_type
+            )
         
         # Format summary for better readability using Key Points formatter
         if summary_html and not summary_html.startswith('<'):
