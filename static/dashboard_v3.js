@@ -2902,7 +2902,11 @@ class AudioDashboard {
         for (const line of lines) {
             // Match lines starting with • or - (bullet points)
             if (/^(?:•|-)\s+/.test(line)) {
-                bullets.push(line.replace(/^(?:•|-)\s+/, '').trim());
+                const bullet_content = line.replace(/^(?:•|-)\s+/, '').trim();
+                // Skip takeaway markers that slipped through as bullet points
+                if (!bullet_content.startsWith('**Takeaway:') && !bullet_content.startsWith('**T')) {
+                    bullets.push(bullet_content);
+                }
             }
         }
 

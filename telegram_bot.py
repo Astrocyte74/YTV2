@@ -468,7 +468,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # Match lines starting with • or - (bullet points)
             if re.match(r'^(?:•|-)\s+', line):
                 bullet_content = re.sub(r'^(?:•|-)\s+', '', line).strip()
-                bullets.append(bullet_content)
+                # Skip takeaway markers that slipped through as bullet points
+                if not bullet_content.startswith('**Takeaway:') and not bullet_content.startswith('**T'):
+                    bullets.append(bullet_content)
         
         # 4) Build HTML
         if main_topic:
