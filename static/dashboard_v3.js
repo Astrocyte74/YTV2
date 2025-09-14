@@ -1412,12 +1412,7 @@ class AudioDashboard {
         }
         // Normalize and trim, collapse blank lines
         summaryRaw = String(summaryRaw).replace(/\r\n?/g, '\n').trim();
-        const summary = summaryRaw
-            .split('\n')
-            .map(s => s.trim())
-            .filter(Boolean)
-            .map(p => `<p>${this.escapeHtml(p)}</p>`)
-            .join('') || '<p>No summary available.</p>';
+        const summary = this.formatKeyPoints(summaryRaw);
 
         return `
           <div class="mt-3 mx-[-1rem] md:mx-[-1rem] sm:mx-0 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3 md:p-4 space-y-3 md:space-y-4" data-expanded>
@@ -2826,6 +2821,93 @@ class AudioDashboard {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    /**
+     * Format Key Points with structured markers if present, fallback to normal formatting
+     * Detects "**Main topic:**" and "**Key points:**" markers and renders them nicely
+     */
+    formatKeyPoints(rawText) {
+        if (!rawText || typeof rawText !== 'string') {
+            return '<p>No summary available.</p>';
+        }
+
+        // Normalize line breaks and trim
+        const text = rawText.replace(/\r\n?/g, '\n').trim();
+
+        // Check for structured markers
+        const hasMainTopic = /^(?:•\s*)?\*\*Main topic:\*\*\s*.+$/mi.test(text);
+        const hasKeyPoints = /\*\*Key points:\*\*/i.test(text);
+
+        // If we have structured markers, use special formatting
+        if (hasMainTopic || hasKeyPoints) {
+            return this.renderStructuredKeyPoints(text);
+        }
+
+        // Fallback to normal paragraph formatting
+        return text
+            .split('\n')
+            .map(s => s.trim())
+            .filter(Boolean)
+            .map(p => `<p>${this.escapeHtml(p)}</p>`)
+            .join('') || '<p>No summary available.</p>';
+    }
+
+    /**
+     * Render structured Key Points with proper formatting
+     */
+    renderStructuredKeyPoints(text) {
+        const parts = [];
+
+        // 1) Extract main topic
+        const mainTopicMatch = text.match(/^(?:•\s*)?\*\*Main topic:\*\*\s*(.+)$/mi);
+        const mainTopic = mainTopicMatch ? mainTopicMatch[1].trim() : null;
+
+        // 2) Find content after "**Key points:**" marker
+        const keyStartIdx = text.search(/\*\*Key points:\*\*/i);
+        let bulletBlock = '';
+        
+        if (keyStartIdx >= 0) {
+            // Take everything after the "Key points:" marker
+            bulletBlock = text.slice(keyStartIdx).replace(/\*\*Key points:\*\*/i, '').trim();
+        } else {
+            // No "Key points:" marker, use everything except main topic
+            if (mainTopicMatch) {
+                bulletBlock = text.replace(mainTopicMatch[0], '').trim();
+            } else {
+                bulletBlock = text;
+            }
+        }
+
+        // 3) Process bullet points
+        const lines = bulletBlock.split('\n')
+            .map(s => s.trim())
+            .filter(Boolean);
+
+        const bullets = [];
+        for (const line of lines) {
+            // Match lines starting with • or - (bullet points)
+            if (/^(?:•|-)\s+/.test(line)) {
+                bullets.push(line.replace(/^(?:•|-)\s+/, '').trim());
+            }
+        }
+
+        // 4) Build HTML
+        if (mainTopic) {
+            parts.push(`<div class="kp-heading">${this.escapeHtml(mainTopic)}</div>`);
+        }
+
+        if (bullets.length > 0) {
+            const bulletHtml = bullets
+                .map(bullet => `<li>${this.escapeHtml(bullet)}</li>`)
+                .join('');
+            parts.push(`<ul class="kp-list">${bulletHtml}</ul>`);
+        } else if (bulletBlock) {
+            // No clear bullets found, but we have content - preserve with line breaks
+            parts.push(`<div class="kp-fallback">${this.escapeHtml(bulletBlock).replace(/\n/g, '<br>')}</div>`);
+        }
+
+        return parts.length > 0 ? parts.join('') : '<p>No summary available.</p>';
     }
 
     debounce(func, wait) {
