@@ -8,6 +8,9 @@
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Shared styles across dashboard and report pages -->
+    <link rel="stylesheet" href="/static/shared.css">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -83,25 +86,7 @@
           }
         }
         
-        /* Key Points structured formatting */
-        .kp-heading {
-            font-weight: 700;
-            font-size: 1.05rem;
-            margin: 0 0 0.5rem 0;
-            line-height: 1.4;
-        }
-        .kp-list {
-            margin: 0;
-            padding-left: 1.1rem;
-            line-height: 1.5;
-        }
-        .kp-list li {
-            margin: 0.25rem 0;
-        }
-        .kp-fallback {
-            white-space: pre-line;
-            line-height: 1.5;
-        }
+        /* Key Points styles now in /static/shared.css */
     </style>
 </head>
 
