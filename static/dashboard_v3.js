@@ -945,9 +945,22 @@ class AudioDashboard {
             return;
         }
 
+        // Helper function to normalize parameter values (per OpenAI recommendation)
+        const normalizeLabel = (label) => {
+            return String(label)
+                .trim()                    // Remove leading/trailing whitespace
+                .replace(/–/g, '-')        // Convert en-dash to hyphen
+                .replace(/\s+/g, ' ')      // Collapse multiple spaces
+                .substring(0, 100);        // Prevent extremely long parameters
+        };
+
         // Otherwise build params normally
         Object.entries(effectiveFilters).forEach(([key, values]) => {
-            values.forEach(v => params.append(key, v));
+            values.forEach(v => {
+                const normalizedValue = normalizeLabel(v);
+                console.log(`[YTV2] Adding param: ${key}=${normalizedValue} (original: ${v})`);
+                params.append(key, normalizedValue);
+            });
         });
         
         console.debug('Final URL params:', params.toString());
@@ -958,7 +971,9 @@ class AudioDashboard {
         params.append('sort', this.currentSort);
 
         try {
-            const response = await fetch(`/api/reports?${params}`);
+            const requestUrl = `/api/reports?${params}`;
+            console.log('[YTV2] Request URL:', requestUrl); // Debug logging per OpenAI
+            const response = await fetch(requestUrl);
             const data = await response.json();
             
             // Handle API errors (per OpenAI recommendation)
