@@ -415,45 +415,76 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
     @staticmethod
     def normalize_summary_content(summary_content, summary_type: str = None) -> str:
-        """Normalize summary content - handle both string and object formats from chunked processing"""
-        # If already a string, return as-is
+        """Normalize summary content - handle strings, dicts, and nested dict values"""
+        # 1) Strings pass through
         if isinstance(summary_content, str):
             return summary_content
 
-        # If object, pick the right variant based on summary type
+        # 2) If we got a dict, pick sensibly (and recurse on dict candidates)
         if isinstance(summary_content, dict):
-            summary_type = (summary_type or '').lower().replace('-', '').replace('_', '').replace(' ', '')
-            
-            def pick(*candidates):
-                return next((v for v in candidates if isinstance(v, str) and v.strip()), '')
+            stype = (summary_type or '').lower().replace('-', '').replace('_', '').replace(' ', '')
 
-            if summary_type in ['keypoints', 'bulletpoints']:
-                return pick(
-                    summary_content.get('bullet_points'),
-                    summary_content.get('key_points'), 
-                    summary_content.get('comprehensive')
-                )
-            elif summary_type == 'comprehensive':
-                return pick(
-                    summary_content.get('comprehensive'),
-                    summary_content.get('bullet_points'),
-                    summary_content.get('key_points')
-                )
-            elif summary_type == 'audio':
-                return pick(
-                    summary_content.get('summary'),
-                    summary_content.get('comprehensive'),
-                    summary_content.get('bullet_points'),
-                    summary_content.get('key_points')
-                )
-            else:
-                # Default fallback: prefer bullet_points, then key_points, then comprehensive
-                return pick(
+            def as_text(val):
+                """Recurse into nested dicts/containers until we get a string (or '')"""
+                if isinstance(val, str):
+                    return val
+                if isinstance(val, dict):
+                    # Prefer comprehensive → bullet_points → key_points → summary
+                    for k in ('comprehensive', 'bullet_points', 'key_points', 'summary'):
+                        if k in val:
+                            t = as_text(val[k])
+                            if t:
+                                return t
+                if isinstance(val, (list, tuple)):
+                    # Join any strings we can find
+                    parts = [as_text(x) for x in val]
+                    parts = [p for p in parts if isinstance(p, str) and p.strip()]
+                    if parts:
+                        return '\n'.join(parts)
+                return ''
+
+            # Primary pick order by type
+            if stype in ('keypoints', 'bulletpoints'):
+                candidates = (
                     summary_content.get('bullet_points'),
                     summary_content.get('key_points'),
-                    summary_content.get('comprehensive')
+                    summary_content.get('comprehensive'),
+                    summary_content.get('summary'),
+                )
+            elif stype == 'comprehensive':
+                candidates = (
+                    summary_content.get('comprehensive'),
+                    summary_content.get('bullet_points'),
+                    summary_content.get('key_points'),
+                    summary_content.get('summary'),
+                )
+            elif stype == 'audio':
+                candidates = (
+                    summary_content.get('summary'),        # may be a dict → recurse
+                    summary_content.get('comprehensive'),
+                    summary_content.get('bullet_points'),
+                    summary_content.get('key_points'),
+                )
+            else:
+                candidates = (
+                    summary_content.get('bullet_points'),
+                    summary_content.get('key_points'),
+                    summary_content.get('comprehensive'),
+                    summary_content.get('summary'),
                 )
 
+            for c in candidates:
+                txt = as_text(c)
+                if isinstance(txt, str) and txt.strip():
+                    return txt
+
+            # Last-resort: search any nested values
+            for v in summary_content.values():
+                txt = as_text(v)
+                if isinstance(txt, str) and txt.strip():
+                    return txt
+
+        # 3) Fallback
         return str(summary_content or '')
 
     @staticmethod
@@ -822,6 +853,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         # Unescape escaped newlines so formatter can see bullets/headers
         if isinstance(summary_html, str) and '\\n' in summary_html and '\n' not in summary_html:
             summary_html = summary_html.replace('\\n', '\n')
+        
+        # Debug logging to help diagnose normalization issues
+        logger.info(f"Summary after normalization: len={len(summary_html or '')}, preview={repr((summary_html or '')[:120])}")
         
         # Format summary for better readability using Key Points formatter
         if summary_html and not summary_html.startswith('<'):
