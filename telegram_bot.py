@@ -1635,7 +1635,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             
         except Exception as e:
             logger.error(f"Error serving filters API: {e}")
-            self.send_error(500, f"Filters API error: {str(e)}")
+            # Return JSON error instead of HTML (per OpenAI recommendation)
+            error_data = {"error": "Filters API error", "message": str(e), "status": "error"}
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(error_data, indent=2).encode())
     
     def serve_api_reports_v2(self, query_params: Dict[str, List[str]]):
         """Serve Phase 2 reports API endpoint with filtering, search, and pagination"""
@@ -1650,9 +1655,16 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # Filter parameters with validation (CRITICAL: include subcategory and parentCategory per OpenAI recommendation)
             for param in ['source', 'language', 'category', 'subcategory', 'parentCategory', 'channel', 'content_type', 'complexity']:
                 if param in query_params:
-                    # Limit array size and sanitize strings
+                    # Limit array size and sanitize/normalize strings (per OpenAI recommendation)
                     values = query_params[param][:10]  # Max 10 items
-                    filters[param] = [str(v)[:50] for v in values if v and str(v).strip()]  # Max 50 chars per item
+                    normalized_values = []
+                    for v in values:
+                        if v and str(v).strip():
+                            # Normalize: strip whitespace, collapse spaces, en-dash → hyphen
+                            normalized = ' '.join(str(v).strip().replace('–', '-').split())[:50]
+                            if normalized:
+                                normalized_values.append(normalized)
+                    filters[param] = normalized_values
             
             if 'topics' in query_params:
                 # Handle comma-separated topics with validation
@@ -1731,7 +1743,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             
         except Exception as e:
             logger.error(f"Error serving reports API v2: {e}")
-            self.send_error(500, f"Reports API error: {str(e)}")
+            # Return JSON error instead of HTML (per OpenAI recommendation)
+            error_data = {"error": "Reports API error", "message": str(e), "status": "error"}
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(error_data, indent=2).encode())
     
     def serve_api_reports(self):
         """Serve reports list API endpoint"""
