@@ -922,6 +922,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         """Serve CSS files"""
         try:
             filename = self.path[1:]  # Remove leading slash
+            # Remove 'static/' prefix if present to avoid static/static/ duplication
+            if filename.startswith('static/'):
+                filename = filename[7:]  # Remove 'static/' prefix
             css_file = Path('static') / filename
             if css_file.exists():
                 self.send_response(200)
