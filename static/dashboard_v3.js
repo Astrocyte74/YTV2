@@ -811,6 +811,20 @@ class AudioDashboard {
             (filters[k] ||= []);
             if (el.checked) filters[k].push(el.value);
         });
+        
+        // Add parent category context for subcategories
+        const selectedSubcategories = document.querySelectorAll('input[data-filter="subcategory"]:checked');
+        if (selectedSubcategories.length > 0) {
+            const parentCategories = new Set();
+            selectedSubcategories.forEach(el => {
+                const parent = el.getAttribute('data-parent-category');
+                if (parent) parentCategories.add(parent);
+            });
+            if (parentCategories.size > 0) {
+                filters.parentCategory = Array.from(parentCategories);
+            }
+        }
+        
         return filters;
     }
 
