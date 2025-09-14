@@ -227,56 +227,66 @@ class SQLiteContentIndex:
                     if cat_conditions:
                         where_conditions.append(f"({' OR '.join(cat_conditions)})")
                 
-                # NEW: Dedicated subcategory handling with parent pairing (per OpenAI recommendation)
+                # FIXED: OR logic for subcategories (per OpenAI recommendation)
+                # Build a single OR group for all selected subcategories (union, not intersection)
                 if 'subcategory' in filters and filters['subcategory']:
+                    # Normalize inputs
                     subcats = filters['subcategory']
                     if isinstance(subcats, str):
                         subcats = [subcats]
+                    subcats = [s.replace('–', '-').strip() for s in subcats if s and str(s).strip()]
                     
                     parents = filters.get('parentCategory', [])
                     if isinstance(parents, str):
                         parents = [parents]
+                    parents = [p.replace('–', '-').strip() for p in parents if p and str(p).strip()]
                     
-                    for sc in subcats:
-                        sc_norm = sc.replace('–', '-').strip()
-                        
-                        if parents:
-                            # OR over all selected parents for this subcategory
-                            pairs = []
-                            for p in parents:
-                                p_norm = p.replace('–', '-').strip()
-                                pairs.append("""
+                    # Build a single OR group for all selected subcategories (union)
+                    or_clauses = []
+                    or_params = []
+                    
+                    if parents:  # pair each selected subcat with each selected parent
+                        for p in parents:
+                            for sc in subcats:
+                                or_clauses.append("""
                                     (
                                         content.subcategories_json IS NOT NULL AND json_valid(content.subcategories_json) AND
                                         EXISTS (
                                             SELECT 1 FROM json_each(content.subcategories_json, '$.categories') c
-                                            JOIN json_each(c.value, '$.subcategories') s
+                                            JOIN json_each(c.value, '$.subcategories') s ON 1=1
                                             WHERE json_extract(c.value,'$.category') = ? AND s.value = ?
                                         )
-                                    ) OR (
+                                    )
+                                    OR (
                                         content.subcategory = ? AND
-                                        (content.category IS NOT NULL AND json_valid(content.category) AND
-                                         EXISTS (SELECT 1 FROM json_each(content.category) cat WHERE cat.value = ?))
+                                        content.category IS NOT NULL AND json_valid(content.category) AND
+                                        EXISTS (SELECT 1 FROM json_each(content.category) cat WHERE cat.value = ?)
                                     )
                                 """)
-                                params.extend([p_norm, sc_norm, sc_norm, p_norm])
-                            
-                            where_conditions.append(f"({' OR '.join(pairs)})")
-                        else:
-                            # Subcategory without explicit parent
-                            where_conditions.append("""
+                                or_params.extend([p, sc, sc, p])
+                    else:  # no explicit parent: match any parent that contains the subcat
+                        for sc in subcats:
+                            or_clauses.append("""
                                 (
                                     content.subcategories_json IS NOT NULL AND json_valid(content.subcategories_json) AND
                                     EXISTS (
                                         SELECT 1 FROM json_each(content.subcategories_json, '$.categories') c
-                                        JOIN json_each(c.value, '$.subcategories') s
+                                        JOIN json_each(c.value, '$.subcategories') s ON 1=1
                                         WHERE s.value = ?
                                     )
                                 )
-                                OR content.subcategory = ?
+                                OR (
+                                    content.subcategory = ?
+                                )
                             """)
-                            params.extend([sc_norm, sc_norm])
+                            or_params.extend([sc, sc])
+                    
+                    if or_clauses:
+                        # Single OR condition for all subcategories (creates union, not intersection)
+                        where_conditions.append(f"({' OR '.join(or_clauses)})")
+                        params.extend(or_params)
                 
+                # Apply content type filter
                 if 'content_type' in filters and filters['content_type']:
                     type_conditions = []
                     for ctype in filters['content_type']:
