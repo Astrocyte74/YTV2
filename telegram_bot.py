@@ -2837,11 +2837,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         id, title, canonical_url, thumbnail_url, published_at, indexed_at,
                         duration_seconds, word_count, has_audio, audio_duration_seconds,
                         has_transcript, transcript_chars, video_id, channel_name, channel_id,
-                        view_count, like_count, comment_count, category, subcategory, content_type,
-                        complexity_level, language, key_topics, named_entities,
+                        view_count, like_count, comment_count, category, subcategory, subcategories_json, 
+                        content_type, complexity_level, language, key_topics, named_entities, analysis,
                         format_source, processing_status, created_at, updated_at
                     ) VALUES (
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                     )
                     ON CONFLICT(id) DO UPDATE SET
                         title = excluded.title,
@@ -2862,11 +2862,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         comment_count = excluded.comment_count,
                         category = excluded.category,
                         subcategory = excluded.subcategory,
+                        subcategories_json = excluded.subcategories_json,
                         content_type = excluded.content_type,
                         complexity_level = excluded.complexity_level,
                         language = excluded.language,
                         key_topics = excluded.key_topics,
                         named_entities = excluded.named_entities,
+                        analysis = excluded.analysis,
                         format_source = excluded.format_source,
                         processing_status = excluded.processing_status,
                         updated_at = excluded.updated_at
@@ -2891,11 +2893,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     content_data.get('comment_count', 0),
                     json.dumps(content_data.get('category', [])),
                     content_data.get('subcategory'),
+                    content_data.get('subcategories_json'),
                     content_data.get('content_type', ''),
                     content_data.get('complexity_level', ''),
                     content_data.get('language', 'en'),
                     json.dumps(content_data.get('key_topics', [])),
                     json.dumps(content_data.get('named_entities', [])),
+                    json.dumps(content_data.get('analysis', {})) if content_data.get('analysis') else None,
                     content_data.get('format_source', 'api'),
                     content_data.get('processing_status', 'complete'),
                     content_data.get('created_at', ''),
