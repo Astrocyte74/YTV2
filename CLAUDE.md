@@ -207,8 +207,15 @@ sqlite3 ytv2_content.db
 ### Content Formatting Architecture
 - **Inline Reader**: `dashboard_v3.js` formatKeyPoints() method (line ~2835)
 - **Detail Pages**: `telegram_bot.py` format_key_points() method (line ~395)
-- **CSS Styling**: Inline `<style>` block in `dashboard_v3_template.html` (not separate CSS file)
+- **Shared CSS**: `/static/shared.css` (common styles across both templates)
+- **Template-specific CSS**: Inline `<style>` blocks in respective templates
 - **HTML Security**: Update `ALLOWED_TAGS`/`ALLOWED_ATTRS` in `telegram_bot.py` for new elements
+
+### CSS Architecture (Updated September 14, 2025)
+- **Shared styles** → `/static/shared.css` (Key Points formatting, future common styles)
+- **Dashboard-specific** → `dashboard_v3_template.html` inline `<style>` (waveform, layout offsets)  
+- **Report-specific** → `templates/report_v2.html` inline `<style>` (iOS safe areas, audio controls)
+- **⚠️ CRITICAL**: When adding new common styles, use `/static/shared.css` to avoid duplication
 
 ### Debugging Quick Reference
 ```bash
