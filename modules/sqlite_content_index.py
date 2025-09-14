@@ -196,12 +196,14 @@ class SQLiteContentIndex:
                             pair_conditions = []
                             for parent_category in parent_categories:
                                 parent_normalized = parent_category.replace('–', '-').strip()
+                                # Safe JSON1 query with error handling for malformed JSON
                                 pair_conditions.append("""(
-                                    EXISTS (
+                                    (content.subcategories_json IS NOT NULL AND json_valid(content.subcategories_json) AND
+                                     EXISTS (
                                         SELECT 1 FROM json_each(content.subcategories_json, '$.categories') AS c
                                         LEFT JOIN json_each(c.value, '$.subcategories') AS s
                                         WHERE json_extract(c.value,'$.category') = ? AND s.value = ?
-                                    ) OR (
+                                    )) OR (
                                         content.subcategory = ? AND 
                                         EXISTS (SELECT 1 FROM json_each(content.category) AS cat WHERE cat.value = ?)
                                     )
@@ -212,15 +214,65 @@ class SQLiteContentIndex:
                             # Category-level filter (show all content in this category)
                             cat_conditions.append("""(
                                 EXISTS (SELECT 1 FROM json_each(content.category) AS cat WHERE cat.value = ?) OR
-                                EXISTS (
+                                (content.subcategories_json IS NOT NULL AND json_valid(content.subcategories_json) AND
+                                 EXISTS (
                                     SELECT 1 FROM json_each(content.subcategories_json, '$.categories') AS c
                                     WHERE json_extract(c.value,'$.category') = ?
-                                )
+                                ))
                             )""")
                             params.extend([cat_normalized, cat_normalized])
                     
                     if cat_conditions:
                         where_conditions.append(f"({' OR '.join(cat_conditions)})")
+                
+                # NEW: Dedicated subcategory handling with parent pairing (per OpenAI recommendation)
+                if 'subcategory' in filters and filters['subcategory']:
+                    subcats = filters['subcategory']
+                    if isinstance(subcats, str):
+                        subcats = [subcats]
+                    
+                    parents = filters.get('parentCategory', [])
+                    if isinstance(parents, str):
+                        parents = [parents]
+                    
+                    for sc in subcats:
+                        sc_norm = sc.replace('–', '-').strip()
+                        
+                        if parents:
+                            # OR over all selected parents for this subcategory
+                            pairs = []
+                            for p in parents:
+                                p_norm = p.replace('–', '-').strip()
+                                pairs.append("""
+                                    (
+                                        content.subcategories_json IS NOT NULL AND json_valid(content.subcategories_json) AND
+                                        EXISTS (
+                                            SELECT 1 FROM json_each(content.subcategories_json, '$.categories') c
+                                            JOIN json_each(c.value, '$.subcategories') s
+                                            WHERE json_extract(c.value,'$.category') = ? AND s.value = ?
+                                        )
+                                    ) OR (
+                                        content.subcategory = ? AND
+                                        EXISTS (SELECT 1 FROM json_each(content.category) cat WHERE cat.value = ?)
+                                    )
+                                """)
+                                params.extend([p_norm, sc_norm, sc_norm, p_norm])
+                            
+                            where_conditions.append(f"({' OR '.join(pairs)})")
+                        else:
+                            # Subcategory without explicit parent
+                            where_conditions.append("""
+                                (
+                                    content.subcategories_json IS NOT NULL AND json_valid(content.subcategories_json) AND
+                                    EXISTS (
+                                        SELECT 1 FROM json_each(content.subcategories_json, '$.categories') c
+                                        JOIN json_each(c.value, '$.subcategories') s
+                                        WHERE s.value = ?
+                                    )
+                                )
+                                OR content.subcategory = ?
+                            """)
+                            params.extend([sc_norm, sc_norm])
                 
                 if 'content_type' in filters and filters['content_type']:
                     type_conditions = []
@@ -289,9 +341,13 @@ class SQLiteContentIndex:
             query += " LIMIT ? OFFSET ?"
             params.extend([size, offset])
             
-            # Execute main query
-            cursor = conn.execute(query, params)
-            rows = cursor.fetchall()
+            # Execute main query with error handling (per OpenAI recommendation)
+            try:
+                cursor = conn.execute(query, params)
+                rows = cursor.fetchall()
+            except Exception as e:
+                logger.exception("Query failed. SQL=%s PARAMS=%s", query, params)
+                raise
             
             # Convert to API format
             reports = [self._format_report_for_api(row) for row in rows]
