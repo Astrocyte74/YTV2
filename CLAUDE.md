@@ -1,5 +1,13 @@
 # CLAUDE.md - YTV2-Dashboard Web Interface
 
+**🚨 CRITICAL: This deploys to Render automatically on git push!**  
+**⚠️ ALWAYS commit and push changes for them to appear on live site:**
+```bash
+git add [files]
+git commit -m "message"
+git push origin main  # Triggers automatic Render deployment
+```
+
 This is the **dashboard component** of the YTV2 hybrid architecture - it serves the web interface with audio playback and receives synced content from the NAS processing component.
 
 ## Project Architecture
@@ -245,7 +253,7 @@ curl "https://ytv2-vy9k.onrender.com/api/reports?size=1" | jq '.reports[0].analy
 
 ## Development Workflow & Architecture Deep Dive
 
-### ⚠️ CRITICAL: Git Workflow
+### 🚨 CRITICAL: Git Workflow & Repository Separation
 ```bash
 # ALWAYS work from the correct directory 
 cd /Users/markdarby/projects/YTV2-Dashboard
@@ -258,6 +266,13 @@ git add [specific files]
 git commit -m "message"  
 git push origin main  # Triggers automatic Render deployment
 ```
+
+**🚨 CRITICAL WARNING - NEVER PUSH FROM NAS TO RENDER:**
+- **NEVER** run git commands from `/Volumes/Docker/YTV2/` directory
+- **NEVER** push changes from the NAS component to the Dashboard repository
+- The NAS component (`/Volumes/Docker/YTV2/`) is a separate git repository 
+- Only the Dashboard component (`/Users/markdarby/projects/YTV2-Dashboard/`) should deploy to Render
+- If you accidentally work in the NAS directory, copy files to Dashboard directory before committing
 
 ### Core Data Flow Architecture
 
