@@ -460,16 +460,23 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             if takeaway_match:
                 bullet_block = bullet_block.replace(takeaway_match.group(0), '').strip()
         
+        # Strip any leftover takeaway lines from bullet block (belt-and-suspenders)
+        bullet_block = re.sub(r'^\s*(?:[•\-–—]\s*)?\*\*takeaway:\*\*.*$', '', bullet_block, 
+                             flags=re.IGNORECASE | re.MULTILINE).strip()
+        
         # 3) Process bullet points
         lines = [line.strip() for line in bullet_block.split('\n') if line.strip()]
         
+        # Precompile takeaway detection regex
+        takeaway_bullet_re = re.compile(r'^\s*(?:[•\-–—]\s*)?\*\*takeaway:\*\*', re.IGNORECASE)
+        
         bullets = []
         for line in lines:
-            # Match lines starting with • or - (bullet points)
-            if re.match(r'^(?:•|-)\s+', line):
-                bullet_content = re.sub(r'^(?:•|-)\s+', '', line).strip()
-                # Skip takeaway markers that slipped through as bullet points
-                if not bullet_content.startswith('**Takeaway:') and not bullet_content.startswith('**T'):
+            # Match lines starting with • - – — (bullet points, including Unicode dashes)
+            if re.match(r'^(?:•|-|–|—)\s+', line):
+                bullet_content = re.sub(r'^(?:•|-|–|—)\s+', '', line).strip()
+                # Skip any bullet that is actually a Takeaway marker
+                if not takeaway_bullet_re.match(bullet_content):
                     bullets.append(bullet_content)
         
         # 4) Build HTML

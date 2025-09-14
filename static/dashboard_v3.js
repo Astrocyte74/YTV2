@@ -2893,19 +2893,25 @@ class AudioDashboard {
             }
         }
 
+        // Strip any leftover takeaway lines from bullet block (belt-and-suspenders)
+        bulletBlock = bulletBlock.replace(/^\s*(?:[•\-–—]\s*)?\*\*takeaway:\*\*.*$/gmi, '').trim();
+
         // 3) Process bullet points
         const lines = bulletBlock.split('\n')
             .map(s => s.trim())
             .filter(Boolean);
 
+        // Precompile takeaway detection regex
+        const TAKEAWAY_BULLET_RE = /^\s*(?:[•\-–—]\s*)?\*\*takeaway:\*\*/i;
+
         const bullets = [];
         for (const line of lines) {
-            // Match lines starting with • or - (bullet points)
-            if (/^(?:•|-)\s+/.test(line)) {
-                const bullet_content = line.replace(/^(?:•|-)\s+/, '').trim();
-                // Skip takeaway markers that slipped through as bullet points
-                if (!bullet_content.startsWith('**Takeaway:') && !bullet_content.startsWith('**T')) {
-                    bullets.push(bullet_content);
+            // Match lines starting with • - – — (bullet points, including Unicode dashes)
+            if (/^(?:•|-|–|—)\s+/.test(line)) {
+                const bulletContent = line.replace(/^(?:•|-|–|—)\s+/, '').trim();
+                // Skip any bullet that is actually a Takeaway marker
+                if (!TAKEAWAY_BULLET_RE.test(bulletContent)) {
+                    bullets.push(bulletContent);
                 }
             }
         }
