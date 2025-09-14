@@ -398,14 +398,19 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     
     @staticmethod
     def _maybe_parse_dict_string(value):
-        """Parse dict-as-string format from chunked processing"""
-        if isinstance(value, str) and value.strip().startswith("{") and "comprehensive" in value:
+        """Parse dict-as-string format from chunked processing (JSON or Python literal)"""
+        if isinstance(value, str) and value.strip().startswith("{"):
+            import json
+            import ast
             try:
-                import ast
-                # Safely parse Python-literal dict string to a real dict
-                return ast.literal_eval(value)
+                # Try JSON format first: {"comprehensive": "..."}
+                return json.loads(value)
             except Exception:
-                return value
+                try:
+                    # Fallback to Python literal: {'comprehensive': '...'}
+                    return ast.literal_eval(value)
+                except Exception:
+                    return value
         return value
 
     @staticmethod
@@ -796,8 +801,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         
         # Handle dict-as-string format from chunked processing
         summary_payload = summary
-        if isinstance(summary, dict) and 'content' in summary:
-            summary_payload = summary['content']
+        if isinstance(summary, dict):
+            if 'content' in summary:
+                summary_payload = summary['content']
+            elif 'text' in summary:
+                summary_payload = summary['text']
         
         # Parse dict-as-string at nested levels
         if isinstance(summary_payload, dict) and 'summary' in summary_payload:
