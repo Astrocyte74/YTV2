@@ -49,7 +49,10 @@
       - `DATABASE_URL=postgresql://...` (new PostgreSQL instance)
       - All other vars identical to production (except sync-related)
     - **Health endpoints**: Add `/health` and `/health/db` (SELECT 1)
-  - **Safety**: Keep separate DATABASE_URL secrets; do NOT reuse production secrets
+  - **DNS Preparation**: Set DNS TTL to 60s on custom domain ahead of cutover (for snappy rollback/cutover)
+  - **Secrets Strategy**: Use `DATABASE_URL_POSTGRES_NEW` (new service) vs `DATABASE_URL_SQLITE_LEGACY` (if referenced); do NOT reuse between services
+  - **PostgreSQL Extensions**: Enable pgcrypto, pg_trgm, uuid-ossp, pg_stat_statements (monitoring), and (optional/future) vector
+  - **Backups**: Enable Render automatic daily backups + create on-demand snapshot immediately after import
   - **Verification**:
     - `psql $DATABASE_URL -c "SELECT version();"`
     - Both health endpoints return 200 on new service
@@ -60,14 +63,16 @@
 
 - [ ] (T-Y003) **Verify data integrity baseline**
   - **Implementation**: Document current data state for migration verification
+  - **Source**: Production snapshot `dashboard_pre_postgres_20250917_162149.db`
+  - **Exact Counts**: 81 total records, 74 with categorization (subcategories_json IS NOT NULL)
   - **Queries**:
-    - `SELECT COUNT(*) FROM content;` (expected: ~68 total)
-    - `SELECT COUNT(*) FROM content WHERE analysis_json LIKE '%subcategories%';` (expected: 67)
-    - `SELECT COUNT(*) FROM content WHERE topics_json LIKE '%key_topics%';` (sanity check)
-  - **Documentation**: Record exact counts, sample data structures
+    - `SELECT COUNT(*) FROM content;` (baseline: 81 total)
+    - `SELECT COUNT(*) FROM content WHERE subcategories_json IS NOT NULL;` (baseline: 74 categorized)
+    - `SELECT COUNT(*) FROM content WHERE summary IS NOT NULL;` (sanity check)
+  - **Documentation**: Record exact counts, sample data structures, checksum of backup file
   - **Testing**: Export representative sample for post-migration comparison
-  - **Git**: Commit "T-Y003: Document baseline data integrity"
-  - **Acceptance**: Complete inventory of current data with verification checksums
+  - **Git**: Commit "T-Y003: Document baseline data integrity (81 total, 74 categorized)"
+  - **Acceptance**: Exact baseline numbers documented for unambiguous parity checks
 
 ## Phase 1: Schema & Migration - Days 1-2
 
@@ -104,12 +109,13 @@
 - [ ] (T-Y006) **One-time data snapshot from production to new PostgreSQL**
   - **Implementation**: Execute migration script from current production SQLite to new PostgreSQL
   - **Source**: Production backup `dashboard_pre_postgres_20250917_162149.db` (81 records, 74 categorized)
+  - **Archival**: Store source file in `/archive/` folder in repo with checksum (or S3/Drive)
   - **Target**: New PostgreSQL instance in parallel service only
   - **Safety**: Production SQLite never touched - using backup snapshot
-  - **Verification**: Compare record counts, spot-check complex JSON fields
+  - **Verification**: Compare record counts (expect: 81 total, 74 categorized), spot-check complex JSON fields
   - **Testing**: Verify all 74 categorization records preserved correctly in new system
   - **Git**: Commit "T-Y006: One-time data snapshot to parallel PostgreSQL system"
-  - **Acceptance**: 100% data migration success in new system, production unaffected
+  - **Acceptance**: 100% data migration success (81→81, 74→74) in new system, production unaffected
 
 - [ ] (T-Y007) **Create content_summaries from existing summary data**
   - **Implementation**: Extract HTML summaries and create revision 1 records
@@ -147,10 +153,11 @@
   - **Implementation**: Deploy new web service with PostgreSQL backend
   - **Service**: `ytv2-dashboard-postgres` pointing to migration branch
   - **Environment**: `READ_FROM_POSTGRES=true`, new DATABASE_URL
-  - **Health checks**: Verify `/health` and `/health/db` endpoints return 200
+  - **Health checks**: Explicitly assert `/health` and `/health/db` both return 200 and log connect latency
+  - **Performance monitoring**: Log database connection latency to spot pooling issues early
   - **Testing**: Confirm new service loads with migrated data
   - **Git**: Commit "T-Y009: Deploy parallel PostgreSQL service successfully"
-  - **Acceptance**: New service running independently with PostgreSQL data
+  - **Acceptance**: New service running independently with PostgreSQL data, health endpoints healthy
 
 - [ ] (T-Y010) **Comprehensive API parity testing**
   - **Implementation**: Compare API responses between production and new service
@@ -187,12 +194,13 @@
 ### Cutover Preparation
 - [ ] (T-Y013) **Prepare for cutover - brief freeze window**
   - **Implementation**: Coordinate brief processing freeze for final data synchronization
+  - **DNS TTL**: Lower DNS TTL to 60s 24 hours before cutover (from default 300s+)
   - **Communication**: Notify stakeholders of planned cutover window (5-10 minutes)
   - **NAS preparation**: Prepare dual-write mode for final sync if needed
   - **Monitoring**: Set up real-time monitoring for cutover process
   - **Rollback plan**: Document instant rollback procedures (DNS switch back)
   - **Git**: Commit "T-Y013: Prepare cutover coordination and rollback procedures"
-  - **Acceptance**: Cutover plan documented, stakeholders informed, rollback ready
+  - **Acceptance**: Cutover plan documented, DNS TTL lowered, stakeholders informed, rollback ready
 
 ### DNS/Service Cutover
 - [ ] (T-Y014) **Execute DNS/domain switch to new service**
@@ -201,6 +209,7 @@
   - **Verification**: Confirm new service receiving production traffic
   - **Monitoring**: Watch error rates, response times, user experience
   - **Immediate rollback**: DNS switch back if any issues detected
+  - **Post-cutover**: Raise DNS TTL back to normal after stability confirmed (24-48h)
   - **Git**: Commit "T-Y014: Complete DNS cutover to PostgreSQL service"
   - **Acceptance**: Production traffic successfully routed to new system
 
