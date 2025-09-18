@@ -1365,6 +1365,15 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             qs = qs or {}
             v_param = qs.get('v', [''])[0]
             use_v2 = v_param == '2'
+
+            # Check if this is a JSON API request (based on path ending in .json)
+            path = getattr(self, 'path', '')
+            is_json_request = path.endswith('.json')
+
+            # For JSON requests, return JSON data instead of HTML
+            if is_json_request and v_param != '2':
+                return self.serve_sqlite_report_json(report_data)
+
             
             # Extract video info and summary from SQLite data
             video_info = {
@@ -1377,7 +1386,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 'canonical_url': report_data.get('canonical_url', '')
             }
             
-            summary = report_data.get('summary', {}).get('text', 'No summary available.')
+            # Handle both SQLite and PostgreSQL data formats
+            if 'summary_text' in report_data:
+                # PostgreSQL format: summary_text, summary_html directly available
+                summary = report_data.get('summary_text', 'No summary available.')
+            else:
+                # SQLite format: nested summary.text structure
+                summary = report_data.get('summary', {}).get('text', 'No summary available.')
             processing = report_data.get('processor_info', {})
             
             # Discover audio file
@@ -1389,8 +1404,29 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             if use_v2 and JINJA2_AVAILABLE:
                 # V2 Tailwind Template Path
                 logger.info("🚀 Rendering V2 Tailwind template from SQLite data")
-                
-                ctx = self.to_report_v2_dict(report_data, audio_url)
+
+                # Transform PostgreSQL data to match expected format
+                if 'summary_text' in report_data:
+                    # PostgreSQL format - create nested summary structure
+                    transformed_data = report_data.copy()
+                    transformed_data['summary'] = {
+                        'text': report_data.get('summary_text', ''),
+                        'html': report_data.get('summary_html', ''),  # Already formatted HTML
+                        'type': report_data.get('summary_variant', 'comprehensive')
+                    }
+                    # Also copy video fields for compatibility
+                    transformed_data['video'] = {
+                        'video_id': report_data.get('video_id', ''),
+                        'title': report_data.get('title', ''),
+                        'channel': report_data.get('channel_name', ''),
+                        'url': report_data.get('canonical_url', '')
+                    }
+                    # Get the context but override summary_html with our pre-formatted version
+                    ctx = self.to_report_v2_dict(transformed_data, audio_url)
+                    ctx['summary_html'] = report_data.get('summary_html', '')  # Use pre-formatted HTML
+                else:
+                    # SQLite format - use as-is
+                    ctx = self.to_report_v2_dict(report_data, audio_url)
                 template = jinja_env.get_template("report_v2.html")
                 html_content = template.render(**ctx)
                 
@@ -1411,7 +1447,58 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error serving SQLite report: {e}")
             self.send_error(500, "Error serving SQLite report")
-    
+
+    def serve_sqlite_report_json(self, report_data: dict):
+        """Serve a JSON response from PostgreSQL/SQLite data"""
+        try:
+            # Transform PostgreSQL data to the expected JSON format
+            if 'summary_text' in report_data:
+                # PostgreSQL format - extract summary data directly
+                summary_text = report_data.get('summary_text', '')
+                summary_html = report_data.get('summary_html', '')
+                summary_variant = report_data.get('summary_variant', 'comprehensive')
+            else:
+                # SQLite format - extract from nested structure
+                summary_data = report_data.get('summary', {})
+                summary_text = summary_data.get('text', '')
+                summary_html = summary_data.get('html', '')
+                summary_variant = summary_data.get('type', 'comprehensive')
+
+            # Create JSON response in the format expected by dashboard
+            json_response = {
+                "video": {
+                    "video_id": report_data.get('video_id', ''),
+                    "title": report_data.get('title', ''),
+                    "channel": report_data.get('channel_name', ''),
+                    "url": report_data.get('canonical_url', ''),
+                    "duration_seconds": report_data.get('duration_seconds', 0),
+                    "published_at": report_data.get('published_at', '')
+                },
+                "summary": {
+                    "text": summary_text,
+                    "html": summary_html,
+                    "type": summary_variant
+                },
+                "thumbnail_url": report_data.get('thumbnail_url', ''),
+                "analysis": report_data.get('analysis_json') or report_data.get('analysis', {}),
+                "subcategories_json": report_data.get('subcategories_json'),
+                "has_audio": report_data.get('has_audio', False)
+            }
+
+            # Send JSON response
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json; charset=utf-8')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+
+            import json
+            json_data = json.dumps(json_response, ensure_ascii=False, indent=2)
+            self.wfile.write(json_data.encode('utf-8'))
+
+        except Exception as e:
+            logger.error(f"Error serving SQLite JSON report: {e}")
+            self.send_error(500, "Error serving JSON report")
+
     def _discover_audio_file(self, video_info: dict) -> str:
         """Discover audio file for a video (extracted from legacy method)"""
         logger.info(f"🔍 _discover_audio_file called with video_info: {video_info}")
