@@ -371,7 +371,7 @@ class PostgreSQLContentIndex:
         finally:
             conn.close()
 
-    def get_filters(self) -> Dict[str, List[Dict[str, Any]]]:
+    def get_filters(self, active_filters: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Get available filter options with counts."""
         conn = self._get_connection()
         try:
@@ -382,76 +382,80 @@ class PostgreSQLContentIndex:
                 SELECT
                     cat->>'category' as category,
                     COUNT(*) as count
-                FROM content c,
-                     jsonb_array_elements(
-                         COALESCE(c.analysis_json->'categories', c.subcategories_json->'categories', '[]'::jsonb)
-                     ) as cat
+                FROM content c
+                CROSS JOIN LATERAL jsonb_array_elements(
+                    COALESCE(
+                        c.analysis_json->'categories',
+                        c.subcategories_json->'categories',
+                        '[]'::jsonb
+                    )
+                ) AS cat
                 WHERE cat->>'category' IS NOT NULL
                 GROUP BY cat->>'category'
                 ORDER BY count DESC, cat->>'category'
+                LIMIT 100
             """)
             categories = [{"value": row["category"], "count": row["count"]} for row in cursor.fetchall()]
 
             # Channels
             cursor.execute("""
-                SELECT channel_name as channel, COUNT(*) as count
+                SELECT channel_name AS value, COUNT(*) AS count
                 FROM content
-                WHERE channel_name IS NOT NULL
+                WHERE channel_name IS NOT NULL AND channel_name <> ''
                 GROUP BY channel_name
-                ORDER BY count DESC, channel_name
+                ORDER BY count DESC
+                LIMIT 50
             """)
-            channels = [{"value": row["channel"], "count": row["count"]} for row in cursor.fetchall()]
+            channels = [{"value": row["value"], "count": row["count"]} for row in cursor.fetchall()]
 
-            # Content Types
+            # Years (derived from indexed_at)
             cursor.execute("""
-                SELECT content_type, COUNT(*) as count
+                SELECT CAST(date_part('year', indexed_at) AS INT) AS value, COUNT(*) AS count
                 FROM content
-                WHERE content_type IS NOT NULL
-                GROUP BY content_type
-                ORDER BY count DESC, content_type
+                WHERE indexed_at IS NOT NULL
+                GROUP BY value
+                ORDER BY value DESC
             """)
-            content_types = [{"value": row["content_type"], "count": row["count"]} for row in cursor.fetchall()]
-
-            # Complexity Levels
-            cursor.execute("""
-                SELECT complexity_level, COUNT(*) as count
-                FROM content
-                WHERE complexity_level IS NOT NULL
-                GROUP BY complexity_level
-                ORDER BY count DESC, complexity_level
-            """)
-            complexities = [{"value": row["complexity_level"], "count": row["count"]} for row in cursor.fetchall()]
-
-            # Languages
-            cursor.execute("""
-                SELECT language, COUNT(*) as count
-                FROM content
-                WHERE language IS NOT NULL
-                GROUP BY language
-                ORDER BY count DESC, language
-            """)
-            languages = [{"value": row["language"], "count": row["count"]} for row in cursor.fetchall()]
+            years = [{"value": row["value"], "count": row["count"]} for row in cursor.fetchall()]
 
             # Has Audio
             cursor.execute("""
-                SELECT has_audio, COUNT(*) as count
+                SELECT has_audio AS value, COUNT(*) AS count
                 FROM content
                 GROUP BY has_audio
-                ORDER BY has_audio DESC
+                ORDER BY count DESC
             """)
-            has_audio_results = cursor.fetchall()
-            has_audio = [
-                {"value": bool(row["has_audio"]), "count": row["count"]}
-                for row in has_audio_results
-            ]
+            has_audio = [{"value": bool(row["value"]), "count": row["count"]} for row in cursor.fetchall()]
+
+            # Variants (from latest summaries)
+            cursor.execute("""
+                SELECT variant AS value, COUNT(*) AS count
+                FROM v_latest_summaries
+                GROUP BY variant
+                ORDER BY count DESC
+            """)
+            variants = [{"value": row["value"], "count": row["count"]} for row in cursor.fetchall()]
+
+            # Languages (if the column exists)
+            try:
+                cursor.execute("""
+                    SELECT language AS value, COUNT(*) AS count
+                    FROM content
+                    WHERE language IS NOT NULL
+                    GROUP BY language
+                    ORDER BY count DESC
+                """)
+                languages = [{"value": row["value"], "count": row["count"]} for row in cursor.fetchall()]
+            except:
+                languages = []
 
             return {
                 'categories': categories,
                 'channels': channels,
-                'content_types': content_types,
-                'complexities': complexities,
-                'languages': languages,
-                'has_audio': has_audio
+                'years': years,
+                'has_audio': has_audio,
+                'variants': variants,
+                'languages': languages
             }
 
         finally:
@@ -459,4 +463,4 @@ class PostgreSQLContentIndex:
 
     def get_facets(self, active_filters: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Alias for get_filters() for compatibility with existing API."""
-        return self.get_filters()
+        return self.get_filters(active_filters)
