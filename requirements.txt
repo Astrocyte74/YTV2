@@ -27,3 +27,6 @@ markupsafe>=2.1
 
 # HTML sanitization for V2 security
 bleach>=6.1
+
+# PostgreSQL support for migration
+psycopg2-binary>=2.9.0
