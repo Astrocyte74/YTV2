@@ -1595,24 +1595,33 @@ class AudioDashboard {
     }
 
     createContentCard(item) {
-        const duration = this.formatDuration(item.duration_seconds || 0);
+        // Normalize field names between SQLite and PostgreSQL APIs
+        const title = item.title || 'Untitled';
+        const channel = item.channel ?? item.channel_name ?? 'Unknown Channel';
+        const analysis = item.analysis ?? item.analysis_json ?? {};
+        const fileStem = item.file_stem ?? item.video_id ?? '';
+
+        // Create normalized item for consistent access
+        const normalizedItem = { ...item, title, channel, analysis, file_stem: fileStem };
+
+        const duration = this.formatDuration(normalizedItem.duration_seconds || 0);
         
-        const hasAudio = item.media?.has_audio;
-        const href = `/${item.file_stem}.json?v=2`;
-        const buttonDurations = this.getButtonDurations(item);
-        const { categories, subcats, subcatPairs } = this.extractCatsAndSubcats(item);
-        const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds) ? item.media_metadata.mp3_duration_seconds : (item.duration_seconds || 0);
-        const totalDur = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
-            ? this.formatDuration(item.media_metadata.mp3_duration_seconds)
-            : (item.duration_seconds ? this.formatDuration(item.duration_seconds) : '');
-        
-        const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
-        const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
+        const hasAudio = normalizedItem.media?.has_audio;
+        const href = `/${normalizedItem.file_stem}.json?v=2`;
+        const buttonDurations = this.getButtonDurations(normalizedItem);
+        const { categories, subcats, subcatPairs } = this.extractCatsAndSubcats(normalizedItem);
+        const totalSecs = (normalizedItem.media_metadata && normalizedItem.media_metadata.mp3_duration_seconds) ? normalizedItem.media_metadata.mp3_duration_seconds : (normalizedItem.duration_seconds || 0);
+        const totalDur = (normalizedItem.media_metadata && normalizedItem.media_metadata.mp3_duration_seconds)
+            ? this.formatDuration(normalizedItem.media_metadata.mp3_duration_seconds)
+            : (normalizedItem.duration_seconds ? this.formatDuration(normalizedItem.duration_seconds) : '');
+
+        const isPlaying = this.currentAudio && this.currentAudio.id === normalizedItem.file_stem && this.isPlaying;
+        const channelInitial = (normalizedItem.channel || '?').trim().charAt(0).toUpperCase();
         return `
-            <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative list-layout cursor-pointer bg-white/80 dark:bg-slate-800/60 backdrop-blur-sm rounded-xl border border-slate-200/60 dark:border-slate-700 p-3 sm:p-4 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200" style="--thumbW: 240px;">
+            <div data-card data-report-id="${normalizedItem.file_stem}" data-video-id="${normalizedItem.video_id || ''}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative list-layout cursor-pointer bg-white/80 dark:bg-slate-800/60 backdrop-blur-sm rounded-xl border border-slate-200/60 dark:border-slate-700 p-3 sm:p-4 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200" style="--thumbW: 240px;">
                 <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start">
                     <div class="relative w-full sm:w-56 aspect-video overflow-hidden rounded-lg bg-slate-100 flex-shrink-0">
-                        ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
+                        ${normalizedItem.thumbnail_url ? `<img src="${normalizedItem.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
                         <div class="absolute inset-0 flex items-center justify-center pointer-events-none ${isPlaying ? '' : 'hidden'}" data-card-eq>
                             <div class="px-2 py-1 rounded-md bg-black/50 backdrop-blur-sm">
                                 <div class="flex items-end gap-1 text-white">
@@ -1632,12 +1641,12 @@ class AudioDashboard {
                         <div class="flex items-start justify-between gap-3">
                             <div class="flex-1 min-w-0 pr-12">
                                 <h3 class="text-base sm:text-lg font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 transition-colors line-clamp-2">
-                                    ${this.escapeHtml(item.title)}
+                                    ${this.escapeHtml(normalizedItem.title)}
                                 </h3>
                                 <div class="text-sm text-slate-500 dark:text-slate-300 mt-0.5 line-clamp-1 flex items-center gap-2">
                                     <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-200 text-slate-700 text-[10px]">${channelInitial}</span>
-                                    <button class="truncate hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-filter-value="${this.escapeHtml(item.channel || '')}" title="Filter by ${this.escapeHtml(item.channel || '')}">${this.escapeHtml(item.channel || '')}</button>
-                                    ${this.renderLanguageChip(item.analysis?.language)}
+                                    <button class="truncate hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-filter-value="${this.escapeHtml(normalizedItem.channel || '')}" title="Filter by ${this.escapeHtml(normalizedItem.channel || '')}">${this.escapeHtml(normalizedItem.channel || '')}</button>
+                                    ${this.renderLanguageChip(normalizedItem.analysis?.language)}
                                     ${isPlaying ? '<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-audio-100 text-audio-700 whitespace-nowrap">Now Playing</span>' : ''}
                                 </div>
                                 ${categories.length ? `
@@ -1685,20 +1694,29 @@ class AudioDashboard {
     }
 
     createGridCard(item) {
-        const duration = this.formatDuration(item.duration_seconds || 0);
-        const href = `/${item.file_stem}.json?v=2`;
-        const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
-        const channelInitial = (item.channel || '?').trim().charAt(0).toUpperCase();
-        const buttonDurations = this.getButtonDurations(item);
-        const { categories, subcats, subcatPairs } = this.extractCatsAndSubcats(item);
-        const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds) ? item.media_metadata.mp3_duration_seconds : (item.duration_seconds || 0);
-        const totalDur = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
-            ? this.formatDuration(item.media_metadata.mp3_duration_seconds)
-            : (item.duration_seconds ? this.formatDuration(item.duration_seconds) : '');
+        // Normalize field names between SQLite and PostgreSQL APIs
+        const title = item.title || 'Untitled';
+        const channel = item.channel ?? item.channel_name ?? 'Unknown Channel';
+        const analysis = item.analysis ?? item.analysis_json ?? {};
+        const fileStem = item.file_stem ?? item.video_id ?? '';
+
+        // Create normalized item for consistent access
+        const normalizedItem = { ...item, title, channel, analysis, file_stem: fileStem };
+
+        const duration = this.formatDuration(normalizedItem.duration_seconds || 0);
+        const href = `/${normalizedItem.file_stem}.json?v=2`;
+        const isPlaying = this.currentAudio && this.currentAudio.id === normalizedItem.file_stem && this.isPlaying;
+        const channelInitial = (normalizedItem.channel || '?').trim().charAt(0).toUpperCase();
+        const buttonDurations = this.getButtonDurations(normalizedItem);
+        const { categories, subcats, subcatPairs } = this.extractCatsAndSubcats(normalizedItem);
+        const totalSecs = (normalizedItem.media_metadata && normalizedItem.media_metadata.mp3_duration_seconds) ? normalizedItem.media_metadata.mp3_duration_seconds : (normalizedItem.duration_seconds || 0);
+        const totalDur = (normalizedItem.media_metadata && normalizedItem.media_metadata.mp3_duration_seconds)
+            ? this.formatDuration(normalizedItem.media_metadata.mp3_duration_seconds)
+            : (normalizedItem.duration_seconds ? this.formatDuration(normalizedItem.duration_seconds) : '');
         return `
-        <div data-card data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-has-audio="${(item.media && item.media.has_audio) ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative cursor-pointer bg-white/80 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
+        <div data-card data-report-id="${normalizedItem.file_stem}" data-video-id="${normalizedItem.video_id || ''}" data-has-audio="${(normalizedItem.media && normalizedItem.media.has_audio) ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative cursor-pointer bg-white/80 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
             <div class="relative aspect-video bg-slate-100">
-                ${item.thumbnail_url ? `<img src="${item.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
+                ${normalizedItem.thumbnail_url ? `<img src="${normalizedItem.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
                 <div class="absolute inset-0 flex items-center justify-center pointer-events-none" data-card-eq style="display: flex">
                     <div class="flex items-end gap-1">
                         <span class="w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar-outlined" style="--delay:0"></span>
@@ -1731,11 +1749,11 @@ class AudioDashboard {
                 </div>
             </div>
             <div class="p-3 pr-12">
-                <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 line-clamp-2">${this.escapeHtml(item.title)}</h3>
+                <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 line-clamp-2">${this.escapeHtml(normalizedItem.title)}</h3>
                 <div class="text-xs text-slate-500 dark:text-slate-300 mt-1 line-clamp-1 flex items-center gap-2">
                     <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-slate-700 text-[9px]">${channelInitial}</span>
-                    <button class="hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-filter-value="${this.escapeHtml(item.channel || '')}" title="Filter by ${this.escapeHtml(item.channel || '')}">${this.escapeHtml(item.channel || '')}</button>
-                    ${this.renderLanguageChip(item.analysis?.language)}
+                    <button class="hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-filter-value="${this.escapeHtml(normalizedItem.channel || '')}" title="Filter by ${this.escapeHtml(normalizedItem.channel || '')}">${this.escapeHtml(normalizedItem.channel || '')}</button>
+                    ${this.renderLanguageChip(normalizedItem.analysis?.language)}
                     ${isPlaying ? '<span class="ml-2 text-[10px] px-1 py-0.5 rounded bg-audio-100 text-audio-700">Now Playing</span>' : ''}
                 </div>
                 ${categories.length ? `<div class=\"mt-2 flex flex-wrap gap-1\">${categories.map(cat => this.renderChip(cat, 'category', true)).join('')}</div>` : ''}
@@ -1745,7 +1763,7 @@ class AudioDashboard {
                         <span>Read</span>
                         <span class="text-[10px] opacity-70">${buttonDurations.read || '3m'}</span>
                     </button>
-                    ${(item.media && item.media.has_audio) ? `
+                    ${(normalizedItem.media && normalizedItem.media.has_audio) ? `
                     <button class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors" data-action="listen">
                         <span>Listen</span>
                         <span class="text-[10px] opacity-70">${buttonDurations.listen || totalDur}</span>
