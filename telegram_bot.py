@@ -2257,9 +2257,21 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 # PostgreSQL format: (items, total_count)
                 items, total_count = search_result
                 import math
+
+                # Convert datetime objects to strings for JSON serialization
+                serializable_items = []
+                for item in items:
+                    serializable_item = {}
+                    for key, value in item.items():
+                        if hasattr(value, 'isoformat'):  # datetime object
+                            serializable_item[key] = value.isoformat()
+                        else:
+                            serializable_item[key] = value
+                    serializable_items.append(serializable_item)
+
                 total_pages = math.ceil(total_count / size) if size else 0
                 results = {
-                    "reports": items,
+                    "reports": serializable_items,
                     "pagination": {
                         "page": page,
                         "size": size,
