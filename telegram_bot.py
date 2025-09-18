@@ -23,6 +23,16 @@ from urllib.parse import urlparse, parse_qs
 import socket
 import sqlite3
 
+# PostgreSQL support for migration
+try:
+    import psycopg2
+    import psycopg2.extras
+    from psycopg2 import pool
+    PSYCOPG2_AVAILABLE = True
+except ImportError:
+    PSYCOPG2_AVAILABLE = False
+    psycopg2 = None
+
 # V2 template engine imports
 try:
     from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -109,6 +119,38 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+def get_postgres_connection():
+    """Get a PostgreSQL connection for health checks and database operations."""
+    if not PSYCOPG2_AVAILABLE:
+        raise ImportError("psycopg2 not available - PostgreSQL support disabled")
+
+    database_url = os.getenv('DATABASE_URL_POSTGRES_NEW') or os.getenv('DATABASE_URL')
+    if not database_url:
+        raise ValueError("No PostgreSQL DATABASE_URL configured")
+
+    try:
+        conn = psycopg2.connect(
+            database_url,
+            connect_timeout=5,
+            cursor_factory=psycopg2.extras.RealDictCursor
+        )
+        return conn
+    except Exception as e:
+        logger.error(f"PostgreSQL connection failed: {e}")
+        raise
+
+def test_postgres_health():
+    """Test PostgreSQL connection health."""
+    try:
+        with get_postgres_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1;")
+                result = cur.fetchone()
+                return result is not None
+    except Exception as e:
+        logger.error(f"PostgreSQL health check failed: {e}")
+        return False
 
 def create_empty_ytv2_database(db_path: Path):
     """Create empty YTV2 database with proper schema."""
@@ -916,6 +958,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.serve_status()
         elif path == '/health':
             self.serve_health()
+        elif path == '/health/db':
+            self.serve_health_db()
         elif path == '/api/db-status':
             self.serve_db_status()
         elif path == '/api/db-reset':
@@ -1650,6 +1694,70 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             error_data = {"status": "unhealthy", "error": str(e)}
+            self.wfile.write(json.dumps(error_data).encode())
+
+    def serve_health_db(self):
+        """Serve database health check endpoint with PostgreSQL connectivity test"""
+        try:
+            # Check if PostgreSQL is enabled
+            read_from_postgres = os.getenv('READ_FROM_POSTGRES', 'false').lower() == 'true'
+
+            if read_from_postgres and PSYCOPG2_AVAILABLE:
+                # Test PostgreSQL connection
+                start_time = datetime.now()
+                postgres_healthy = test_postgres_health()
+                end_time = datetime.now()
+                latency_ms = (end_time - start_time).total_seconds() * 1000
+
+                if postgres_healthy:
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    health_data = {
+                        "db": "ok",
+                        "type": "postgresql",
+                        "latency_ms": round(latency_ms, 2),
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    self.wfile.write(json.dumps(health_data).encode())
+                else:
+                    raise Exception("PostgreSQL health check failed")
+            else:
+                # Fallback to SQLite health check
+                db_path = Path('ytv2_content.db')
+                if db_path.exists():
+                    start_time = datetime.now()
+                    conn = sqlite3.connect(db_path)
+                    cur = conn.cursor()
+                    cur.execute("SELECT 1;")
+                    cur.fetchone()
+                    conn.close()
+                    end_time = datetime.now()
+                    latency_ms = (end_time - start_time).total_seconds() * 1000
+
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    health_data = {
+                        "db": "ok",
+                        "type": "sqlite",
+                        "latency_ms": round(latency_ms, 2),
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    self.wfile.write(json.dumps(health_data).encode())
+                else:
+                    raise Exception("Database file not found")
+
+        except Exception as e:
+            logger.error(f"Error serving database health check: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            error_data = {
+                "db": "error",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
             self.wfile.write(json.dumps(error_data).encode())
     
     def serve_db_status(self):
