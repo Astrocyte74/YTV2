@@ -25,11 +25,11 @@ NAS Component (Processing)     Dashboard Component (Web UI)
 
 ## The Solution
 
-**Single PostgreSQL database** serving both components:
-- ✅ Eliminates all synchronization complexity
-- ✅ Real-time consistency between components
-- ✅ Preserves all 67 categorization records
-- ✅ Delete operations work correctly without restoration
+**Parallel deployment strategy** - Build new PostgreSQL system alongside current production:
+- ✅ **Zero downtime** - current system stays live during migration
+- ✅ **Zero risk** - new system built and tested separately
+- ✅ **Safe cutover** - DNS switch with instant rollback capability
+- ✅ **Complete validation** - thorough testing before any changes to production
 
 ## Project Structure
 
@@ -65,39 +65,51 @@ Dashboard Component (Render)
 └── Problem: Victim of overwrites, loses deletions
 ```
 
-### Target Architecture
+### Target Architecture (Parallel Deployment)
 ```
-PostgreSQL on Render (Single Source of Truth)
-├── Serves both NAS and Dashboard components
+Current Production (Keep Running)
+├── ytv2-vy9k.onrender.com (existing)
+├── SQLite database (current)
+└── Users continue uninterrupted
+
+New Parallel System (Build & Test)
+├── ytv2-dashboard-postgres (new Render service)
+├── PostgreSQL database (new)
+├── postgres-migration-phase0 branch
+└── Complete validation environment
+
+Final State (Post-Cutover)
+├── PostgreSQL on Render (Single Source of Truth)
+├── DNS switched to new service
 ├── Real-time consistency, no sync needed
-├── Transactional safety, cascade deletes
-└── Eliminates all sync disaster scenarios
+└── Old system decommissioned safely
 ```
 
 ## Migration Phases
 
-### Phase 0: Safety & Backups (Day 1)
+### Phase 0: Parallel System Setup (Day 1)
 - **T-Y000**: Bootstrap GitHub project structure ✅
-- **T-Y001**: Stop processing, create comprehensive backups
-- **T-Y002**: Provision PostgreSQL on Render (Basic 1GB + backups)
+- **T-Y001**: Create comprehensive backups ✅
+- **T-Y002**: Provision PostgreSQL + **new Render web service** (`ytv2-dashboard-postgres`)
 - **T-Y003**: Document baseline data integrity (67 categorization records)
 
-### Phase 1: Schema & Migration (Days 1-2)
+### Phase 1: Build New System (Days 1-2)
 - **T-Y004**: Create PostgreSQL schema with triggers
 - **T-Y005**: Build idempotent migration script
-- **T-Y006-008**: Migrate content data with integrity verification
+- **T-Y006-008**: One-time data snapshot from production SQLite to new PostgreSQL
 
-### Phase 2: Dual-Write + Shadow-Read (Days 3-4)
-- **T-Y009-010**: Implement NAS dual-write to both databases
-- **T-Y011-012**: Add PostgreSQL support to Dashboard with feature flags
-- **T-Y013-014**: Validate consistency during dual-write period
+### Phase 2: Parallel Testing & Validation (Days 3-4)
+- **T-Y009-012**: Deploy new system on `postgres-migration-phase0` branch
+- **T-Y013-014**: Comprehensive testing and stakeholder validation
+- **Health checks**: `/health` and `/health/db` endpoints on new service
 
-### Phase 3: Cutover (Days 5-6)
-- **T-Y015-016**: Switch Dashboard to PostgreSQL, remove sync code
-- **T-Y017-018**: Update delete workflow, test end-to-end scenarios
+### Phase 3: Safe Cutover (Days 5-6)
+- **T-Y015**: Brief freeze window + dual-write synchronization
+- **T-Y016**: DNS/domain switch to new service
+- **T-Y017-018**: Monitor stability, validate end-to-end workflows
 
-### Phase 4: Cleanup (Day 7)
-- **T-Y019-026**: Archive SQLite, cleanup code, final validation
+### Phase 4: Decommission Old System (Day 7)
+- **T-Y019-026**: Archive old SQLite, cleanup sync scripts, final validation
 
 ## Critical Data
 
@@ -107,19 +119,21 @@ PostgreSQL on Render (Single Source of Truth)
 - **Risk**: Primary target of sync disasters - MUST be preserved
 - **Verification**: Every migration step must verify these records intact
 
-### Database Locations
-- **NAS SQLite**: `/Volumes/Docker/YTV2/data/ytv2_content.db`
-- **Dashboard SQLite**: `/Users/markdarby/projects/YTV2-Dashboard/ytv2_content.db`
-- **Target PostgreSQL**: To be provisioned on Render
+### Service Locations
+- **Current Production**: `ytv2-vy9k.onrender.com` (SQLite, keep running)
+- **New Parallel System**: `ytv2-dashboard-postgres` (PostgreSQL, to be created)
+- **Database Files**:
+  - Current SQLite: `/Users/markdarby/projects/YTV2-Dashboard/ytv2_content.db`
+  - Backup: `dashboard_pre_postgres_20250917_162149.db` ✅
+  - Target PostgreSQL: To be provisioned on Render
 
-## Emergency Procedures
+## Emergency Procedures (Parallel Deployment)
 
-### 🔴 Immediate Rollback (if critical issues detected)
-1. **Dashboard**: Set `READ_FROM_POSTGRES=false` in Render environment
-2. **NAS**: Set `DUAL_WRITE_MODE=true` to resume SQLite writes
-3. **Files**: Restore SQLite files from timestamped backups if corrupted
-4. **Verification**: Confirm rollback successful via testing
-5. **Investigation**: Document issues for resolution before retry
+### 🔴 Instant Rollback (Zero Risk)
+1. **DNS Switch Back**: Point domain back to original service (`ytv2-vy9k`)
+2. **Current System**: Continues running unmodified throughout migration
+3. **No Data Loss**: Original SQLite system never touched during parallel build
+4. **Immediate Recovery**: Original service always available for instant rollback
 
 ### 🔴 Data Disaster Recovery
 1. **Stop All Processing**: `docker-compose down` on NAS

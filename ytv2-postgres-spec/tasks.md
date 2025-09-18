@@ -34,24 +34,29 @@
   - **Git**: Commit "T-Y001: Create comprehensive pre-migration backups"
   - **Acceptance**: Both SQLite databases backed up with verification of 67 categorization records
 
-- [ ] (T-Y002) **Provision PostgreSQL database on Render**
-  - **Implementation**: Purchase/provision a managed PostgreSQL instance on Render
-  - **Configuration**:
+- [ ] (T-Y002) **Provision PostgreSQL database + new Render web service**
+  - **Implementation**: Create parallel system - PostgreSQL database + new web service (keep production untouched)
+  - **PostgreSQL Configuration**:
     - **Service name**: `ytv2-database`
     - **Plan**: `Basic 1GB` (start; can scale later)
     - **Region**: same as Dashboard (e.g., `oregon`)
     - **Backups**: Enable automated daily backups + on-demand snapshots
-  - **Billing**: Confirm Render billing is active and the new Postgres service is billable
-  - **Environment**:
-    - Set `DATABASE_URL` in **both** components (Dashboard + NAS)
-    - Store credentials in secrets manager; do **not** commit plaintext URLs
+  - **New Web Service Configuration**:
+    - **Service name**: `ytv2-dashboard-postgres`
+    - **Repository**: Same repo, branch `postgres-migration-phase0`
+    - **Environment variables**:
+      - `READ_FROM_POSTGRES=true`
+      - `DATABASE_URL=postgresql://...` (new PostgreSQL instance)
+      - All other vars identical to production (except sync-related)
+    - **Health endpoints**: Add `/health` and `/health/db` (SELECT 1)
+  - **Safety**: Keep separate DATABASE_URL secrets; do NOT reuse production secrets
   - **Verification**:
     - `psql $DATABASE_URL -c "SELECT version();"`
-    - `psql $DATABASE_URL -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"`
-    - `psql $DATABASE_URL -c "SHOW server_version;"`
-  - **Testing**: Confirm connectivity from both environments; verify backups appear in Render UI
-  - **Git**: Commit "T-Y002: Provision PostgreSQL on Render (billing + backups configured)"
-  - **Acceptance**: PostgreSQL accessible from both components; backups enabled; credentials configured
+    - Both health endpoints return 200 on new service
+    - New service completely isolated from production
+  - **Testing**: Confirm new service deploys successfully; PostgreSQL connectivity verified
+  - **Git**: Commit "T-Y002: Provision PostgreSQL + parallel web service (production untouched)"
+  - **Acceptance**: New parallel system ready; production continues running unmodified
 
 - [ ] (T-Y003) **Verify data integrity baseline**
   - **Implementation**: Document current data state for migration verification
@@ -95,15 +100,16 @@
   - **Git**: Commit "T-Y005: Create robust data migration script"
   - **Acceptance**: Script handles all edge cases, safe for reruns
 
-### Data Migration Execution
-- [ ] (T-Y006) **Migrate content metadata from SQLite**
-  - **Implementation**: Execute migration script for content table
-  - **Source**: Both NAS and Dashboard SQLite files (use most recent)
+### Data Migration Execution (One-Time Snapshot)
+- [ ] (T-Y006) **One-time data snapshot from production to new PostgreSQL**
+  - **Implementation**: Execute migration script from current production SQLite to new PostgreSQL
+  - **Source**: Production backup `dashboard_pre_postgres_20250917_162149.db` (81 records, 74 categorized)
+  - **Target**: New PostgreSQL instance in parallel service only
+  - **Safety**: Production SQLite never touched - using backup snapshot
   - **Verification**: Compare record counts, spot-check complex JSON fields
-  - **Rollback**: Keep SQLite files for emergency recovery
-  - **Testing**: Verify all 67 categorization records preserved correctly
-  - **Git**: Commit "T-Y006: Migrate content metadata with integrity verification"
-  - **Acceptance**: 100% data migration success, categorization preserved
+  - **Testing**: Verify all 74 categorization records preserved correctly in new system
+  - **Git**: Commit "T-Y006: One-time data snapshot to parallel PostgreSQL system"
+  - **Acceptance**: 100% data migration success in new system, production unaffected
 
 - [ ] (T-Y007) **Create content_summaries from existing summary data**
   - **Implementation**: Extract HTML summaries and create revision 1 records
@@ -134,85 +140,79 @@
   - **Git**: Commit "T-Y008: Verify complete data migration integrity"
   - **Acceptance**: All verification checks pass, no data corruption detected
 
-## Phase 2: Dual-Write + Shadow-Read - Days 3-4
+## Phase 2: Parallel Testing & Validation - Days 3-4
 
-### NAS Dual-Write Implementation
-- [ ] (T-Y009) **Create database abstraction layer**
-  - **Implementation**: DatabaseManager class supporting both SQLite and PostgreSQL
-  - **Location**: `/Volumes/Docker/YTV2/modules/database_manager.py`
-  - **Features**: Transactional writes, dual-write mode, error handling
-  - **Environment**: DUAL_WRITE_MODE and DATABASE_URL configuration
-  - **Testing**: Verify both databases receive identical data
-  - **Git**: Commit "T-Y009: Implement database abstraction with dual-write"
-  - **Acceptance**: NAS writes to both databases atomically
+### New Service Deployment & Testing
+- [ ] (T-Y009) **Deploy new system on postgres-migration-phase0 branch**
+  - **Implementation**: Deploy new web service with PostgreSQL backend
+  - **Service**: `ytv2-dashboard-postgres` pointing to migration branch
+  - **Environment**: `READ_FROM_POSTGRES=true`, new DATABASE_URL
+  - **Health checks**: Verify `/health` and `/health/db` endpoints return 200
+  - **Testing**: Confirm new service loads with migrated data
+  - **Git**: Commit "T-Y009: Deploy parallel PostgreSQL service successfully"
+  - **Acceptance**: New service running independently with PostgreSQL data
 
-- [ ] (T-Y010) **Update video processing pipeline**
-  - **Implementation**: Replace direct SQLite calls with DatabaseManager
-  - **Location**: `/Volumes/Docker/YTV2/modules/telegram_handler.py`
-  - **Changes**: Remove sync subprocess calls, use database_manager
-  - **Safety**: Maintain transaction boundaries, error recovery
-  - **Testing**: Process test video, verify data appears in both databases
-  - **Git**: Commit "T-Y010: Update video processing to use database abstraction"
-  - **Acceptance**: Video processing writes to PostgreSQL correctly
+- [ ] (T-Y010) **Comprehensive API parity testing**
+  - **Implementation**: Compare API responses between production and new service
+  - **Endpoints**: `/api/reports`, `/api/filters`, individual video pages
+  - **Validation**: Ensure identical JSON responses and UI rendering
+  - **Performance**: Verify response times meet production baseline (<500ms)
+  - **Testing**: Automated comparison script between both services
+  - **Git**: Commit "T-Y010: Validate API parity between SQLite and PostgreSQL"
+  - **Acceptance**: New service produces identical results to production
 
-### Dashboard Shadow-Read Implementation
-- [ ] (T-Y011) **Add PostgreSQL support to content index**
-  - **Implementation**: Extend sqlite_content_index.py with PostgreSQL queries
-  - **Location**: `/Users/markdarby/projects/YTV2-Dashboard/modules/sqlite_content_index.py`
-  - **Features**: Feature flag support, lateral join queries, filter compatibility, **fallback to any available variant if 'comprehensive' missing (ordering: comprehensive → key-points → bullet-points → executive → key-insights → audio → audio-fr → audio-es)**
-  - **Environment**: READ_FROM_POSTGRES flag for gradual cutover
-  - **Testing**: Compare API responses between SQLite and PostgreSQL
-  - **Git**: Commit "T-Y011: Add PostgreSQL support with feature flag"
-  - **Acceptance**: Dashboard can read from PostgreSQL with identical results
+### Stakeholder Validation
+- [ ] (T-Y011) **Stakeholder testing on new parallel system**
+  - **Implementation**: Share new service URL with testers for comprehensive validation
+  - **URL**: `ytv2-dashboard-postgres.onrender.com` (new parallel service)
+  - **Test scenarios**: Navigation, filtering, search, individual video pages, audio playback
+  - **Validation**: Visual comparison with production for UI/UX parity
+  - **Feedback**: Document any issues or discrepancies found
+  - **Performance**: Monitor response times and user experience
+  - **Testing**: End-users validate functionality matches production exactly
+  - **Git**: Commit "T-Y011: Complete stakeholder validation of parallel system"
+  - **Acceptance**: Stakeholders confirm new system ready for production cutover
 
-- [ ] (T-Y011A) **Adopt lateral-join + fallback card query**
-  - **Implementation**: Use `LEFT JOIN LATERAL` against `v_latest_summaries` for (a) `variant='comprehensive'` and (b) any variant with defined precedence, selecting first non-null
-  - **Location**: `/Users/markdarby/projects/YTV2-Dashboard/modules/sqlite_content_index.py`
-  - **Testing**:
-    - Card list includes videos with only non-comprehensive variants
-    - Response time ≤ 500ms for 1k rows on Render
-  - **Git**: Commit "T-Y011A: Implement lateral-join fallback query for cards"
-  - **Acceptance**: Cards display summaries where any variant exists; performance meets target
+- [ ] (T-Y012) **Performance validation of new system**
+  - **Implementation**: Load testing and performance verification of new PostgreSQL service
+  - **Metrics**: Response times, query performance, memory usage, concurrent users
+  - **Baseline**: Must meet or exceed current production performance
+  - **Tools**: Load testing scripts, monitoring dashboard metrics
+  - **Testing**: Simulate production traffic patterns on new service
+  - **Git**: Commit "T-Y012: Validate performance meets production requirements"
+  - **Acceptance**: New system performs equal or better than current production
 
-- [ ] (T-Y012) **Implement lateral join query pattern**
-  - **Implementation**: Efficient latest revision lookup for cards
-  - **Pattern**: LEFT JOIN LATERAL for content_summaries
-  - **Performance**: Verify query execution time <500ms for large result sets
-  - **Compatibility**: Ensure results match current SQLite query structure
-  - **Testing**: Load test with full dataset, compare performance
-  - **Git**: Commit "T-Y012: Implement efficient PostgreSQL query patterns"
-  - **Acceptance**: Card loading performance meets or exceeds SQLite baseline
+## Phase 3: Safe Cutover - Days 5-6
 
-### Validation Phase
-- [ ] (T-Y013) **Enable shadow reads for admin testing**
-  - **Implementation**: Feature flag to enable PostgreSQL reads for specific users
-  - **Environment**: READ_FROM_POSTGRES=true for admin-only testing
-  - **Testing**: Compare dashboard rendering between SQLite and PostgreSQL
-  - **Validation**: Verify filters, search, individual pages work identically
-  - **Monitoring**: Log any differences for investigation
-  - **Git**: Commit "T-Y013: Enable shadow reads for validation testing"
-  - **Acceptance**: Admin can use PostgreSQL backend with identical experience
+### Cutover Preparation
+- [ ] (T-Y013) **Prepare for cutover - brief freeze window**
+  - **Implementation**: Coordinate brief processing freeze for final data synchronization
+  - **Communication**: Notify stakeholders of planned cutover window (5-10 minutes)
+  - **NAS preparation**: Prepare dual-write mode for final sync if needed
+  - **Monitoring**: Set up real-time monitoring for cutover process
+  - **Rollback plan**: Document instant rollback procedures (DNS switch back)
+  - **Git**: Commit "T-Y013: Prepare cutover coordination and rollback procedures"
+  - **Acceptance**: Cutover plan documented, stakeholders informed, rollback ready
 
-- [ ] (T-Y014) **Validate dual-write consistency**
-  - **Implementation**: Automated checking that both databases stay in sync
-  - **Monitoring**: Regular comparison queries between SQLite and PostgreSQL
-  - **Alerts**: Flag any inconsistencies for immediate investigation
-  - **Testing**: Process multiple videos, delete videos, verify consistency
-  - **Recovery**: Procedures for handling sync drift if detected
-  - **Git**: Commit "T-Y014: Implement dual-write consistency monitoring"
-  - **Acceptance**: Both databases remain synchronized during dual-write period
+### DNS/Service Cutover
+- [ ] (T-Y014) **Execute DNS/domain switch to new service**
+  - **Implementation**: Switch domain/DNS to point to new PostgreSQL service
+  - **Method**: Update Render service routing or custom domain configuration
+  - **Verification**: Confirm new service receiving production traffic
+  - **Monitoring**: Watch error rates, response times, user experience
+  - **Immediate rollback**: DNS switch back if any issues detected
+  - **Git**: Commit "T-Y014: Complete DNS cutover to PostgreSQL service"
+  - **Acceptance**: Production traffic successfully routed to new system
 
-## Phase 3: Cutover - Days 5-6
-
-### Dashboard Migration
-- [ ] (T-Y015) **Switch Dashboard to PostgreSQL reads**
-  - **Implementation**: Set READ_FROM_POSTGRES=true in Render environment
-  - **Monitoring**: Watch for any UI differences, performance issues, errors
-  - **Rollback**: Immediate flag toggle back to SQLite if issues detected
-  - **Testing**: Comprehensive dashboard testing, all endpoints functional
-  - **User Impact**: Monitor user activity for any reported issues
-  - **Git**: Commit "T-Y015: Switch Dashboard to PostgreSQL reads"
-  - **Acceptance**: Dashboard fully functional on PostgreSQL with no user impact
+### Post-Cutover Validation
+- [ ] (T-Y015) **Monitor stability and validate workflows**
+  - **Implementation**: 24-48 hour monitoring period of new production system
+  - **Monitoring**: Error rates, performance metrics, user feedback
+  - **Validation**: End-to-end workflow testing in live production
+  - **Issue response**: Immediate rollback capability if problems arise
+  - **User support**: Monitor for any user-reported issues
+  - **Git**: Commit "T-Y015: Complete post-cutover stability monitoring"
+  - **Acceptance**: New system stable for 24-48 hours, ready for cleanup phase
 
 - [ ] (T-Y015A) **Add DB health endpoints & pooling**
   - **Implementation**: `/health/db` endpoint returns `200` on `SELECT 1`; enable PgBouncer (if available) or connection pooling; add exponential backoff on connect
