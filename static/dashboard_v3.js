@@ -500,11 +500,11 @@ class AudioDashboard {
             const response = await fetch('/api/filters');
             const filters = await response.json();
             
-            this.renderFilterSection(filters.category, this.categoryFilters, 'category');
-            this.renderFilterSection(filters.channel, this.channelFilters, 'channel');
+            this.renderFilterSection(filters.categories, this.categoryFilters, 'category');
+            this.renderFilterSection(filters.channels, this.channelFilters, 'channel');
             this.renderFilterSection(filters.content_type, this.contentTypeFilters, 'content_type');
             this.renderFilterSection(filters.complexity_level, this.complexityFilters, 'complexity');
-            this.renderLanguageFilters(filters.language || []);
+            this.renderLanguageFilters(filters.languages || []);
             
             // Bind show more toggles after content is loaded
             this.bindShowMoreToggles();
