@@ -62,12 +62,25 @@ except ImportError as e:
 
 # Import dashboard components only
 from modules.report_generator import JSONReportGenerator
-try:
-    from modules.sqlite_content_index import SQLiteContentIndex as ContentIndex
-    USING_SQLITE = True
-except ImportError:
-    from modules.content_index import ContentIndex
+
+# Check environment to determine database backend
+READ_FROM_POSTGRES = os.getenv('READ_FROM_POSTGRES', 'false').lower() == 'true'
+
+if READ_FROM_POSTGRES and PSYCOPG2_AVAILABLE:
+    # Use PostgreSQL backend
+    from modules.postgres_content_index import PostgreSQLContentIndex as ContentIndex
     USING_SQLITE = False
+    logger.info("Using PostgreSQL content index")
+else:
+    # Fallback to SQLite backend
+    try:
+        from modules.sqlite_content_index import SQLiteContentIndex as ContentIndex
+        USING_SQLITE = True
+        logger.info("Using SQLite content index")
+    except ImportError:
+        from modules.content_index import ContentIndex
+        USING_SQLITE = False
+        logger.info("Using legacy JSON content index")
 
 # Load environment variables from .env file and stack.env
 load_dotenv()
