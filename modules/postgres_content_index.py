@@ -461,6 +461,18 @@ class PostgreSQLContentIndex:
         finally:
             conn.close()
 
+    def search_reports(self,
+                      filters: Optional[Dict[str, Any]] = None,
+                      query: Optional[str] = None,
+                      sort: str = 'newest',
+                      page: int = 1,
+                      size: int = 20) -> Tuple[List[Dict[str, Any]], int]:
+        """Search reports with filters - compatibility method for API."""
+        if query and query.strip():
+            return self.search(query, filters, page, size)
+        else:
+            return self.get_reports(filters, sort, page, size)
+
     def get_facets(self, active_filters: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Alias for get_filters() for compatibility with existing API."""
         return self.get_filters(active_filters)
