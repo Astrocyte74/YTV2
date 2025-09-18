@@ -1004,6 +1004,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.serve_health()
         elif path == '/health/db':
             self.serve_health_db()
+        elif path == '/health/backend':
+            self.serve_health_backend()
         elif path == '/api/db-status':
             self.serve_db_status()
         elif path == '/api/db-reset':
@@ -1899,7 +1901,54 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "timestamp": datetime.now().isoformat()
             }
             self.wfile.write(json.dumps(error_data).encode())
-    
+
+    def serve_health_backend(self):
+        """Serve backend health endpoint - prevents wrong-URL/wrong-backend debugging rabbit holes"""
+        try:
+            # Get backend information
+            backend_info = {
+                "backend": type(content_index).__name__ if content_index else "None",
+                "read_from_postgres": READ_FROM_POSTGRES,
+                "using_sqlite": USING_SQLITE,
+                "dsn_set": bool(os.getenv("DATABASE_URL_POSTGRES_NEW")),
+                "psycopg2_available": PSYCOPG2_AVAILABLE,
+                "timestamp": datetime.now().isoformat()
+            }
+
+            # Add record counts if content_index is available
+            if content_index:
+                try:
+                    # Try to get a quick count
+                    if hasattr(content_index, 'search_reports'):
+                        search_result = content_index.search_reports(page=1, size=1)
+                        if isinstance(search_result, tuple):
+                            # PostgreSQL format: (items, total_count)
+                            _, total_count = search_result
+                            backend_info["record_count"] = total_count
+                        else:
+                            # SQLite format: dict with pagination
+                            backend_info["record_count"] = search_result.get('pagination', {}).get('total_count', 0)
+                except Exception as e:
+                    backend_info["record_count_error"] = str(e)
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(json.dumps(backend_info, indent=2).encode())
+
+        except Exception as e:
+            logger.error(f"Error serving backend health check: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            error_data = {
+                "error": "Backend health check failed",
+                "message": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+            self.wfile.write(json.dumps(error_data).encode())
+
     def serve_db_status(self):
         """Serve database status endpoint for diagnostics"""
         try:
