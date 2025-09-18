@@ -1366,12 +1366,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             v_param = qs.get('v', [''])[0]
             use_v2 = v_param == '2'
 
-            # Check if this is a JSON API request (based on path ending in .json)
-            path = getattr(self, 'path', '')
-            is_json_request = path.endswith('.json')
-
-            # For JSON requests, return JSON data instead of HTML
-            if is_json_request and v_param != '2':
+            # For JSON requests without v=2, return JSON data instead of HTML
+            # We're in serve_sqlite_report, which is only called for database records
+            # If v param is not '2', and we're here, it should be a JSON request
+            if v_param != '2':
                 return self.serve_sqlite_report_json(report_data)
 
             
