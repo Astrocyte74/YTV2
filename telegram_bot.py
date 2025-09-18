@@ -1949,6 +1949,78 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             }
             self.wfile.write(json.dumps(error_data).encode())
 
+    def serve_health_db(self):
+        """Serve database health endpoint with latency timing"""
+        start_time = time.time()
+
+        try:
+            # Test database connectivity and performance
+            db_health = {
+                "status": "healthy",
+                "timestamp": datetime.now().isoformat(),
+                "database_type": None,
+                "latency_ms": None,
+                "record_count": None,
+                "connection_test": "passed"
+            }
+
+            if content_index:
+                # Test actual database query performance
+                query_start = time.time()
+
+                if hasattr(content_index, 'search_reports'):
+                    # Test with a small query
+                    result = content_index.search_reports(page=1, size=1)
+
+                    if isinstance(result, tuple):
+                        # PostgreSQL format
+                        items, total_count = result
+                        db_health["database_type"] = "postgresql"
+                        db_health["record_count"] = total_count
+                    else:
+                        # SQLite format
+                        db_health["database_type"] = "sqlite"
+                        db_health["record_count"] = result.get('pagination', {}).get('total_count', 0)
+
+                query_end = time.time()
+                db_health["latency_ms"] = round((query_end - query_start) * 1000, 2)
+
+                # Health check passes if latency is reasonable
+                if db_health["latency_ms"] > 1000:  # 1 second threshold
+                    db_health["status"] = "degraded"
+                    db_health["warning"] = "High latency detected"
+
+            else:
+                db_health["status"] = "error"
+                db_health["error"] = "No database connection available"
+
+            total_time = time.time() - start_time
+            db_health["total_response_time_ms"] = round(total_time * 1000, 2)
+
+            # Send response with appropriate status code
+            status_code = 200 if db_health["status"] in ["healthy", "degraded"] else 503
+
+            self.send_response(status_code)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(json.dumps(db_health, indent=2).encode())
+
+        except Exception as e:
+            total_time = time.time() - start_time
+            error_response = {
+                "status": "error",
+                "timestamp": datetime.now().isoformat(),
+                "error": str(e),
+                "total_response_time_ms": round(total_time * 1000, 2)
+            }
+
+            self.send_response(503)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(json.dumps(error_response, indent=2).encode())
+
     def serve_db_status(self):
         """Serve database status endpoint for diagnostics"""
         try:
