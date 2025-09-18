@@ -1062,45 +1062,56 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # Use SQLite data when available (for proper category structure)
             reports_data = []
             
-            if content_index and USING_SQLITE:
-                # Get reports from SQLite with proper category structure
+            if content_index:
+                # Get reports from database (PostgreSQL or SQLite)
                 try:
-                    sqlite_results = content_index.search_reports(
+                    db_results = content_index.search_reports(
                         filters=None,
                         query=None,
                         sort='indexed_at',  # Sort by most recent
                         page=1,
                         size=100  # Get first 100 reports
                     )
-                    
-                    # Convert SQLite data to format expected by dashboard_v3.js
-                    for item in sqlite_results.get('reports', []):
+
+                    # Handle both PostgreSQL tuple format and SQLite dict format
+                    if isinstance(db_results, tuple):
+                        # PostgreSQL format: (items, total_count)
+                        items, total_count = db_results
+                        reports_list = items
+                    else:
+                        # SQLite format: dict with 'reports' key
+                        reports_list = db_results.get('reports', [])
+
+                    # Convert database data to format expected by dashboard_v3.js
+                    for item in reports_list:
                         # The dashboard_v3.js expects this structure
                         report_data = {
-                            'file_stem': item.get('file_stem', item.get('id', '')),
+                            'file_stem': item.get('file_stem', item.get('id', item.get('video_id', ''))),
                             'title': item.get('title', 'Unknown Title'),
-                            'channel': item.get('channel_name', 'Unknown Channel'),
+                            'channel': item.get('channel_name', item.get('channel', 'Unknown Channel')),
                             'thumbnail_url': item.get('thumbnail_url', ''),
                             'duration_seconds': item.get('duration_seconds', 0),
                             'video_id': item.get('video_id', ''),
-                            'analysis': item.get('analysis', {}),  # This contains the categories structure
+                            'analysis': item.get('analysis', item.get('analysis_json', {})),  # Categories structure
                             'media': item.get('media', {}),
                             'media_metadata': item.get('media_metadata', {}),
                             'created_date': item.get('indexed_at', '')[:10] if item.get('indexed_at') else '',
                             'created_time': item.get('indexed_at', '')[11:16] if item.get('indexed_at') else ''
                         }
                         reports_data.append(report_data)
-                    
-                    logger.info(f"✅ Dashboard using SQLite data: {len(reports_data)} reports")
-                    
+
+                    backend_type = "PostgreSQL" if not USING_SQLITE else "SQLite"
+                    logger.info(f"✅ Dashboard using {backend_type} data: {len(reports_data)} reports")
+
                 except Exception as e:
-                    logger.error(f"❌ SQLite dashboard data failed: {e}")
+                    backend_type = "PostgreSQL" if not USING_SQLITE else "SQLite"
+                    logger.error(f"❌ {backend_type} dashboard data failed: {e}")
                     # Fall back to file-based approach
                     reports_data = []
             
-            # Fallback to file-based approach if SQLite unavailable or failed
+            # Fallback to file-based approach if database unavailable or failed
             if not reports_data:
-                logger.info("🔄 Dashboard falling back to file-based data")
+                logger.info("🔄 Dashboard falling back to file-based data (no database available)")
                 # Get report files from multiple directories (JSON preferred, HTML legacy)
                 report_dirs = [
                     Path('./data/reports'),  # JSON reports (primary)
