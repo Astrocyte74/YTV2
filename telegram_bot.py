@@ -1086,6 +1086,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
                     # Convert database data to format expected by dashboard_v3.js
                     for item in reports_list:
+                        # Handle datetime conversion for PostgreSQL
+                        indexed_at = item.get('indexed_at', '')
+                        if hasattr(indexed_at, 'isoformat'):  # datetime object
+                            indexed_at_str = indexed_at.isoformat()
+                        else:
+                            indexed_at_str = str(indexed_at) if indexed_at else ''
+
                         # The dashboard_v3.js expects this structure
                         report_data = {
                             'file_stem': item.get('file_stem', item.get('id', item.get('video_id', ''))),
@@ -1097,8 +1104,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                             'analysis': item.get('analysis', item.get('analysis_json', {})),  # Categories structure
                             'media': item.get('media', {}),
                             'media_metadata': item.get('media_metadata', {}),
-                            'created_date': item.get('indexed_at', '')[:10] if item.get('indexed_at') else '',
-                            'created_time': item.get('indexed_at', '')[11:16] if item.get('indexed_at') else ''
+                            'created_date': indexed_at_str[:10] if indexed_at_str else '',
+                            'created_time': indexed_at_str[11:16] if len(indexed_at_str) > 16 else ''
                         }
                         reports_data.append(report_data)
 
