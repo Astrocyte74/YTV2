@@ -5,11 +5,11 @@ BEGIN;
 
 -- ---------- Utility: updated_at auto-stamp ----------
 CREATE OR REPLACE FUNCTION touch_updated_at()
-RETURNS trigger LANGUAGE plpgsql AS $
+RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   NEW.updated_at := NOW();
   RETURN NEW;
-END$;
+END$$;
 
 -- ---------- content (primary catalog) ----------
 CREATE TABLE IF NOT EXISTS public.content (
@@ -94,7 +94,7 @@ CREATE INDEX IF NOT EXISTS idx_summaries_video_variant_latest   ON public.conten
 
 -- ---------- "latest pointer" trigger: keep exactly one is_latest = TRUE ----------
 CREATE OR REPLACE FUNCTION mark_latest_summary()
-RETURNS trigger LANGUAGE plpgsql AS $
+RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   -- When inserting/updating a summary for (video_id, variant), make this row latest
   -- and flip all others to FALSE.
@@ -116,7 +116,7 @@ BEGIN
   END IF;
 
   RETURN NEW;
-END$;
+END$$;
 
 DROP TRIGGER IF EXISTS trg_summaries_mark_latest_ins ON public.content_summaries;
 CREATE TRIGGER trg_summaries_mark_latest_ins
