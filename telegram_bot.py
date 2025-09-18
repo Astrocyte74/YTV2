@@ -66,11 +66,19 @@ from modules.report_generator import JSONReportGenerator
 # Check environment to determine database backend
 READ_FROM_POSTGRES = os.getenv('READ_FROM_POSTGRES', 'false').lower() == 'true'
 
+logger.info(f"DB mode: READ_FROM_POSTGRES={READ_FROM_POSTGRES}, PSYCOPG2_AVAILABLE={PSYCOPG2_AVAILABLE}")
+logger.info(f"DATABASE_URL_POSTGRES_NEW set? {bool(os.getenv('DATABASE_URL_POSTGRES_NEW'))}")
+
 if READ_FROM_POSTGRES and PSYCOPG2_AVAILABLE:
     # Use PostgreSQL backend
-    from modules.postgres_content_index import PostgreSQLContentIndex as ContentIndex
-    USING_SQLITE = False
-    logger.info("Using PostgreSQL content index")
+    try:
+        from modules.postgres_content_index import PostgreSQLContentIndex as ContentIndex
+        USING_SQLITE = False
+        logger.info("✅ Using PostgreSQL content index")
+    except Exception as e:
+        logger.exception("❌ Failed to initialize PostgreSQL content index; falling back to SQLite")
+        from modules.sqlite_content_index import SQLiteContentIndex as ContentIndex
+        USING_SQLITE = True
 else:
     # Fallback to SQLite backend
     try:
