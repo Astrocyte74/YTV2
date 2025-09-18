@@ -105,19 +105,19 @@ class PostgreSQLContentIndex:
                     where_conditions.append(f"c.channel_name IN ({channel_placeholders})")
                     params.extend(channels)
 
-                # Content type filters
-                if 'content_type' in filters and filters['content_type']:
-                    content_types = filters['content_type'] if isinstance(filters['content_type'], list) else [filters['content_type']]
-                    type_placeholders = ','.join(['%s'] * len(content_types))
-                    where_conditions.append(f"c.content_type IN ({type_placeholders})")
-                    params.extend(content_types)
+                # Content type filters - REMOVED (column doesn't exist in PostgreSQL schema)
+                # if 'content_type' in filters and filters['content_type']:
+                #     content_types = filters['content_type'] if isinstance(filters['content_type'], list) else [filters['content_type']]
+                #     type_placeholders = ','.join(['%s'] * len(content_types))
+                #     where_conditions.append(f"c.content_type IN ({type_placeholders})")
+                #     params.extend(content_types)
 
-                # Complexity filters
-                if 'complexity' in filters and filters['complexity']:
-                    complexities = filters['complexity'] if isinstance(filters['complexity'], list) else [filters['complexity']]
-                    complexity_placeholders = ','.join(['%s'] * len(complexities))
-                    where_conditions.append(f"c.complexity_level IN ({complexity_placeholders})")
-                    params.extend(complexities)
+                # Complexity filters - REMOVED (complexity_level column doesn't exist in PostgreSQL schema)
+                # if 'complexity' in filters and filters['complexity']:
+                #     complexities = filters['complexity'] if isinstance(filters['complexity'], list) else [filters['complexity']]
+                #     complexity_placeholders = ','.join(['%s'] * len(complexities))
+                #     where_conditions.append(f"c.complexity_level IN ({complexity_placeholders})")
+                #     params.extend(complexities)
 
                 # Language filters
                 if 'language' in filters and filters['language']:
