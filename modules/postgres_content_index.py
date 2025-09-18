@@ -456,3 +456,7 @@ class PostgreSQLContentIndex:
 
         finally:
             conn.close()
+
+    def get_facets(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Alias for get_filters() for compatibility with existing API."""
+        return self.get_filters()
