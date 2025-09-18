@@ -1838,69 +1838,6 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             error_data = {"status": "unhealthy", "error": str(e)}
             self.wfile.write(json.dumps(error_data).encode())
 
-    def serve_health_db(self):
-        """Serve database health check endpoint with PostgreSQL connectivity test"""
-        try:
-            # Check if PostgreSQL is enabled
-            read_from_postgres = os.getenv('READ_FROM_POSTGRES', 'false').lower() == 'true'
-
-            if read_from_postgres and PSYCOPG2_AVAILABLE:
-                # Test PostgreSQL connection
-                start_time = datetime.now()
-                postgres_healthy = test_postgres_health()
-                end_time = datetime.now()
-                latency_ms = (end_time - start_time).total_seconds() * 1000
-
-                if postgres_healthy:
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.end_headers()
-                    health_data = {
-                        "db": "ok",
-                        "type": "postgresql",
-                        "latency_ms": round(latency_ms, 2),
-                        "timestamp": datetime.now().isoformat()
-                    }
-                    self.wfile.write(json.dumps(health_data).encode())
-                else:
-                    raise Exception("PostgreSQL health check failed")
-            else:
-                # Fallback to SQLite health check
-                db_path = Path('ytv2_content.db')
-                if db_path.exists():
-                    start_time = datetime.now()
-                    conn = sqlite3.connect(db_path)
-                    cur = conn.cursor()
-                    cur.execute("SELECT 1;")
-                    cur.fetchone()
-                    conn.close()
-                    end_time = datetime.now()
-                    latency_ms = (end_time - start_time).total_seconds() * 1000
-
-                    self.send_response(200)
-                    self.send_header('Content-type', 'application/json')
-                    self.end_headers()
-                    health_data = {
-                        "db": "ok",
-                        "type": "sqlite",
-                        "latency_ms": round(latency_ms, 2),
-                        "timestamp": datetime.now().isoformat()
-                    }
-                    self.wfile.write(json.dumps(health_data).encode())
-                else:
-                    raise Exception("Database file not found")
-
-        except Exception as e:
-            logger.error(f"Error serving database health check: {e}")
-            self.send_response(500)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            error_data = {
-                "db": "error",
-                "error": str(e),
-                "timestamp": datetime.now().isoformat()
-            }
-            self.wfile.write(json.dumps(error_data).encode())
 
     def serve_health_backend(self):
         """Serve backend health endpoint - prevents wrong-URL/wrong-backend debugging rabbit holes"""
