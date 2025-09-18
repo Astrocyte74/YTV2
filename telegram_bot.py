@@ -69,12 +69,11 @@ READ_FROM_POSTGRES = os.getenv('READ_FROM_POSTGRES', 'false').lower() == 'true'
 print(f"🔍 DB mode: READ_FROM_POSTGRES={READ_FROM_POSTGRES}, PSYCOPG2_AVAILABLE={PSYCOPG2_AVAILABLE}")
 print(f"🔍 DATABASE_URL_POSTGRES_NEW set? {bool(os.getenv('DATABASE_URL_POSTGRES_NEW'))}")
 
-# Startup sanity log for debugging after compaction
-logger.info(
-    "DB mode: READ_FROM_POSTGRES=%s, PSYCOPG2_AVAILABLE=%s, "
-    "DATABASE_URL_POSTGRES_NEW set? %s",
-    READ_FROM_POSTGRES, PSYCOPG2_AVAILABLE,
-    bool(os.getenv("DATABASE_URL_POSTGRES_NEW")),
+# Startup sanity log for debugging after compaction (using print since logger not yet initialized)
+print(
+    f"🔍 Startup: READ_FROM_POSTGRES={READ_FROM_POSTGRES}, "
+    f"PSYCOPG2_AVAILABLE={PSYCOPG2_AVAILABLE}, "
+    f"DATABASE_URL_POSTGRES_NEW set? {bool(os.getenv('DATABASE_URL_POSTGRES_NEW'))}"
 )
 
 if READ_FROM_POSTGRES and PSYCOPG2_AVAILABLE:
