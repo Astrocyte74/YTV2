@@ -22,7 +22,7 @@ DELETED VIDEOS "RESTORED" + CATEGORIZATION LOST
 ```
 
 ### Target Solution
-Single PostgreSQL database serving both components, eliminating all synchronization complexity.
+**Parallel deployment strategy**: Build new PostgreSQL-backed system alongside current production, then perform safe cutover with zero downtime.
 
 ## Core Capabilities
 
@@ -76,25 +76,45 @@ Single PostgreSQL database serving both components, eliminating all synchronizat
 3. **NAS version lacks** recent categorization enhancements
 4. **Sophisticated data lost** requiring manual restoration from backups
 
+## Migration Strategy (Parallel Deployment)
+
+### Phase 1: Build Parallel System
+1. **Create new Render service** (`ytv2-dashboard-postgres`)
+2. **Provision PostgreSQL** database separately from current system
+3. **Deploy on migration branch** (`postgres-migration-phase0`)
+4. **Keep current production** completely untouched and running
+
+### Phase 2: Data Migration & Validation
+1. **One-time data snapshot** from current SQLite to new PostgreSQL
+2. **Comprehensive validation** of data integrity and functionality
+3. **Stakeholder testing** on new parallel system
+4. **Performance verification** meets production requirements
+
+### Phase 3: Safe Cutover
+1. **Brief freeze window** (minutes) for final data sync
+2. **Enable dual-write** on NAS to both systems temporarily
+3. **DNS/domain switch** to new service
+4. **Monitor stability** for 24-48 hours
+
+### Phase 4: Decommission Old System
+1. **Archive SQLite files** after stability confirmed
+2. **Disable dual-write** mode - PostgreSQL only
+3. **Remove sync scripts** and old dependencies
+4. **Complete cleanup** of legacy architecture
+
 ## Target User Experience (Post-Migration)
 
-### Seamless Dashboard Experience
-1. **User deletes videos** via Dashboard interface
-2. **Videos immediately removed** from shared PostgreSQL
-3. **Deletion visible** across all components instantly
-4. **No restoration** via sync - delete is permanent and correct
+### Zero-Downtime Migration
+1. **Users continue using** current system during build phase
+2. **No service interruption** during parallel development
+3. **Seamless transition** via DNS switch
+4. **Rollback capability** maintained throughout process
 
-### Reliable NAS Processing
-1. **User processes new video** on NAS component
-2. **Video data written** directly to shared PostgreSQL
-3. **Content immediately available** on Dashboard
-4. **No sync step required** - real-time consistency
-
-### Consistent Data Layer
-1. **Both components read/write** same PostgreSQL database
-2. **No synchronization delays** between components
-3. **Atomic transactions** prevent partial data corruption
-4. **Foreign key constraints** ensure referential integrity
+### Improved System (Final State)
+1. **Single source of truth** - PostgreSQL database
+2. **Real-time consistency** between components
+3. **No sync disasters** possible in new architecture
+4. **Enhanced performance** with proper indexing and queries
 
 ## Technical Requirements
 
@@ -104,11 +124,13 @@ Single PostgreSQL database serving both components, eliminating all synchronizat
 - **Transactional writes** preventing partial data corruption
 - **Cascade deletes** ensuring proper cleanup
 
-### Migration Safety
-- **Comprehensive backups** before any destructive operations
-- **Idempotent migration scripts** safe for multiple runs
-- **Dual-write validation period** before cutover
-- **Rollback procedures** tested and documented
+### Migration Safety (Parallel Deployment)
+- **Zero production risk** - current system runs unmodified
+- **Comprehensive backups** of all data before migration
+- **Parallel testing environment** for complete validation
+- **DNS-based cutover** with instant rollback capability
+- **Dual-write synchronization** during brief cutover window
+- **Staged rollout** with monitoring and validation gates
 
 ### Performance Standards
 - **Sub-second Dashboard loading** maintained or improved
