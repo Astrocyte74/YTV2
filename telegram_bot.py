@@ -2243,16 +2243,39 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             page = max(1, page)
             size = max(1, min(50, size))  # Cap at 50 items per page
             
-            # Execute search
-            results = content_index.search_reports(
+            # Execute search - unpack tuple returned by PostgreSQL
+            search_result = content_index.search_reports(
                 filters=filters if filters else None,
                 query=query if query else None,
                 sort=sort,
                 page=page,
                 size=size
             )
-            
-            # Add deployment verification flag  
+
+            # Handle both tuple (PostgreSQL) and dict (SQLite) return formats
+            if isinstance(search_result, tuple):
+                # PostgreSQL format: (items, total_count)
+                items, total_count = search_result
+                import math
+                total_pages = math.ceil(total_count / size) if size else 0
+                results = {
+                    "reports": items,
+                    "pagination": {
+                        "page": page,
+                        "size": size,
+                        "total_count": total_count,
+                        "total_pages": total_pages,
+                        "has_next": page * size < total_count,
+                        "has_prev": page > 1,
+                    },
+                    "sort": sort,
+                    "filters": filters,
+                }
+            else:
+                # SQLite format: already a dict
+                results = search_result
+
+            # Add deployment verification flag
             results['deployment_version'] = 'v2025-09-11-sorting-fix'
             
             # Send response
