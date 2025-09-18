@@ -306,17 +306,31 @@ try:
                 logger.info("🔄 Falling back to JSON backend")
     
     if not USING_SQLITE:
-        # Use JSON-based index as fallback
-        if Path('/app/data/reports').exists():
-            content_index = ContentIndex('/app/data/reports')
-            logger.info("📊 JSON ContentIndex initialized with Render data directory")
+        # Check if we're using PostgreSQL or JSON backend
+        if READ_FROM_POSTGRES and PSYCOPG2_AVAILABLE:
+            # PostgreSQL backend - use named parameter to avoid confusion
+            content_index = ContentIndex(postgres_url=os.getenv('DATABASE_URL_POSTGRES_NEW'))
+            logger.info("📊 PostgreSQL ContentIndex initialized (singleton)")
         else:
-            content_index = ContentIndex('./data/reports')
-            logger.info("📊 JSON ContentIndex initialized with local data directory")
+            # JSON-based index as fallback
+            if Path('/app/data/reports').exists():
+                content_index = ContentIndex('/app/data/reports')
+                logger.info("📊 JSON ContentIndex initialized with Render data directory")
+            else:
+                content_index = ContentIndex('./data/reports')
+                logger.info("📊 JSON ContentIndex initialized with local data directory")
             
 except Exception as e:
     logger.error(f"❌ ContentIndex initialization failed: {e}")
     content_index = None
+
+# Debug logging for future troubleshooting
+if content_index:
+    logger.info(
+        "🔍 ContentIndex ready: READ_FROM_POSTGRES=%s, index=%s, dsn_set=%s",
+        READ_FROM_POSTGRES, type(content_index).__name__,
+        bool(os.getenv("DATABASE_URL_POSTGRES_NEW"))
+    )
 
 # Log final backend status
 if content_index:
