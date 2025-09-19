@@ -821,7 +821,7 @@ class PostgreSQLContentIndex:
                 topics_json = EXCLUDED.topics_json,
                 has_audio = EXCLUDED.has_audio,
                 updated_at = NOW()
-            RETURNING (xmax = 0) AS inserted
+            RETURNING video_id;
             """
 
             # Safe has_audio detection
@@ -847,33 +847,64 @@ class PostgreSQLContentIndex:
             logger.info(f"Executing upsert for {data.get('video_id')} with params: {list(params.keys())}")
             cur.execute(upsert_sql, params)
 
-            result = cur.fetchone()
-            logger.info(f"Upsert result for {data.get('video_id')}: {result} (type: {type(result)})")
-
-            if result is None:
-                logger.error(f"Content upsert for {data.get('video_id')}: No result returned from query")
+            # Must have at least one row RETURNED
+            returned = cur.fetchone()
+            if not returned:
+                logger.error("Upsert returned no row for %s", data.get('video_id'))
+                conn.rollback()
                 return False
 
-            # Handle both dict and tuple result formats from psycopg2
-            if isinstance(result, dict):
-                inserted = result.get('inserted', False)
-            elif isinstance(result, (tuple, list)) and len(result) > 0:
-                inserted = result[0]
-            else:
-                logger.error(f"Unexpected result format for {data.get('video_id')}: {result}")
-                inserted = False
-            conn.commit()
-            logger.info(f"Content upsert for {data.get('video_id')}: {'inserted' if inserted else 'updated'}")
+            # rowcount should be 1 for INSERT or UPDATE
+            if cur.rowcount != 1:
+                logger.error("Unexpected rowcount %s for %s", cur.rowcount, data.get('video_id'))
+                conn.rollback()
+                return False
 
-            # Return True if either inserted or updated (any successful operation)
-            return True
+            conn.commit()
+
+            # Post-commit verification in the same connection string/role
+            cur = conn.cursor()
+            cur.execute("SELECT 1 FROM content WHERE video_id=%s", (data.get('video_id'),))
+            ok = cur.fetchone() is not None
+            logger.info("Post-upsert verify for %s: %s", data.get('video_id'), ok)
+            return bool(ok)
 
         except Exception:
             logger.exception("Error upserting content %s", data.get('video_id', 'unknown'))
+            if conn:
+                try:
+                    conn.rollback()
+                except:
+                    pass
             return False
         finally:
             if conn:
                 conn.close()
+
+    def get_by_video_id(self, video_id: str):
+        """Get a single content record by video_id for verification."""
+        conn = self._get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT video_id, title, channel_name, indexed_at
+                FROM content WHERE video_id=%s
+            """, (video_id,))
+            r = cur.fetchone()
+            if not r:
+                return None
+            # RealDictCursor returns dict
+            if isinstance(r, dict):
+                return r
+            # Fallback for tuple cursor
+            return {
+                "video_id": r[0],
+                "title": r[1],
+                "channel_name": r[2],
+                "indexed_at": r[3].isoformat() if r[3] else None
+            }
+        finally:
+            conn.close()
 
     def upsert_summaries(self, video_id: str, variants: list) -> int:
         """Insert summary variants with automatic latest-pointer management."""
