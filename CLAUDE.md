@@ -296,9 +296,26 @@ git push origin main  # Triggers automatic Render deployment
 **🚨 CRITICAL WARNING - NEVER PUSH FROM NAS TO RENDER:**
 - **NEVER** run git commands from `/Volumes/Docker/YTV2/` directory
 - **NEVER** push changes from the NAS component to the Dashboard repository
-- The NAS component (`/Volumes/Docker/YTV2/`) is a separate git repository 
+- The NAS component (`/Volumes/Docker/YTV2/`) is a separate git repository
 - Only the Dashboard component (`/Users/markdarby/projects/YTV2-Dashboard/`) should deploy to Render
 - If you accidentally work in the NAS directory, copy files to Dashboard directory before committing
+
+#### 🚨 CRITICAL: File Location Clarification (PostgreSQL Migration)
+**During PostgreSQL migration, there are TWO `telegram_bot.py` files - DO NOT MIX THEM UP:**
+
+- **NAS Side**: `/Users/markdarby/projects/YTV_temp_NAS_files/telegram_bot.py`
+  - Telegram bot interface, YouTube processing, summary creation
+  - Works with `youtube_summarizer.py` for AI processing
+  - Will be modified for T-Y020A (dual-sync) to SEND data to Render
+  - Modified files uploaded manually to NAS via ASUSTOR web portal
+
+- **Render Side**: `/Users/markdarby/projects/YTV2-Dashboard/telegram_bot.py`
+  - **Dashboard HTTP server** (NOT Telegram bot despite filename!)
+  - Serves web interface, handles API endpoints, audio streaming
+  - Modified for T-Y020C (ingest endpoints) to RECEIVE data from NAS
+  - Deployed automatically via git push to Render
+
+**Data Flow**: NAS `telegram_bot.py` → POST data → Render `telegram_bot.py` → PostgreSQL
 
 ### Core Data Flow Architecture
 
