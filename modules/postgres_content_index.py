@@ -744,123 +744,136 @@ class PostgreSQLContentIndex:
 
     def upsert_content(self, data: dict) -> bool:
         """Insert or update content record with ON CONFLICT handling."""
+        conn = None
         try:
-            with self._get_connection() as conn:
-                with conn.cursor() as cur:
-                    # Normalize JSON fields
-                    subcategories_json = data.get("subcategories_json")
-                    if subcategories_json and not isinstance(subcategories_json, str):
-                        subcategories_json = json.dumps(subcategories_json)
+            conn = self._get_connection()
+            cur = conn.cursor()
 
-                    analysis_json = data.get("analysis_json")
-                    if analysis_json and not isinstance(analysis_json, str):
-                        analysis_json = json.dumps(analysis_json)
+            # Normalize JSON fields
+            subcategories_json = data.get("subcategories_json")
+            if subcategories_json and not isinstance(subcategories_json, str):
+                subcategories_json = json.dumps(subcategories_json)
 
-                    topics_json = data.get("topics_json")
-                    if topics_json and not isinstance(topics_json, str):
-                        topics_json = json.dumps(topics_json)
+            analysis_json = data.get("analysis_json")
+            if analysis_json and not isinstance(analysis_json, str):
+                analysis_json = json.dumps(analysis_json)
 
-                    # Prepare media JSONB (preserve existing media data)
-                    media_data = data.get("media", {})
-                    if isinstance(media_data, str):
-                        try:
-                            media_data = json.loads(media_data)
-                        except:
-                            media_data = {}
+            topics_json = data.get("topics_json")
+            if topics_json and not isinstance(topics_json, str):
+                topics_json = json.dumps(topics_json)
 
-                    upsert_sql = """
-                    INSERT INTO content (
-                        video_id, title, channel_name, indexed_at, duration_seconds,
-                        thumbnail_url, subcategories_json, analysis_json, topics_json, media
-                    ) VALUES (
-                        %(video_id)s, %(title)s, %(channel_name)s, %(indexed_at)s, %(duration_seconds)s,
-                        %(thumbnail_url)s, %(subcategories_json)s, %(analysis_json)s, %(topics_json)s, %(media)s
-                    )
-                    ON CONFLICT (video_id) DO UPDATE SET
-                        title = EXCLUDED.title,
-                        channel_name = EXCLUDED.channel_name,
-                        indexed_at = EXCLUDED.indexed_at,
-                        duration_seconds = EXCLUDED.duration_seconds,
-                        thumbnail_url = EXCLUDED.thumbnail_url,
-                        subcategories_json = EXCLUDED.subcategories_json,
-                        analysis_json = EXCLUDED.analysis_json,
-                        topics_json = EXCLUDED.topics_json,
-                        media = COALESCE(EXCLUDED.media, content.media),
-                        updated_at = NOW()
-                    """
+            # Prepare media JSONB (preserve existing media data)
+            media_data = data.get("media", {})
+            if isinstance(media_data, str):
+                try:
+                    media_data = json.loads(media_data)
+                except:
+                    media_data = {}
 
-                    cur.execute(upsert_sql, {
-                        'video_id': data.get('video_id'),
-                        'title': data.get('title'),
-                        'channel_name': data.get('channel_name'),
-                        'indexed_at': data.get('indexed_at') or datetime.now(timezone.utc).isoformat(),
-                        'duration_seconds': data.get('duration_seconds'),
-                        'thumbnail_url': data.get('thumbnail_url'),
-                        'subcategories_json': subcategories_json,
-                        'analysis_json': analysis_json,
-                        'topics_json': topics_json,
-                        'media': json.dumps(media_data) if media_data else None
-                    })
-                    conn.commit()
-                    return True
+            upsert_sql = """
+            INSERT INTO content (
+                video_id, title, channel_name, indexed_at, duration_seconds,
+                thumbnail_url, subcategories_json, analysis_json, topics_json, media
+            ) VALUES (
+                %(video_id)s, %(title)s, %(channel_name)s, %(indexed_at)s, %(duration_seconds)s,
+                %(thumbnail_url)s, %(subcategories_json)s, %(analysis_json)s, %(topics_json)s, %(media)s
+            )
+            ON CONFLICT (video_id) DO UPDATE SET
+                title = EXCLUDED.title,
+                channel_name = EXCLUDED.channel_name,
+                indexed_at = EXCLUDED.indexed_at,
+                duration_seconds = EXCLUDED.duration_seconds,
+                thumbnail_url = EXCLUDED.thumbnail_url,
+                subcategories_json = EXCLUDED.subcategories_json,
+                analysis_json = EXCLUDED.analysis_json,
+                topics_json = EXCLUDED.topics_json,
+                media = COALESCE(EXCLUDED.media, content.media),
+                updated_at = NOW()
+            """
+
+            cur.execute(upsert_sql, {
+                'video_id': data.get('video_id'),
+                'title': data.get('title'),
+                'channel_name': data.get('channel_name'),
+                'indexed_at': data.get('indexed_at') or datetime.now(timezone.utc).isoformat(),
+                'duration_seconds': data.get('duration_seconds'),
+                'thumbnail_url': data.get('thumbnail_url'),
+                'subcategories_json': subcategories_json,
+                'analysis_json': analysis_json,
+                'topics_json': topics_json,
+                'media': json.dumps(media_data) if media_data else None
+            })
+            conn.commit()
+            return True
 
         except Exception as e:
             logger.error(f"Error upserting content {data.get('video_id', 'unknown')}: {e}")
             return False
+        finally:
+            if conn:
+                conn.close()
 
     def upsert_summaries(self, video_id: str, variants: list) -> int:
         """Insert summary variants with automatic latest-pointer management."""
         if not variants:
             return 0
 
+        conn = None
         try:
-            with self._get_connection() as conn:
-                with conn.cursor() as cur:
-                    count = 0
-                    for variant in variants:
-                        insert_sql = """
-                        INSERT INTO content_summaries (
-                            video_id, variant, text, html, revision, is_latest, created_at
-                        ) VALUES (
-                            %s, %s, %s, %s, %s, true, NOW()
-                        )
-                        """
+            conn = self._get_connection()
+            cur = conn.cursor()
+            count = 0
+            for variant in variants:
+                insert_sql = """
+                INSERT INTO content_summaries (
+                    video_id, variant, text, html, revision, is_latest, created_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, true, NOW()
+                )
+                """
 
-                        # Note: Triggers will automatically set is_latest=false for older rows
-                        cur.execute(insert_sql, [
-                            video_id,
-                            variant.get('variant', 'comprehensive'),
-                            variant.get('text', ''),
-                            variant.get('html', ''),
-                            variant.get('revision', 1)
-                        ])
-                        count += 1
+                # Note: Triggers will automatically set is_latest=false for older rows
+                cur.execute(insert_sql, [
+                    video_id,
+                    variant.get('variant', 'comprehensive'),
+                    variant.get('text', ''),
+                    variant.get('html', ''),
+                    variant.get('revision', 1)
+                ])
+                count += 1
 
-                    conn.commit()
-                    return count
+            conn.commit()
+            return count
 
         except Exception as e:
             logger.error(f"Error upserting summaries for {video_id}: {e}")
             return 0
+        finally:
+            if conn:
+                conn.close()
 
     def update_media_audio_url(self, video_id: str, audio_url: str) -> None:
         """Update content.media JSONB with audio_url field."""
+        conn = None
         try:
-            with self._get_connection() as conn:
-                with conn.cursor() as cur:
-                    update_sql = """
-                    UPDATE content
-                    SET media = jsonb_set(
-                        COALESCE(media, '{}'::jsonb),
-                        '{audio_url}',
-                        to_jsonb(%s::text)
-                    ),
-                    updated_at = NOW()
-                    WHERE video_id = %s
-                    """
+            conn = self._get_connection()
+            cur = conn.cursor()
+            update_sql = """
+            UPDATE content
+            SET media = jsonb_set(
+                COALESCE(media, '{}'::jsonb),
+                '{audio_url}',
+                to_jsonb(%s::text)
+            ),
+            updated_at = NOW()
+            WHERE video_id = %s
+            """
 
-                    cur.execute(update_sql, [audio_url, video_id])
-                    conn.commit()
+            cur.execute(update_sql, [audio_url, video_id])
+            conn.commit()
 
         except Exception as e:
             logger.error(f"Error updating audio URL for {video_id}: {e}")
+        finally:
+            if conn:
+                conn.close()
