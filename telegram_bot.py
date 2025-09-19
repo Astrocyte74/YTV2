@@ -1707,29 +1707,40 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         return html_content
     
     def serve_audio_file(self):
-        """Serve audio files from /exports/ route"""
+        """Serve audio files from /exports/ route - supports nested paths like /exports/audio/"""
         try:
-            filename = self.path[1:]  # Remove leading slash, e.g., "exports/audio_xxx.mp3"
-            if not filename.startswith('exports/'):
+            from pathlib import Path
+
+            # e.g. self.path == "/exports/audio/s_cD7g74kFE.mp3" or "/exports/s_cD7g74kFE.mp3"
+            if not self.path.startswith('/exports/'):
                 self.send_error(404, "Not found")
                 return
-            
-            audio_filename = filename[8:]  # Remove "exports/" prefix
-            
-            # Look for audio file in persistent storage ONLY
-            audio_path = Path('/app/data/exports') / audio_filename
-                
-            if audio_path.exists():
+
+            root = Path("/app/data/exports").resolve()
+
+            # strip leading prefix and build filesystem path
+            rel = self.path[len("/exports/"):].lstrip("/")  # "audio/s_cD7g74kFE.mp3" or "s_cD7g74kFE.mp3"
+            fs_path = (root / rel).resolve()
+
+            # path traversal guard
+            if not str(fs_path).startswith(str(root)):
+                logger.warning(f"🚫 Path traversal attempt blocked: {self.path}")
+                self.send_error(403, "Forbidden")
+                return
+
+            if fs_path.is_file():
+                logger.info(f"🎧 Serving export: {fs_path}")
                 self.send_response(200)
                 self.send_header('Content-type', 'audio/mpeg')
-                self.send_header('Content-Length', str(audio_path.stat().st_size))
+                self.send_header('Content-Length', str(fs_path.stat().st_size))
                 self.send_header('Cache-Control', 'public, max-age=3600')  # Cache for 1 hour
                 self.end_headers()
-                with open(audio_path, 'rb') as f:
+                with open(fs_path, 'rb') as f:
                     self.wfile.write(f.read())
             else:
-                self.send_error(404, f"Audio file not found: {audio_filename}")
-                
+                logger.info(f"🎧 MISS export: {rel} (full path: {fs_path})")
+                self.send_error(404, f"Audio file not found: {rel}")
+
         except Exception as e:
             logger.error(f"Error serving audio file {self.path}: {e}")
             self.send_error(500, "Error serving audio file")
