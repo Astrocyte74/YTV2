@@ -605,10 +605,19 @@ class PostgreSQLContentIndex:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
+
+            # Optimized SQL query for summary_type facet counts
+            cursor.execute("""
+                SELECT COALESCE(summary_type_latest, 'unknown') AS t, COUNT(*)
+                FROM content
+                GROUP BY 1
+                ORDER BY COUNT(*) DESC
+            """)
+            summary_type_rows = cursor.fetchall()
+
             cursor.execute("""
                 SELECT channel_name,
                        COALESCE(has_audio, FALSE) AS has_audio,
-                       COALESCE(summary_type_latest, 'unknown') AS summary_type,
                        analysis_json,
                        subcategories_json
                 FROM content
@@ -622,7 +631,6 @@ class PostgreSQLContentIndex:
             complexity_counter: Counter[str] = Counter()
             channel_counter: Counter[str] = Counter()
             has_audio_counter: Counter[bool] = Counter()
-            summary_type_counter: Counter[str] = Counter()
             category_hierarchy: Dict[str, Dict[str, Any]] = {}
 
             for row in rows:
@@ -650,9 +658,6 @@ class PostgreSQLContentIndex:
                     channel_counter[channel] += 1
 
                 has_audio_counter[bool(row.get('has_audio'))] += 1
-
-                summary_type = row.get('summary_type') or 'unknown'
-                summary_type_counter[summary_type] += 1
 
                 structured_categories = (
                     self._parse_subcategories_json(row.get('subcategories_json'))
@@ -729,8 +734,8 @@ class PostgreSQLContentIndex:
             ]
 
             filters['summary_type'] = [
-                {'value': value, 'count': count}
-                for value, count in summary_type_counter.most_common()
+                {'value': row[0], 'count': row[1]}
+                for row in summary_type_rows
             ]
 
             return filters

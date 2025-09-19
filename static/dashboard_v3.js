@@ -2236,7 +2236,10 @@ class AudioDashboard {
             ? 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-400'
             : 'bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300';
 
-        return `<span class="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded ${colorClass}">${this.escapeHtml(label)}</span>`;
+        return `<button class="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded ${colorClass}"
+                 data-filter-chip="summary_type"
+                 data-filter-value="${this.escapeHtml(type)}"
+                 title="Filter by ${this.escapeHtml(label)}">${this.escapeHtml(label)}</button>`;
     }
 
     renderChip(text, type = 'category', small = false, parent = null) {

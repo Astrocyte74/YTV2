@@ -1530,7 +1530,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "thumbnail_url": report_data.get('thumbnail_url', ''),
                 "analysis": report_data.get('analysis_json') or report_data.get('analysis', {}),
                 "subcategories_json": report_data.get('subcategories_json'),
-                "has_audio": report_data.get('has_audio', False)
+                "has_audio": report_data.get('has_audio', False),
+                "summary_type": report_data.get('summary_type_latest', 'unknown')
             }
 
             # Send JSON response
