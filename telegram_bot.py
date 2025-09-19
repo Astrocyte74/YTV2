@@ -3227,7 +3227,21 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             except Exception as e:
                 errors.append(f"Failed to delete from SQLite database: {e}")
                 logger.error(f"SQLite deletion error for {report_id}: {e}")
-        
+
+        # Delete from PostgreSQL database if using PostgreSQL backend
+        if content_index and hasattr(content_index, 'delete_content'):
+            try:
+                result = content_index.delete_content(report_id)
+                if result['success']:
+                    deleted_files.append(f"PostgreSQL: {result['content_deleted']} content, {result['summaries_deleted']} summaries")
+                    logger.info(f"Deleted from PostgreSQL: {result['message']}")
+                else:
+                    errors.append(f"PostgreSQL deletion failed: {result.get('error', 'Unknown error')}")
+                    logger.error(f"PostgreSQL deletion error for {report_id}: {result.get('error')}")
+            except Exception as e:
+                errors.append(f"Failed to delete from PostgreSQL database: {e}")
+                logger.error(f"PostgreSQL deletion error for {report_id}: {e}")
+
         return {
             'report_id': report_id,
             'deleted_files': deleted_files,
