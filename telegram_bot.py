@@ -1560,6 +1560,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 search_dirs = [Path('./exports')]
                 if Path('/app/data/exports').exists():
                     search_dirs.append(Path('/app/data/exports'))
+                # CRITICAL: Also check the audio subdirectory where PostgreSQL uploads are stored
+                if Path('/app/data/exports/audio').exists():
+                    search_dirs.append(Path('/app/data/exports/audio'))
                 
                 logger.info(f"🔍 Looking for audio: video_id={video_id}")
                 for search_dir in search_dirs:
@@ -1583,7 +1586,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 
                 if candidates:
                     latest = max(candidates, key=lambda p: p.stat().st_mtime)
-                    audio_url = f"/exports/{latest.name}"
+                    # Generate correct URL based on file location
+                    if '/app/data/exports/audio' in str(latest):
+                        audio_url = f"/exports/audio/{latest.name}"
+                    else:
+                        audio_url = f"/exports/{latest.name}"
                     logger.info(f"✅ Audio URL: {audio_url}")
                 else:
                     logger.info(f"❌ No audio found for video_id {video_id}")
