@@ -2323,7 +2323,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             filters = {}
             
             # Filter parameters with validation (CRITICAL: include subcategory and parentCategory per OpenAI recommendation)
-            for param in ['source', 'language', 'category', 'subcategory', 'parentCategory', 'channel', 'content_type', 'complexity']:
+            for param in ['source', 'language', 'category', 'subcategory', 'parentCategory', 'channel', 'content_type', 'complexity', 'summary_type']:
                 if param in query_params:
                     # Limit array size and sanitize/normalize strings (per OpenAI recommendation)
                     values = query_params[param][:10]  # Max 10 items
@@ -2415,6 +2415,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                             serializable_item[key] = value.isoformat()
                         else:
                             serializable_item[key] = value
+
+                    # Add summary_type field from summary_type_latest (memo requirement)
+                    serializable_item["summary_type"] = item.get("summary_type_latest") or "unknown"
+
                     serializable_items.append(serializable_item)
 
                 total_pages = math.ceil(total_count / size) if size else 0

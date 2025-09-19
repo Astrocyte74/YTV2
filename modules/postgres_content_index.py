@@ -322,6 +322,12 @@ class PostgreSQLContentIndex:
                     where_conditions.append("c.has_audio = %s")
                     params.append(filters['has_audio'])
 
+                # Summary type filter
+                if 'summary_type' in filters and filters['summary_type']:
+                    summary_types = filters['summary_type'] if isinstance(filters['summary_type'], list) else [filters['summary_type']]
+                    where_conditions.append("COALESCE(c.summary_type_latest, 'unknown') = ANY(%s)")
+                    params.append(summary_types)
+
             # Add WHERE clause
             if where_conditions:
                 query += " AND " + " AND ".join(where_conditions)
@@ -602,6 +608,7 @@ class PostgreSQLContentIndex:
             cursor.execute("""
                 SELECT channel_name,
                        COALESCE(has_audio, FALSE) AS has_audio,
+                       COALESCE(summary_type_latest, 'unknown') AS summary_type,
                        analysis_json,
                        subcategories_json
                 FROM content
@@ -615,6 +622,7 @@ class PostgreSQLContentIndex:
             complexity_counter: Counter[str] = Counter()
             channel_counter: Counter[str] = Counter()
             has_audio_counter: Counter[bool] = Counter()
+            summary_type_counter: Counter[str] = Counter()
             category_hierarchy: Dict[str, Dict[str, Any]] = {}
 
             for row in rows:
@@ -642,6 +650,9 @@ class PostgreSQLContentIndex:
                     channel_counter[channel] += 1
 
                 has_audio_counter[bool(row.get('has_audio'))] += 1
+
+                summary_type = row.get('summary_type') or 'unknown'
+                summary_type_counter[summary_type] += 1
 
                 structured_categories = (
                     self._parse_subcategories_json(row.get('subcategories_json'))
@@ -715,6 +726,11 @@ class PostgreSQLContentIndex:
             filters['has_audio'] = [
                 {'value': bool_val, 'count': count}
                 for bool_val, count in sorted(has_audio_counter.items(), key=lambda x: (-x[1], not x[0]))
+            ]
+
+            filters['summary_type'] = [
+                {'value': value, 'count': count}
+                for value, count in summary_type_counter.most_common()
             ]
 
             return filters
