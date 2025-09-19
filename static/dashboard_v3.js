@@ -1876,12 +1876,46 @@ class AudioDashboard {
     }
 
     updateResultsInfo(pagination) {
-        this.resultsTitle.textContent = this.searchQuery 
-            ? `Search Results for "${this.searchQuery}"` 
+        this.resultsTitle.textContent = this.searchQuery
+            ? `Search Results for "${this.searchQuery}"`
             : 'Discover Audio Content';
-        
-        this.resultsCount.textContent = 
-            `${pagination.total} summaries found • Page ${pagination.page} of ${pagination.pages}`;
+
+        // Create navigation arrows with the pagination text
+        const canGoBack = pagination.page > 1;
+        const canGoForward = pagination.page < pagination.pages;
+
+        const leftArrow = canGoBack
+            ? `<button class="inline-flex items-center text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100 transition-colors mr-2" data-nav="prev" title="Previous page">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+               </button>`
+            : `<span class="inline-block w-4 mr-2"></span>`;
+
+        const rightArrow = canGoForward
+            ? `<button class="inline-flex items-center text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100 transition-colors ml-2" data-nav="next" title="Next page">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+               </button>`
+            : `<span class="inline-block w-4 ml-2"></span>`;
+
+        this.resultsCount.innerHTML =
+            `${leftArrow}${pagination.total} summaries found • Page ${pagination.page} of ${pagination.pages}${rightArrow}`;
+
+        // Add click handlers for navigation arrows
+        this.resultsCount.querySelectorAll('[data-nav]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const direction = e.currentTarget.dataset.nav;
+                if (direction === 'prev' && pagination.page > 1) {
+                    this.currentPage = pagination.page - 1;
+                    this.loadContent();
+                } else if (direction === 'next' && pagination.page < pagination.pages) {
+                    this.currentPage = pagination.page + 1;
+                    this.loadContent();
+                }
+            });
+        });
     }
 
     async playAudio(reportId) {
