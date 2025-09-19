@@ -3229,18 +3229,32 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 logger.error(f"SQLite deletion error for {report_id}: {e}")
 
         # Delete from PostgreSQL database if using PostgreSQL backend
-        if content_index and hasattr(content_index, 'delete_content'):
+        video_id = (report_id or "").replace("yt:", "").strip()
+
+        if content_index and hasattr(content_index, "delete_content"):
             try:
-                result = content_index.delete_content(report_id)
-                if result['success']:
-                    deleted_files.append(f"PostgreSQL: {result['content_deleted']} content, {result['summaries_deleted']} summaries")
-                    logger.info(f"Deleted from PostgreSQL: {result['message']}")
+                result = content_index.delete_content(video_id)
+                if result.get("success"):
+                    deleted_files.append(
+                        f"PostgreSQL: {result['content_deleted']} content, {result['summaries_deleted']} summaries"
+                    )
+
+                    # Clean up MP3 files if present
+                    from pathlib import Path
+                    audio_root = Path("/app/data/exports/audio")
+                    for name in (f"{video_id}.mp3", f"yt:{video_id}.mp3"):
+                        p = audio_root / name
+                        if p.is_file():
+                            try:
+                                p.unlink()
+                                deleted_files.append(f"Audio: {name}")
+                            except Exception as e:
+                                logger.warning(f"Could not remove {p}: {e}")
+
                 else:
-                    errors.append(f"PostgreSQL deletion failed: {result.get('error', 'Unknown error')}")
-                    logger.error(f"PostgreSQL deletion error for {report_id}: {result.get('error')}")
+                    errors.append(f"PostgreSQL deletion failed: {result.get('error','Unknown')}")
             except Exception as e:
-                errors.append(f"Failed to delete from PostgreSQL database: {e}")
-                logger.error(f"PostgreSQL deletion error for {report_id}: {e}")
+                errors.append(f"Failed to delete in PostgreSQL: {e}")
 
         return {
             'report_id': report_id,

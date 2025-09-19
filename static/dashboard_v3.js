@@ -1538,11 +1538,17 @@ class AudioDashboard {
             // Optimistic UI: show busy state
             const pop = cardEl.querySelector('[data-delete-popover]');
             if (pop) pop.classList.add('pointer-events-none', 'opacity-60');
-            
-            // Use the proper DELETE endpoint format
-            const res = await fetch(`/api/delete/${encodeURIComponent(id)}`, {
+
+            // Use video_id from card dataset, not the generic id
+            const videoId = cardEl.dataset.videoId;
+            if (!videoId) {
+                throw new Error('No video ID found on card');
+            }
+
+            // Use the proper DELETE endpoint format with video_id
+            const res = await fetch(`/api/delete/${encodeURIComponent(videoId)}`, {
                 method: 'DELETE',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json'
                 }
             });

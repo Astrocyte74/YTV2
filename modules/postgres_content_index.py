@@ -994,53 +994,35 @@ class PostgreSQLContentIndex:
             if conn:
                 conn.close()
 
-    def delete_content(self, report_id: str) -> dict:
-        """Delete content record and related summaries by report ID.
-
-        Args:
-            report_id: The report ID, video_id, or content identifier
-
-        Returns:
-            dict: Status information about the deletion
-        """
+    def delete_content(self, video_id: str) -> dict:
+        """Delete a video and its summaries by YouTube video_id."""
         conn = None
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
-
-            # Delete from content_summaries first (foreign key constraint)
-            cursor.execute("""
+            cur = conn.cursor()
+            # Delete summaries first (FK or not, it's safe)
+            cur.execute("""
                 DELETE FROM content_summaries
-                WHERE content_id = %s OR content_id LIKE %s
-            """, (report_id, f"%{report_id}%"))
-            summary_deleted = cursor.rowcount
+                WHERE video_id = %s
+            """, (video_id,))
+            summaries_deleted = cur.rowcount
 
-            # Delete from content table
-            cursor.execute("""
+            # Delete the content row
+            cur.execute("""
                 DELETE FROM content
-                WHERE video_id = %s OR title LIKE %s
-            """, (report_id, f"%{report_id}%"))
-            content_deleted = cursor.rowcount
+                WHERE video_id = %s
+            """, (video_id,))
+            content_deleted = cur.rowcount
 
             conn.commit()
-
             return {
-                'success': True,
-                'content_deleted': content_deleted,
-                'summaries_deleted': summary_deleted,
-                'message': f"Deleted {content_deleted} content records, {summary_deleted} summaries"
+                "success": True,
+                "content_deleted": int(content_deleted),
+                "summaries_deleted": int(summaries_deleted),
             }
-
         except Exception as e:
-            if conn:
-                conn.rollback()
-            logger.error(f"PostgreSQL deletion error for {report_id}: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'content_deleted': 0,
-                'summaries_deleted': 0
-            }
+            if conn: conn.rollback()
+            logger.error(f"PostgreSQL deletion error for {video_id}: {e}")
+            return {"success": False, "error": str(e), "content_deleted": 0, "summaries_deleted": 0}
         finally:
-            if conn:
-                conn.close()
+            if conn: conn.close()
