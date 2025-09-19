@@ -742,6 +742,27 @@ class PostgreSQLContentIndex:
     # Ingest methods for NAS sync (T-Y020C)
     # ------------------------------------------------------------------
 
+    def _ensure_unique_constraints(self):
+        """Ensure required unique constraints exist for upsert operations."""
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+
+            # Ensure unique index on video_id for ON CONFLICT clause
+            cur.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_content_video_id
+                ON content (video_id)
+            """)
+            conn.commit()
+            logger.info("Ensured unique constraint on content.video_id")
+
+        except Exception:
+            logger.exception("Error ensuring unique constraints")
+        finally:
+            if conn:
+                conn.close()
+
     def _as_json_string(self, v):
         """Normalize input to JSON string for PostgreSQL JSONB columns."""
         if v is None:
@@ -759,6 +780,9 @@ class PostgreSQLContentIndex:
 
     def upsert_content(self, data: dict) -> bool:
         """Insert or update content record with ON CONFLICT handling."""
+        # Ensure unique constraints exist (idempotent)
+        self._ensure_unique_constraints()
+
         conn = None
         try:
             conn = self._get_connection()
