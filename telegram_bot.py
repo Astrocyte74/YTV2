@@ -1055,6 +1055,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_ingest_report()
         elif self.path == '/ingest/audio':
             self.handle_ingest_audio()
+        elif self.path.startswith('/api/debug/content'):
+            self.handle_debug_content()
         else:
             self.send_error(404, "Endpoint not found")
     
@@ -3883,8 +3885,19 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
             # Use PostgreSQL content index for upserts
             if content_index and hasattr(content_index, 'upsert_content'):
+                verify_row = None  # Initialize here for proper scope
                 try:
                     upserted = content_index.upsert_content(payload)
+
+                    # Read-back verification for response
+                    try:
+                        if video_id and hasattr(content_index, 'get_by_video_id'):
+                            row = content_index.get_by_video_id(video_id)
+                            if row:
+                                verify_row = {"video_id": row.get("video_id"), "title": row.get("title")}
+                    except Exception:
+                        logger.exception("Verify read failed for %s", video_id)
+
                 except Exception as upsert_error:
                     # TEMP: Expose the real error for debugging
                     self.send_response(500)
@@ -3931,7 +3944,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 response = {
                     "upserted": int(bool(upserted)),
-                    "summaries_upserted": summaries_upserted
+                    "summaries_upserted": summaries_upserted,
+                    "verify_row": verify_row  # TEMP: remove once stable
                 }
                 self.wfile.write(json.dumps(response).encode())
             else:
@@ -3942,6 +3956,44 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
         except Exception as e:
             logger.error(f"Error in ingest_report: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": f"internal error: {str(e)}"}).encode())
+
+    def handle_debug_content(self):
+        """Handle GET /api/debug/content?video_id=X - Direct video lookup for debugging."""
+        try:
+            # Parse query parameters
+            import urllib.parse
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            video_id = (qs.get('video_id') or [None])[0]
+
+            if not video_id:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id required"}).encode())
+                return
+
+            # Get content index and look up the record
+            content_index = getattr(self.server, 'content_index', None)
+            if not content_index or not hasattr(content_index, 'get_by_video_id'):
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "content index not available"}).encode())
+                return
+
+            row = content_index.get_by_video_id(video_id)
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"row": row}).encode())
+
+        except Exception as e:
+            logger.error(f"Error in debug_content: {e}")
             self.send_response(500)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
