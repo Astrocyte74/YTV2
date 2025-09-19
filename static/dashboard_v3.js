@@ -137,6 +137,7 @@ class AudioDashboard {
         this.contentTypeFilters = document.getElementById('contentTypeFilters');
         this.complexityFilters = document.getElementById('complexityFilters');
         this.languageFilters = document.getElementById('languageFilters');
+        this.summaryTypeFilters = document.getElementById('summaryTypeFilters');
         
         // Content area
         this.contentGrid = document.getElementById('contentGrid');
@@ -314,7 +315,29 @@ class AudioDashboard {
                 this.loadContent();
             });
         }
-        
+
+        // Select All / Clear All buttons for Summary Types
+        const selectAllSummaryTypes = document.getElementById('selectAllSummaryTypes');
+        const clearAllSummaryTypes = document.getElementById('clearAllSummaryTypes');
+        if (selectAllSummaryTypes) {
+            selectAllSummaryTypes.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="summary_type"]').forEach(cb => {
+                    cb.checked = true;
+                });
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.loadContent();
+            });
+        }
+        if (clearAllSummaryTypes) {
+            clearAllSummaryTypes.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="summary_type"]').forEach(cb => {
+                    cb.checked = false;
+                });
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.loadContent();
+            });
+        }
+
         // UI controls
         this.queueToggle.addEventListener('click', () => this.toggleQueue());
         if (this.queueClearBtn) this.queueClearBtn.addEventListener('click', () => this.clearQueue());
@@ -505,6 +528,7 @@ class AudioDashboard {
             this.renderFilterSection(filters.content_type, this.contentTypeFilters, 'content_type');
             this.renderFilterSection(filters.complexity_level, this.complexityFilters, 'complexity');
             this.renderLanguageFilters(filters.languages || []);
+            this.renderFilterSection(filters.summary_type, this.summaryTypeFilters, 'summary_type');
             
             // Bind show more toggles after content is loaded
             this.bindShowMoreToggles();
@@ -1647,6 +1671,7 @@ class AudioDashboard {
                                     <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-200 text-slate-700 text-[10px]">${channelInitial}</span>
                                     <button class="truncate hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-filter-value="${this.escapeHtml(normalizedItem.channel || '')}" title="Filter by ${this.escapeHtml(normalizedItem.channel || '')}">${this.escapeHtml(normalizedItem.channel || '')}</button>
                                     ${this.renderLanguageChip(normalizedItem.analysis?.language)}
+                                    ${this.renderSummaryTypeChip(normalizedItem.summary_type)}
                                     ${isPlaying ? '<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-audio-100 text-audio-700 whitespace-nowrap">Now Playing</span>' : ''}
                                 </div>
                                 ${categories.length ? `
@@ -1754,6 +1779,7 @@ class AudioDashboard {
                     <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-slate-700 text-[9px]">${channelInitial}</span>
                     <button class="hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-filter-value="${this.escapeHtml(normalizedItem.channel || '')}" title="Filter by ${this.escapeHtml(normalizedItem.channel || '')}">${this.escapeHtml(normalizedItem.channel || '')}</button>
                     ${this.renderLanguageChip(normalizedItem.analysis?.language)}
+                    ${this.renderSummaryTypeChip(normalizedItem.summary_type)}
                     ${isPlaying ? '<span class="ml-2 text-[10px] px-1 py-0.5 rounded bg-audio-100 text-audio-700">Now Playing</span>' : ''}
                 </div>
                 ${categories.length ? `<div class=\"mt-2 flex flex-wrap gap-1\">${categories.map(cat => this.renderChip(cat, 'category', true)).join('')}</div>` : ''}
@@ -2189,6 +2215,28 @@ class AudioDashboard {
         const flag = this.getLangFlag(lang);
         const label = flag ? `${flag}` : this.escapeHtml(lang);
         return `<span class="inline-flex items-center text-[11px] px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200">${label}</span>`;
+    }
+
+    renderSummaryTypeChip(type) {
+        if (!type || type === 'unknown') return '';
+
+        const labels = {
+            'audio': 'Audio',
+            'audio-missing': 'Audio (missing)',
+            'bullet-points': 'Bullet Points',
+            'comprehensive': 'Comprehensive',
+            'unknown': 'Unknown'
+        };
+
+        const label = labels[type] || type;
+
+        // Use muted colors for audio-missing and unknown
+        const isMuted = type === 'audio-missing' || type === 'unknown';
+        const colorClass = isMuted
+            ? 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-400'
+            : 'bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-300';
+
+        return `<span class="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded ${colorClass}">${this.escapeHtml(label)}</span>`;
     }
 
     renderChip(text, type = 'category', small = false, parent = null) {
