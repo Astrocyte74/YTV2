@@ -1715,9 +1715,9 @@ class AudioDashboard {
                             <span>Read</span>
                             ${buttonDurations.read ? `<span class=\"text-[11px] sm:text-xs font-normal opacity-80\">${buttonDurations.read}</span>` : ''}
                           </button>
-                          ${hasAudio ? `<button class=\"inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 hover:bg-white/95 dark:hover:bg-slate-800 transition-colors\" data-action=\"listen\">
+                          ${hasAudio ? `<button class=\"inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-audio-500 to-indigo-500 text-white shadow-md hover:from-audio-400 hover:to-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300/80\" data-action=\"listen\">
                             <span>Listen</span>
-                            ${buttonDurations.listen ? `<span class=\"text-[11px] sm:text-xs font-normal opacity-80\">${buttonDurations.listen}</span>` : ''}
+                            ${buttonDurations.listen ? `<span class=\"text-[11px] sm:text-xs font-normal opacity-90\">${buttonDurations.listen}</span>` : ''}
                           </button>` : ''}
                           <button class=\"inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 hover:bg-white/95 dark:hover:bg-slate-800 transition-colors\" data-action=\"watch\">
                             <span>Watch</span>
@@ -1807,9 +1807,9 @@ class AudioDashboard {
                         <span>Read</span>
                         ${buttonDurations.read ? `<span class=\"text-[10px] font-normal opacity-80\">${buttonDurations.read}</span>` : ''}
                     </button>
-                    ${hasAudio ? `<button class=\"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 hover:bg-white/95 dark:hover:bg-slate-800 transition-colors\" data-action=\"listen\">
+                    ${hasAudio ? `<button class=\"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-audio-500 to-indigo-500 text-white shadow-md hover:from-audio-400 hover:to-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300/80\" data-action=\"listen\">
                         <span>Listen</span>
-                        ${buttonDurations.listen ? `<span class=\"text-[10px] font-normal opacity-80\">${buttonDurations.listen}</span>` : ''}
+                        ${buttonDurations.listen ? `<span class=\"text-[10px] font-normal opacity-90\">${buttonDurations.listen}</span>` : ''}
                     </button>` : `<button class=\"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/40 dark:border-slate-800/70 bg-white/60 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 cursor-not-allowed\" disabled>
                         <span>Listen</span>
                         <span class=\"text-[10px] font-normal opacity-70\">N/A</span>
