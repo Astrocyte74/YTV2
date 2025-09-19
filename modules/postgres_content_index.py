@@ -848,13 +848,20 @@ class PostgreSQLContentIndex:
             cur.execute(upsert_sql, params)
 
             result = cur.fetchone()
-            logger.info(f"Upsert result for {data.get('video_id')}: {result}")
+            logger.info(f"Upsert result for {data.get('video_id')}: {result} (type: {type(result)})")
 
             if result is None:
                 logger.error(f"Content upsert for {data.get('video_id')}: No result returned from query")
                 return False
 
-            inserted = result[0] if result else False  # True if inserted, False if updated
+            # Handle both dict and tuple result formats from psycopg2
+            if isinstance(result, dict):
+                inserted = result.get('inserted', False)
+            elif isinstance(result, (tuple, list)) and len(result) > 0:
+                inserted = result[0]
+            else:
+                logger.error(f"Unexpected result format for {data.get('video_id')}: {result}")
+                inserted = False
             conn.commit()
             logger.info(f"Content upsert for {data.get('video_id')}: {'inserted' if inserted else 'updated'}")
 
