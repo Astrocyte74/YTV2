@@ -2305,7 +2305,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(facets, ensure_ascii=False, indent=2).encode())
             
         except Exception as e:
-            logger.error(f"Error serving filters API: {e}")
+            logger.exception("Error serving filters API")  # logs stacktrace
             # Return JSON error instead of HTML (per OpenAI recommendation)
             error_data = {"error": "Filters API error", "message": str(e), "status": "error"}
             self.send_response(500)
@@ -2435,6 +2435,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     },
                     "sort": sort,
                     "filters": filters,
+                    # Top-level pagination fields for UI compatibility
+                    "total_count": int(total_count or 0),
+                    "page": int(page or 1),
+                    "total_pages": int(total_pages or 0),
                 }
             else:
                 # SQLite format: already a dict

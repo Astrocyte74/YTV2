@@ -604,11 +604,11 @@ class PostgreSQLContentIndex:
         """Build filter payload matching legacy SQLite structure."""
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
             # Optimized SQL query for summary_type facet counts
             cursor.execute("""
-                SELECT COALESCE(summary_type_latest, 'unknown') AS t, COUNT(*)
+                SELECT COALESCE(summary_type_latest, 'unknown') AS t, COUNT(*) AS c
                 FROM content
                 GROUP BY 1
                 ORDER BY COUNT(*) DESC
@@ -734,8 +734,8 @@ class PostgreSQLContentIndex:
             ]
 
             filters['summary_type'] = [
-                {'value': row[0], 'count': row[1]}
-                for row in summary_type_rows
+                {'value': r['t'], 'count': int(r['c'])}
+                for r in summary_type_rows
             ]
 
             return filters
