@@ -830,7 +830,7 @@ class PostgreSQLContentIndex:
                 has_audio = bool(media_data.get('has_audio')) or bool(media_data.get('audio_url'))
 
             # Safe defaults for NOT NULL columns (per OpenAI debugging guidance)
-            cur.execute(upsert_sql, {
+            params = {
                 'video_id': data.get('video_id'),
                 'title': data.get('title') or '(untitled)',
                 'channel_name': data.get('channel_name') or '(unknown)',
@@ -842,12 +842,23 @@ class PostgreSQLContentIndex:
                 'analysis_json': analysis_json,
                 'topics_json': topics_json,
                 'has_audio': has_audio
-            })
+            }
+
+            logger.info(f"Executing upsert for {data.get('video_id')} with params: {list(params.keys())}")
+            cur.execute(upsert_sql, params)
 
             result = cur.fetchone()
+            logger.info(f"Upsert result for {data.get('video_id')}: {result}")
+
+            if result is None:
+                logger.error(f"Content upsert for {data.get('video_id')}: No result returned from query")
+                return False
+
             inserted = result[0] if result else False  # True if inserted, False if updated
             conn.commit()
             logger.info(f"Content upsert for {data.get('video_id')}: {'inserted' if inserted else 'updated'}")
+
+            # Return True if either inserted or updated (any successful operation)
             return True
 
         except Exception:
