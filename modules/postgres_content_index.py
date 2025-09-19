@@ -678,7 +678,7 @@ class PostgreSQLContentIndex:
             filters: Dict[str, List[Dict[str, Any]]] = {}
             filters['source'] = [{'value': 'youtube', 'count': total_count}]
 
-            filters['language'] = [
+            filters['languages'] = [  # Changed to plural for JS compatibility
                 {'value': lang, 'count': count}
                 for lang, count in language_counter.most_common()
             ]
@@ -695,7 +695,7 @@ class PostgreSQLContentIndex:
                         for subcat, subcount in sorted(data['subcategories'].items(), key=lambda x: x[1], reverse=True)
                     ]
                 category_items.append(item)
-            filters['category'] = category_items
+            filters['categories'] = category_items  # Changed to plural for JS compatibility
 
             filters['content_type'] = [
                 {'value': value, 'count': count}
@@ -707,7 +707,7 @@ class PostgreSQLContentIndex:
                 for value, count in complexity_counter.most_common()
             ]
 
-            filters['channel'] = [
+            filters['channels'] = [  # Changed to plural for JS compatibility
                 {'value': value, 'count': count}
                 for value, count in channel_counter.most_common()
             ]
