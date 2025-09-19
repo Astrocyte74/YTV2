@@ -205,7 +205,7 @@ class PostgreSQLContentIndex:
                 'named_entities': named_entities
             },
             'media': {
-                'has_audio': bool(row.get('has_audio')),
+                'has_audio': bool(row.get('has_audio', False)),  # Explicit default to False
                 'audio_duration_seconds': analysis_json.get('audio_duration_seconds', 0),
                 'has_transcript': analysis_json.get('has_transcript', False),
                 'transcript_chars': analysis_json.get('transcript_chars', 0)
