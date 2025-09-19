@@ -742,6 +742,21 @@ class PostgreSQLContentIndex:
     # Ingest methods for NAS sync (T-Y020C)
     # ------------------------------------------------------------------
 
+    def _as_json_string(self, v):
+        """Normalize input to JSON string for PostgreSQL JSONB columns."""
+        if v is None:
+            return None
+        if isinstance(v, (dict, list)):
+            return json.dumps(v)
+        if isinstance(v, str):
+            # If it's already JSON, keep it; if it's plain text, store as JSON string
+            try:
+                json.loads(v)
+                return v
+            except:
+                return json.dumps(v)
+        return None
+
     def upsert_content(self, data: dict) -> bool:
         """Insert or update content record with ON CONFLICT handling."""
         conn = None
@@ -749,18 +764,10 @@ class PostgreSQLContentIndex:
             conn = self._get_connection()
             cur = conn.cursor()
 
-            # Normalize JSON fields
-            subcategories_json = data.get("subcategories_json")
-            if subcategories_json and not isinstance(subcategories_json, str):
-                subcategories_json = json.dumps(subcategories_json)
-
-            analysis_json = data.get("analysis_json")
-            if analysis_json and not isinstance(analysis_json, str):
-                analysis_json = json.dumps(analysis_json)
-
-            topics_json = data.get("topics_json")
-            if topics_json and not isinstance(topics_json, str):
-                topics_json = json.dumps(topics_json)
+            # Normalize JSON fields with robust helper
+            subcategories_json = self._as_json_string(data.get("subcategories_json"))
+            analysis_json = self._as_json_string(data.get("analysis_json"))
+            topics_json = self._as_json_string(data.get("topics_json"))
 
             # Prepare media JSONB (preserve existing media data)
             media_data = data.get("media", {})
@@ -790,7 +797,13 @@ class PostgreSQLContentIndex:
                 topics_json = EXCLUDED.topics_json,
                 has_audio = EXCLUDED.has_audio,
                 updated_at = NOW()
+            RETURNING (xmax = 0) AS inserted
             """
+
+            # Safe has_audio detection
+            has_audio = False
+            if media_data:
+                has_audio = bool(media_data.get('has_audio')) or bool(media_data.get('audio_url'))
 
             cur.execute(upsert_sql, {
                 'video_id': data.get('video_id'),
@@ -803,13 +816,17 @@ class PostgreSQLContentIndex:
                 'subcategories_json': subcategories_json,
                 'analysis_json': analysis_json,
                 'topics_json': topics_json,
-                'has_audio': bool(media_data.get('has_audio')) if media_data else False
+                'has_audio': has_audio
             })
+
+            result = cur.fetchone()
+            inserted = result[0] if result else False  # True if inserted, False if updated
             conn.commit()
+            logger.info(f"Content upsert for {data.get('video_id')}: {'inserted' if inserted else 'updated'}")
             return True
 
-        except Exception as e:
-            logger.error(f"Error upserting content {data.get('video_id', 'unknown')}: {e}")
+        except Exception:
+            logger.exception("Error upserting content %s", data.get('video_id', 'unknown'))
             return False
         finally:
             if conn:
@@ -865,7 +882,8 @@ class PostgreSQLContentIndex:
             SET analysis_json = jsonb_set(
                 COALESCE(analysis_json, '{}'::jsonb),
                 '{audio_url}',
-                to_jsonb(%s::text)
+                to_jsonb(%s::text),
+                true
             ),
             has_audio = true,
             updated_at = NOW()
