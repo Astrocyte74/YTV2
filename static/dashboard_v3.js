@@ -1648,40 +1648,41 @@ class AudioDashboard {
         const isPlaying = this.currentAudio && this.currentAudio.id === normalizedItem.file_stem && this.isPlaying;
         const channelInitial = (normalizedItem.channel || '?').trim().charAt(0).toUpperCase();
         return `
-            <div data-card data-report-id="${normalizedItem.file_stem}" data-video-id="${normalizedItem.video_id || ''}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative list-layout cursor-pointer bg-white/80 dark:bg-slate-800/60 backdrop-blur-sm rounded-xl border border-slate-200/60 dark:border-slate-700 p-3 sm:p-4 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200" style="--thumbW: 240px;">
-                <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start">
-                    <div class="relative w-full sm:w-56 aspect-video overflow-hidden rounded-lg bg-slate-100 flex-shrink-0">
-                        ${normalizedItem.thumbnail_url ? `<img src="${normalizedItem.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
-                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none ${isPlaying ? '' : 'hidden'}" data-card-eq>
-                            <div class="px-2 py-1 rounded-md bg-black/50 backdrop-blur-sm">
-                                <div class="flex items-end gap-1 text-white">
-                                    <span class="w-0.5 sm:w-1 h-3 sm:h-4 bg-current waveform-bar" style="--delay:0"></span>
-                                    <span class="w-0.5 sm:w-1 h-4 sm:h-6 bg-current waveform-bar" style="--delay:1"></span>
-                                    <span class="w-0.5 sm:w-1 h-6 sm:h-8 bg-current waveform-bar" style="--delay:2"></span>
-                                    <span class="w-0.5 sm:w-1 h-4 sm:h-6 bg-current waveform-bar" style="--delay:3"></span>
-                                    <span class="w-0.5 sm:w-1 h-3 sm:h-4 bg-current waveform-bar" style="--delay:4"></span>
+            <div data-card data-report-id=\"${normalizedItem.file_stem}\" data-video-id=\"${normalizedItem.video_id || ''}\" data-has-audio=\"${hasAudio ? 'true' : 'false'}\" data-href=\"${href}\" title=\"Open summary\" tabindex=\"0\" class=\"group relative list-layout cursor-pointer overflow-hidden rounded-2xl border border-white/60 dark:border-slate-800/70 bg-white/85 dark:bg-slate-900/65 backdrop-blur-lg p-4 sm:p-5 shadow-lg transition-all duration-200 hover:-translate-y-1 hover:shadow-2xl ${isPlaying ? 'is-playing' : ''}\" style=\"--thumbW: 240px;\">
+                <div class=\"card-glow absolute inset-0 bg-gradient-to-br from-audio-500/15 via-transparent to-indigo-500/20\"></div>
+                <div class=\"relative flex flex-col sm:flex-row gap-3 sm:gap-4 items-start\">
+                    <div class=\"relative w-full sm:w-56 aspect-video overflow-hidden rounded-xl bg-slate-100/90 dark:bg-slate-800/80 ring-1 ring-slate-200/70 dark:ring-slate-700/60 shadow-inner flex-shrink-0\">
+                        ${normalizedItem.thumbnail_url ? `<img src=\"${normalizedItem.thumbnail_url}\" alt=\"thumbnail\" loading=\"lazy\" class=\"absolute inset-0 w-full h-full object-cover\">` : ''}
+                        <div class=\"absolute inset-0 flex items-center justify-center pointer-events-none ${isPlaying ? '' : 'hidden'}\" data-card-eq>
+                            <div class=\"px-2 py-1 rounded-md bg-black/45 backdrop-blur\">
+                                <div class=\"flex items-end gap-1 text-white\">
+                                    <span class=\"w-0.5 sm:w-1 h-3 sm:h-4 bg-current waveform-bar\" style=\"--delay:0\"></span>
+                                    <span class=\"w-0.5 sm:w-1 h-4 sm:h-6 bg-current waveform-bar\" style=\"--delay:1\"></span>
+                                    <span class=\"w-0.5 sm:w-1 h-6 sm:h-8 bg-current waveform-bar\" style=\"--delay:2\"></span>
+                                    <span class=\"w-0.5 sm:w-1 h-4 sm:h-6 bg-current waveform-bar\" style=\"--delay:3\"></span>
+                                    <span class=\"w-0.5 sm:w-1 h-3 sm:h-4 bg-current waveform-bar\" style=\"--delay:4\"></span>
                                 </div>
                             </div>
                         </div>
-                        <div class="absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer" data-card-progress-container data-total-seconds="${totalSecs}">
-                            <div class="h-1.5 sm:h-2 bg-audio-500" style="width:0%" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+                        <div class=\"absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer\" data-card-progress-container data-total-seconds=\"${totalSecs}\">
+                            <div class=\"h-1.5 sm:h-2 bg-audio-500\" style=\"width:0%\" data-card-progress role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"0\"></div>
                         </div>
                     </div>
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="flex-1 min-w-0 pr-12">
-                                <h3 class="text-base sm:text-lg font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 transition-colors line-clamp-2">
+                    <div class=\"flex-1 min-w-0\">
+                        <div class=\"flex items-start justify-between gap-3\">
+                            <div class=\"flex-1 min-w-0 pr-12 space-y-3\">
+                                <h3 class=\"text-base sm:text-lg font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 transition-colors line-clamp-2\">
                                     ${this.escapeHtml(normalizedItem.title)}
                                 </h3>
-                                <div class="text-sm text-slate-500 dark:text-slate-300 mt-0.5 line-clamp-1 flex items-center gap-2">
-                                    <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-200 text-slate-700 text-[10px]">${channelInitial}</span>
-                                    <button class="truncate hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-filter-value="${this.escapeHtml(normalizedItem.channel || '')}" title="Filter by ${this.escapeHtml(normalizedItem.channel || '')}">${this.escapeHtml(normalizedItem.channel || '')}</button>
+                                <div class=\"flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300\">
+                                    <span class=\"inline-flex items-center justify-center w-6 h-6 rounded-full bg-white/80 dark:bg-slate-800/80 border border-white/60 dark:border-slate-700/70 text-[11px] font-semibold text-slate-600 dark:text-slate-200 shadow-sm\">${channelInitial}</span>
+                                    <button class=\"truncate max-w-[12rem] hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left\" data-filter-chip=\"channel\" data-filter-value=\"${this.escapeHtml(normalizedItem.channel || '')}\" title=\"Filter by ${this.escapeHtml(normalizedItem.channel || '')}\">${this.escapeHtml(normalizedItem.channel || '')}</button>
                                     ${this.renderLanguageChip(normalizedItem.analysis?.language)}
                                     ${this.renderSummaryTypeChip(normalizedItem.summary_type)}
-                                    ${isPlaying ? '<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-audio-100 text-audio-700 whitespace-nowrap">Now Playing</span>' : ''}
+                                    ${isPlaying ? '<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-audio-100 text-audio-700 text-[10px] font-semibold shadow-sm\"><span class=\"inline-flex h-1.5 w-1.5 rounded-full bg-audio-500\"></span>Now playing</span>' : ''}
                                 </div>
                                 ${categories.length ? `
-                                  <div class=\"mt-2 flex items-center gap-1.5 flex-wrap\">
+                                  <div class=\"mt-1 flex items-center gap-1.5 flex-wrap\">
                                     ${categories.map(cat => this.renderChip(cat, 'category')).join('')}
                                   </div>` : ''}
                                 ${Array.isArray(subcatPairs) && subcatPairs.length ? `
@@ -1689,35 +1690,42 @@ class AudioDashboard {
                                     ${subcatPairs.map(([p, sc]) => this.renderChip(sc, 'subcategory', false, p)).join('')}
                                   </div>` : ''}
                             </div>
-                            <div class="absolute top-3 right-3 z-20">
-                              <button class="p-2 rounded-md hover:bg-slate-200/60 dark:hover:bg-slate-700/60" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
-                                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+                            <div class=\"absolute top-3 right-3 z-20\">
+                              <button class=\"p-2 rounded-full border border-white/50 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/70 shadow-sm hover:shadow transition\" data-action=\"menu\" aria-label=\"More options\" aria-haspopup=\"menu\" aria-expanded=\"false\">
+                                <svg class=\"w-5 h-5 text-slate-500 dark:text-slate-300\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><circle cx=\"5\" cy=\"12\" r=\"1.5\"/><circle cx=\"12\" cy=\"12\" r=\"1.5\"/><circle cx=\"19\" cy=\"12\" r=\"1.5\"/></svg>
                               </button>
-                              <div class="absolute right-0 mt-2 w-44 bg-white/95 dark:bg-slate-800/95 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl hidden z-50" data-kebab-menu role="menu">
-                                <button class="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" role="menuitem" data-action="copy-link">Copy link</button>
-                                <button class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors" role="menuitem" data-action="delete">Delete…</button>
+                              <div class=\"absolute right-0 mt-2 w-44 bg-white/95 dark:bg-slate-800/95 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl hidden z-50\" data-kebab-menu role=\"menu\">
+                                <button class=\"w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors\" role=\"menuitem\" data-action=\"copy-link\">Copy link</button>
+                                <button class=\"w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors\" role=\"menuitem\" data-action=\"delete\">Delete…</button>
                               </div>
                             </div>
-                            <div class="absolute top-14 right-3 hidden z-50" data-delete-popover>
-                              <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-3 text-sm">
-                                <div class="mb-2 text-slate-700 dark:text-slate-200">Delete this summary?</div>
-                                <div class="flex items-center gap-2 justify-end">
-                                  <button class="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700" data-action="cancel-delete">Cancel</button>
-                                  <button class="px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700" data-action="confirm-delete">Delete</button>
+                            <div class=\"absolute top-16 right-3 hidden z-50\" data-delete-popover>
+                              <div class=\"bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-3 text-sm\">
+                                <div class=\"mb-2 text-slate-700 dark:text-slate-200\">Delete this summary?</div>
+                                <div class=\"flex items-center gap-2 justify-end\">
+                                  <button class=\"px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700\" data-action=\"cancel-delete\">Cancel</button>
+                                  <button class=\"px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700\" data-action=\"confirm-delete\">Delete</button>
                                 </div>
                               </div>
                             </div>
                         </div>
 
-                        <!-- legacy chips row removed; replaced with explicit category/subcategory rows above -->
-                        <!-- CTA row under meta -->
-                        <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                          <button class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm" data-action="read"><span>Read${buttonDurations.read ? ` ${buttonDurations.read}` : ''}</span><span aria-hidden="true">›</span></button>
-                          ${hasAudio ? `<button class=\"inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm\" data-action=\"listen\"><span>Listen${buttonDurations.listen ? ` ${buttonDurations.listen}` : ''}</span><span aria-hidden=\"true\">›</span></button>` : ''}
-                          <button class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm" data-action="watch"><span>Watch${buttonDurations.watch ? ` ${buttonDurations.watch}` : ''}</span><span aria-hidden="true">›</span></button>
+                        <div class=\"mt-5 flex flex-wrap items-center gap-2 text-xs sm:text-sm font-medium\">
+                          <button class=\"inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-audio-600 text-white shadow-md hover:bg-audio-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400\" data-action=\"read\">
+                            <span>Read</span>
+                            ${buttonDurations.read ? `<span class=\"text-[11px] sm:text-xs font-normal opacity-80\">${buttonDurations.read}</span>` : ''}
+                          </button>
+                          ${hasAudio ? `<button class=\"inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 hover:bg-white/95 dark:hover:bg-slate-800 transition-colors\" data-action=\"listen\">
+                            <span>Listen</span>
+                            ${buttonDurations.listen ? `<span class=\"text-[11px] sm:text-xs font-normal opacity-80\">${buttonDurations.listen}</span>` : ''}
+                          </button>` : ''}
+                          <button class=\"inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 hover:bg-white/95 dark:hover:bg-slate-800 transition-colors\" data-action=\"watch\">
+                            <span>Watch</span>
+                            ${buttonDurations.watch ? `<span class=\"text-[11px] sm:text-xs font-normal opacity-80\">${buttonDurations.watch}</span>` : ''}
+                          </button>
                         </div>
 
-                        <section role="region" aria-live="polite" hidden data-expand-region></section>
+                        <section role=\"region\" aria-live=\"polite\" hidden data-expand-region></section>
                     </div>
                 </div>
             </div>
@@ -1744,72 +1752,74 @@ class AudioDashboard {
         const totalDur = (normalizedItem.media_metadata && normalizedItem.media_metadata.mp3_duration_seconds)
             ? this.formatDuration(normalizedItem.media_metadata.mp3_duration_seconds)
             : (normalizedItem.duration_seconds ? this.formatDuration(normalizedItem.duration_seconds) : '');
+        const hasAudio = Boolean(normalizedItem.media && normalizedItem.media.has_audio);
         return `
-        <div data-card data-report-id="${normalizedItem.file_stem}" data-video-id="${normalizedItem.video_id || ''}" data-has-audio="${(normalizedItem.media && normalizedItem.media.has_audio) ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative cursor-pointer bg-white/80 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
-            <div class="relative aspect-video bg-slate-100">
-                ${normalizedItem.thumbnail_url ? `<img src="${normalizedItem.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
-                <div class="absolute inset-0 flex items-center justify-center pointer-events-none" data-card-eq style="display: flex">
-                    <div class="flex items-end gap-1">
-                        <span class="w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar-outlined" style="--delay:0"></span>
-                        <span class="w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar-outlined" style="--delay:1"></span>
-                        <span class="w-0.5 sm:w-1 h-6 sm:h-8 waveform-bar-outlined" style="--delay:2"></span>
-                        <span class="w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar-outlined" style="--delay:3"></span>
-                        <span class="w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar-outlined" style="--delay:4"></span>
+        <div data-card data-report-id=\"${normalizedItem.file_stem}\" data-video-id=\"${normalizedItem.video_id || ''}\" data-has-audio=\"${hasAudio ? 'true' : 'false'}\" data-href=\"${href}\" title=\"Open summary\" tabindex=\"0\" class=\"group relative cursor-pointer overflow-hidden rounded-2xl border border-white/60 dark:border-slate-800/70 bg-white/85 dark:bg-slate-900/65 backdrop-blur-lg shadow-lg transition-all duration-200 hover:-translate-y-1 hover:shadow-2xl ${isPlaying ? 'is-playing' : ''}\">
+            <div class=\"card-glow absolute inset-0 bg-gradient-to-br from-audio-500/15 via-transparent to-indigo-500/20\"></div>
+            <div class=\"relative aspect-video bg-slate-100/90 dark:bg-slate-800/80 overflow-hidden\">
+                ${normalizedItem.thumbnail_url ? `<img src=\"${normalizedItem.thumbnail_url}\" alt=\"thumbnail\" loading=\"lazy\" class=\"absolute inset-0 w-full h-full object-cover\">` : ''}
+                <div class=\"absolute inset-0 flex items-center justify-center pointer-events-none ${isPlaying ? '' : 'hidden'}\" data-card-eq>
+                    <div class=\"px-2 py-1 rounded-md bg-black/45 backdrop-blur\">
+                        <div class=\"flex items-end gap-1 text-white\">
+                            <span class=\"w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar\" style=\"--delay:0\"></span>
+                            <span class=\"w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar\" style=\"--delay:1\"></span>
+                            <span class=\"w-0.5 sm:w-1 h-6 sm:h-8 waveform-bar\" style=\"--delay:2\"></span>
+                            <span class=\"w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar\" style=\"--delay:3\"></span>
+                            <span class=\"w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar\" style=\"--delay:4\"></span>
+                        </div>
                     </div>
                 </div>
-                <div class="absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer" data-card-progress-container data-total-seconds="${totalSecs}">
-                    <div class="h-1.5 sm:h-2 bg-audio-500" style="width:0%" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+                <div class=\"absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer\" data-card-progress-container data-total-seconds=\"${totalSecs}\">
+                    <div class=\"h-1.5 sm:h-2 bg-audio-500\" style=\"width:0%\" data-card-progress role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"0\"></div>
                 </div>
-                <div class="absolute top-2 right-2 z-20">
-                  <button class="p-1.5 min-w-[36px] min-h-[36px] rounded-md bg-white/70 dark:bg-slate-900/60 hover:bg-white/90" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
-                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+                <div class=\"absolute top-3 right-3 z-20\">
+                  <button class=\"p-2 rounded-full border border-white/50 dark:border-slate-700/70 bg-white/85 dark:bg-slate-900/70 shadow-sm hover:shadow transition\" data-action=\"menu\" aria-label=\"More options\" aria-haspopup=\"menu\" aria-expanded=\"false\">
+                    <svg class=\"w-5 h-5 text-slate-500 dark:text-slate-300\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><circle cx=\"5\" cy=\"12\" r=\"1.5\"/><circle cx=\"12\" cy=\"12\" r=\"1.5\"/><circle cx=\"19\" cy=\"12\" r=\"1.5\"/></svg>
                   </button>
-                  <div class="absolute right-0 mt-2 w-40 bg-white/95 dark:bg-slate-800/95 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl hidden z-50" data-kebab-menu role="menu">
-                    <button class="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" role="menuitem" data-action="copy-link">Copy link</button>
-                    <button class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors" role="menuitem" data-action="delete">Delete…</button>
+                  <div class=\"absolute right-0 mt-2 w-40 bg-white/95 dark:bg-slate-800/95 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl hidden z-50\" data-kebab-menu role=\"menu\">
+                    <button class=\"w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors\" role=\"menuitem\" data-action=\"copy-link\">Copy link</button>
+                    <button class=\"w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors\" role=\"menuitem\" data-action=\"delete\">Delete…</button>
                   </div>
                 </div>
-                <div class="absolute top-12 right-2 hidden z-50" data-delete-popover>
-                  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-2 text-xs">
-                    <div class="mb-2 text-slate-700 dark:text-slate-200">Delete this summary?</div>
-                    <div class="flex items-center gap-2 justify-end">
-                      <button class="px-2 py-1 rounded border border-slate-200 dark:border-slate-700" data-action="cancel-delete">Cancel</button>
-                      <button class="px-2 py-1 rounded bg-red-600 text-white" data-action="confirm-delete">Delete</button>
+                <div class=\"absolute top-16 right-3 hidden z-50\" data-delete-popover>
+                  <div class=\"bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-2 text-xs\">
+                    <div class=\"mb-2 text-slate-700 dark:text-slate-200\">Delete this summary?</div>
+                    <div class=\"flex items-center gap-2 justify-end\">
+                      <button class=\"px-2 py-1 rounded border border-slate-200 dark:border-slate-700\" data-action=\"cancel-delete\">Cancel</button>
+                      <button class=\"px-2 py-1 rounded bg-red-600 text-white\" data-action=\"confirm-delete\">Delete</button>
                     </div>
                   </div>
                 </div>
             </div>
-            <div class="p-3 pr-12">
-                <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 line-clamp-2">${this.escapeHtml(normalizedItem.title)}</h3>
-                <div class="text-xs text-slate-500 dark:text-slate-300 mt-1 line-clamp-1 flex items-center gap-2">
-                    <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-slate-700 text-[9px]">${channelInitial}</span>
-                    <button class="hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-filter-value="${this.escapeHtml(normalizedItem.channel || '')}" title="Filter by ${this.escapeHtml(normalizedItem.channel || '')}">${this.escapeHtml(normalizedItem.channel || '')}</button>
+            <div class=\"relative p-4 space-y-3\">
+                <h3 class=\"text-sm font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 transition-colors line-clamp-2\">${this.escapeHtml(normalizedItem.title)}</h3>
+                <div class=\"flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300\">
+                    <span class=\"inline-flex items-center justify-center w-5 h-5 rounded-full bg-white/80 dark:bg-slate-800/80 border border-white/60 dark:border-slate-700/70 text-[10px] font-semibold text-slate-600 dark:text-slate-200 shadow-sm\">${channelInitial}</span>
+                    <button class=\"truncate max-w-[9rem] hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left\" data-filter-chip=\"channel\" data-filter-value=\"${this.escapeHtml(normalizedItem.channel || '')}\" title=\"Filter by ${this.escapeHtml(normalizedItem.channel || '')}\">${this.escapeHtml(normalizedItem.channel || '')}</button>
                     ${this.renderLanguageChip(normalizedItem.analysis?.language)}
                     ${this.renderSummaryTypeChip(normalizedItem.summary_type)}
-                    ${isPlaying ? '<span class="ml-2 text-[10px] px-1 py-0.5 rounded bg-audio-100 text-audio-700">Now Playing</span>' : ''}
+                    ${isPlaying ? '<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-audio-100 text-audio-700 text-[10px] font-semibold shadow-sm\"><span class=\"inline-flex h-1.5 w-1.5 rounded-full bg-audio-500\"></span>Now playing</span>' : ''}
                 </div>
-                ${categories.length ? `<div class=\"mt-2 flex flex-wrap gap-1\">${categories.map(cat => this.renderChip(cat, 'category', true)).join('')}</div>` : ''}
-                ${Array.isArray(subcatPairs) && subcatPairs.length ? `<div class=\"mt-1 flex flex-wrap gap-1\">${subcatPairs.map(([p, sc]) => this.renderChip(sc, 'subcategory', true, p)).join('')}</div>` : ''}
-                <div class="mt-2 flex items-center gap-1.5 px-3 pb-2">
-                    <button class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors" data-action="read">
+                ${categories.length ? `<div class=\"flex flex-wrap gap-1\">${categories.map(cat => this.renderChip(cat, 'category', true)).join('')}</div>` : ''}
+                ${Array.isArray(subcatPairs) && subcatPairs.length ? `<div class=\"flex flex-wrap gap-1\">${subcatPairs.map(([p, sc]) => this.renderChip(sc, 'subcategory', true, p)).join('')}</div>` : ''}
+                <div class=\"flex flex-wrap items-center gap-2 pt-1 text-xs font-medium\">
+                    <button class=\"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-audio-600 text-white shadow-md hover:bg-audio-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400\" data-action=\"read\">
                         <span>Read</span>
-                        <span class="text-[10px] opacity-70">${buttonDurations.read || '3m'}</span>
+                        ${buttonDurations.read ? `<span class=\"text-[10px] font-normal opacity-80\">${buttonDurations.read}</span>` : ''}
                     </button>
-                    ${(normalizedItem.media && normalizedItem.media.has_audio) ? `
-                    <button class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors" data-action="listen">
+                    ${hasAudio ? `<button class=\"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 hover:bg-white/95 dark:hover:bg-slate-800 transition-colors\" data-action=\"listen\">
                         <span>Listen</span>
-                        <span class="text-[10px] opacity-70">${buttonDurations.listen || totalDur}</span>
-                    </button>` : `
-                    <button class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-slate-50/50 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60" disabled>
+                        ${buttonDurations.listen ? `<span class=\"text-[10px] font-normal opacity-80\">${buttonDurations.listen}</span>` : ''}
+                    </button>` : `<button class=\"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/40 dark:border-slate-800/70 bg-white/60 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 cursor-not-allowed\" disabled>
                         <span>Listen</span>
-                        <span class="text-[10px] opacity-70">N/A</span>
+                        <span class=\"text-[10px] font-normal opacity-70\">N/A</span>
                     </button>`}
-                    <button class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors" data-action="watch">
+                    <button class=\"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 hover:bg-white/95 dark:hover:bg-slate-800 transition-colors\" data-action=\"watch\">
                         <span>Watch</span>
-                        <span class="text-[10px] opacity-70">${buttonDurations.watch || totalDur}</span>
+                        ${buttonDurations.watch ? `<span class=\"text-[10px] font-normal opacity-80\">${buttonDurations.watch}</span>` : ''}
                     </button>
                 </div>
-                <section role="region" aria-live="polite" hidden data-expand-region></section>
+                <section role=\"region\" aria-live=\"polite\" hidden data-expand-region></section>
             </div>
         </div>`;
     }
@@ -2063,14 +2073,19 @@ class AudioDashboard {
     }
 
     updateViewToggle() {
-        const active = 'bg-audio-500 text-white';
-        const inactive = 'bg-white text-slate-700';
-        if (this.listViewBtn && this.gridViewBtn) {
-            this.listViewBtn.className = this.listViewBtn.className
-                .replace(active, '').replace(inactive, '').trim() + ' ' + (this.viewMode === 'list' ? active : inactive);
-            this.gridViewBtn.className = this.gridViewBtn.className
-                .replace(active, '').replace(inactive, '').trim() + ' ' + (this.viewMode === 'grid' ? active : inactive);
-        }
+        if (!this.listViewBtn || !this.gridViewBtn) return;
+
+        const activeClasses = ['bg-audio-600', 'text-white', 'shadow-lg'];
+        const inactiveClasses = ['bg-white/80', 'dark:bg-slate-900/70', 'text-slate-600', 'dark:text-slate-200', 'border', 'border-white/60', 'dark:border-slate-700/70', 'shadow-sm'];
+
+        [this.listViewBtn, this.gridViewBtn].forEach(btn => {
+            btn.classList.remove(...activeClasses, ...inactiveClasses);
+            btn.classList.add(...inactiveClasses);
+        });
+
+        const activeBtn = this.viewMode === 'grid' ? this.gridViewBtn : this.listViewBtn;
+        activeBtn.classList.remove(...inactiveClasses);
+        activeBtn.classList.add(...activeClasses);
     }
 
     setCurrentFromItem(item) {
@@ -2095,12 +2110,12 @@ class AudioDashboard {
     updatePlayingCard() {
         // Card highlight
         this.contentGrid.querySelectorAll('[data-card]').forEach(card => {
-            card.classList.remove('ring-2', 'ring-audio-400');
+            card.classList.remove('is-playing');
         });
         let active = null;
         if (this.currentAudio) {
             active = this.contentGrid.querySelector(`[data-report-id="${this.currentAudio.id}"]`);
-            if (active) active.classList.add('ring-2', 'ring-audio-400');
+            if (active) active.classList.add('is-playing');
         }
 
         // Update Listen buttons to reflect playing state
