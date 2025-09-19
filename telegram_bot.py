@@ -1728,6 +1728,23 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(403, "Forbidden")
                 return
 
+            # If the direct path is missing, try the persistent audio/ subdir
+            if not fs_path.is_file():
+                rel_norm = rel.replace("\\", "/").lstrip("/")
+                # Legacy flat path: /exports/<id>.mp3 → /app/data/exports/audio/<id>.mp3
+                if "/" not in rel_norm:
+                    alt = (root / "audio" / rel_norm).resolve()
+                    if str(alt).startswith(str(root)) and alt.is_file():
+                        fs_path = alt
+                        logger.info(f"🎧 Fallback found: {fs_path}")
+
+                # Also try yt:-prefixed leftover for older uploads
+                if not fs_path.is_file():
+                    alt2 = (root / "audio" / f"yt:{rel_norm}").resolve()
+                    if str(alt2).startswith(str(root)) and alt2.is_file():
+                        fs_path = alt2
+                        logger.info(f"🎧 Legacy yt: fallback found: {fs_path}")
+
             if fs_path.is_file():
                 logger.info(f"🎧 Serving export: {fs_path}")
                 self.send_response(200)
