@@ -8,6 +8,7 @@ Designed for parallel PostgreSQL system with variant fallback support.
 import os
 import json
 import logging
+from collections import defaultdict, Counter
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timezone
 
@@ -40,6 +41,196 @@ class PostgreSQLContentIndex:
             self.postgres_url,
             cursor_factory=psycopg2.extras.RealDictCursor
         )
+
+    # ------------------------------------------------------------------
+    # Helper utilities (parity with legacy SQLite implementation)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _normalize_datetime(value: Any) -> str:
+        """Convert timestamp to ISO string (UTC) for API responses."""
+        if not value:
+            return ""
+
+        if isinstance(value, datetime):
+            dt = value
+        else:
+            try:
+                dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            except ValueError:
+                return str(value)
+
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt.isoformat().replace("+00:00", "Z")
+
+    @staticmethod
+    def _parse_json_field(value: Any) -> Any:
+        """Parse JSON fields handling strings, dicts, and lists safely."""
+        if value is None or value == "":
+            return []
+
+        if isinstance(value, (list, dict)):
+            return value
+
+        try:
+            return json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            return value
+
+    def _parse_subcategories_json(self, value: Any) -> List[Dict[str, Any]]:
+        """Normalize subcategory payloads to canonical structure."""
+        if not value:
+            return []
+
+        data = value
+        if isinstance(value, str):
+            try:
+                data = json.loads(value)
+            except (TypeError, json.JSONDecodeError):
+                return []
+
+        if isinstance(data, dict):
+            categories = data.get('categories') or []
+        else:
+            categories = data
+
+        results: List[Dict[str, Any]] = []
+        if not isinstance(categories, list):
+            return results
+
+        for item in categories:
+            if isinstance(item, dict):
+                category = item.get('category') or item.get('name')
+                if not category:
+                    continue
+                subcats = item.get('subcategories') or []
+                if isinstance(subcats, list):
+                    subcat_list = [str(sub) for sub in subcats]
+                elif subcats:
+                    subcat_list = [str(subcats)]
+                else:
+                    subcat_list = []
+                results.append({
+                    'category': category,
+                    'subcategories': subcat_list
+                })
+            elif isinstance(item, str):
+                results.append({
+                    'category': item,
+                    'subcategories': []
+                })
+
+        return results
+
+    @staticmethod
+    def _generate_file_stem(video_id: Optional[str], title: Optional[str]) -> str:
+        """Generate deterministic file stem used by legacy dashboard routes."""
+        if video_id:
+            return video_id
+        title = title or "unknown"
+        safe_title = ''.join(c for c in title.lower() if c.isalnum() or c in '-_')
+        return safe_title[:50] or 'unknown'
+
+    def _format_report_for_api(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        """Match the legacy SQLite API contract for dashboard consumption."""
+
+        analysis_json = row.get('analysis_json') or {}
+        if isinstance(analysis_json, str):
+            try:
+                analysis_json = json.loads(analysis_json)
+            except json.JSONDecodeError:
+                analysis_json = {}
+
+        structured_categories = (
+            self._parse_subcategories_json(row.get('subcategories_json'))
+            or self._parse_subcategories_json(analysis_json.get('categories'))
+        )
+
+        primary_categories = [
+            item.get('category') for item in structured_categories if item.get('category')
+        ]
+        first_subcategory = None
+        for item in structured_categories:
+            subs = item.get('subcategories') or []
+            if subs:
+                first_subcategory = subs[0]
+                break
+
+        topics = analysis_json.get('key_topics')
+        if not topics:
+            parsed_topics = self._parse_json_field(row.get('topics_json'))
+            topics = parsed_topics if isinstance(parsed_topics, list) else []
+
+        named_entities = analysis_json.get('named_entities')
+        if not isinstance(named_entities, list):
+            named_entities = []
+
+        language = analysis_json.get('language') or 'en'
+
+        # Summary metadata (only attached for detailed view, but we pass through here)
+        summary_variant = row.get('summary_variant') or 'comprehensive'
+        summary_text = row.get('summary_text')
+        summary_html = row.get('summary_html')
+
+        subcategories_raw = row.get('subcategories_json')
+        if isinstance(subcategories_raw, str):
+            subcategories_json = subcategories_raw
+        elif subcategories_raw is not None:
+            subcategories_json = json.dumps(subcategories_raw, ensure_ascii=False)
+        else:
+            subcategories_json = None
+
+        content_dict = {
+            'id': row.get('id') or row.get('video_id') or '',
+            'title': row.get('title') or 'Untitled',
+            'thumbnail_url': row.get('thumbnail_url') or '',
+            'canonical_url': row.get('canonical_url') or '',
+            'channel': row.get('channel_name') or '',
+            'channel_name': row.get('channel_name') or '',
+            'published_at': self._normalize_datetime(row.get('published_at')),
+            'duration_seconds': row.get('duration_seconds') or 0,
+            'analysis': {
+                'category': primary_categories,
+                'subcategory': first_subcategory,
+                'categories': structured_categories,
+                'content_type': analysis_json.get('content_type') or '',
+                'complexity_level': analysis_json.get('complexity_level')
+                                       or analysis_json.get('complexity')
+                                       or '',
+                'language': language,
+                'key_topics': topics,
+                'named_entities': named_entities
+            },
+            'media': {
+                'has_audio': bool(row.get('has_audio')),
+                'audio_duration_seconds': analysis_json.get('audio_duration_seconds', 0),
+                'has_transcript': analysis_json.get('has_transcript', False),
+                'transcript_chars': analysis_json.get('transcript_chars', 0)
+            },
+            'media_metadata': {
+                'video_duration_seconds': row.get('duration_seconds') or 0,
+                'mp3_duration_seconds': analysis_json.get('audio_duration_seconds', 0)
+            },
+            'file_stem': self._generate_file_stem(row.get('video_id'), row.get('title')),
+            'video_id': row.get('video_id') or '',
+            'subcategories_json': subcategories_json,
+            'indexed_at': self._normalize_datetime(row.get('indexed_at')),
+            'original_language': language,
+            'summary_language': language,
+            'audio_language': language,
+            'word_count': analysis_json.get('word_count', 0)
+        }
+
+        # Attach summary payload for downstream consumers when available
+        if summary_text or summary_html:
+            content_dict['summary_text'] = summary_text or ''
+            content_dict['summary_html'] = summary_html or ''
+            content_dict['summary_variant'] = summary_variant
+
+        return content_dict
 
     def get_reports(self, filters: Dict[str, Any] = None, sort: str = "newest",
                    page: int = 1, size: int = 20) -> Tuple[List[Dict[str, Any]], int]:
@@ -191,13 +382,9 @@ class PostgreSQLContentIndex:
             cursor.execute(query, params)
             rows = cursor.fetchall()
 
-            # Convert to list of dicts
-            reports = []
-            for row in rows:
-                report = dict(row)
-                reports.append(report)
+            formatted_reports = [self._format_report_for_api(dict(row)) for row in rows]
 
-            return reports, total_count
+            return formatted_reports, total_count
 
         finally:
             conn.close()
@@ -264,11 +451,47 @@ class PostgreSQLContentIndex:
                     )
                     LIMIT 1
                 ) ls ON true
-                WHERE c.video_id = %s AND ls.html IS NOT NULL
-            """, [report_id])
+                WHERE (c.video_id = %s OR c.id = %s) AND ls.html IS NOT NULL
+            """, [report_id, report_id])
 
             row = cursor.fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+
+            formatted = self._format_report_for_api(dict(row))
+
+            summary_text = row.get('summary_text') or ''
+            summary_html = row.get('summary_html') or ''
+            summary_variant = row.get('summary_variant') or 'comprehensive'
+
+            if summary_text or summary_html:
+                formatted['summary'] = {
+                    'text': summary_text or 'No summary available.',
+                    'html': summary_html or '',
+                    'type': summary_variant,
+                    'content': {
+                        'summary': summary_text or 'No summary available.',
+                        'summary_type': summary_variant
+                    }
+                }
+            else:
+                formatted['summary'] = {
+                    'text': 'No summary available.',
+                    'html': '',
+                    'type': 'none',
+                    'content': {
+                        'summary': 'No summary available.',
+                        'summary_type': 'none'
+                    }
+                }
+
+            formatted['processor_info'] = {
+                'model': 'postgres_backend',
+                'processing_time': 0,
+                'timestamp': formatted.get('indexed_at', '')
+            }
+
+            return formatted
 
         finally:
             conn.close()
@@ -365,98 +588,136 @@ class PostgreSQLContentIndex:
             cursor.execute(query, params)
             rows = cursor.fetchall()
 
-            reports = [dict(row) for row in rows]
+            reports = [self._format_report_for_api(dict(row)) for row in rows]
             return reports, total_count
 
         finally:
             conn.close()
 
     def get_filters(self, active_filters: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
-        """Get available filter options with counts."""
+        """Build filter payload matching legacy SQLite structure."""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-
-            # Categories (from JSONB analysis)
             cursor.execute("""
-                SELECT
-                    cat->>'category' as category,
-                    COUNT(*) as count
-                FROM content c
-                CROSS JOIN LATERAL jsonb_array_elements(
-                    COALESCE(
-                        c.analysis_json->'categories',
-                        c.subcategories_json->'categories',
-                        '[]'::jsonb
-                    )
-                ) AS cat
-                WHERE cat->>'category' IS NOT NULL
-                GROUP BY cat->>'category'
-                ORDER BY count DESC, cat->>'category'
-                LIMIT 100
-            """)
-            categories = [{"value": row["category"], "count": row["count"]} for row in cursor.fetchall()]
-
-            # Channels
-            cursor.execute("""
-                SELECT channel_name AS value, COUNT(*) AS count
+                SELECT channel_name,
+                       COALESCE(has_audio, FALSE) AS has_audio,
+                       analysis_json,
+                       subcategories_json
                 FROM content
-                WHERE channel_name IS NOT NULL AND channel_name <> ''
-                GROUP BY channel_name
-                ORDER BY count DESC
-                LIMIT 50
             """)
-            channels = [{"value": row["value"], "count": row["count"]} for row in cursor.fetchall()]
+            rows = cursor.fetchall()
 
-            # Years (derived from indexed_at)
-            cursor.execute("""
-                SELECT CAST(date_part('year', indexed_at) AS INT) AS value, COUNT(*) AS count
-                FROM content
-                WHERE indexed_at IS NOT NULL
-                GROUP BY value
-                ORDER BY value DESC
-            """)
-            years = [{"value": row["value"], "count": row["count"]} for row in cursor.fetchall()]
+            total_count = len(rows)
 
-            # Has Audio
-            cursor.execute("""
-                SELECT has_audio AS value, COUNT(*) AS count
-                FROM content
-                GROUP BY has_audio
-                ORDER BY count DESC
-            """)
-            has_audio = [{"value": bool(row["value"]), "count": row["count"]} for row in cursor.fetchall()]
+            language_counter: Counter[str] = Counter()
+            content_type_counter: Counter[str] = Counter()
+            complexity_counter: Counter[str] = Counter()
+            channel_counter: Counter[str] = Counter()
+            has_audio_counter: Counter[bool] = Counter()
+            category_hierarchy: Dict[str, Dict[str, Any]] = {}
 
-            # Variants (from latest summaries)
-            cursor.execute("""
-                SELECT variant AS value, COUNT(*) AS count
-                FROM v_latest_summaries
-                GROUP BY variant
-                ORDER BY count DESC
-            """)
-            variants = [{"value": row["value"], "count": row["count"]} for row in cursor.fetchall()]
+            for row in rows:
+                analysis_json = row.get('analysis_json') or {}
+                if isinstance(analysis_json, str):
+                    try:
+                        analysis_json = json.loads(analysis_json)
+                    except json.JSONDecodeError:
+                        analysis_json = {}
 
-            # Languages (if the column exists)
-            try:
-                cursor.execute("""
-                    SELECT language AS value, COUNT(*) AS count
-                    FROM content
-                    WHERE language IS NOT NULL
-                    GROUP BY language
-                    ORDER BY count DESC
-                """)
-                languages = [{"value": row["value"], "count": row["count"]} for row in cursor.fetchall()]
-            except:
-                languages = []
+                language = analysis_json.get('language')
+                if language:
+                    language_counter[language] += 1
 
-            return {
-                'categories': categories,
-                'channels': channels,
-                'years': years,
-                'has_audio': has_audio,
-                'variants': variants,
-                'languages': languages
-            }
+                content_type = analysis_json.get('content_type')
+                if content_type:
+                    content_type_counter[content_type] += 1
+
+                complexity = analysis_json.get('complexity_level') or analysis_json.get('complexity')
+                if complexity:
+                    complexity_counter[complexity] += 1
+
+                channel = row.get('channel_name') or ''
+                if channel:
+                    channel_counter[channel] += 1
+
+                has_audio_counter[bool(row.get('has_audio'))] += 1
+
+                structured_categories = (
+                    self._parse_subcategories_json(row.get('subcategories_json'))
+                    or self._parse_subcategories_json(analysis_json.get('categories'))
+                )
+
+                if structured_categories:
+                    for cat_obj in structured_categories:
+                        cat_name = cat_obj.get('category')
+                        if not cat_name:
+                            continue
+                        entry = category_hierarchy.setdefault(cat_name, {
+                            'count': 0,
+                            'subcategories': defaultdict(int)
+                        })
+                        entry['count'] += 1
+                        for subcat in cat_obj.get('subcategories', []):
+                            if subcat:
+                                entry['subcategories'][subcat] += 1
+                else:
+                    fallback_categories = analysis_json.get('category')
+                    if isinstance(fallback_categories, str):
+                        fallback_categories = [fallback_categories]
+                    if isinstance(fallback_categories, list):
+                        for cat_name in fallback_categories:
+                            if not cat_name:
+                                continue
+                            entry = category_hierarchy.setdefault(cat_name, {
+                                'count': 0,
+                                'subcategories': defaultdict(int)
+                            })
+                            entry['count'] += 1
+
+            filters: Dict[str, List[Dict[str, Any]]] = {}
+            filters['source'] = [{'value': 'youtube', 'count': total_count}]
+
+            filters['language'] = [
+                {'value': lang, 'count': count}
+                for lang, count in language_counter.most_common()
+            ]
+
+            category_items: List[Dict[str, Any]] = []
+            for cat, data in sorted(category_hierarchy.items(), key=lambda x: x[1]['count'], reverse=True):
+                item = {
+                    'value': cat,
+                    'count': data['count']
+                }
+                if data['subcategories']:
+                    item['subcategories'] = [
+                        {'value': subcat, 'count': subcount}
+                        for subcat, subcount in sorted(data['subcategories'].items(), key=lambda x: x[1], reverse=True)
+                    ]
+                category_items.append(item)
+            filters['category'] = category_items
+
+            filters['content_type'] = [
+                {'value': value, 'count': count}
+                for value, count in content_type_counter.most_common()
+            ]
+
+            filters['complexity_level'] = [
+                {'value': value, 'count': count}
+                for value, count in complexity_counter.most_common()
+            ]
+
+            filters['channel'] = [
+                {'value': value, 'count': count}
+                for value, count in channel_counter.most_common()
+            ]
+
+            filters['has_audio'] = [
+                {'value': bool_val, 'count': count}
+                for bool_val, count in sorted(has_audio_counter.items(), key=lambda x: (-x[1], not x[0]))
+            ]
+
+            return filters
 
         finally:
             conn.close()
@@ -476,3 +737,130 @@ class PostgreSQLContentIndex:
     def get_facets(self, active_filters: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Alias for get_filters() for compatibility with existing API."""
         return self.get_filters(active_filters)
+
+    # ------------------------------------------------------------------
+    # Ingest methods for NAS sync (T-Y020C)
+    # ------------------------------------------------------------------
+
+    def upsert_content(self, data: dict) -> bool:
+        """Insert or update content record with ON CONFLICT handling."""
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cur:
+                    # Normalize JSON fields
+                    subcategories_json = data.get("subcategories_json")
+                    if subcategories_json and not isinstance(subcategories_json, str):
+                        subcategories_json = json.dumps(subcategories_json)
+
+                    analysis_json = data.get("analysis_json")
+                    if analysis_json and not isinstance(analysis_json, str):
+                        analysis_json = json.dumps(analysis_json)
+
+                    topics_json = data.get("topics_json")
+                    if topics_json and not isinstance(topics_json, str):
+                        topics_json = json.dumps(topics_json)
+
+                    # Prepare media JSONB (preserve existing media data)
+                    media_data = data.get("media", {})
+                    if isinstance(media_data, str):
+                        try:
+                            media_data = json.loads(media_data)
+                        except:
+                            media_data = {}
+
+                    upsert_sql = """
+                    INSERT INTO content (
+                        video_id, title, channel_name, indexed_at, duration_seconds,
+                        thumbnail_url, subcategories_json, analysis_json, topics_json, media
+                    ) VALUES (
+                        %(video_id)s, %(title)s, %(channel_name)s, %(indexed_at)s, %(duration_seconds)s,
+                        %(thumbnail_url)s, %(subcategories_json)s, %(analysis_json)s, %(topics_json)s, %(media)s
+                    )
+                    ON CONFLICT (video_id) DO UPDATE SET
+                        title = EXCLUDED.title,
+                        channel_name = EXCLUDED.channel_name,
+                        indexed_at = EXCLUDED.indexed_at,
+                        duration_seconds = EXCLUDED.duration_seconds,
+                        thumbnail_url = EXCLUDED.thumbnail_url,
+                        subcategories_json = EXCLUDED.subcategories_json,
+                        analysis_json = EXCLUDED.analysis_json,
+                        topics_json = EXCLUDED.topics_json,
+                        media = COALESCE(EXCLUDED.media, content.media),
+                        updated_at = NOW()
+                    """
+
+                    cur.execute(upsert_sql, {
+                        'video_id': data.get('video_id'),
+                        'title': data.get('title'),
+                        'channel_name': data.get('channel_name'),
+                        'indexed_at': data.get('indexed_at') or datetime.now(timezone.utc).isoformat(),
+                        'duration_seconds': data.get('duration_seconds'),
+                        'thumbnail_url': data.get('thumbnail_url'),
+                        'subcategories_json': subcategories_json,
+                        'analysis_json': analysis_json,
+                        'topics_json': topics_json,
+                        'media': json.dumps(media_data) if media_data else None
+                    })
+                    conn.commit()
+                    return True
+
+        except Exception as e:
+            logger.error(f"Error upserting content {data.get('video_id', 'unknown')}: {e}")
+            return False
+
+    def upsert_summaries(self, video_id: str, variants: list) -> int:
+        """Insert summary variants with automatic latest-pointer management."""
+        if not variants:
+            return 0
+
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cur:
+                    count = 0
+                    for variant in variants:
+                        insert_sql = """
+                        INSERT INTO content_summaries (
+                            video_id, variant, text, html, revision, is_latest, created_at
+                        ) VALUES (
+                            %s, %s, %s, %s, %s, true, NOW()
+                        )
+                        """
+
+                        # Note: Triggers will automatically set is_latest=false for older rows
+                        cur.execute(insert_sql, [
+                            video_id,
+                            variant.get('variant', 'comprehensive'),
+                            variant.get('text', ''),
+                            variant.get('html', ''),
+                            variant.get('revision', 1)
+                        ])
+                        count += 1
+
+                    conn.commit()
+                    return count
+
+        except Exception as e:
+            logger.error(f"Error upserting summaries for {video_id}: {e}")
+            return 0
+
+    def update_media_audio_url(self, video_id: str, audio_url: str) -> None:
+        """Update content.media JSONB with audio_url field."""
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cur:
+                    update_sql = """
+                    UPDATE content
+                    SET media = jsonb_set(
+                        COALESCE(media, '{}'::jsonb),
+                        '{audio_url}',
+                        to_jsonb(%s::text)
+                    ),
+                    updated_at = NOW()
+                    WHERE video_id = %s
+                    """
+
+                    cur.execute(update_sql, [audio_url, video_id])
+                    conn.commit()
+
+        except Exception as e:
+            logger.error(f"Error updating audio URL for {video_id}: {e}")

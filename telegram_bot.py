@@ -1048,6 +1048,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_content_update_api()
         elif self.path.startswith('/api/delete'):
             self.handle_delete_request()
+        # New ingest endpoints for NAS sync (T-Y020C)
+        elif self.path == '/ingest/report':
+            self.handle_ingest_report()
+        elif self.path == '/ingest/audio':
+            self.handle_ingest_audio()
         else:
             self.send_error(404, "Endpoint not found")
     
@@ -3780,6 +3785,209 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps(error_response, indent=2).encode())
+
+    # ------------------------------------------------------------------
+    # Ingest endpoints for NAS sync (T-Y020C)
+    # ------------------------------------------------------------------
+
+    def _verify_ingest(self) -> bool:
+        """Verify ingest token authentication."""
+        token = os.getenv("INGEST_TOKEN", "")
+        if not token:
+            return False
+        return self.headers.get("X-INGEST-TOKEN") == token
+
+    def handle_ingest_report(self):
+        """Handle POST /ingest/report - Content upsert from NAS."""
+        try:
+            # Authentication
+            if not self._verify_ingest():
+                self.send_response(401)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            # Read JSON payload
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "no data received"}).encode())
+                return
+
+            post_data = self.rfile.read(content_length)
+            try:
+                payload = json.loads(post_data.decode('utf-8'))
+            except json.JSONDecodeError as e:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": f"invalid JSON: {str(e)}"}).encode())
+                return
+
+            # Validate required fields
+            video_id = payload.get("video_id")
+            if not video_id:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id required"}).encode())
+                return
+
+            # Normalize JSON fields if they came as strings
+            def as_json(v):
+                if v is None:
+                    return None
+                if isinstance(v, (dict, list)):
+                    return v
+                try:
+                    return json.loads(v)
+                except:
+                    return None
+
+            payload["subcategories_json"] = as_json(payload.get("subcategories_json"))
+            payload["analysis_json"] = as_json(payload.get("analysis_json"))
+            payload["topics_json"] = as_json(payload.get("topics_json"))
+
+            # Use PostgreSQL content index for upserts
+            if content_index and hasattr(content_index, 'upsert_content'):
+                upserted = content_index.upsert_content(payload)
+
+                # Handle summary variants if present
+                summaries = payload.get("summary_variants") or []
+                summaries_upserted = 0
+                if summaries and hasattr(content_index, 'upsert_summaries'):
+                    summaries_upserted = content_index.upsert_summaries(video_id, summaries)
+
+                # Success response
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                response = {
+                    "upserted": int(bool(upserted)),
+                    "summaries_upserted": summaries_upserted
+                }
+                self.wfile.write(json.dumps(response).encode())
+            else:
+                self.send_response(500)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "content index not available"}).encode())
+
+        except Exception as e:
+            logger.error(f"Error in ingest_report: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": f"internal error: {str(e)}"}).encode())
+
+    def handle_ingest_audio(self):
+        """Handle POST /ingest/audio - Audio file upload from NAS."""
+        try:
+            # Authentication
+            if not self._verify_ingest():
+                self.send_response(401)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            # Parse multipart form data
+            content_type = self.headers.get('Content-Type', '')
+            if not content_type.startswith('multipart/form-data'):
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "expected multipart/form-data"}).encode())
+                return
+
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "no data received"}).encode())
+                return
+
+            # Read multipart data
+            post_data = self.rfile.read(content_length)
+
+            # Parse multipart form - simplified parsing
+            import email
+            from email.message import EmailMessage
+
+            # Create email message for parsing
+            msg = EmailMessage()
+            msg['content-type'] = content_type
+            msg.set_payload(post_data)
+
+            # Extract form fields and files
+            import cgi
+            import io
+
+            # Use cgi.FieldStorage for multipart parsing
+            environ = {
+                'REQUEST_METHOD': 'POST',
+                'CONTENT_TYPE': content_type,
+                'CONTENT_LENGTH': str(content_length)
+            }
+
+            fs = cgi.FieldStorage(
+                fp=io.BytesIO(post_data),
+                environ=environ,
+                keep_blank_values=True
+            )
+
+            # Extract video_id and audio file
+            video_id = None
+            audio_file = None
+
+            for field in fs.list:
+                if field.name == 'video_id':
+                    video_id = field.value
+                elif field.name == 'audio' and field.filename:
+                    audio_file = field
+
+            if not video_id or not audio_file:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id and audio required"}).encode())
+                return
+
+            # Ensure audio directory exists
+            from pathlib import Path
+            audio_dir = Path("/app/data/exports/audio")
+            audio_dir.mkdir(parents=True, exist_ok=True)
+
+            # Save audio file
+            dest = audio_dir / f"{video_id}.mp3"
+            with open(dest, 'wb') as f:
+                f.write(audio_file.file.read())
+
+            # Update content.media.audio_url in PostgreSQL
+            audio_url = f"/exports/audio/{video_id}.mp3"
+            if content_index and hasattr(content_index, 'update_media_audio_url'):
+                content_index.update_media_audio_url(video_id, audio_url)
+
+            # Success response
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            response = {
+                "saved": True,
+                "public_url": audio_url
+            }
+            self.wfile.write(json.dumps(response).encode())
+
+        except Exception as e:
+            logger.error(f"Error in ingest_audio: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": f"internal error: {str(e)}"}).encode())
 
 def start_http_server():
     """Start the HTTP server for dashboard access"""
