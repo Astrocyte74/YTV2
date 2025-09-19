@@ -3883,7 +3883,41 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
             # Use PostgreSQL content index for upserts
             if content_index and hasattr(content_index, 'upsert_content'):
-                upserted = content_index.upsert_content(payload)
+                try:
+                    upserted = content_index.upsert_content(payload)
+                except Exception as upsert_error:
+                    # TEMP: Expose the real error for debugging
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    error_response = {
+                        "error": "upsert_failed",
+                        "exception": str(upsert_error),
+                        "payload_keys": list(payload.keys()),
+                        "video_id": payload.get("video_id"),
+                        "debug": True
+                    }
+                    self.wfile.write(json.dumps(error_response).encode())
+                    return
+
+                # Check if upsert actually worked
+                if not upserted:
+                    # TEMP: Show what we tried to upsert when it fails silently
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    debug_response = {
+                        "error": "upsert_returned_false",
+                        "payload_sample": {
+                            "video_id": payload.get("video_id"),
+                            "title": payload.get("title"),
+                            "channel_name": payload.get("channel_name"),
+                            "has_keys": list(payload.keys())[:10]  # First 10 keys
+                        },
+                        "debug": True
+                    }
+                    self.wfile.write(json.dumps(debug_response).encode())
+                    return
 
                 # Handle summary variants if present
                 summaries = payload.get("summary_variants") or []

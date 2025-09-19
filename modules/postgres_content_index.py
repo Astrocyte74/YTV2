@@ -829,10 +829,11 @@ class PostgreSQLContentIndex:
             if media_data:
                 has_audio = bool(media_data.get('has_audio')) or bool(media_data.get('audio_url'))
 
+            # Safe defaults for NOT NULL columns (per OpenAI debugging guidance)
             cur.execute(upsert_sql, {
                 'video_id': data.get('video_id'),
-                'title': data.get('title'),
-                'channel_name': data.get('channel_name'),
+                'title': data.get('title') or '(untitled)',
+                'channel_name': data.get('channel_name') or '(unknown)',
                 'indexed_at': data.get('indexed_at') or datetime.now(timezone.utc).isoformat(),
                 'duration_seconds': data.get('duration_seconds'),
                 'thumbnail_url': data.get('thumbnail_url'),
