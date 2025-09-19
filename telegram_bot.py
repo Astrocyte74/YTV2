@@ -3240,7 +3240,6 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     )
 
                     # Clean up MP3 files if present
-                    from pathlib import Path
                     audio_root = Path("/app/data/exports/audio")
                     for name in (f"{video_id}.mp3", f"yt:{video_id}.mp3"):
                         p = audio_root / name
