@@ -2438,7 +2438,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "pagination": {
                         "page": page,
                         "size": size,
+                        "total": total_count,
                         "total_count": total_count,
+                        "pages": total_pages,
                         "total_pages": total_pages,
                         "has_next": page * size < total_count,
                         "has_prev": page > 1,
