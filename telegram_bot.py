@@ -1006,6 +1006,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.serve_health_db()
         elif path == '/health/backend':
             self.serve_health_backend()
+        elif path == '/health/ingest':
+            self.serve_health_ingest()
         elif path == '/api/db-status':
             self.serve_db_status()
         elif path == '/api/db-reset':
@@ -1893,6 +1895,34 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             error_data = {
                 "error": "Backend health check failed",
+                "message": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+            self.wfile.write(json.dumps(error_data).encode())
+
+    def serve_health_ingest(self):
+        """Serve ingest health endpoint for testing curl locally."""
+        try:
+            ingest_health = {
+                "status": "ok",
+                "auth_required": True,
+                "token_set": bool(os.getenv("INGEST_TOKEN")),
+                "pg_dsn_set": bool(os.getenv("DATABASE_URL_POSTGRES_NEW")),
+                "timestamp": datetime.now().isoformat()
+            }
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(ingest_health).encode())
+
+        except Exception as e:
+            logger.error(f"Error serving ingest health check: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            error_data = {
+                "error": "Ingest health check failed",
                 "message": str(e),
                 "timestamp": datetime.now().isoformat()
             }
@@ -3940,17 +3970,20 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 keep_blank_values=True
             )
 
-            # Extract video_id and audio file
+            # Extract video_id and audio file with explicit checks to avoid boolean conversion errors
             video_id = None
             audio_file = None
 
             for field in fs.list:
                 if field.name == 'video_id':
                     video_id = field.value
-                elif field.name == 'audio' and field.filename:
-                    audio_file = field
+                elif field.name == 'audio':
+                    # Explicit checks to avoid "Cannot be converted to bool" error with Werkzeug 3+
+                    if field.filename is not None and field.filename != "":
+                        audio_file = field
 
-            if not video_id or not audio_file:
+            # Explicit None checks instead of truthiness to avoid FileStorage boolean conversion
+            if video_id is None or audio_file is None:
                 self.send_response(400)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
