@@ -773,10 +773,10 @@ class PostgreSQLContentIndex:
             upsert_sql = """
             INSERT INTO content (
                 video_id, title, channel_name, indexed_at, duration_seconds,
-                thumbnail_url, subcategories_json, analysis_json, topics_json, media
+                thumbnail_url, canonical_url, subcategories_json, analysis_json, topics_json, has_audio
             ) VALUES (
                 %(video_id)s, %(title)s, %(channel_name)s, %(indexed_at)s, %(duration_seconds)s,
-                %(thumbnail_url)s, %(subcategories_json)s, %(analysis_json)s, %(topics_json)s, %(media)s
+                %(thumbnail_url)s, %(canonical_url)s, %(subcategories_json)s, %(analysis_json)s, %(topics_json)s, %(has_audio)s
             )
             ON CONFLICT (video_id) DO UPDATE SET
                 title = EXCLUDED.title,
@@ -784,10 +784,11 @@ class PostgreSQLContentIndex:
                 indexed_at = EXCLUDED.indexed_at,
                 duration_seconds = EXCLUDED.duration_seconds,
                 thumbnail_url = EXCLUDED.thumbnail_url,
+                canonical_url = EXCLUDED.canonical_url,
                 subcategories_json = EXCLUDED.subcategories_json,
                 analysis_json = EXCLUDED.analysis_json,
                 topics_json = EXCLUDED.topics_json,
-                media = COALESCE(EXCLUDED.media, content.media),
+                has_audio = EXCLUDED.has_audio,
                 updated_at = NOW()
             """
 
@@ -798,10 +799,11 @@ class PostgreSQLContentIndex:
                 'indexed_at': data.get('indexed_at') or datetime.now(timezone.utc).isoformat(),
                 'duration_seconds': data.get('duration_seconds'),
                 'thumbnail_url': data.get('thumbnail_url'),
+                'canonical_url': data.get('canonical_url'),
                 'subcategories_json': subcategories_json,
                 'analysis_json': analysis_json,
                 'topics_json': topics_json,
-                'media': json.dumps(media_data) if media_data else None
+                'has_audio': bool(media_data.get('has_audio')) if media_data else False
             })
             conn.commit()
             return True
@@ -853,18 +855,19 @@ class PostgreSQLContentIndex:
                 conn.close()
 
     def update_media_audio_url(self, video_id: str, audio_url: str) -> None:
-        """Update content.media JSONB with audio_url field."""
+        """Update content.analysis_json with audio_url field and set has_audio=true."""
         conn = None
         try:
             conn = self._get_connection()
             cur = conn.cursor()
             update_sql = """
             UPDATE content
-            SET media = jsonb_set(
-                COALESCE(media, '{}'::jsonb),
+            SET analysis_json = jsonb_set(
+                COALESCE(analysis_json, '{}'::jsonb),
                 '{audio_url}',
                 to_jsonb(%s::text)
             ),
+            has_audio = true,
             updated_at = NOW()
             WHERE video_id = %s
             """
