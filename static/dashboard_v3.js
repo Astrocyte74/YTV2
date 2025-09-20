@@ -1855,22 +1855,47 @@ class AudioDashboard {
         if (!heroBadges) return;
         this.heroBadges = heroBadges;
         const sections = [];
-        if (this.searchQuery) sections.push({ label: 'Search', value: this.searchQuery });
-        const activeFilters = Object.entries(this.currentFilters || {}).filter(([_, values]) => Array.isArray(values) ? values.length : values);
-        activeFilters.forEach(([key, values]) => {
-            if (Array.isArray(values)) {
-                values.slice(0, 2).forEach(val => sections.push({ label: this.fmtFilterKey(key), value: val }));
-                if (values.length > 2) sections.push({ label: this.fmtFilterKey(key), value: `+${values.length - 2} more` });
-            } else if (values) {
-                sections.push({ label: this.fmtFilterKey(key), value: values });
+
+        // Always show search queries
+        if (this.searchQuery) {
+            sections.push({ label: 'Search', value: this.searchQuery });
+        }
+
+        // Only show category/subcategory filters when user is actively narrowing down
+        const categoryFilters = this.currentFilters?.category || [];
+        const subcategoryFilters = this.currentFilters?.subcategory || [];
+
+        // Show category chips only if some (but not all) categories are selected
+        if (categoryFilters.length > 0) {
+            const allCategories = Array.from(document.querySelectorAll('input[data-filter="category"]')).map(el => el.value);
+            const isSelectiveFiltering = categoryFilters.length < allCategories.length;
+
+            if (isSelectiveFiltering) {
+                categoryFilters.slice(0, 2).forEach(val =>
+                    sections.push({ label: 'Category', value: val })
+                );
+                if (categoryFilters.length > 2) {
+                    sections.push({ label: 'Category', value: `+${categoryFilters.length - 2} more` });
+                }
             }
-        });
+        }
+
+        // Show subcategory chips only if any are selected
+        if (subcategoryFilters.length > 0) {
+            subcategoryFilters.slice(0, 2).forEach(val =>
+                sections.push({ label: 'Subcategory', value: val })
+            );
+            if (subcategoryFilters.length > 2) {
+                sections.push({ label: 'Subcategory', value: `+${subcategoryFilters.length - 2} more` });
+            }
+        }
+
         heroBadges.innerHTML = sections.map(({ label, value }) => `
             <span class=\"inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-white/40 dark:border-white/10 bg-white/70 dark:bg-white/5 text-slate-600 dark:text-slate-200\">
                 <span class=\"uppercase tracking-wide text-[10px] text-slate-400 dark:text-slate-500\">${this.escapeHtml(String(label))}</span>
                 <span class=\"text-[11px] font-medium\">${this.escapeHtml(String(value))}</span>
             </span>
-        `).join('');
+        `).join(' ');
         heroBadges.classList.toggle('hidden', sections.length === 0);
     }
 
@@ -1936,14 +1961,15 @@ class AudioDashboard {
     }
 
     updateResultsInfo(pagination) {
+        // Always keep SUMMARIZERNATOR as the main title
+        this.resultsTitle.textContent = 'SUMMARIZERNATOR';
+
+        // Update subtitle based on current state
         if (this.searchQuery) {
-            this.resultsTitle.textContent = `Search Results for "${this.searchQuery}"`;
-            if (this.resultsSubtitle) this.resultsSubtitle.textContent = 'Found matches across the library';
+            if (this.resultsSubtitle) this.resultsSubtitle.textContent = `Search results for "${this.searchQuery}"`;
         } else if (this.currentFilters && Object.keys(this.currentFilters).length) {
-            this.resultsTitle.textContent = 'Filtered Summaries';
             if (this.resultsSubtitle) this.resultsSubtitle.textContent = 'Refined by your current filters';
         } else {
-            this.resultsTitle.textContent = 'SUMMARIZERNATOR';
             if (this.resultsSubtitle) this.resultsSubtitle.textContent = 'Your daily audio briefing';
         }
 
