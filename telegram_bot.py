@@ -1479,9 +1479,14 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         'channel': report_data.get('channel_name', ''),
                         'url': report_data.get('canonical_url', '')
                     }
-                    # Get the context but override summary_html with our pre-formatted version
+                    # Get the context and format the summary_text for proper display
                     ctx = self.to_report_v2_dict(transformed_data, audio_url)
-                    ctx['summary_html'] = report_data.get('summary_html', '')  # Use pre-formatted HTML
+                    # Format the raw summary_text instead of using pre-formatted HTML
+                    raw_summary = report_data.get('summary_text', '')
+                    if raw_summary and not raw_summary.startswith('<'):
+                        ctx['summary_html'] = ModernDashboardHTTPRequestHandler.format_key_points(raw_summary)
+                    else:
+                        ctx['summary_html'] = report_data.get('summary_html', '')
                 else:
                     # SQLite format - use as-is
                     ctx = self.to_report_v2_dict(report_data, audio_url)
