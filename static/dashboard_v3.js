@@ -1676,8 +1676,8 @@ class AudioDashboard {
                                 </div>
                             </div>
                         </div>
-                        <div class=\"absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer\" data-card-progress-container data-total-seconds=\"${totalSecs}\">
-                            <div class=\"h-1.5 sm:h-2 bg-audio-500\" style=\"width:0%\" data-card-progress role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"0\"></div>
+                        <div class=\"absolute inset-x-4 bottom-3 h-1.5 bg-black/25 rounded-full overflow-hidden cursor-pointer\" data-card-progress-container data-total-seconds=\"${totalSecs}\">
+                            <div class=\"h-full bg-gradient-to-r from-audio-500 to-indigo-500\" style=\"width:0%\" data-card-progress role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"0\"></div>
                         </div>
                     </div>
                     <div class=\"flex-1 min-w-0\">
@@ -1686,7 +1686,7 @@ class AudioDashboard {
                                 <h3 class=\"text-base sm:text-lg font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 transition-colors line-clamp-2\">
                                     ${this.escapeHtml(normalizedItem.title)}
                                 </h3>
-                                <div class=\"flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300\">
+                                <div class=\"flex flex-wrap items-center gap-2.5 text-xs leading-tight text-slate-600 dark:text-slate-300\">
                                     <span class=\"inline-flex items-center justify-center w-6 h-6 rounded-full bg-white/80 dark:bg-slate-800/80 border border-white/60 dark:border-slate-700/70 text-[11px] font-semibold text-slate-600 dark:text-slate-200 shadow-sm\">${channelInitial}</span>
                                     <button class=\"truncate max-w-[12rem] hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left\" data-filter-chip=\"channel\" data-filter-value=\"${this.escapeHtml(normalizedItem.channel || '')}\" title=\"Filter by ${this.escapeHtml(normalizedItem.channel || '')}\">${this.escapeHtml(normalizedItem.channel || '')}</button>
                                     ${this.renderLanguageChip(normalizedItem.analysis?.language)}
@@ -1722,22 +1722,7 @@ class AudioDashboard {
                             </div>
                         </div>
 
-                        <div class=\"mt-5 flex flex-wrap items-center gap-2 text-xs sm:text-sm font-medium\">
-                          <button class=\"inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-audio-600 text-white shadow-md hover:bg-audio-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400\" data-action=\"read\">
-                            <span>Read</span>
-                            ${buttonDurations.read ? `<span class=\"text-[11px] sm:text-xs font-normal opacity-80\">${buttonDurations.read}</span>` : ''}
-                          </button>
-                          ${hasAudio ? `<button class=\"inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-audio-500 to-indigo-500 text-white shadow-md hover:from-audio-400 hover:to-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300/80\" data-action=\"listen\">
-                            <span>Listen</span>
-                            ${buttonDurations.listen ? `<span class=\"text-[11px] sm:text-xs font-normal opacity-90\">${buttonDurations.listen}</span>` : ''}
-                          </button>` : ''}
-                          <button class=\"inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 hover:bg-white/95 dark:hover:bg-slate-800 transition-colors\" data-action=\"watch\">
-                            <span>Watch</span>
-                            ${buttonDurations.watch ? `<span class=\"text-[11px] sm:text-xs font-normal opacity-80\">${buttonDurations.watch}</span>` : ''}
-                          </button>
-                        </div>
-
-                        <section role=\"region\" aria-live=\"polite\" hidden data-expand-region></section>
+                        <div class=\"mt-5 flex flex-wrap items-center gap-2 text-sm font-medium\">\n                          <button class=\"inline-flex items-center gap-2 px-3.5 py-1.75 rounded-full bg-audio-600 text-white shadow-md shadow-audio-500/30 hover:bg-audio-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-300/80 transition-colors\" data-action=\"read\">\n                            <span class=\"inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-white\"><svg class=\"w-3.5 h-3.5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 5a2 2 0 012-2h4a2 2 0 012 2v14a1 1 0 01-1.447.894L9 18.118l-2.553 1.776A1 1 0 015 19V5z\"/><path d=\"M12 3h4a2 2 0 012 2v14a1 1 0 01-1.447.894L17 18.118l-2.553 1.776A1 1 0 0113 19V5a2 2 0 00-1-1.732\"/></svg></span>\n                            <span class=\"flex items-center gap-1\">\n                              <span class=\"font-semibold\">Read</span>\n                              ${buttonDurations.read ? `<span class=\"text-[11px] font-medium opacity-80\">${buttonDurations.read}</span>` : ''}\n                            </span>\n                          </button>\n                          ${hasAudio ? `<button class=\"inline-flex items-center gap-2 px-3.75 py-1.75 rounded-full bg-gradient-to-r from-audio-500 to-indigo-500 text-white shadow-md shadow-indigo-500/30 hover:from-audio-400 hover:to-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300/80 transition-colors\" data-action=\"listen\" data-default-label=\"Listen\" data-playing-label=\"Pause\" data-listen-button>\n                            <span class=\"inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-white\"><svg data-icon-play class=\"w-3.5 h-3.5\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M8 5v14l11-7z\"/></svg><svg data-icon-pause class=\"w-3.5 h-3.5 hidden\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M6 5h3v14H6zm9 0h3v14h-3z\"/></svg></span>\n                            <span class=\"flex items-center gap-1\" data-label-wrapper>\n                              <span class=\"font-semibold\" data-label>Listen</span>\n                              ${buttonDurations.listen ? `<span class=\"text-[11px] font-medium opacity-90\" data-duration>${buttonDurations.listen}</span>` : ''}\n                            </span>\n                          </button>` : ''}\n                          <button class=\"inline-flex items-center gap-2 px-3.5 py-1.75 rounded-full border border-white/20 bg-white/10 text-white/85 hover:bg-white/16 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/20\" data-action=\"watch\">\n                            <span class=\"inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-white\"><svg class=\"w-3.5 h-3.5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M10 9l5 3-5 3V9z\"/></svg></span>\n                            <span class=\"flex items-center gap-1\">\n                              <span class=\"font-semibold\">Watch</span>\n                              ${buttonDurations.watch ? `<span class=\"text-[11px] font-medium opacity-80\">${buttonDurations.watch}</span>` : ''}\n                            </span>\n                          </button>\n                        </div>\n                        <section role=\"region\" aria-live=\"polite\" hidden data-expand-region></section>
                     </div>
                 </div>
             </div>
@@ -1781,8 +1766,85 @@ class AudioDashboard {
                         </div>
                     </div>
                 </div>
-                <div class=\"absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer\" data-card-progress-container data-total-seconds=\"${totalSecs}\">
-                    <div class=\"h-1.5 sm:h-2 bg-audio-500\" style=\"width:0%\" data-card-progress role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"0\"></div>
+                <div class=\"absolute inset-x-3 bottom-3 h-1.5 bg-black/25 rounded-full overflow-hidden cursor-pointer\" data-card-progress-container data-total-seconds=\"${totalSecs}\">
+                    <div class=\"h-full bg-gradient-to-r from-audio-500 to-indigo-500\" style=\"width:0%\" data-card-progress role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"0\"></div>
+                </div>
+                <div class=\"absolute top-3 right-3 z-20\">
+                  <button class=\"p-2 rounded-full border border-white/50 dark:border-slate-700/70 bg-white/85 dark:bg-slate-900/70 shadow-sm hover:shadow transition\" data-action=\"menu\" aria-label=\"More options\" aria-haspopup=\"menu\" aria-expanded=\"false\">
+                    <svg class=\"w-5 h-5 text-slate-500 dark:text-slate-300\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><circle cx=\"5\" cy=\"12\" r=\"1.5\"/><circle cx=\"12\" cy=\"12\" r=\"1.5\"/><circle cx=\"19\" cy=\"12\" r=\"1.5\"/></svg>
+                  </button>
+                  <div class=\"absolute right-0 mt-2 w-40 bg-white/95 dark:bg-slate-800/95 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl hidden z-50\" data-kebab-menu role=\"menu\">
+                    <button class=\"w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors\" role=\"menuitem\" data-action=\"copy-link\">Copy link</button>
+                    <button class=\"w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors\" role=\"menuitem\" data-action=\"delete\">Delete…</button>
+                  </div>
+                </div>
+                <div class=\"absolute top-16 right-3 hidden z-50\" data-delete-popover>
+                  <div class=\"bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-2 text-xs\">
+                    <div class=\"mb-2 text-slate-700 dark:text-slate-200\">Delete this summary?</div>
+                    <div class=\"flex items-center gap-2 justify-end\">
+                      <button class=\"px-2 py-1 rounded border border-slate-200 dark:border-slate-700\" data-action=\"cancel-delete\">Cancel</button>
+                      <button class=\"px-2 py-1 rounded bg-red-600 text-white\" data-action=\"confirm-delete\">Delete</button>
+                    </div>
+                  </div>
+                </div>
+            </div>
+            <div class=\"relative p-4 space-y-3\">
+                <h3 class=\"text-sm font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 transition-colors line-clamp-2\">${this.escapeHtml(normalizedItem.title)}</h3>
+                <div class=\"flex flex-wrap items-center gap-2.5 text-xs leading-tight text-slate-600 dark:text-slate-300\">
+                    <span class=\"inline-flex items-center justify-center w-5 h-5 rounded-full bg-white/80 dark:bg-slate-800/80 border border-white/60 dark:border-slate-700/70 text-[10px] font-semibold text-slate-600 dark:text-slate-200 shadow-sm\">${channelInitial}</span>
+                    <button class=\"truncate max-w-[9rem] hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left\" data-filter-chip=\"channel\" data-filter-value=\"${this.escapeHtml(normalizedItem.channel || '')}\" title=\"Filter by ${this.escapeHtml(normalizedItem.channel || '')}\">${this.escapeHtml(normalizedItem.channel || '')}</button>
+                    ${this.renderLanguageChip(normalizedItem.analysis?.language)}
+                    ${this.renderSummaryTypeChip(normalizedItem.summary_type)}
+                    ${isPlaying ? '<span class=\"inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-audio-100 text-audio-700 text-[10px] font-semibold shadow-sm\"><span class=\"inline-flex h-1.5 w-1.5 rounded-full bg-audio-500\"></span>Now playing</span>' : ''}
+                </div>
+                ${categories.length ? `<div class=\"flex flex-wrap gap-1\">${categories.map(cat => this.renderChip(cat, 'category', true)).join('')}</div>` : ''}
+                ${Array.isArray(subcatPairs) && subcatPairs.length ? `<div class=\"flex flex-wrap gap-1\">${subcatPairs.map(([p, sc]) => this.renderChip(sc, 'subcategory', true, p)).join('')}</div>` : ''}
+                <div class=\"flex flex-wrap items-center gap-2 pt-1 text-sm font-medium\">\n                    <button class=\"inline-flex items-center gap-2 px-3 py-1.75 rounded-full bg-audio-600 text-white shadow-md shadow-audio-500/30 hover:bg-audio-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-300/80 transition-colors\" data-action=\"read\">\n                        <span class=\"inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-white\"><svg class=\"w-3.5 h-3.5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 5a2 2 0 012-2h4a2 2 0 012 2v14a1 1 0 01-1.447.894L9 18.118l-2.553 1.776A1 1 0 015 19V5z\"/><path d=\"M12 3h4a2 2 0 012 2v14a1 1 0 01-1.447.894L17 18.118l-2.553 1.776A1 1 0 0113 19V5a2 2 0 00-1-1.732\"/></svg></span>\n                        <span class=\"flex items-center gap-1\">\n                            <span class=\"font-semibold\">Read</span>\n                            ${buttonDurations.read ? `<span class=\"text-[11px] font-medium opacity-80\">${buttonDurations.read}</span>` : ''}\n                        </span>\n                    </button>\n                    ${hasAudio ? `<button class=\"inline-flex items-center gap-2 px-3.25 py-1.75 rounded-full bg-gradient-to-r from-audio-500 to-indigo-500 text-white shadow-md shadow-indigo-500/30 hover:from-audio-400 hover:to-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300/80 transition-colors\" data-action=\"listen\" data-default-label=\"Listen\" data-playing-label=\"Pause\" data-listen-button>\n                        <span class=\"inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-white\"><svg data-icon-play class=\"w-3.5 h-3.5\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M8 5v14l11-7z\"/></svg><svg data-icon-pause class=\"w-3.5 h-3.5 hidden\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M6 5h3v14H6zm9 0h3v14h-3z\"/></svg></span>\n                        <span class=\"flex items-center gap-1\" data-label-wrapper>\n                            <span class=\"font-semibold\" data-label>Listen</span>\n                            ${buttonDurations.listen ? `<span class=\"text-[11px] font-medium opacity-90\" data-duration>${buttonDurations.listen}</span>` : ''}\n                        </span>\n                    </button>` : `<button class=\"inline-flex items-center gap-2 px-3.25 py-1.75 rounded-full border border-white/15 bg-white/6 text-white/50 cursor-not-allowed\" disabled>\n                        <span class=\"inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-white/60\"><svg class=\"w-3.5 h-3.5\" viewBox=\"0 0 24 24\" fill=\"currentColor\"><path d=\"M8 5v14l11-7z\"/></svg></span>\n                        <span class=\"font-semibold\">Listen</span>\n                    </button>`}\n                    <button class=\"inline-flex items-center gap-2 px-3 py-1.75 rounded-full border border-white/20 bg-white/10 text-white/85 hover:bg-white/16 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/20\" data-action=\"watch\">\n                        <span class=\"inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-white\"><svg class=\"w-3.5 h-3.5\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M10 9l5 3-5 3V9z\"/></svg></span>\n                        <span class=\"flex items-center gap-1\">\n                            <span class=\"font-semibold\">Watch</span>\n                            ${buttonDurations.watch ? `<span class=\"text-[11px] font-medium opacity-80\">${buttonDurations.watch}</span>` : ''}\n                        </span>\n                    </button>\n                </div>\n                <section role=\"region\" aria-live=\"polite\" hidden data-expand-region></section>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    createGridCard(item) {
+        // Normalize field names between SQLite and PostgreSQL APIs
+        const title = item.title || 'Untitled';
+        const channel = item.channel ?? item.channel_name ?? 'Unknown Channel';
+        const analysis = item.analysis ?? item.analysis_json ?? {};
+        const fileStem = item.file_stem ?? item.video_id ?? '';
+
+        // Create normalized item for consistent access
+        const normalizedItem = { ...item, title, channel, analysis, file_stem: fileStem };
+
+        const duration = this.formatDuration(normalizedItem.duration_seconds || 0);
+        const href = `/${normalizedItem.file_stem}.json?v=2`;
+        const isPlaying = this.currentAudio && this.currentAudio.id === normalizedItem.file_stem && this.isPlaying;
+        const channelInitial = (normalizedItem.channel || '?').trim().charAt(0).toUpperCase();
+        const buttonDurations = this.getButtonDurations(normalizedItem);
+        const { categories, subcats, subcatPairs } = this.extractCatsAndSubcats(normalizedItem);
+        const totalSecs = (normalizedItem.media_metadata && normalizedItem.media_metadata.mp3_duration_seconds) ? normalizedItem.media_metadata.mp3_duration_seconds : (normalizedItem.duration_seconds || 0);
+        const totalDur = (normalizedItem.media_metadata && normalizedItem.media_metadata.mp3_duration_seconds)
+            ? this.formatDuration(normalizedItem.media_metadata.mp3_duration_seconds)
+            : (normalizedItem.duration_seconds ? this.formatDuration(normalizedItem.duration_seconds) : '');
+        const hasAudio = Boolean(normalizedItem.media && normalizedItem.media.has_audio);
+        return `
+        <div data-card data-report-id=\"${normalizedItem.file_stem}\" data-video-id=\"${normalizedItem.video_id || ''}\" data-has-audio=\"${hasAudio ? 'true' : 'false'}\" data-href=\"${href}\" title=\"Open summary\" tabindex=\"0\" class=\"group relative cursor-pointer overflow-hidden rounded-2xl border border-white/60 dark:border-slate-800/70 bg-white/85 dark:bg-slate-900/65 backdrop-blur-lg shadow-lg transition-all duration-200 hover:-translate-y-1 hover:shadow-2xl ${isPlaying ? 'is-playing' : ''}\">
+            <div class=\"card-glow absolute inset-0 bg-gradient-to-br from-audio-500/15 via-transparent to-indigo-500/20\"></div>
+            <div class=\"relative aspect-video bg-slate-100/90 dark:bg-slate-800/80 overflow-hidden\">
+                ${normalizedItem.thumbnail_url ? `<img src=\"${normalizedItem.thumbnail_url}\" alt=\"thumbnail\" loading=\"lazy\" class=\"absolute inset-0 w-full h-full object-cover\">` : ''}
+                <div class=\"absolute inset-0 flex items-center justify-center pointer-events-none ${isPlaying ? '' : 'hidden'}\" data-card-eq>
+                    <div class=\"px-2 py-1 rounded-md bg-black/45 backdrop-blur\">
+                        <div class=\"flex items-end gap-1 text-white\">
+                            <span class=\"w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar\" style=\"--delay:0\"></span>
+                            <span class=\"w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar\" style=\"--delay:1\"></span>
+                            <span class=\"w-0.5 sm:w-1 h-6 sm:h-8 waveform-bar\" style=\"--delay:2\"></span>
+                            <span class=\"w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar\" style=\"--delay:3\"></span>
+                            <span class=\"w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar\" style=\"--delay:4\"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class=\"absolute inset-x-3 bottom-3 h-1.5 bg-black/25 rounded-full overflow-hidden cursor-pointer\" data-card-progress-container data-total-seconds=\"${totalSecs}\">
+                    <div class=\"h-full bg-gradient-to-r from-audio-500 to-indigo-500\" style=\"width:0%\" data-card-progress role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"0\"></div>
                 </div>
                 <div class=\"absolute top-3 right-3 z-20\">
                   <button class=\"p-2 rounded-full border border-white/50 dark:border-slate-700/70 bg-white/85 dark:bg-slate-900/70 shadow-sm hover:shadow transition\" data-action=\"menu\" aria-label=\"More options\" aria-haspopup=\"menu\" aria-expanded=\"false\">
@@ -1817,18 +1879,18 @@ class AudioDashboard {
                 <div class=\"flex flex-wrap items-center gap-2 pt-1 text-xs font-medium\">
                     <button class=\"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-audio-600 text-white shadow-md hover:bg-audio-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400\" data-action=\"read\">
                         <span>Read</span>
-                        ${buttonDurations.read ? `<span class=\"text-[10px] font-normal opacity-80\">${buttonDurations.read}</span>` : ''}
+                        ${buttonDurations.read ? `<span class=\"text-[11px] font-medium opacity-80\">${buttonDurations.read}</span>` : ''}
                     </button>
                     ${hasAudio ? `<button class=\"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-audio-500 to-indigo-500 text-white shadow-md hover:from-audio-400 hover:to-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300/80\" data-action=\"listen\">
                         <span>Listen</span>
-                        ${buttonDurations.listen ? `<span class=\"text-[10px] font-normal opacity-90\">${buttonDurations.listen}</span>` : ''}
+                        ${buttonDurations.listen ? `<span class=\"text-[11px] font-medium opacity-90\">${buttonDurations.listen}</span>` : ''}
                     </button>` : `<button class=\"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/40 dark:border-slate-800/70 bg-white/60 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 cursor-not-allowed\" disabled>
                         <span>Listen</span>
-                        <span class=\"text-[10px] font-normal opacity-70\">N/A</span>
+                        <span class=\"text-[11px] font-medium opacity-70\">N/A</span>
                     </button>`}
                     <button class=\"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/80 dark:bg-slate-900/60 text-slate-700 dark:text-slate-200 hover:bg-white/95 dark:hover:bg-slate-800 transition-colors\" data-action=\"watch\">
                         <span>Watch</span>
-                        ${buttonDurations.watch ? `<span class=\"text-[10px] font-normal opacity-80\">${buttonDurations.watch}</span>` : ''}
+                        ${buttonDurations.watch ? `<span class=\"text-[11px] font-medium opacity-80\">${buttonDurations.watch}</span>` : ''}
                     </button>
                 </div>
                 <section role=\"region\" aria-live=\"polite\" hidden data-expand-region></section>
@@ -2251,39 +2313,30 @@ class AudioDashboard {
         }
 
         // Update Listen buttons to reflect playing state
-        const eqIcon = `
-            <span class=\"flex items-end gap-0.5 mr-1\" aria-hidden=\"true\">
-              <span class=\"w-[1.5px] h-2 bg-current opacity-90 waveform-bar\" style=\"--delay:0\"></span>
-              <span class=\"w-[1.5px] h-1.5 bg-current opacity-90 waveform-bar\" style=\"--delay:1\"></span>
-              <span class=\"w-[1.5px] h-2.5 bg-current opacity-90 waveform-bar\" style=\"--delay:2\"></span>
-            </span>`;
-
-        this.contentGrid.querySelectorAll('[data-card] [data-action="listen"]').forEach(btn => {
-            // Ensure original label is stored once
-            if (!btn.dataset.label) {
-                try {
-                    const txt = btn.textContent.trim();
-                    btn.dataset.label = txt || 'Listen';
-                } catch(_) { btn.dataset.label = 'Listen'; }
-            }
-            btn.classList.remove('bg-audio-600','text-white');
-            btn.classList.add('border','border-slate-300/60','dark:border-slate-600/60');
-            // Default label
-            const defaultLabel = btn.dataset.label;
-            // If this is the active card, flip the label depending on play state
+        const listenButtons = this.contentGrid.querySelectorAll('[data-listen-button]');
+        listenButtons.forEach(btn => {
+            const defaultLabel = btn.dataset.defaultLabel || 'Listen';
+            const playingLabel = btn.dataset.playingLabel || 'Pause';
+            const labelEl = btn.querySelector('[data-label]');
+            const playIcon = btn.querySelector('[data-icon-play]');
+            const pauseIcon = btn.querySelector('[data-icon-pause]');
             const isActive = !!(active && active.contains(btn));
-            if (isActive) {
-                if (this.isPlaying) {
-                    btn.innerHTML = `${eqIcon}<span>Pause</span>`;
+            const isPlayingActive = isActive && this.isPlaying;
+
+            if (labelEl) labelEl.textContent = isPlayingActive ? playingLabel : defaultLabel;
+            btn.setAttribute('aria-pressed', String(isPlayingActive));
+            if (playIcon && pauseIcon) {
+                if (isPlayingActive) {
+                    playIcon.classList.add('hidden');
+                    pauseIcon.classList.remove('hidden');
                 } else {
-                    btn.innerHTML = `<span>Play</span>`;
+                    playIcon.classList.remove('hidden');
+                    pauseIcon.classList.add('hidden');
                 }
-                btn.classList.add('bg-audio-600','text-white');
-                btn.classList.remove('border','border-slate-300/60','dark:border-slate-600/60');
-            } else {
-                // Restore original
-                btn.innerHTML = `<span>${this.escapeHtml(defaultLabel)}</span><span aria-hidden=\"true\">›</span>`;
             }
+
+            btn.classList.toggle('ring-2', isActive);
+            btn.classList.toggle('ring-indigo-300/60', isActive);
         });
 
         // Toggle thumbnail equalizer overlay on active playing card
@@ -2430,10 +2483,10 @@ class AudioDashboard {
     }
 
     renderChip(text, type = 'category', small = false, parent = null) {
-        const base = small ? 'text-[10px] px-2 py-0.5' : 'text-xs px-2.5 py-0.5';
+        const base = small ? 'text-[10px] px-2 py-0.5' : 'text-xs px-2.75 py-0.5';
         const color = type === 'subcategory'
-            ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300'
-            : 'bg-audio-100 dark:bg-slate-700 text-audio-800 dark:text-slate-300';
+            ? 'border border-blue-500/35 bg-blue-500/10 text-blue-600 dark:text-blue-300 hover:bg-blue-500/20 dark:hover:bg-blue-500/25'
+            : 'bg-gradient-to-r from-audio-500/15 to-indigo-500/20 border border-audio-500/35 text-audio-700 dark:text-audio-100 shadow-inner shadow-audio-500/10 hover:from-audio-500/25 hover:to-indigo-500/25';
         const t = this.escapeHtml(text || '');
         const dataParent = parent ? ` data-parent-category="${this.escapeHtml(parent)}"` : '';
         return `<button class="relative z-10 inline-flex items-center ${base} rounded-full font-medium ${color} hover:opacity-90 transition-all cursor-pointer" data-filter-chip="${type}" data-filter-value="${t}"${dataParent} title="Click to filter by ${t}">${t}</button>`;
