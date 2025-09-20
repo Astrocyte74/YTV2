@@ -142,7 +142,9 @@ class AudioDashboard {
         // Content area
         this.contentGrid = document.getElementById('contentGrid');
         this.resultsTitle = document.getElementById('resultsTitle');
+        this.resultsSubtitle = document.getElementById('resultsSubtitle');
         this.resultsCount = document.getElementById('resultsCount');
+        this.heroBadges = document.getElementById('heroBadges');
         this.pagination = document.getElementById('pagination');
         this.listViewBtn = document.getElementById('listViewBtn');
         this.gridViewBtn = document.getElementById('gridViewBtn');
@@ -264,6 +266,7 @@ class AudioDashboard {
                 document.querySelectorAll('input[data-filter="category"]').forEach(cb => { cb.checked = true; });
                 document.querySelectorAll('input[data-filter="subcategory"]').forEach(cb => { cb.checked = true; });
                 this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
                 this.loadContent();
             });
         }
@@ -272,6 +275,7 @@ class AudioDashboard {
                 document.querySelectorAll('input[data-filter="category"]').forEach(cb => { cb.checked = false; });
                 document.querySelectorAll('input[data-filter="subcategory"]').forEach(cb => { cb.checked = false; });
                 this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
                 this.loadContent();
             });
         }
@@ -283,6 +287,7 @@ class AudioDashboard {
             selectAllChannels.addEventListener('click', () => {
                 document.querySelectorAll('input[data-filter="channel"]').forEach(cb => { cb.checked = true; });
                 this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
                 this.loadContent();
             });
         }
@@ -290,6 +295,7 @@ class AudioDashboard {
             clearAllChannels.addEventListener('click', () => {
                 document.querySelectorAll('input[data-filter="channel"]').forEach(cb => { cb.checked = false; });
                 this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
                 this.loadContent();
             });
         }
@@ -303,6 +309,7 @@ class AudioDashboard {
                     cb.checked = true;
                 });
                 this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
                 this.loadContent();
             });
         }
@@ -312,6 +319,7 @@ class AudioDashboard {
                     cb.checked = false;
                 });
                 this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
                 this.loadContent();
             });
         }
@@ -325,6 +333,7 @@ class AudioDashboard {
                     cb.checked = true;
                 });
                 this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
                 this.loadContent();
             });
         }
@@ -334,6 +343,7 @@ class AudioDashboard {
                     cb.checked = false;
                 });
                 this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
                 this.loadContent();
             });
         }
@@ -536,6 +546,7 @@ class AudioDashboard {
             // Fix 1: Initialize currentFilters after filters render
             // This ensures visual state (checkboxes) matches internal state
             this.currentFilters = this.computeFiltersFromDOM();
+            this.updateHeroBadges();
             console.log('Initialized currentFilters after render:', this.currentFilters);
             
         } catch (error) {
@@ -880,6 +891,7 @@ class AudioDashboard {
         
         // Fix 2: Recompute state from DOM right before fetching (prevents drift)
         this.currentFilters = this.computeFiltersFromDOM();
+        this.updateHeroBadges();
         const facet = this.computeFacetState();
         
         // Helper functions (OpenAI's drop-in solution)
@@ -1824,6 +1836,44 @@ class AudioDashboard {
         </div>`;
     }
 
+    fmtFilterKey(key) {
+        const map = {
+            category: 'Category',
+            categories: 'Category',
+            channel: 'Channel',
+            channels: 'Channel',
+            content_type: 'Content',
+            content_type_filters: 'Content',
+            summary_type: 'Summary',
+            language: 'Language'
+        };
+        return map[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    updateHeroBadges() {
+        const heroBadges = this.heroBadges || document.getElementById('heroBadges');
+        if (!heroBadges) return;
+        this.heroBadges = heroBadges;
+        const sections = [];
+        if (this.searchQuery) sections.push({ label: 'Search', value: this.searchQuery });
+        const activeFilters = Object.entries(this.currentFilters || {}).filter(([_, values]) => Array.isArray(values) ? values.length : values);
+        activeFilters.forEach(([key, values]) => {
+            if (Array.isArray(values)) {
+                values.slice(0, 2).forEach(val => sections.push({ label: this.fmtFilterKey(key), value: val }));
+                if (values.length > 2) sections.push({ label: this.fmtFilterKey(key), value: `+${values.length - 2} more` });
+            } else if (values) {
+                sections.push({ label: this.fmtFilterKey(key), value: values });
+            }
+        });
+        heroBadges.innerHTML = sections.map(({ label, value }) => `
+            <span class=\"inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-white/40 dark:border-white/10 bg-white/70 dark:bg-white/5 text-slate-600 dark:text-slate-200\">
+                <span class=\"uppercase tracking-wide text-[10px] text-slate-400 dark:text-slate-500\">${this.escapeHtml(String(label))}</span>
+                <span class=\"text-[11px] font-medium\">${this.escapeHtml(String(value))}</span>
+            </span>
+        `).join('');
+        heroBadges.classList.toggle('hidden', sections.length === 0);
+    }
+
     renderPagination(pagination) {
         if (pagination.pages <= 1) {
             this.pagination.innerHTML = '';
@@ -1886,9 +1936,16 @@ class AudioDashboard {
     }
 
     updateResultsInfo(pagination) {
-        this.resultsTitle.textContent = this.searchQuery
-            ? `Search Results for "${this.searchQuery}"`
-            : 'Discover Audio Content';
+        if (this.searchQuery) {
+            this.resultsTitle.textContent = `Search Results for "${this.searchQuery}"`;
+            if (this.resultsSubtitle) this.resultsSubtitle.textContent = 'Found matches across the library';
+        } else if (this.currentFilters && Object.keys(this.currentFilters).length) {
+            this.resultsTitle.textContent = 'Filtered Summaries';
+            if (this.resultsSubtitle) this.resultsSubtitle.textContent = 'Refined by your current filters';
+        } else {
+            this.resultsTitle.textContent = 'SUMMARIZERNATOR';
+            if (this.resultsSubtitle) this.resultsSubtitle.textContent = 'Your daily audio briefing';
+        }
 
         // Create navigation arrows with the pagination text
         const canGoBack = pagination.page > 1;
@@ -1912,6 +1969,8 @@ class AudioDashboard {
 
         this.resultsCount.innerHTML =
             `${leftArrow}${pagination.total} summaries found • Page ${pagination.page} of ${pagination.pages}${rightArrow}`;
+
+        this.updateHeroBadges();
 
         // Add click handlers for navigation arrows
         this.resultsCount.querySelectorAll('[data-nav]').forEach(btn => {
@@ -2086,9 +2145,12 @@ class AudioDashboard {
         const activeBtn = this.viewMode === 'grid' ? this.gridViewBtn : this.listViewBtn;
         activeBtn.classList.remove(...inactiveClasses);
         activeBtn.classList.add(...activeClasses);
+
+        this.updateHeroBadges();
     }
 
     setCurrentFromItem(item) {
+
         const reportId = item.file_stem;
         const title = item.title;
         const videoId = item.video_id;
@@ -2585,6 +2647,7 @@ class AudioDashboard {
     handleSearch() {
         this.searchQuery = this.searchInput.value.trim();
         this.currentPage = 1;
+        this.updateHeroBadges();
         this.loadContent();
     }
 
