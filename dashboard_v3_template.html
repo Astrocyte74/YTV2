@@ -94,6 +94,55 @@
                         radial-gradient(circle at 80% 30%, rgba(99,102,241,0.18), transparent 60%);
         }
 
+        #sidebar h3 {
+            font-size: 0.7rem;
+            letter-spacing: 0.28em;
+            text-transform: uppercase;
+            color: rgba(71, 85, 105, 0.8);
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+
+        .dark #sidebar h3 {
+            color: rgba(148, 163, 184, 0.8);
+        }
+
+        #sidebar .section-meta {
+            display: inline-flex;
+            gap: 0.75rem;
+            align-items: center;
+            font-size: 0.68rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: rgba(71, 85, 105, 0.7);
+        }
+
+        .dark #sidebar .section-meta {
+            color: rgba(148, 163, 184, 0.7);
+        }
+
+        #sidebar .section-meta button {
+            font-weight: 600;
+            color: rgba(14, 165, 233, 0.8);
+        }
+
+        #sidebar .section-meta button:hover {
+            color: rgba(14, 165, 233, 1);
+        }
+
+        #sidebar .filter-shell {
+            padding: 0.65rem 0.75rem;
+            border-radius: 0.9rem;
+            background: rgba(255, 255, 255, 0.35);
+            backdrop-filter: blur(8px);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.35);
+        }
+
+        .dark #sidebar .filter-shell {
+            background: rgba(15, 23, 42, 0.4);
+            box-shadow: inset 0 1px 0 rgba(148,163,184,0.12);
+        }
+
         [data-card].is-playing {
             border-color: rgba(14, 165, 233, 0.55);
             box-shadow: 0 24px 60px -30px rgba(14, 165, 233, 0.65), 0 0 0 1px rgba(14, 165, 233, 0.4);
@@ -176,9 +225,9 @@
         <div class="flex-1 flex">
             
             <!-- Search & Filters Sidebar -->
-            <aside id="sidebar" class="hidden lg:block lg:w-80 lg:bg-white/50 lg:dark:bg-slate-800/50 lg:backdrop-blur-sm lg:border-r lg:border-slate-200/50 lg:dark:border-slate-700/50 lg:overflow-y-auto lg:sticky lg:top-16 lg:self-start 
-                                     fixed inset-0 z-50 bg-white/95 dark:bg-slate-800/95 backdrop-blur lg:relative lg:inset-auto lg:z-auto overflow-y-auto" style="height: calc(100vh - 4rem)">
-                <div class="p-6 space-y-6">
+            <aside id="sidebar" class="hidden lg:block lg:w-80 lg:bg-white/40 lg:dark:bg-slate-900/40 lg:backdrop-blur lg:border-r lg:border-white/30 lg:dark:border-slate-800/60 lg:overflow-y-auto lg:sticky lg:top-16 lg:self-start
+                                     fixed inset-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur lg:relative lg:inset-auto lg:z-auto overflow-y-auto" style="height: calc(100vh - 4rem)">
+                <div class="p-6 space-y-6 bg-gradient-to-b from-white/30 via-white/10 to-transparent dark:from-white/5 dark:via-white/5 dark:to-transparent rounded-3xl border border-white/30 dark:border-white/10 shadow-lg shadow-slate-900/10">
                     <!-- Mobile close button -->
                     <div class="lg:hidden flex justify-between items-center -mt-2 mb-4">
                         <h2 class="text-lg font-semibold">Filters & Audio Player</h2>
@@ -243,8 +292,8 @@
                     </div>
 
                     <!-- Sort By Section -->
-                    <div>
-                        <h3 class="text-sm font-medium text-slate-800 dark:text-slate-200 mb-3">Sort by</h3>
+                    <div class="filter-shell space-y-3">
+                        <h3>Sort by</h3>
                         <div class="space-y-1" id="sortOptions">
                             <label class="flex items-center cursor-pointer">
                                 <input type="radio" name="sortBy" value="added_desc" class="sr-only" checked>
@@ -304,12 +353,12 @@
                     </div>
 
                     <!-- Quick Filters -->
-                    <div>
-                        <div class="flex items-center justify-between mb-3">
-                            <h3 class="text-sm font-medium text-slate-800 dark:text-slate-200">Categories</h3>
-                            <div class="space-x-2">
-                                <button id="selectAllCategories" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
-                                <button id="clearAllCategories" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
+                    <div class="filter-shell space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h3>Categories</h3>
+                            <div class="space-x-2 section-meta">
+                                <button id="selectAllCategories" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
+                                <button id="clearAllCategories" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
                             </div>
                         </div>
                         <div class="space-y-1" id="categoryFilters">
@@ -323,12 +372,12 @@
                         </div>
                     </div>
 
-                    <div>
-                        <div class="flex items-center justify-between mb-3">
-                            <h3 class="text-sm font-medium text-slate-800 dark:text-slate-200">Channels</h3>
-                            <div class="space-x-2">
-                                <button id="selectAllChannels" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
-                                <button id="clearAllChannels" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
+                    <div class="filter-shell space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h3>Channels</h3>
+                            <div class="space-x-2 section-meta">
+                                <button id="selectAllChannels" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
+                                <button id="clearAllChannels" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
                             </div>
                         </div>
                         <div class="space-y-1" id="channelFilters">
@@ -342,10 +391,10 @@
                         </div>
                     </div>
 
-                    <div>
-                        <div class="flex items-center justify-between mb-3">
-                            <h3 class="text-sm font-medium text-slate-800 dark:text-slate-200">Content Type</h3>
-                            <div class="space-x-2">
+                    <div class="filter-shell space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h3>Content Type</h3>
+                            <div class="space-x-2 section-meta">
                                 <button id="selectAllContentTypes" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
                                 <button id="clearAllContentTypes" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
                             </div>
@@ -361,16 +410,16 @@
                         </div>
                     </div>
 
-                    <div>
-                        <h3 class="text-sm font-medium text-slate-800 dark:text-slate-200 mb-3">Complexity</h3>
+                    <div class="filter-shell space-y-3">
+                        <h3>Complexity</h3>
                         <div class="space-y-1" id="complexityFilters">
                             <!-- Dynamic complexity filters will be inserted here -->
                         </div>
                     </div>
 
                     <!-- Language Filter Section -->
-                    <div>
-                        <h3 class="text-sm font-medium text-slate-800 dark:text-slate-200 mb-3">Language</h3>
+                    <div class="filter-shell space-y-3">
+                        <h3>Language</h3>
                         <div class="space-y-1" id="languageFilters">
                             <!-- Dynamic language filters will be inserted here -->
                             <div id="showMoreLanguages" class="hidden">
@@ -383,10 +432,10 @@
                     </div>
 
                     <!-- Summary Type Filter Section -->
-                    <div>
-                        <div class="flex items-center justify-between mb-3">
-                            <h3 class="text-sm font-medium text-slate-800 dark:text-slate-200">Summary Type</h3>
-                            <div class="space-x-2">
+                    <div class="filter-shell space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h3>Summary Type</h3>
+                            <div class="space-x-2 section-meta">
                                 <button id="selectAllSummaryTypes" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
                                 <button id="clearAllSummaryTypes" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
                             </div>
@@ -413,7 +462,9 @@
                             <div class="flex-1 min-w-0">
                                 <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">introducing . . .</p>
                                 <h2 class="mt-3 text-2xl sm:text-3xl font-semibold text-slate-800 dark:text-white" id="resultsTitle">SUMMARIZERNATOR</h2>
+                                <p class="text-sm text-slate-600 dark:text-slate-300 mt-2" id="resultsSubtitle">Your daily audio briefing</p>
                                 <p class="text-sm sm:text-base text-slate-500 dark:text-slate-300 mt-2" id="resultsCount">Loading summaries...</p>
+                                <div class="mt-4 flex flex-wrap gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 hidden" id="heroBadges"></div>
                             </div>
                             <div class="flex flex-col gap-3 items-start md:items-end">
                                 <span class="text-xs font-semibold tracking-wide uppercase text-slate-500 dark:text-slate-400">View</span>
