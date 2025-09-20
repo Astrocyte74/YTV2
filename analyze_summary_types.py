@@ -43,25 +43,27 @@ def analyze_summary_types():
 
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Get all summary-related fields from content table
+            # Get all summary-related fields from content and latest_summaries tables
             print("\n📊 Analyzing summary type fields...")
             cur.execute("""
                 SELECT
-                    video_id,
-                    title,
-                    summary_type,
-                    summary_variant,
-                    summary_type_latest,
-                    indexed_at
-                FROM content_summaries
-                ORDER BY indexed_at DESC
+                    c.video_id,
+                    c.title,
+                    c.summary_type,
+                    c.summary_variant,
+                    c.summary_type_latest,
+                    ls.variant as latest_variant,
+                    c.indexed_at
+                FROM content c
+                LEFT JOIN latest_summaries ls ON c.video_id = ls.video_id
+                ORDER BY c.indexed_at DESC
                 LIMIT 200
             """)
 
             rows = cur.fetchall()
 
             if not rows:
-                print("❌ No data found in content_summaries table")
+                print("❌ No data found in content table")
                 return False
 
             print(f"📈 Analyzed {len(rows)} records")
@@ -70,6 +72,7 @@ def analyze_summary_types():
             summary_type_counts = Counter()
             summary_variant_counts = Counter()
             summary_type_latest_counts = Counter()
+            latest_variant_counts = Counter()
 
             # Track combinations
             combinations = []
@@ -79,10 +82,12 @@ def analyze_summary_types():
                 summary_type = row['summary_type'] if row['summary_type'] is not None else 'NULL'
                 summary_variant = row['summary_variant'] if row['summary_variant'] is not None else 'NULL'
                 summary_type_latest = row['summary_type_latest'] if row['summary_type_latest'] is not None else 'NULL'
+                latest_variant = row['latest_variant'] if row['latest_variant'] is not None else 'NULL'
 
                 summary_type_counts[summary_type] += 1
                 summary_variant_counts[summary_variant] += 1
                 summary_type_latest_counts[summary_type_latest] += 1
+                latest_variant_counts[latest_variant] += 1
 
                 combinations.append({
                     'video_id': row['video_id'],
@@ -90,6 +95,7 @@ def analyze_summary_types():
                     'summary_type': summary_type,
                     'summary_variant': summary_variant,
                     'summary_type_latest': summary_type_latest,
+                    'latest_variant': latest_variant,
                     'indexed_at': str(row['indexed_at'])
                 })
 
@@ -113,17 +119,23 @@ def analyze_summary_types():
                 percentage = (count / len(rows)) * 100
                 print(f"  {value:<20} {count:>3} ({percentage:5.1f}%)")
 
+            print(f"\n📋 latest_variant field distribution (from latest_summaries table):")
+            for value, count in latest_variant_counts.most_common():
+                percentage = (count / len(rows)) * 100
+                print(f"  {value:<20} {count:>3} ({percentage:5.1f}%)")
+
             # Show recent combinations
             print(f"\n📋 Recent 10 records (newest first):")
-            print("Title".ljust(35), "Type".ljust(12), "Variant".ljust(15), "Latest".ljust(12))
-            print("-" * 80)
+            print("Title".ljust(30), "Type".ljust(10), "Variant".ljust(12), "Latest".ljust(10), "LS_Variant".ljust(12))
+            print("-" * 90)
             for combo in combinations[:10]:
-                title = combo['title'][:32] + '...' if len(combo['title']) > 32 else combo['title']
+                title = combo['title'][:27] + '...' if len(combo['title']) > 27 else combo['title']
                 print(
-                    title.ljust(35),
-                    combo['summary_type'][:11].ljust(12),
-                    combo['summary_variant'][:14].ljust(15),
-                    combo['summary_type_latest'][:11].ljust(12)
+                    title.ljust(30),
+                    combo['summary_type'][:9].ljust(10),
+                    combo['summary_variant'][:11].ljust(12),
+                    combo['summary_type_latest'][:9].ljust(10),
+                    combo['latest_variant'][:11].ljust(12)
                 )
 
             # Recommendations
@@ -133,12 +145,13 @@ def analyze_summary_types():
             print(f"3. summary_type_latest appears to be mostly NULL")
 
             # Check for API field mapping
-            print(f"\n🔍 Checking /api/filters endpoint field usage...")
+            print(f"\n🔍 Checking latest_summaries variant field usage...")
             cur.execute("""
-                SELECT DISTINCT summary_variant as type, COUNT(*) as count
-                FROM content_summaries
-                WHERE summary_variant IS NOT NULL
-                GROUP BY summary_variant
+                SELECT DISTINCT ls.variant as type, COUNT(*) as count
+                FROM content c
+                LEFT JOIN latest_summaries ls ON c.video_id = ls.video_id
+                WHERE ls.variant IS NOT NULL
+                GROUP BY ls.variant
                 ORDER BY count DESC
             """)
 
