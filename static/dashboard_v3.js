@@ -610,11 +610,10 @@ class AudioDashboard {
             let html = `
                 <div class="category-group mb-2">
                     <div class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
-                        <input type="checkbox" 
-                               value="${this.escapeHtml(item.value)}" 
+                        <input type="checkbox"
+                               value="${this.escapeHtml(item.value)}"
                                data-filter="${filterType}"
                                data-category-parent="${this.escapeHtml(item.value)}"
-                               checked
                                class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                         ${hasSubcategories ? `
                             <button class="category-expand-btn text-slate-400 hover:text-slate-600 p-1" 
@@ -635,11 +634,10 @@ class AudioDashboard {
                         <div id="${categoryId}" class="subcategory-list ml-8 mt-1 hidden">
                             ${item.subcategories.map(sub => `
                                 <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
-                                    <input type="checkbox" 
-                                           value="${this.escapeHtml(sub.value)}" 
+                                    <input type="checkbox"
+                                           value="${this.escapeHtml(sub.value)}"
                                            data-filter="subcategory"
                                            data-parent-category="${this.escapeHtml(item.value)}"
-                                           checked
                                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                                     <span class="text-sm text-slate-600 dark:text-slate-300 flex-1">${this.escapeHtml(sub.value)}</span>
                                     <span class="text-xs text-slate-400 dark:text-slate-500 mr-2">${sub.count}</span>
@@ -661,10 +659,9 @@ class AudioDashboard {
         const createFilterHTML = (item) => `
             <div class="flex items-center space-x-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
                 <label class="flex items-center space-x-2 cursor-pointer flex-1">
-                    <input type="checkbox" 
-                           value="${this.escapeHtml(item.value)}" 
+                    <input type="checkbox"
+                           value="${this.escapeHtml(item.value)}"
                            data-filter="${filterType}"
-                           checked
                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                     <span class="text-sm text-slate-700 dark:text-slate-200">${this.escapeHtml(item.value)}</span>
                     <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
@@ -790,13 +787,12 @@ class AudioDashboard {
         const mainLanguages = languages.slice(0, 3);
         const additionalLanguages = languages.slice(3);
         
-        // Render main languages (preserve the showMoreLanguages structure) - default all to checked
+        // Render main languages (preserve the showMoreLanguages structure)
         const mainHTML = mainLanguages.map(item => `
             <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
-                <input type="checkbox" 
-                       value="${this.escapeHtml(item.value)}" 
+                <input type="checkbox"
+                       value="${this.escapeHtml(item.value)}"
                        data-filter="language"
-                       checked
                        class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                 <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
                 <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
@@ -816,10 +812,9 @@ class AudioDashboard {
         if (additionalLanguages.length > 0 && showMoreContainer) {
             showMoreContainer.innerHTML = additionalLanguages.map(item => `
                 <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
-                    <input type="checkbox" 
-                           value="${this.escapeHtml(item.value)}" 
+                    <input type="checkbox"
+                           value="${this.escapeHtml(item.value)}"
                            data-filter="language"
-                           checked
                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                     <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
                     <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
