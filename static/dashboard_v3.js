@@ -1644,7 +1644,7 @@ class AudioDashboard {
         const fileStem = item.file_stem ?? item.video_id ?? '';
 
         // Create normalized item for consistent access
-        const normalizedItem = { ...item, title, channel, analysis, file_stem: fileStem };
+        const normalizedItem = { ...item, title, channel, analysis, file_stem: fileStem, summary_type: item.summary_variant || item.summary_type || 'unknown' };
 
         const duration = this.formatDuration(normalizedItem.duration_seconds || 0);
         
@@ -1737,7 +1737,7 @@ class AudioDashboard {
         const fileStem = item.file_stem ?? item.video_id ?? '';
 
         // Create normalized item for consistent access
-        const normalizedItem = { ...item, title, channel, analysis, file_stem: fileStem };
+        const normalizedItem = { ...item, title, channel, analysis, file_stem: fileStem, summary_type: item.summary_variant || item.summary_type || 'unknown' };
 
         const duration = this.formatDuration(normalizedItem.duration_seconds || 0);
         const href = `/${normalizedItem.file_stem}.json?v=2`;
@@ -1814,7 +1814,7 @@ class AudioDashboard {
         const fileStem = item.file_stem ?? item.video_id ?? '';
 
         // Create normalized item for consistent access
-        const normalizedItem = { ...item, title, channel, analysis, file_stem: fileStem };
+        const normalizedItem = { ...item, title, channel, analysis, file_stem: fileStem, summary_type: item.summary_variant || item.summary_type || 'unknown' };
 
         const duration = this.formatDuration(normalizedItem.duration_seconds || 0);
         const href = `/${normalizedItem.file_stem}.json?v=2`;
