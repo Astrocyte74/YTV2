@@ -1414,8 +1414,8 @@ class AudioDashboard {
             }
         }
 
-        // Additional fallbacks if normalization didn't work
-        if (!summaryRaw) summaryRaw = data.analysis?.summary || data.analysis?.summary_text || data.summary_preview || '';
+        // Additional fallbacks if normalization didn't work - prioritize direct summary_text field
+        if (!summaryRaw) summaryRaw = data.summary_text || data.analysis?.summary || data.analysis?.summary_text || data.summary_preview || '';
         
         // Fallback to bullet arrays if available
         if (!summaryRaw && Array.isArray(data.summary?.bullets)) {
