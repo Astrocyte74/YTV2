@@ -1856,12 +1856,16 @@ class AudioDashboard {
         this.heroBadges = heroBadges;
         const sections = [];
 
-        // Always show search queries
+        // Show search query with remove functionality
         if (this.searchQuery) {
-            sections.push({ label: 'Search', value: this.searchQuery });
+            sections.push({
+                type: 'search',
+                label: 'Search',
+                value: this.searchQuery
+            });
         }
 
-        // Only show category/subcategory filters when user is actively narrowing down
+        // Only show category filters when user is actively narrowing down
         const categoryFilters = this.currentFilters?.category || [];
         const subcategoryFilters = this.currentFilters?.subcategory || [];
 
@@ -1871,32 +1875,77 @@ class AudioDashboard {
             const isSelectiveFiltering = categoryFilters.length < allCategories.length;
 
             if (isSelectiveFiltering) {
-                categoryFilters.slice(0, 2).forEach(val =>
-                    sections.push({ label: 'Category', value: val })
+                categoryFilters.forEach(val =>
+                    sections.push({
+                        type: 'category',
+                        label: 'Category',
+                        value: val
+                    })
                 );
-                if (categoryFilters.length > 2) {
-                    sections.push({ label: 'Category', value: `+${categoryFilters.length - 2} more` });
-                }
             }
         }
 
         // Show subcategory chips only if any are selected
         if (subcategoryFilters.length > 0) {
-            subcategoryFilters.slice(0, 2).forEach(val =>
-                sections.push({ label: 'Subcategory', value: val })
+            subcategoryFilters.forEach(val =>
+                sections.push({
+                    type: 'subcategory',
+                    label: 'Subcategory',
+                    value: val
+                })
             );
-            if (subcategoryFilters.length > 2) {
-                sections.push({ label: 'Subcategory', value: `+${subcategoryFilters.length - 2} more` });
-            }
         }
 
-        heroBadges.innerHTML = sections.map(({ label, value }) => `
-            <span class=\"inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-white/40 dark:border-white/10 bg-white/70 dark:bg-white/5 text-slate-600 dark:text-slate-200\">
-                <span class=\"uppercase tracking-wide text-[10px] text-slate-400 dark:text-slate-500\">${this.escapeHtml(String(label))}</span>
-                <span class=\"text-[11px] font-medium\">${this.escapeHtml(String(value))}</span>
+        heroBadges.innerHTML = sections.map(({ type, label, value }) => `
+            <span class="inline-flex items-center gap-1 px-3 py-1.5 rounded-full border border-white/40 dark:border-white/10 bg-white/70 dark:bg-white/5 text-slate-600 dark:text-slate-200">
+                <span class="uppercase tracking-wide text-[10px] text-slate-400 dark:text-slate-500">${this.escapeHtml(String(label))}</span>
+                <span class="text-[11px] font-medium">${this.escapeHtml(String(value))}</span>
+                <button class="ml-1 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full p-0.5 transition-colors"
+                        data-remove-filter="${type}"
+                        data-filter-value="${this.escapeHtml(String(value))}"
+                        title="Remove filter">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
             </span>
         `).join(' ');
+
+        // Add click handlers for remove buttons
+        heroBadges.querySelectorAll('[data-remove-filter]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const filterType = btn.dataset.removeFilter;
+                const filterValue = btn.dataset.filterValue;
+                this.removeFilterChip(filterType, filterValue);
+            });
+        });
+
         heroBadges.classList.toggle('hidden', sections.length === 0);
+    }
+
+    removeFilterChip(filterType, filterValue) {
+        if (filterType === 'search') {
+            // Clear search
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                searchInput.value = '';
+                this.searchQuery = '';
+            }
+        } else if (filterType === 'category') {
+            // Uncheck specific category
+            const categoryInput = document.querySelector(`input[data-filter="category"][value="${filterValue}"]`);
+            if (categoryInput) categoryInput.checked = false;
+        } else if (filterType === 'subcategory') {
+            // Uncheck specific subcategory
+            const subcategoryInput = document.querySelector(`input[data-filter="subcategory"][value="${filterValue}"]`);
+            if (subcategoryInput) subcategoryInput.checked = false;
+        }
+
+        // Update filters and reload
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateHeroBadges();
+        this.loadContent();
     }
 
     renderPagination(pagination) {
