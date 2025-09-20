@@ -322,11 +322,13 @@ class PostgreSQLContentIndex:
                     where_conditions.append("c.has_audio = %s")
                     params.append(filters['has_audio'])
 
-                # Summary type filter
+                # Summary type filter - convert user-friendly names to database variants
                 if 'summary_type' in filters and filters['summary_type']:
                     summary_types = filters['summary_type'] if isinstance(filters['summary_type'], list) else [filters['summary_type']]
+                    # Convert user-friendly names to database variants
+                    database_variants = [self._get_database_variant(st) for st in summary_types]
                     where_conditions.append("COALESCE(ls.variant, 'unknown') = ANY(%s)")
-                    params.append(summary_types)
+                    params.append(database_variants)
 
             # Add WHERE clause
             if where_conditions:
@@ -600,6 +602,36 @@ class PostgreSQLContentIndex:
         finally:
             conn.close()
 
+    def _get_user_friendly_summary_type(self, variant: str) -> str:
+        """Map database variants to user-friendly Telegram interface names."""
+        mapping = {
+            'bullet-points': 'Key Points',
+            'audio': 'Audio Summary',
+            'audio-fr': 'Audio français',
+            'audio-es': 'Audio español',
+            'comprehensive': 'Comprehensive',
+            'key-points': 'Key Points',  # Handle both variants
+            'executive': 'Executive Summary',
+            'key-insights': 'Insights',
+            'insights': 'Insights',
+            'unknown': 'Unknown'
+        }
+        return mapping.get(variant, variant.title())  # Fallback to title case
+
+    def _get_database_variant(self, user_friendly_name: str) -> str:
+        """Map user-friendly names back to database variants for filtering."""
+        reverse_mapping = {
+            'Key Points': 'bullet-points',
+            'Audio Summary': 'audio',
+            'Audio français': 'audio-fr',
+            'Audio español': 'audio-es',
+            'Comprehensive': 'comprehensive',
+            'Executive Summary': 'executive',
+            'Insights': 'key-insights',
+            'Unknown': 'unknown'
+        }
+        return reverse_mapping.get(user_friendly_name, user_friendly_name.lower())
+
     def get_filters(self, active_filters: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Build filter payload matching legacy SQLite structure."""
         conn = self._get_connection()
@@ -610,7 +642,7 @@ class PostgreSQLContentIndex:
             cursor.execute("""
                 SELECT COALESCE(ls.variant, 'unknown') AS t, COUNT(*) AS c
                 FROM content c
-                LEFT JOIN latest_summaries ls ON c.video_id = ls.video_id
+                LEFT JOIN v_latest_summaries ls ON c.video_id = ls.video_id
                 GROUP BY 1
                 ORDER BY COUNT(*) DESC
             """)
@@ -735,7 +767,7 @@ class PostgreSQLContentIndex:
             ]
 
             filters['summary_type'] = [
-                {'value': r['t'], 'count': int(r['c'])}
+                {'value': self._get_user_friendly_summary_type(r['t']), 'count': int(r['c'])}
                 for r in summary_type_rows
             ]
 
