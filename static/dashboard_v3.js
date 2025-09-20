@@ -2483,7 +2483,7 @@ class AudioDashboard {
     }
 
     renderChip(text, type = 'category', small = false, parent = null) {
-        const base = small ? 'text-[10px] px-4 py-1.5' : 'text-sm px-5 py-3 tracking-wide';
+        const base = small ? 'text-[10px] px-3 py-1' : 'text-xs px-3 py-1.5 tracking-wide';
         const color = type === 'subcategory'
             ? 'border border-blue-500/35 bg-blue-500/10 text-blue-600 dark:text-blue-300 hover:bg-blue-500/20 dark:hover:bg-blue-500/25'
             : 'bg-gradient-to-r from-audio-500/15 to-indigo-500/20 border border-audio-500/35 text-audio-700 dark:text-audio-100 shadow-inner shadow-audio-500/10 hover:from-audio-500/25 hover:to-indigo-500/25';
