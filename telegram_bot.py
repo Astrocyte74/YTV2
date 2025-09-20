@@ -652,14 +652,16 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         
         # Precompile takeaway detection regex
         takeaway_bullet_re = re.compile(r'^\s*(?:[•\-–—]\s*)?\*\*takeaway:\*\*', re.IGNORECASE)
-        
+        # Also filter out incomplete markers like **T, **Ta, etc.
+        incomplete_marker_re = re.compile(r'^\s*\*\*[A-Za-z]*\s*$', re.IGNORECASE)
+
         bullets = []
         for line in lines:
             # Match lines starting with • - – — (bullet points, including Unicode dashes)
             if re.match(r'^(?:•|-|–|—)\s+', line):
                 bullet_content = re.sub(r'^(?:•|-|–|—)\s+', '', line).strip()
-                # Skip any bullet that is actually a Takeaway marker
-                if not takeaway_bullet_re.match(bullet_content):
+                # Skip takeaway markers and incomplete markers
+                if not takeaway_bullet_re.match(bullet_content) and not incomplete_marker_re.match(bullet_content):
                     bullets.append(bullet_content)
         
         # 4) Build HTML
