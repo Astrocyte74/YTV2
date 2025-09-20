@@ -325,7 +325,7 @@ class PostgreSQLContentIndex:
                 # Summary type filter
                 if 'summary_type' in filters and filters['summary_type']:
                     summary_types = filters['summary_type'] if isinstance(filters['summary_type'], list) else [filters['summary_type']]
-                    where_conditions.append("COALESCE(c.summary_type_latest, 'unknown') = ANY(%s)")
+                    where_conditions.append("COALESCE(ls.variant, 'unknown') = ANY(%s)")
                     params.append(summary_types)
 
             # Add WHERE clause
@@ -608,8 +608,9 @@ class PostgreSQLContentIndex:
 
             # Optimized SQL query for summary_type facet counts
             cursor.execute("""
-                SELECT COALESCE(summary_type_latest, 'unknown') AS t, COUNT(*) AS c
-                FROM content
+                SELECT COALESCE(ls.variant, 'unknown') AS t, COUNT(*) AS c
+                FROM content c
+                LEFT JOIN latest_summaries ls ON c.video_id = ls.video_id
                 GROUP BY 1
                 ORDER BY COUNT(*) DESC
             """)
