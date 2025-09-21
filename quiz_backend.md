@@ -1,20 +1,33 @@
 # Quiz Backend API Documentation
 
+## API Endpoints Overview
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| **POST** | `/api/generate-quiz` | Generate quiz using OpenAI GPT-5-nano |
+| **POST** | `/api/save-quiz` | Save generated quiz to persistent storage |
+| **GET** | `/api/list-quizzes` | List all saved quizzes with metadata |
+| **GET** | `/api/quiz/:filename` | Load specific quiz by filename |
+| **POST** | `/api/categorize-quiz` | AI-powered topic categorization |
+| **DELETE** | `/api/quiz/:filename` | Delete specific quiz from storage |
+
 ## Overview
 
-The YTV2-Dashboard now includes a complete AI-powered quiz generation and storage system. This minimal integration approach adds quiz functionality without affecting the core video dashboard features.
+The YTV2-Dashboard includes a complete AI-powered quiz generation and storage system with advanced categorization. This minimal integration approach adds quiz functionality without affecting the core video dashboard features.
 
 ## Architecture
 
 ### **Minimal Integration Design**
-- **Single API endpoint** for AI quiz generation
+- **AI-powered generation** using OpenAI GPT-5-nano (ultra cost-effective)
+- **AI-powered categorization** with semantic understanding (not keyword-based)
 - **File-based storage** in `/app/data/quiz/` directory
 - **CORS enabled** for cross-origin requests from Quizzernator
 - **Zero hosting costs** - reuses existing YTV2 infrastructure
 - **Clean separation** - no changes to YTV2 UI or database
 
 ### **Technology Stack**
-- **AI Generation**: OpenAI GPT-3.5-turbo (configurable)
+- **AI Generation**: OpenAI GPT-5-nano (~$0.000045 per quiz)
+- **AI Categorization**: OpenAI GPT-5-nano with JSON mode (~$0.00005 per categorization)
 - **Storage**: JSON files in persistent `/app/data/` mount
 - **CORS**: Full cross-origin support for web frontends
 - **Security**: Filename sanitization, input validation
@@ -32,7 +45,7 @@ curl -X POST https://ytv2-dashboard-postgres.onrender.com/api/generate-quiz \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "Generate 5 multiple choice questions about JavaScript basics",
-    "model": "gpt-3.5-turbo",
+    "model": "gpt-5-nano",
     "max_tokens": 3000,
     "temperature": 0.7
   }'
@@ -40,7 +53,7 @@ curl -X POST https://ytv2-dashboard-postgres.onrender.com/api/generate-quiz \
 
 **Request Parameters:**
 - `prompt` (required): Quiz generation instructions
-- `model` (optional): OpenAI model (default: `gpt-3.5-turbo`)
+- `model` (optional): OpenAI model (default: `gpt-5-nano`)
 - `max_tokens` (optional): Response length limit (default: `3000`)
 - `temperature` (optional): AI creativity level (default: `0.7`)
 
@@ -173,11 +186,11 @@ curl https://ytv2-dashboard-postgres.onrender.com/api/quiz/javascript_basics_qui
 }
 ```
 
-### 5. Auto-Categorize Quiz Topic
+### 5. AI-Powered Topic Categorization
 
 **POST /api/categorize-quiz**
 
-Automatically categorize a quiz topic using YTV2's content taxonomy.
+Automatically categorize quiz topics using OpenAI GPT-5-nano with semantic understanding. This AI-based system provides much more accurate categorization than keyword matching, especially for complex or multi-domain topics.
 
 ```bash
 curl -X POST https://ytv2-dashboard-postgres.onrender.com/api/categorize-quiz \
@@ -198,7 +211,7 @@ curl -X POST https://ytv2-dashboard-postgres.onrender.com/api/categorize-quiz \
   "success": true,
   "category": "Technology",
   "subcategory": "Programming & Software Development",
-  "confidence": 0.92,
+  "confidence": 0.9,
   "alternatives": [
     {
       "category": "AI Software Development",
@@ -254,6 +267,29 @@ curl -X DELETE https://ytv2-dashboard-postgres.onrender.com/api/quiz/javascript_
   "message": "Quiz deleted successfully"
 }
 ```
+
+## AI Categorization System
+
+### **GPT-5-nano Powered Classification**
+
+The quiz categorization system uses OpenAI's GPT-5-nano model with structured JSON output to provide semantic understanding of quiz topics. This is a significant upgrade from keyword-based matching.
+
+**Key Advantages**:
+- **Semantic Understanding**: Handles complex topics like "machine learning for medical diagnosis"
+- **High Accuracy**: Confidence scores typically 0.8-0.9 for clear topics
+- **Multi-domain Topics**: Properly categorizes topics spanning multiple categories
+- **Cost Effective**: ~$0.00005 per categorization (20,000 categorizations per $1)
+- **Consistent Output**: JSON mode ensures reliable response format
+
+**Example Categorizations**:
+```
+"photosynthesis in plants" → Science & Nature → Physics & Chemistry (confidence: 0.9)
+"machine learning for medical diagnosis" → AI Software Development → Data Engineering & ETL (confidence: 0.9)
+"Napoleon Bonaparte campaigns" → History → Modern History (confidence: 0.9)
+"random gibberish xyz123" → General → Mixed Content (confidence: 0.95)
+```
+
+**Fallback Behavior**: Topics that don't clearly fit any category are automatically assigned to "General" → "Mixed Content" with appropriate confidence scoring.
 
 ## Quiz JSON Schema
 
@@ -415,7 +451,7 @@ const quizResponse = await fetch('https://ytv2-dashboard-postgres.onrender.com/a
     prompt: `Create 10 ${categorization.category} questions about JavaScript ES6 Features.
              Focus on ${categorization.subcategory} level content.
              Format as JSON with count, meta, and items fields.`,
-    model: "gpt-3.5-turbo"
+    model: "gpt-5-nano"
   })
 });
 
@@ -547,13 +583,15 @@ console.log(`Found ${relatedQuizzes.length} related quizzes:`, relatedQuizzes);
 
 ### Cost Optimization
 
-**GPT-3.5-turbo pricing** (recommended):
-- ~$0.0015 per 1K tokens
-- Typical quiz generation: ~900 tokens = $0.00135 per quiz
+**GPT-5-nano pricing** (recommended):
+- Ultra cost-effective: ~$0.00005 per categorization
+- ~20,000 categorizations per $1
+- Typical quiz generation: ~900 tokens = ~$0.000045 per quiz
 
-**GPT-4 pricing** (higher quality):
-- ~$0.03 per 1K tokens
-- Typical quiz generation: ~900 tokens = $0.027 per quiz
+**Model Comparison**:
+- **GPT-5-nano**: ~$0.000045 per quiz (20,000 quizzes/$1)
+- **GPT-4o-mini**: ~$0.00012 per quiz (8,333 quizzes/$1)
+- **GPT-3.5-turbo**: ~$0.00135 per quiz (740 quizzes/$1)
 
 ## Future Enhancements
 

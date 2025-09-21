@@ -4278,7 +4278,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "Prompt is required"}).encode())
                 return
 
-            model = request_data.get('model', 'gpt-3.5-turbo')
+            model = request_data.get('model', 'gpt-5-nano')
             max_tokens = request_data.get('max_tokens', 3000)
             temperature = request_data.get('temperature', 0.7)
 
@@ -4693,7 +4693,7 @@ REQUIRED OUTPUT FORMAT (JSON only, no explanation):
         try:
             # Make OpenAI API call
             response = openai.chat.completions.create(
-                model="gpt-3.5-turbo-1106",  # Version that supports JSON mode
+                model="gpt-5-nano",  # Ultra cost-effective model with JSON mode
                 messages=[
                     {"role": "user", "content": prompt}
                 ],
