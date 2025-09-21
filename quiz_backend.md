@@ -173,7 +173,71 @@ curl https://ytv2-dashboard-postgres.onrender.com/api/quiz/javascript_basics_qui
 }
 ```
 
-### 5. Delete Quiz
+### 5. Auto-Categorize Quiz Topic
+
+**POST /api/categorize-quiz**
+
+Automatically categorize a quiz topic using YTV2's content taxonomy.
+
+```bash
+curl -X POST https://ytv2-dashboard-postgres.onrender.com/api/categorize-quiz \
+  -H "Content-Type: application/json" \
+  -d '{
+    "topic": "JavaScript ES6 Features",
+    "quiz_content": "Optional: first few questions for context"
+  }'
+```
+
+**Request Parameters:**
+- `topic` (required): The quiz topic to categorize
+- `quiz_content` (optional): Additional context from quiz questions
+
+**Response:**
+```json
+{
+  "success": true,
+  "category": "Technology",
+  "subcategory": "Programming & Software Development",
+  "confidence": 0.92,
+  "alternatives": [
+    {
+      "category": "AI Software Development",
+      "subcategory": "AI Tools & Platforms",
+      "confidence": 0.77
+    },
+    {
+      "category": "Education",
+      "subcategory": "Educational Content",
+      "confidence": 0.65
+    }
+  ],
+  "available_categories": [
+    "Technology",
+    "AI Software Development",
+    "History",
+    "Science & Nature",
+    "Business",
+    "Education",
+    "Entertainment"
+  ],
+  "available_subcategories": {
+    "Technology": [
+      "Programming & Software Development",
+      "Tech Reviews",
+      "AI & Machine Learning",
+      "Software Tutorials",
+      "Tech News & Trends"
+    ],
+    "AI Software Development": [
+      "AI Tools & Platforms",
+      "Machine Learning",
+      "AI Applications"
+    ]
+  }
+}
+```
+
+### 6. Delete Quiz
 
 **DELETE /api/quiz/:filename**
 
@@ -193,19 +257,22 @@ curl -X DELETE https://ytv2-dashboard-postgres.onrender.com/api/quiz/javascript_
 
 ## Quiz JSON Schema
 
-### Standard Quiz Format
+### Enhanced Quiz Format with YTV2 Taxonomy
 
 ```json
 {
   "count": 5,
   "meta": {
-    "topic": "JavaScript Basics",
+    "topic": "JavaScript ES6 Features",
     "difficulty": "beginner|intermediate|advanced",
     "category": "Technology",
     "subcategory": "Programming & Software Development",
-    "description": "Basic concepts of JavaScript programming",
-    "estimatedTime": "10 minutes",
-    "tags": ["javascript", "programming", "web-development"]
+    "auto_categorized": true,
+    "categorization_confidence": 0.92,
+    "description": "Modern JavaScript ES6+ features and syntax",
+    "estimatedTime": "15 minutes",
+    "tags": ["javascript", "es6", "programming", "web-development"],
+    "generated": "2025-09-21T14:30:52Z"
   },
   "items": [
     {
@@ -322,30 +389,160 @@ Common HTTP status codes:
 
 ## Integration Examples
 
-### Quizzernator Integration
+### Complete Quiz Generation Workflow
 
-The Quizzernator frontend can call these endpoints directly:
+The enhanced workflow with auto-categorization:
 
 ```javascript
-// Generate quiz
-const response = await fetch('https://ytv2-dashboard-postgres.onrender.com/api/generate-quiz', {
+// Step 1: Auto-categorize the topic
+const categorizationResponse = await fetch('https://ytv2-dashboard-postgres.onrender.com/api/categorize-quiz', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    prompt: "Create 5 questions about React hooks",
+    topic: "JavaScript ES6 Features",
+    quiz_content: "Arrow functions, destructuring, async/await"
+  })
+});
+
+const categorization = await categorizationResponse.json();
+console.log('Auto-categorized as:', categorization.category, '→', categorization.subcategory);
+
+// Step 2: Generate quiz with categorization context
+const quizResponse = await fetch('https://ytv2-dashboard-postgres.onrender.com/api/generate-quiz', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    prompt: `Create 10 ${categorization.category} questions about JavaScript ES6 Features.
+             Focus on ${categorization.subcategory} level content.
+             Format as JSON with count, meta, and items fields.`,
     model: "gpt-3.5-turbo"
   })
 });
 
-// Save generated quiz
-await fetch('https://ytv2-dashboard-postgres.onrender.com/api/save-quiz', {
+const quizData = await quizResponse.json();
+const parsedQuiz = JSON.parse(quizData.content);
+
+// Step 3: Enhance quiz with taxonomy metadata
+const enhancedQuiz = {
+  ...parsedQuiz,
+  meta: {
+    ...parsedQuiz.meta,
+    category: categorization.category,
+    subcategory: categorization.subcategory,
+    auto_categorized: true,
+    categorization_confidence: categorization.confidence,
+    generated: new Date().toISOString()
+  }
+};
+
+// Step 4: Save categorized quiz
+const saveResponse = await fetch('https://ytv2-dashboard-postgres.onrender.com/api/save-quiz', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    filename: "react_hooks_quiz.json",
-    quiz: generatedQuizData
+    filename: "javascript_es6_features_quiz.json",
+    quiz: enhancedQuiz
   })
 });
+
+console.log('Quiz saved with YTV2 taxonomy integration!');
+```
+
+### Category-Based Quiz Browsing
+
+```javascript
+// Load all quizzes with category organization
+const quizzesResponse = await fetch('https://ytv2-dashboard-postgres.onrender.com/api/list-quizzes');
+const { quizzes } = await quizzesResponse.json();
+
+// Group by category for hierarchical display
+const quizzesByCategory = quizzes.reduce((acc, quiz) => {
+  const category = quiz.category || 'Uncategorized';
+  if (!acc[category]) acc[category] = {};
+
+  const subcategory = quiz.subcategory || 'General';
+  if (!acc[category][subcategory]) acc[category][subcategory] = [];
+
+  acc[category][subcategory].push(quiz);
+  return acc;
+}, {});
+
+// Render hierarchical quiz browser
+Object.entries(quizzesByCategory).forEach(([category, subcategories]) => {
+  console.log(`📁 ${category}`);
+  Object.entries(subcategories).forEach(([subcategory, quizzes]) => {
+    console.log(`  └── ${subcategory} (${quizzes.length} quizzes)`);
+    quizzes.forEach(quiz => {
+      console.log(`      • ${quiz.topic} (${quiz.difficulty})`);
+    });
+  });
+});
+```
+
+### Dynamic Category Selection UI
+
+```javascript
+// Get available categories and subcategories
+const categorizeResponse = await fetch('https://ytv2-dashboard-postgres.onrender.com/api/categorize-quiz', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ topic: "sample topic" })
+});
+
+const { available_categories, available_subcategories } = await categorizeResponse.json();
+
+// Populate category dropdown
+const categorySelect = document.getElementById('category');
+available_categories.forEach(category => {
+  const option = new Option(`📱 ${category}`, category);
+  categorySelect.add(option);
+});
+
+// Dynamic subcategory population
+categorySelect.addEventListener('change', (e) => {
+  const subcategorySelect = document.getElementById('subcategory');
+  subcategorySelect.innerHTML = '<option value="">Select subcategory</option>';
+
+  const selectedCategory = e.target.value;
+  if (selectedCategory && available_subcategories[selectedCategory]) {
+    available_subcategories[selectedCategory].forEach(subcategory => {
+      const option = new Option(subcategory, subcategory);
+      subcategorySelect.add(option);
+    });
+    subcategorySelect.disabled = false;
+  } else {
+    subcategorySelect.disabled = true;
+  }
+});
+```
+
+### Quiz Discovery by Video Content
+
+```javascript
+// Find quizzes related to a specific video's categories
+function findRelatedQuizzes(videoCategories, videoSubcategories) {
+  return fetch('https://ytv2-dashboard-postgres.onrender.com/api/list-quizzes')
+    .then(response => response.json())
+    .then(data => {
+      return data.quizzes.filter(quiz => {
+        // Exact category match
+        if (videoCategories.includes(quiz.category)) return true;
+
+        // Subcategory match across categories
+        if (videoSubcategories.includes(quiz.subcategory)) return true;
+
+        return false;
+      });
+    });
+}
+
+// Usage example
+const relatedQuizzes = await findRelatedQuizzes(
+  ['Technology', 'AI Software Development'],
+  ['Programming & Software Development', 'AI Tools & Platforms']
+);
+
+console.log(`Found ${relatedQuizzes.length} related quizzes:`, relatedQuizzes);
 ```
 
 ### Cost Optimization
