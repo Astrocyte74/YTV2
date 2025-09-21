@@ -1075,6 +1075,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_generate_quiz()
         elif self.path == '/api/save-quiz':
             self.handle_save_quiz()
+        elif self.path == '/api/categorize-quiz':
+            self.handle_categorize_quiz()
         else:
             self.send_error(404, "Endpoint not found")
     
@@ -4634,6 +4636,214 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"error": "Failed to delete quiz"}).encode())
+
+    def _get_ytv2_category_mapping(self):
+        """Get category mapping based on YTV2 video content taxonomy"""
+        return {
+            # Primary categories from YTV2 system
+            "Technology": {
+                "keywords": ["tech", "software", "programming", "code", "javascript", "python", "react", "api", "database", "web", "app", "development", "computer", "digital"],
+                "subcategories": {
+                    "Programming & Software Development": ["programming", "code", "javascript", "python", "java", "react", "vue", "angular", "api", "backend", "frontend", "development"],
+                    "Tech Reviews": ["review", "compare", "comparison", "best", "vs", "better", "recommendation"],
+                    "AI & Machine Learning": ["ai", "ml", "machine learning", "neural", "gpt", "chatgpt", "claude", "artificial intelligence", "model", "algorithm"],
+                    "Software Tutorials": ["tutorial", "how to", "guide", "learn", "step by step", "beginner", "getting started", "intro"],
+                    "Tech News & Trends": ["news", "trend", "latest", "update", "release", "announcement", "2024", "2025"]
+                }
+            },
+            "AI Software Development": {
+                "keywords": ["ai", "artificial intelligence", "machine learning", "gpt", "claude", "openai", "neural", "model", "algorithm", "deep learning"],
+                "subcategories": {
+                    "AI Tools & Platforms": ["tool", "platform", "service", "api", "openai", "anthropic"],
+                    "Machine Learning": ["ml", "training", "model", "dataset", "neural network"],
+                    "AI Applications": ["application", "use case", "implementation", "project"]
+                }
+            },
+            "History": {
+                "keywords": ["history", "historical", "ancient", "medieval", "war", "empire", "civilization", "century", "past", "heritage"],
+                "subcategories": {
+                    "World History": ["world", "global", "international", "civilization"],
+                    "Military History": ["war", "battle", "military", "army", "conflict", "wwii", "ww2"],
+                    "Ancient History": ["ancient", "rome", "greece", "egypt", "mesopotamia"],
+                    "Modern History": ["modern", "20th century", "21st century", "contemporary"]
+                }
+            },
+            "Science & Nature": {
+                "keywords": ["science", "nature", "biology", "physics", "chemistry", "environment", "climate", "space", "astronomy", "research"],
+                "subcategories": {
+                    "Physics & Astronomy": ["physics", "space", "astronomy", "universe", "quantum", "relativity"],
+                    "Biology & Life Sciences": ["biology", "life", "evolution", "genetics", "medicine", "health"],
+                    "Environmental Science": ["environment", "climate", "ecology", "sustainability", "green"],
+                    "General Science": ["science", "research", "discovery", "experiment", "theory"]
+                }
+            },
+            "Business": {
+                "keywords": ["business", "entrepreneur", "startup", "marketing", "finance", "economics", "management", "strategy", "leadership"],
+                "subcategories": {
+                    "Entrepreneurship": ["entrepreneur", "startup", "founder", "business idea", "venture"],
+                    "Marketing & Sales": ["marketing", "sales", "advertising", "brand", "customer"],
+                    "Finance & Economics": ["finance", "money", "economics", "investment", "stock", "crypto"],
+                    "Management & Leadership": ["management", "leadership", "team", "strategy", "planning"]
+                }
+            },
+            "Education": {
+                "keywords": ["education", "learning", "study", "school", "university", "course", "lesson", "teaching", "academic"],
+                "subcategories": {
+                    "Educational Content": ["education", "learning", "study", "course"],
+                    "Study Tips & Methods": ["study tips", "learning method", "memory", "note taking"],
+                    "Academic Subjects": ["math", "literature", "language", "subject", "curriculum"]
+                }
+            },
+            "Entertainment": {
+                "keywords": ["entertainment", "movie", "film", "music", "game", "gaming", "culture", "art", "creative"],
+                "subcategories": {
+                    "Movies & TV": ["movie", "film", "tv", "series", "cinema", "actor"],
+                    "Gaming": ["game", "gaming", "video game", "console", "pc gaming"],
+                    "Music & Arts": ["music", "art", "creative", "design", "culture"]
+                }
+            }
+        }
+
+    def _categorize_by_keywords(self, topic, quiz_content=""):
+        """Categorize quiz based on keyword matching"""
+        topic_lower = topic.lower()
+        content_lower = quiz_content.lower() if quiz_content else ""
+        search_text = f"{topic_lower} {content_lower}"
+
+        category_mapping = self._get_ytv2_category_mapping()
+
+        # Score each category
+        category_scores = {}
+        subcategory_scores = {}
+
+        for category, data in category_mapping.items():
+            score = 0
+
+            # Check category keywords
+            for keyword in data["keywords"]:
+                if keyword in search_text:
+                    score += 1
+
+            category_scores[category] = score
+
+            # Check subcategory keywords
+            for subcategory, subcat_keywords in data["subcategories"].items():
+                sub_score = 0
+                for keyword in subcat_keywords:
+                    if keyword in search_text:
+                        sub_score += 1
+
+                if sub_score > 0:
+                    subcategory_scores[f"{category}|{subcategory}"] = sub_score
+
+        # Find best category
+        best_category = max(category_scores.items(), key=lambda x: x[1]) if category_scores else ("Technology", 0)
+
+        # Find best subcategory for the best category
+        best_subcategory = None
+        best_sub_score = 0
+
+        for key, score in subcategory_scores.items():
+            cat, subcat = key.split('|', 1)
+            if cat == best_category[0] and score > best_sub_score:
+                best_subcategory = subcat
+                best_sub_score = score
+
+        # Default fallback
+        if not best_subcategory and best_category[0] in category_mapping:
+            subcats = list(category_mapping[best_category[0]]["subcategories"].keys())
+            best_subcategory = subcats[0] if subcats else "General"
+
+        # Calculate confidence
+        total_keywords = len(category_mapping[best_category[0]]["keywords"])
+        confidence = min(0.95, max(0.3, best_category[1] / total_keywords)) if total_keywords > 0 else 0.3
+
+        return best_category[0], best_subcategory, confidence
+
+    def handle_categorize_quiz(self):
+        """Handle POST /api/categorize-quiz - Auto-categorize quiz topic"""
+        try:
+            origin = self.headers.get('Origin', 'unknown')
+            logger.info(f"🏷️ Quiz categorization request from origin: {origin}")
+
+            # Get request body
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Request body is required"}).encode())
+                return
+
+            body = self.rfile.read(content_length).decode('utf-8')
+
+            try:
+                request_data = json.loads(body)
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Invalid JSON in request body"}).encode())
+                return
+
+            topic = request_data.get('topic', '').strip()
+            if not topic:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Topic is required"}).encode())
+                return
+
+            quiz_content = request_data.get('quiz_content', '')
+
+            # Use keyword-based categorization (fast and reliable)
+            category, subcategory, confidence = self._categorize_by_keywords(topic, quiz_content)
+
+            # Generate alternatives with different confidence scores
+            category_mapping = self._get_ytv2_category_mapping()
+            alternatives = []
+
+            # Add a few other likely categories as alternatives
+            for alt_category in list(category_mapping.keys())[:3]:
+                if alt_category != category:
+                    alt_subcats = list(category_mapping[alt_category]["subcategories"].keys())
+                    alt_confidence = max(0.2, confidence - 0.15)
+                    alternatives.append({
+                        "category": alt_category,
+                        "subcategory": alt_subcats[0] if alt_subcats else "General",
+                        "confidence": round(alt_confidence, 2)
+                    })
+
+            # Send successful response
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+
+            result = {
+                "success": True,
+                "category": category,
+                "subcategory": subcategory or "General",
+                "confidence": round(confidence, 2),
+                "alternatives": alternatives[:2],  # Limit to 2 alternatives
+                "available_categories": list(category_mapping.keys()),
+                "available_subcategories": {
+                    cat: list(data["subcategories"].keys())
+                    for cat, data in category_mapping.items()
+                }
+            }
+            self.wfile.write(json.dumps(result).encode())
+
+        except Exception as e:
+            logger.error(f"Quiz categorization error: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Failed to categorize quiz"}).encode())
 
 def start_http_server():
     """Start the HTTP server for dashboard access"""
