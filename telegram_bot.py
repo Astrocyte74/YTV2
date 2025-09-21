@@ -4305,7 +4305,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         "content": prompt
                     }
                 ],
-                "max_tokens": max_tokens,
+                "max_completion_tokens": max_tokens,
                 "temperature": temperature,
                 "response_format": {"type": "json_object"}
             }
@@ -4697,7 +4697,7 @@ REQUIRED OUTPUT FORMAT (JSON only, no explanation):
                 messages=[
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=150,
+                max_completion_tokens=150,
                 temperature=0.1,  # Low temperature for consistent categorization
                 response_format={"type": "json_object"}  # Force JSON output
             )
