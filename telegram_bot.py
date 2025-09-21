@@ -4193,15 +4193,39 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"error": f"internal error: {str(e)}"}).encode())
 
-    def set_cors_headers(self):
+    def set_cors_headers(self, allow_all_origins=False):
         """Set CORS headers for cross-origin requests"""
-        self.send_header('Access-Control-Allow-Origin', '*')
+        # Get the origin from the request
+        origin = self.headers.get('Origin', '')
+
+        # List of allowed origins
+        allowed_origins = [
+            'https://quizzernator.onrender.com',
+            'http://localhost:3000',  # For local testing
+            'http://localhost:8080',  # Alternative local port
+            'http://127.0.0.1:3000',  # Alternative localhost
+            'http://127.0.0.1:8080'   # Alternative localhost port
+        ]
+
+        # Allow specific origin if it's in our allowed list, or all if explicitly requested
+        if allow_all_origins:
+            self.send_header('Access-Control-Allow-Origin', '*')
+        elif origin in allowed_origins:
+            self.send_header('Access-Control-Allow-Origin', origin)
+        else:
+            # Fallback to wildcard for backwards compatibility
+            self.send_header('Access-Control-Allow-Origin', '*')
+
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         self.send_header('Access-Control-Max-Age', '86400')
+        self.send_header('Vary', 'Origin')  # Important for caching
 
     def do_OPTIONS(self):
         """Handle preflight CORS requests"""
+        origin = self.headers.get('Origin', 'unknown')
+        logger.info(f"🌐 CORS preflight request from origin: {origin} for path: {self.path}")
+
         self.send_response(200)
         self.set_cors_headers()
         self.end_headers()
@@ -4209,6 +4233,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def handle_generate_quiz(self):
         """Handle POST /api/generate-quiz - AI quiz generation endpoint"""
         try:
+            # Log CORS info for debugging
+            origin = self.headers.get('Origin', 'unknown')
+            logger.info(f"🤖 Quiz generation request from origin: {origin}")
             # Get request body
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length == 0:
