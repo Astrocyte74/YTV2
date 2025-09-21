@@ -20,6 +20,8 @@ from dotenv import load_dotenv
 import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
 import socket
 import sqlite3
 
@@ -1069,6 +1071,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_ingest_audio()
         elif self.path.startswith('/api/debug/content'):
             self.handle_debug_content()
+        elif self.path == '/api/generate-quiz':
+            self.handle_generate_quiz()
         else:
             self.send_error(404, "Endpoint not found")
     
@@ -4188,6 +4192,145 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"error": f"internal error: {str(e)}"}).encode())
+
+    def set_cors_headers(self):
+        """Set CORS headers for cross-origin requests"""
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        self.send_header('Access-Control-Max-Age', '86400')
+
+    def do_OPTIONS(self):
+        """Handle preflight CORS requests"""
+        self.send_response(200)
+        self.set_cors_headers()
+        self.end_headers()
+
+    def handle_generate_quiz(self):
+        """Handle POST /api/generate-quiz - AI quiz generation endpoint"""
+        try:
+            # Get request body
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Request body is required"}).encode())
+                return
+
+            body = self.rfile.read(content_length).decode('utf-8')
+
+            try:
+                request_data = json.loads(body)
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Invalid JSON in request body"}).encode())
+                return
+
+            # Extract parameters
+            prompt = request_data.get('prompt')
+            if not prompt:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Prompt is required"}).encode())
+                return
+
+            model = request_data.get('model', 'gpt-3.5-turbo')
+            max_tokens = request_data.get('max_tokens', 3000)
+            temperature = request_data.get('temperature', 0.7)
+
+            # Check for OpenAI API key
+            api_key = os.getenv('OPENAI_API_KEY')
+            if not api_key:
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "OpenAI API key not configured"}).encode())
+                return
+
+            # Prepare OpenAI API request
+            openai_request_data = {
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a quiz question generator. Always respond with valid JSON only, no additional text or formatting."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "response_format": {"type": "json_object"}
+            }
+
+            # Make request to OpenAI API
+            request = Request(
+                'https://api.openai.com/v1/chat/completions',
+                data=json.dumps(openai_request_data).encode('utf-8'),
+                headers={
+                    'Authorization': f'Bearer {api_key}',
+                    'Content-Type': 'application/json'
+                }
+            )
+
+            try:
+                with urlopen(request, timeout=30) as response:
+                    response_data = json.loads(response.read().decode('utf-8'))
+
+                    content = response_data['choices'][0]['message']['content']
+                    usage = response_data.get('usage', {})
+
+                    # Send successful response
+                    self.send_response(200)
+                    self.set_cors_headers()
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+
+                    result = {
+                        "success": True,
+                        "content": content,
+                        "usage": usage
+                    }
+                    self.wfile.write(json.dumps(result).encode())
+
+            except HTTPError as e:
+                error_data = e.read().decode('utf-8')
+                try:
+                    error_json = json.loads(error_data)
+                    error_message = error_json.get('error', {}).get('message', 'Unknown OpenAI API error')
+                except:
+                    error_message = f"OpenAI API error: {e.code}"
+
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": error_message}).encode())
+
+            except URLError as e:
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": f"Network error: {str(e)}"}).encode())
+
+        except Exception as e:
+            logger.error(f"Quiz generation error: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Failed to generate quiz"}).encode())
 
 def start_http_server():
     """Start the HTTP server for dashboard access"""
