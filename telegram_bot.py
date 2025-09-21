@@ -1073,6 +1073,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_debug_content()
         elif self.path == '/api/generate-quiz':
             self.handle_generate_quiz()
+        elif self.path == '/api/save-quiz':
+            self.handle_save_quiz()
         else:
             self.send_error(404, "Endpoint not found")
     
@@ -1080,6 +1082,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         """Handle DELETE requests for the new delete API endpoint"""
         if self.path.startswith('/api/delete/'):
             self.handle_delete_request()
+        elif self.path.startswith('/api/quiz/'):
+            self.handle_delete_quiz()
         else:
             self.send_error(404, "DELETE endpoint not found")
     
@@ -2271,6 +2275,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_backup_file()
             elif path == '/api/download-database':
                 self.handle_download_database()
+            elif path == '/api/list-quizzes':
+                self.handle_list_quizzes()
+            elif path.startswith('/api/quiz/'):
+                self.handle_get_quiz()
             else:
                 self.send_error(404, "API endpoint not found")
         except Exception as e:
@@ -4358,6 +4366,274 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"error": "Failed to generate quiz"}).encode())
+
+    def _get_quiz_storage_path(self):
+        """Get the quiz storage directory path"""
+        quiz_dir = Path('data/quiz')
+        quiz_dir.mkdir(parents=True, exist_ok=True)
+        return quiz_dir
+
+    def _sanitize_filename(self, filename):
+        """Sanitize filename to prevent path traversal and invalid characters"""
+        import re
+        if not filename:
+            return None
+
+        # Remove any path separators and dangerous characters
+        filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+        filename = re.sub(r'\.\.+', '_', filename)  # Remove .. patterns
+        filename = filename.strip()
+
+        # Ensure .json extension
+        if not filename.endswith('.json'):
+            filename += '.json'
+
+        return filename
+
+    def handle_save_quiz(self):
+        """Handle POST /api/save-quiz - Save generated quiz to storage"""
+        try:
+            origin = self.headers.get('Origin', 'unknown')
+            logger.info(f"💾 Save quiz request from origin: {origin}")
+
+            # Get request body
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Request body is required"}).encode())
+                return
+
+            body = self.rfile.read(content_length).decode('utf-8')
+
+            try:
+                request_data = json.loads(body)
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Invalid JSON in request body"}).encode())
+                return
+
+            quiz_data = request_data.get('quiz')
+            if not quiz_data:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Quiz data is required"}).encode())
+                return
+
+            # Get or generate filename
+            filename = request_data.get('filename')
+            if filename:
+                filename = self._sanitize_filename(filename)
+            else:
+                # Auto-generate filename from quiz metadata
+                meta = quiz_data.get('meta', {})
+                topic = meta.get('topic', 'quiz')
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"{topic.lower().replace(' ', '_')}_{timestamp}.json"
+                filename = self._sanitize_filename(filename)
+
+            if not filename:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Invalid filename"}).encode())
+                return
+
+            # Save quiz to storage
+            quiz_dir = self._get_quiz_storage_path()
+            quiz_path = quiz_dir / filename
+
+            # Add metadata
+            quiz_data['metadata'] = {
+                'created': datetime.now().isoformat(),
+                'filename': filename,
+                'origin': origin
+            }
+
+            with open(quiz_path, 'w', encoding='utf-8') as f:
+                json.dump(quiz_data, f, indent=2, ensure_ascii=False)
+
+            # Send successful response
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+
+            result = {
+                "success": True,
+                "filename": filename,
+                "path": str(quiz_path)
+            }
+            self.wfile.write(json.dumps(result).encode())
+
+        except Exception as e:
+            logger.error(f"Save quiz error: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Failed to save quiz"}).encode())
+
+    def handle_list_quizzes(self):
+        """Handle GET /api/list-quizzes - List all saved quizzes"""
+        try:
+            logger.info(f"📋 List quizzes request")
+
+            quiz_dir = self._get_quiz_storage_path()
+            quizzes = []
+
+            for quiz_file in quiz_dir.glob('*.json'):
+                try:
+                    with open(quiz_file, 'r', encoding='utf-8') as f:
+                        quiz_data = json.load(f)
+
+                    meta = quiz_data.get('meta', {})
+                    metadata = quiz_data.get('metadata', {})
+
+                    quiz_info = {
+                        'filename': quiz_file.name,
+                        'topic': meta.get('topic', 'Unknown'),
+                        'count': quiz_data.get('count', len(quiz_data.get('items', []))),
+                        'difficulty': meta.get('difficulty', 'Unknown'),
+                        'created': metadata.get('created', quiz_file.stat().st_mtime)
+                    }
+                    quizzes.append(quiz_info)
+
+                except Exception as e:
+                    logger.warning(f"Error reading quiz file {quiz_file}: {e}")
+                    continue
+
+            # Sort by creation date (newest first)
+            quizzes.sort(key=lambda x: x['created'], reverse=True)
+
+            # Send successful response
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+
+            result = {
+                "success": True,
+                "quizzes": quizzes
+            }
+            self.wfile.write(json.dumps(result).encode())
+
+        except Exception as e:
+            logger.error(f"List quizzes error: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Failed to list quizzes"}).encode())
+
+    def handle_get_quiz(self):
+        """Handle GET /api/quiz/:filename - Load specific quiz"""
+        try:
+            # Extract filename from path
+            filename = self.path.split('/api/quiz/')[-1]
+            filename = self._sanitize_filename(filename)
+
+            if not filename:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Invalid filename"}).encode())
+                return
+
+            logger.info(f"📖 Get quiz request for: {filename}")
+
+            quiz_dir = self._get_quiz_storage_path()
+            quiz_path = quiz_dir / filename
+
+            if not quiz_path.exists():
+                self.send_response(404)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Quiz not found"}).encode())
+                return
+
+            with open(quiz_path, 'r', encoding='utf-8') as f:
+                quiz_data = json.load(f)
+
+            # Send successful response
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+
+            result = {
+                "success": True,
+                "quiz": quiz_data
+            }
+            self.wfile.write(json.dumps(result).encode())
+
+        except Exception as e:
+            logger.error(f"Get quiz error: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Failed to load quiz"}).encode())
+
+    def handle_delete_quiz(self):
+        """Handle DELETE /api/quiz/:filename - Delete specific quiz"""
+        try:
+            # Extract filename from path
+            filename = self.path.split('/api/quiz/')[-1]
+            filename = self._sanitize_filename(filename)
+
+            if not filename:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Invalid filename"}).encode())
+                return
+
+            logger.info(f"🗑️ Delete quiz request for: {filename}")
+
+            quiz_dir = self._get_quiz_storage_path()
+            quiz_path = quiz_dir / filename
+
+            if not quiz_path.exists():
+                self.send_response(404)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Quiz not found"}).encode())
+                return
+
+            quiz_path.unlink()  # Delete the file
+
+            # Send successful response
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+
+            result = {
+                "success": True,
+                "message": "Quiz deleted successfully"
+            }
+            self.wfile.write(json.dumps(result).encode())
+
+        except Exception as e:
+            logger.error(f"Delete quiz error: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Failed to delete quiz"}).encode())
 
 def start_http_server():
     """Start the HTTP server for dashboard access"""
