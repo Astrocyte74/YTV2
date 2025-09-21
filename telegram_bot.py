@@ -4306,9 +4306,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     }
                 ],
                 "max_completion_tokens": max_tokens,
-                "temperature": temperature,
                 "response_format": {"type": "json_object"}
             }
+
+            # GPT-5-nano doesn't support temperature parameter
+            if not model.startswith('gpt-5-nano'):
+                openai_request_data["temperature"] = temperature
 
             # Make request to OpenAI API
             request = Request(
@@ -4697,8 +4700,8 @@ REQUIRED OUTPUT FORMAT (JSON only, no explanation):
                 messages=[
                     {"role": "user", "content": prompt}
                 ],
-                max_completion_tokens=150,
-                temperature=0.1,  # Low temperature for consistent categorization
+                max_completion_tokens=500,  # Higher limit needed for reasoning model
+                # Note: temperature not supported by GPT-5-nano (uses default 1)
                 response_format={"type": "json_object"}  # Force JSON output
             )
 
