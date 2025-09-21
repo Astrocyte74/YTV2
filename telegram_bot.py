@@ -4700,7 +4700,7 @@ REQUIRED OUTPUT FORMAT (JSON only, no explanation):
                 messages=[
                     {"role": "user", "content": prompt}
                 ],
-                max_completion_tokens=500,  # Higher limit needed for reasoning model
+                max_completion_tokens=1000,  # Higher limit needed for reasoning model
                 # Note: temperature not supported by GPT-5-nano (uses default 1)
                 response_format={"type": "json_object"}  # Force JSON output
             )
