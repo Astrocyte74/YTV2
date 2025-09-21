@@ -4637,226 +4637,99 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"error": "Failed to delete quiz"}).encode())
 
-    def _get_ytv2_category_mapping(self):
-        """Get category mapping based on REAL YTV2 video content taxonomy (17 categories, 70+ subcategories)"""
-        return {
-            # Based on actual YTV2 data: 17 categories with exact subcategory distributions
-            "Technology": {  # 48 videos
-                "keywords": ["tech", "software", "programming", "code", "javascript", "python", "react", "api", "database", "web", "app", "development", "computer", "digital", "mobile", "devops", "cybersecurity"],
-                "subcategories": {
-                    "Software Tutorials": ["tutorial", "how to", "guide", "learn", "step by step", "beginner", "getting started", "intro", "course"],
-                    "Tech Reviews & Comparisons": ["review", "compare", "comparison", "best", "vs", "better", "recommendation", "test", "benchmark"],
-                    "Tech News & Trends": ["news", "trend", "latest", "update", "release", "announcement", "2024", "2025", "breaking"],
-                    "Programming & Software Development": ["programming", "code", "javascript", "python", "java", "react", "vue", "angular", "api", "backend", "frontend", "development"],
-                    "Mobile Development": ["mobile", "android", "ios", "app development", "flutter", "react native"],
-                    "Web Development": ["web", "html", "css", "frontend", "backend", "fullstack", "website"],
-                    "DevOps & Infrastructure": ["devops", "infrastructure", "docker", "kubernetes", "deployment", "ci/cd"],
-                    "Cybersecurity": ["security", "cybersecurity", "hacking", "encryption", "privacy", "vulnerability"],
-                    "Databases & Data Science": ["database", "sql", "data science", "analytics", "big data", "mongodb"]
-                }
-            },
-            "AI Software Development": {  # 22 videos
-                "keywords": ["ai", "artificial intelligence", "machine learning", "gpt", "claude", "openai", "neural", "model", "algorithm", "deep learning", "llm", "mcp", "agent", "orchestration"],
-                "subcategories": {
-                    "Agents & MCP/Orchestration": ["agent", "mcp", "orchestration", "workflow", "automation", "multi-agent"],
-                    "APIs & SDKs": ["api", "sdk", "integration", "endpoint", "rest", "graphql", "openai api"],
-                    "Model Selection & Evaluation": ["model", "evaluation", "comparison", "benchmarking", "selection", "performance"],
-                    "Deployment & Serving": ["deployment", "serving", "production", "hosting", "scaling", "inference"],
-                    "Cost Optimisation": ["cost", "optimization", "efficiency", "budget", "pricing", "tokens"],
-                    "Security & Safety": ["security", "safety", "alignment", "ethics", "responsible ai"],
-                    "Prompt Engineering & RAG": ["prompt", "engineering", "rag", "retrieval", "context", "fine-tuning"],
-                    "Data Engineering & ETL": ["data", "etl", "pipeline", "processing", "ingestion"],
-                    "Training & Fine-Tuning": ["training", "fine-tuning", "custom model", "dataset"]
-                }
-            },
-            "History": {  # 23 videos
-                "keywords": ["history", "historical", "ancient", "medieval", "civilization", "century", "past", "heritage", "culture", "empire", "kingdom"],
-                "subcategories": {
-                    "Modern History": ["modern", "20th century", "21st century", "contemporary", "recent history"],
-                    "Historical Analysis": ["analysis", "interpretation", "perspective", "historical context", "documentary"],
-                    "Cultural Heritage": ["culture", "heritage", "tradition", "customs", "society", "anthropology"],
-                    "Ancient Civilizations": ["ancient", "rome", "greece", "egypt", "mesopotamia", "babylon", "civilization"]
-                }
-            },
-            "Education": {  # 19 videos
-                "keywords": ["education", "learning", "study", "school", "university", "course", "lesson", "teaching", "academic", "student", "knowledge"],
-                "subcategories": {
-                    "Tutorials & Courses": ["tutorial", "course", "lesson", "class", "instruction", "walkthrough"],
-                    "Teaching Methods": ["teaching", "pedagogy", "methodology", "learning technique", "education strategy"],
-                    "Academic Subjects": ["math", "literature", "language", "subject", "curriculum", "academic"]
-                }
-            },
-            "Business": {  # 14 videos
-                "keywords": ["business", "entrepreneur", "startup", "company", "corporate", "market", "industry", "finance", "economics", "investment", "career"],
-                "subcategories": {
-                    "Industry Analysis": ["industry", "market analysis", "business analysis", "sector", "trends", "competition"],
-                    "Finance & Investing": ["finance", "investing", "investment", "stock", "crypto", "trading", "money"],
-                    "Career Development": ["career", "job", "professional", "skills", "resume", "interview"],
-                    "Marketing & Sales": ["marketing", "sales", "advertising", "brand", "customer", "promotion"],
-                    "Leadership & Management": ["leadership", "management", "team", "strategy", "planning", "executive"]
-                }
-            },
-            "World War II (WWII)": {  # 13 videos
-                "keywords": ["wwii", "ww2", "world war 2", "world war ii", "nazi", "hitler", "allies", "axis", "1939", "1945", "holocaust"],
-                "subcategories": {
-                    "European Theatre": ["europe", "german", "britain", "france", "eastern front", "western front"],
-                    "Aftermath & Reconstruction": ["aftermath", "reconstruction", "post-war", "recovery", "rebuilding"],
-                    "Technology & Weapons": ["technology", "weapons", "tanks", "aircraft", "radar", "atomic bomb"],
-                    "Causes & Prelude": ["causes", "prelude", "lead up", "origins", "treaty of versailles"],
-                    "Biographies & Commanders": ["biography", "commander", "general", "leader", "churchill", "roosevelt"],
-                    "Home Front & Society": ["home front", "society", "civilian", "propaganda", "rationing"],
-                    "Pacific Theatre": ["pacific", "japan", "pearl harbor", "pacific war", "kamikaze"],
-                    "Holocaust & War Crimes": ["holocaust", "war crimes", "genocide", "concentration camps"],
-                    "Intelligence & Codebreaking": ["intelligence", "code", "enigma", "bletchley", "spy"]
-                }
-            },
-            "Hobbies & Special Interests": {  # 10 videos
-                "keywords": ["hobby", "automotive", "car", "vehicle", "engine", "motorcycle", "racing", "mechanic", "repair"],
-                "subcategories": {
-                    "Automotive": ["automotive", "car", "vehicle", "engine", "motorcycle", "racing", "mechanic", "repair", "auto"]
-                }
-            },
-            "Science & Nature": {  # 6 videos
-                "keywords": ["science", "nature", "physics", "chemistry", "biology", "research", "discovery", "experiment", "scientific", "photosynthesis", "cell", "molecule", "organism", "ecosystem", "evolution", "genetics"],
-                "subcategories": {
-                    "Physics & Chemistry": ["physics", "chemistry", "quantum", "molecular", "atomic", "thermal", "energy", "photosynthesis", "biology", "biochemistry", "cell", "organism"]
-                }
-            },
-            "News & Politics": {  # 4 videos
-                "keywords": ["news", "politics", "political", "government", "policy", "election", "democracy", "current events", "international"],
-                "subcategories": {
-                    "Political Analysis": ["political", "analysis", "commentary", "opinion", "debate"],
-                    "Government & Policy": ["government", "policy", "legislation", "regulation", "administration"],
-                    "Current Events": ["current", "events", "breaking", "happening", "today"],
-                    "International Affairs": ["international", "global", "foreign", "diplomacy", "relations"]
-                }
-            },
-            "Entertainment": {  # 3 videos
-                "keywords": ["entertainment", "movie", "film", "music", "comedy", "humor", "performance", "reaction", "funny", "star wars", "marvel", "disney", "franchise", "superhero", "sci-fi", "fantasy"],
-                "subcategories": {
-                    "Comedy & Humor": ["comedy", "humor", "funny", "joke", "laugh", "satire"],
-                    "Music & Performance": ["music", "performance", "concert", "artist", "song"],
-                    "Reaction Content": ["reaction", "react", "response", "review reaction"],
-                    "Movies & TV": ["movie", "film", "tv", "series", "cinema", "actor", "star wars", "marvel", "disney", "franchise", "superhero", "sci-fi", "fantasy"]
-                }
-            },
-            "Reviews & Products": {  # 2 videos
-                "keywords": ["review", "product", "comparison", "test", "buying", "guide", "recommendation"],
-                "subcategories": {
-                    "Comparisons & Tests": ["comparison", "test", "benchmark", "vs", "versus"],
-                    "Product Reviews": ["product", "review", "unboxing", "first look"],
-                    "Buying Guides": ["buying", "guide", "purchase", "recommendation", "best"]
-                }
-            },
-            "General": {  # 2 videos
-                "keywords": ["general", "mixed", "various", "miscellaneous", "other"],
-                "subcategories": {
-                    "Mixed Content": ["mixed", "various", "general", "miscellaneous", "other"]
-                }
-            },
-            "Computer Hardware": {  # 1 video
-                "keywords": ["hardware", "computer", "pc", "networking", "nas", "cooling", "thermal", "components"],
-                "subcategories": {
-                    "Networking & NAS": ["networking", "nas", "network", "server", "router"],
-                    "Cooling & Thermals": ["cooling", "thermal", "temperature", "fan", "heat"]
-                }
-            },
-            "Astronomy": {  # 1 video
-                "keywords": ["astronomy", "space", "planet", "solar system", "mission", "exploration", "telescope", "mars"],
-                "subcategories": {
-                    "Space Missions & Exploration": ["mission", "exploration", "spacecraft", "probe"],
-                    "Solar System & Planets": ["solar system", "planet", "mars", "jupiter", "saturn"],
-                    "Space News & Discoveries": ["space news", "discovery", "breakthrough", "observation"]
-                }
-            },
-            "Sports": {  # 1 video
-                "keywords": ["sports", "equipment", "gear", "athletic", "fitness", "training"],
-                "subcategories": {
-                    "Equipment & Gear": ["equipment", "gear", "tools", "athletic gear"]
-                }
-            },
-            "News": {  # 1 video (separate from News & Politics)
-                "keywords": ["news", "breaking", "current", "report", "journalism"],
-                "subcategories": {
-                    "General News": ["news", "breaking", "current", "report", "journalism"]
-                }
-            },
-            "World War I (WWI)": {  # 1 video
-                "keywords": ["wwi", "ww1", "world war 1", "world war i", "great war", "1914", "1918", "trench"],
-                "subcategories": {
-                    "Aftermath & Interwar": ["aftermath", "interwar", "post-war", "treaty", "reconstruction"]
-                }
-            }
+
+    def _categorize_by_ai(self, topic, quiz_content=""):
+        """Categorize quiz using OpenAI GPT-3.5-turbo with structured JSON output"""
+        try:
+            import openai
+        except ImportError:
+            print("⚠️ OpenAI not available, returning fallback")
+            return "General", "Mixed Content", 0.3
+
+        # Build category structure for prompt (simplified structure without keywords)
+        categories_structure = {
+            "Technology": ["Software Tutorials", "Tech Reviews & Comparisons", "Tech News & Trends", "Programming & Software Development", "Mobile Development", "Web Development", "DevOps & Infrastructure", "Cybersecurity", "Databases & Data Science"],
+            "AI Software Development": ["Agents & MCP/Orchestration", "APIs & SDKs", "Model Selection & Evaluation", "Deployment & Serving", "Cost Optimisation", "Security & Safety", "Prompt Engineering & RAG", "Data Engineering & ETL", "Training & Fine-Tuning"],
+            "History": ["Modern History", "Historical Analysis", "Cultural Heritage", "Ancient Civilizations"],
+            "Education": ["Tutorials & Courses", "Teaching Methods", "Academic Subjects"],
+            "Business": ["Industry Analysis", "Finance & Investing", "Career Development", "Marketing & Sales", "Leadership & Management"],
+            "World War II (WWII)": ["European Theatre", "Aftermath & Reconstruction", "Technology & Weapons", "Causes & Prelude", "Biographies & Commanders", "Home Front & Society", "Pacific Theatre", "Holocaust & War Crimes", "Intelligence & Codebreaking"],
+            "Hobbies & Special Interests": ["Automotive"],
+            "Science & Nature": ["Physics & Chemistry"],
+            "News & Politics": ["Political Analysis", "Government & Policy", "Current Events", "International Affairs"],
+            "Entertainment": ["Comedy & Humor", "Music & Performance", "Reaction Content", "Movies & TV"],
+            "Reviews & Products": ["Comparisons & Tests", "Product Reviews", "Buying Guides"],
+            "General": ["Mixed Content"],
+            "Computer Hardware": ["Networking & NAS", "Cooling & Thermals"],
+            "Astronomy": ["Space Missions & Exploration", "Solar System & Planets", "Space News & Discoveries"],
+            "Sports": ["Equipment & Gear"],
+            "News": ["General News"],
+            "World War I (WWI)": ["Aftermath & Interwar"]
         }
 
-    def _categorize_by_keywords(self, topic, quiz_content=""):
-        """Categorize quiz based on keyword matching"""
-        topic_lower = topic.lower()
-        content_lower = quiz_content.lower() if quiz_content else ""
-        search_text = f"{topic_lower} {content_lower}"
+        # Construct AI prompt for structured output
+        prompt = f"""You are a content categorization expert. Categorize the following quiz topic into the most appropriate category and subcategory.
 
-        category_mapping = self._get_ytv2_category_mapping()
+TOPIC: {topic}
+CONTENT: {quiz_content or "No additional content provided"}
 
-        # Score each category
-        category_scores = {}
-        subcategory_scores = {}
+AVAILABLE CATEGORIES AND SUBCATEGORIES:
+{json.dumps(categories_structure, indent=2)}
 
-        for category, data in category_mapping.items():
-            score = 0
+INSTRUCTIONS:
+- Choose the SINGLE most appropriate category and subcategory
+- Base your decision on the topic content and context
+- If the topic doesn't clearly fit any category, use "General" → "Mixed Content"
+- Provide a confidence score from 0.0 to 1.0
 
-            # Check category keywords
-            for keyword in data["keywords"]:
-                if keyword in search_text:
-                    score += 1
+REQUIRED OUTPUT FORMAT (JSON only, no explanation):
+{{
+  "category": "Category Name",
+  "subcategory": "Subcategory Name",
+  "confidence": 0.85,
+  "reasoning": "Brief one-sentence explanation"
+}}"""
 
-            category_scores[category] = score
+        try:
+            # Make OpenAI API call
+            response = openai.chat.completions.create(
+                model="gpt-3.5-turbo-1106",  # Version that supports JSON mode
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=150,
+                temperature=0.1,  # Low temperature for consistent categorization
+                response_format={"type": "json_object"}  # Force JSON output
+            )
 
-            # Check subcategory keywords
-            for subcategory, subcat_keywords in data["subcategories"].items():
-                sub_score = 0
-                for keyword in subcat_keywords:
-                    if keyword in search_text:
-                        sub_score += 1
+            # Parse response
+            result_text = response.choices[0].message.content.strip()
+            result = json.loads(result_text)
 
-                if sub_score > 0:
-                    subcategory_scores[f"{category}|{subcategory}"] = sub_score
+            # Validate response structure
+            category = result.get("category", "General")
+            subcategory = result.get("subcategory", "Mixed Content")
+            confidence = float(result.get("confidence", 0.5))
+            reasoning = result.get("reasoning", "AI categorization")
 
-        # Find best category - handle case where no keywords match
-        if not category_scores or all(score == 0 for score in category_scores.values()):
-            # No keyword matches - return General with low confidence
-            best_category = ("General", 0)
-            best_subcategory = "Mixed Content"
-            confidence = 0.1
-            return best_category[0], best_subcategory, confidence
+            # Validate category exists in our mapping
+            if category not in categories_structure:
+                category = "General"
+                subcategory = "Mixed Content"
+                confidence = 0.3
 
-        # Get the highest scoring category
-        best_category = max(category_scores.items(), key=lambda x: x[1])
+            # Validate subcategory exists for the category
+            elif subcategory not in categories_structure[category]:
+                # Use first available subcategory for this category
+                subcategory = categories_structure[category][0]
+                confidence = max(0.3, confidence - 0.2)  # Reduce confidence for subcategory fallback
 
-        # Find best subcategory for the best category
-        best_subcategory = None
-        best_sub_score = 0
+            return category, subcategory, confidence
 
-        for key, score in subcategory_scores.items():
-            cat, subcat = key.split('|', 1)
-            if cat == best_category[0] and score > best_sub_score:
-                best_subcategory = subcat
-                best_sub_score = score
+        except Exception as e:
+            print(f"⚠️ AI categorization failed: {e}")
+            return "General", "Mixed Content", 0.3
 
-        # Default fallback to first subcategory if none matched
-        if not best_subcategory and best_category[0] in category_mapping:
-            subcats = list(category_mapping[best_category[0]]["subcategories"].keys())
-            best_subcategory = subcats[0] if subcats else "General"
-
-        # Calculate confidence based on actual keyword matches
-        total_keywords = len(category_mapping[best_category[0]]["keywords"])
-        if total_keywords > 0 and best_category[1] > 0:
-            # Good match - scale confidence based on keyword hit ratio
-            confidence = min(0.95, max(0.4, (best_category[1] / total_keywords) * 2))
-        else:
-            # No matches - very low confidence
-            confidence = 0.15
-
-        return best_category[0], best_subcategory, confidence
 
     def handle_categorize_quiz(self):
         """Handle POST /api/categorize-quiz - Auto-categorize quiz topic"""
@@ -4897,23 +4770,14 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
             quiz_content = request_data.get('quiz_content', '')
 
-            # Use keyword-based categorization (fast and reliable)
-            category, subcategory, confidence = self._categorize_by_keywords(topic, quiz_content)
+            # Use AI-based categorization (more accurate)
+            category, subcategory, confidence = self._categorize_by_ai(topic, quiz_content)
 
-            # Generate alternatives with different confidence scores
-            category_mapping = self._get_ytv2_category_mapping()
-            alternatives = []
-
-            # Add a few other likely categories as alternatives
-            for alt_category in list(category_mapping.keys())[:3]:
-                if alt_category != category:
-                    alt_subcats = list(category_mapping[alt_category]["subcategories"].keys())
-                    alt_confidence = max(0.2, confidence - 0.15)
-                    alternatives.append({
-                        "category": alt_category,
-                        "subcategory": alt_subcats[0] if alt_subcats else "General",
-                        "confidence": round(alt_confidence, 2)
-                    })
+            # Generate simple alternatives (no longer need complex scoring)
+            alternatives = [
+                {"category": "Technology", "subcategory": "Software Tutorials", "confidence": 0.2},
+                {"category": "AI Software Development", "subcategory": "Agents & MCP/Orchestration", "confidence": 0.2}
+            ]
 
             # Send successful response
             self.send_response(200)
@@ -4927,10 +4791,25 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "subcategory": subcategory or "General",
                 "confidence": round(confidence, 2),
                 "alternatives": alternatives[:2],  # Limit to 2 alternatives
-                "available_categories": list(category_mapping.keys()),
+                "available_categories": ["Technology", "AI Software Development", "History", "Education", "Business", "World War II (WWII)", "Hobbies & Special Interests", "Science & Nature", "News & Politics", "Entertainment", "Reviews & Products", "General", "Computer Hardware", "Astronomy", "Sports", "News", "World War I (WWI)"],
                 "available_subcategories": {
-                    cat: list(data["subcategories"].keys())
-                    for cat, data in category_mapping.items()
+                    "Technology": ["Software Tutorials", "Tech Reviews & Comparisons", "Tech News & Trends", "Programming & Software Development", "Mobile Development", "Web Development", "DevOps & Infrastructure", "Cybersecurity", "Databases & Data Science"],
+                    "AI Software Development": ["Agents & MCP/Orchestration", "APIs & SDKs", "Model Selection & Evaluation", "Deployment & Serving", "Cost Optimisation", "Security & Safety", "Prompt Engineering & RAG", "Data Engineering & ETL", "Training & Fine-Tuning"],
+                    "History": ["Modern History", "Historical Analysis", "Cultural Heritage", "Ancient Civilizations"],
+                    "Education": ["Tutorials & Courses", "Teaching Methods", "Academic Subjects"],
+                    "Business": ["Industry Analysis", "Finance & Investing", "Career Development", "Marketing & Sales", "Leadership & Management"],
+                    "World War II (WWII)": ["European Theatre", "Aftermath & Reconstruction", "Technology & Weapons", "Causes & Prelude", "Biographies & Commanders", "Home Front & Society", "Pacific Theatre", "Holocaust & War Crimes", "Intelligence & Codebreaking"],
+                    "Hobbies & Special Interests": ["Automotive"],
+                    "Science & Nature": ["Physics & Chemistry"],
+                    "News & Politics": ["Political Analysis", "Government & Policy", "Current Events", "International Affairs"],
+                    "Entertainment": ["Comedy & Humor", "Music & Performance", "Reaction Content", "Movies & TV"],
+                    "Reviews & Products": ["Comparisons & Tests", "Product Reviews", "Buying Guides"],
+                    "General": ["Mixed Content"],
+                    "Computer Hardware": ["Networking & NAS", "Cooling & Thermals"],
+                    "Astronomy": ["Space Missions & Exploration", "Solar System & Planets", "Space News & Discoveries"],
+                    "Sports": ["Equipment & Gear"],
+                    "News": ["General News"],
+                    "World War I (WWI)": ["Aftermath & Interwar"]
                 }
             }
             self.wfile.write(json.dumps(result).encode())
