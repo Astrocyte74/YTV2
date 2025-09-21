@@ -4717,9 +4717,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 }
             },
             "Science & Nature": {  # 6 videos
-                "keywords": ["science", "nature", "physics", "chemistry", "biology", "research", "discovery", "experiment", "scientific"],
+                "keywords": ["science", "nature", "physics", "chemistry", "biology", "research", "discovery", "experiment", "scientific", "photosynthesis", "cell", "molecule", "organism", "ecosystem", "evolution", "genetics"],
                 "subcategories": {
-                    "Physics & Chemistry": ["physics", "chemistry", "quantum", "molecular", "atomic", "thermal", "energy"]
+                    "Physics & Chemistry": ["physics", "chemistry", "quantum", "molecular", "atomic", "thermal", "energy", "photosynthesis", "biology", "biochemistry", "cell", "organism"]
                 }
             },
             "News & Politics": {  # 4 videos
@@ -4732,12 +4732,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 }
             },
             "Entertainment": {  # 3 videos
-                "keywords": ["entertainment", "movie", "film", "music", "comedy", "humor", "performance", "reaction", "funny"],
+                "keywords": ["entertainment", "movie", "film", "music", "comedy", "humor", "performance", "reaction", "funny", "star wars", "marvel", "disney", "franchise", "superhero", "sci-fi", "fantasy"],
                 "subcategories": {
                     "Comedy & Humor": ["comedy", "humor", "funny", "joke", "laugh", "satire"],
                     "Music & Performance": ["music", "performance", "concert", "artist", "song"],
                     "Reaction Content": ["reaction", "react", "response", "review reaction"],
-                    "Movies & TV": ["movie", "film", "tv", "series", "cinema", "actor"]
+                    "Movies & TV": ["movie", "film", "tv", "series", "cinema", "actor", "star wars", "marvel", "disney", "franchise", "superhero", "sci-fi", "fantasy"]
                 }
             },
             "Reviews & Products": {  # 2 videos
@@ -4821,8 +4821,16 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 if sub_score > 0:
                     subcategory_scores[f"{category}|{subcategory}"] = sub_score
 
-        # Find best category
-        best_category = max(category_scores.items(), key=lambda x: x[1]) if category_scores else ("Technology", 0)
+        # Find best category - handle case where no keywords match
+        if not category_scores or all(score == 0 for score in category_scores.values()):
+            # No keyword matches - return General with low confidence
+            best_category = ("General", 0)
+            best_subcategory = "Mixed Content"
+            confidence = 0.1
+            return best_category[0], best_subcategory, confidence
+
+        # Get the highest scoring category
+        best_category = max(category_scores.items(), key=lambda x: x[1])
 
         # Find best subcategory for the best category
         best_subcategory = None
@@ -4834,14 +4842,19 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 best_subcategory = subcat
                 best_sub_score = score
 
-        # Default fallback
+        # Default fallback to first subcategory if none matched
         if not best_subcategory and best_category[0] in category_mapping:
             subcats = list(category_mapping[best_category[0]]["subcategories"].keys())
             best_subcategory = subcats[0] if subcats else "General"
 
-        # Calculate confidence
+        # Calculate confidence based on actual keyword matches
         total_keywords = len(category_mapping[best_category[0]]["keywords"])
-        confidence = min(0.95, max(0.3, best_category[1] / total_keywords)) if total_keywords > 0 else 0.3
+        if total_keywords > 0 and best_category[1] > 0:
+            # Good match - scale confidence based on keyword hit ratio
+            confidence = min(0.95, max(0.4, (best_category[1] / total_keywords) * 2))
+        else:
+            # No matches - very low confidence
+            confidence = 0.15
 
         return best_category[0], best_subcategory, confidence
 
