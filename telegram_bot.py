@@ -4638,68 +4638,153 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": "Failed to delete quiz"}).encode())
 
     def _get_ytv2_category_mapping(self):
-        """Get category mapping based on YTV2 video content taxonomy"""
+        """Get category mapping based on REAL YTV2 video content taxonomy (17 categories, 70+ subcategories)"""
         return {
-            # Primary categories from YTV2 system
-            "Technology": {
-                "keywords": ["tech", "software", "programming", "code", "javascript", "python", "react", "api", "database", "web", "app", "development", "computer", "digital"],
+            # Based on actual YTV2 data: 17 categories with exact subcategory distributions
+            "Technology": {  # 48 videos
+                "keywords": ["tech", "software", "programming", "code", "javascript", "python", "react", "api", "database", "web", "app", "development", "computer", "digital", "mobile", "devops", "cybersecurity"],
                 "subcategories": {
+                    "Software Tutorials": ["tutorial", "how to", "guide", "learn", "step by step", "beginner", "getting started", "intro", "course"],
+                    "Tech Reviews & Comparisons": ["review", "compare", "comparison", "best", "vs", "better", "recommendation", "test", "benchmark"],
+                    "Tech News & Trends": ["news", "trend", "latest", "update", "release", "announcement", "2024", "2025", "breaking"],
                     "Programming & Software Development": ["programming", "code", "javascript", "python", "java", "react", "vue", "angular", "api", "backend", "frontend", "development"],
-                    "Tech Reviews": ["review", "compare", "comparison", "best", "vs", "better", "recommendation"],
-                    "AI & Machine Learning": ["ai", "ml", "machine learning", "neural", "gpt", "chatgpt", "claude", "artificial intelligence", "model", "algorithm"],
-                    "Software Tutorials": ["tutorial", "how to", "guide", "learn", "step by step", "beginner", "getting started", "intro"],
-                    "Tech News & Trends": ["news", "trend", "latest", "update", "release", "announcement", "2024", "2025"]
+                    "Mobile Development": ["mobile", "android", "ios", "app development", "flutter", "react native"],
+                    "Web Development": ["web", "html", "css", "frontend", "backend", "fullstack", "website"],
+                    "DevOps & Infrastructure": ["devops", "infrastructure", "docker", "kubernetes", "deployment", "ci/cd"],
+                    "Cybersecurity": ["security", "cybersecurity", "hacking", "encryption", "privacy", "vulnerability"],
+                    "Databases & Data Science": ["database", "sql", "data science", "analytics", "big data", "mongodb"]
                 }
             },
-            "AI Software Development": {
-                "keywords": ["ai", "artificial intelligence", "machine learning", "gpt", "claude", "openai", "neural", "model", "algorithm", "deep learning"],
+            "AI Software Development": {  # 22 videos
+                "keywords": ["ai", "artificial intelligence", "machine learning", "gpt", "claude", "openai", "neural", "model", "algorithm", "deep learning", "llm", "mcp", "agent", "orchestration"],
                 "subcategories": {
-                    "AI Tools & Platforms": ["tool", "platform", "service", "api", "openai", "anthropic"],
-                    "Machine Learning": ["ml", "training", "model", "dataset", "neural network"],
-                    "AI Applications": ["application", "use case", "implementation", "project"]
+                    "Agents & MCP/Orchestration": ["agent", "mcp", "orchestration", "workflow", "automation", "multi-agent"],
+                    "APIs & SDKs": ["api", "sdk", "integration", "endpoint", "rest", "graphql", "openai api"],
+                    "Model Selection & Evaluation": ["model", "evaluation", "comparison", "benchmarking", "selection", "performance"],
+                    "Deployment & Serving": ["deployment", "serving", "production", "hosting", "scaling", "inference"],
+                    "Cost Optimisation": ["cost", "optimization", "efficiency", "budget", "pricing", "tokens"],
+                    "Security & Safety": ["security", "safety", "alignment", "ethics", "responsible ai"],
+                    "Prompt Engineering & RAG": ["prompt", "engineering", "rag", "retrieval", "context", "fine-tuning"],
+                    "Data Engineering & ETL": ["data", "etl", "pipeline", "processing", "ingestion"],
+                    "Training & Fine-Tuning": ["training", "fine-tuning", "custom model", "dataset"]
                 }
             },
-            "History": {
-                "keywords": ["history", "historical", "ancient", "medieval", "war", "empire", "civilization", "century", "past", "heritage"],
+            "History": {  # 23 videos
+                "keywords": ["history", "historical", "ancient", "medieval", "civilization", "century", "past", "heritage", "culture", "empire", "kingdom"],
                 "subcategories": {
-                    "World History": ["world", "global", "international", "civilization"],
-                    "Military History": ["war", "battle", "military", "army", "conflict", "wwii", "ww2"],
-                    "Ancient History": ["ancient", "rome", "greece", "egypt", "mesopotamia"],
-                    "Modern History": ["modern", "20th century", "21st century", "contemporary"]
+                    "Modern History": ["modern", "20th century", "21st century", "contemporary", "recent history"],
+                    "Historical Analysis": ["analysis", "interpretation", "perspective", "historical context", "documentary"],
+                    "Cultural Heritage": ["culture", "heritage", "tradition", "customs", "society", "anthropology"],
+                    "Ancient Civilizations": ["ancient", "rome", "greece", "egypt", "mesopotamia", "babylon", "civilization"]
                 }
             },
-            "Science & Nature": {
-                "keywords": ["science", "nature", "biology", "physics", "chemistry", "environment", "climate", "space", "astronomy", "research"],
+            "Education": {  # 19 videos
+                "keywords": ["education", "learning", "study", "school", "university", "course", "lesson", "teaching", "academic", "student", "knowledge"],
                 "subcategories": {
-                    "Physics & Astronomy": ["physics", "space", "astronomy", "universe", "quantum", "relativity"],
-                    "Biology & Life Sciences": ["biology", "life", "evolution", "genetics", "medicine", "health"],
-                    "Environmental Science": ["environment", "climate", "ecology", "sustainability", "green"],
-                    "General Science": ["science", "research", "discovery", "experiment", "theory"]
+                    "Tutorials & Courses": ["tutorial", "course", "lesson", "class", "instruction", "walkthrough"],
+                    "Teaching Methods": ["teaching", "pedagogy", "methodology", "learning technique", "education strategy"],
+                    "Academic Subjects": ["math", "literature", "language", "subject", "curriculum", "academic"]
                 }
             },
-            "Business": {
-                "keywords": ["business", "entrepreneur", "startup", "marketing", "finance", "economics", "management", "strategy", "leadership"],
+            "Business": {  # 14 videos
+                "keywords": ["business", "entrepreneur", "startup", "company", "corporate", "market", "industry", "finance", "economics", "investment", "career"],
                 "subcategories": {
-                    "Entrepreneurship": ["entrepreneur", "startup", "founder", "business idea", "venture"],
-                    "Marketing & Sales": ["marketing", "sales", "advertising", "brand", "customer"],
-                    "Finance & Economics": ["finance", "money", "economics", "investment", "stock", "crypto"],
-                    "Management & Leadership": ["management", "leadership", "team", "strategy", "planning"]
+                    "Industry Analysis": ["industry", "market analysis", "business analysis", "sector", "trends", "competition"],
+                    "Finance & Investing": ["finance", "investing", "investment", "stock", "crypto", "trading", "money"],
+                    "Career Development": ["career", "job", "professional", "skills", "resume", "interview"],
+                    "Marketing & Sales": ["marketing", "sales", "advertising", "brand", "customer", "promotion"],
+                    "Leadership & Management": ["leadership", "management", "team", "strategy", "planning", "executive"]
                 }
             },
-            "Education": {
-                "keywords": ["education", "learning", "study", "school", "university", "course", "lesson", "teaching", "academic"],
+            "World War II (WWII)": {  # 13 videos
+                "keywords": ["wwii", "ww2", "world war 2", "world war ii", "nazi", "hitler", "allies", "axis", "1939", "1945", "holocaust"],
                 "subcategories": {
-                    "Educational Content": ["education", "learning", "study", "course"],
-                    "Study Tips & Methods": ["study tips", "learning method", "memory", "note taking"],
-                    "Academic Subjects": ["math", "literature", "language", "subject", "curriculum"]
+                    "European Theatre": ["europe", "german", "britain", "france", "eastern front", "western front"],
+                    "Aftermath & Reconstruction": ["aftermath", "reconstruction", "post-war", "recovery", "rebuilding"],
+                    "Technology & Weapons": ["technology", "weapons", "tanks", "aircraft", "radar", "atomic bomb"],
+                    "Causes & Prelude": ["causes", "prelude", "lead up", "origins", "treaty of versailles"],
+                    "Biographies & Commanders": ["biography", "commander", "general", "leader", "churchill", "roosevelt"],
+                    "Home Front & Society": ["home front", "society", "civilian", "propaganda", "rationing"],
+                    "Pacific Theatre": ["pacific", "japan", "pearl harbor", "pacific war", "kamikaze"],
+                    "Holocaust & War Crimes": ["holocaust", "war crimes", "genocide", "concentration camps"],
+                    "Intelligence & Codebreaking": ["intelligence", "code", "enigma", "bletchley", "spy"]
                 }
             },
-            "Entertainment": {
-                "keywords": ["entertainment", "movie", "film", "music", "game", "gaming", "culture", "art", "creative"],
+            "Hobbies & Special Interests": {  # 10 videos
+                "keywords": ["hobby", "automotive", "car", "vehicle", "engine", "motorcycle", "racing", "mechanic", "repair"],
                 "subcategories": {
-                    "Movies & TV": ["movie", "film", "tv", "series", "cinema", "actor"],
-                    "Gaming": ["game", "gaming", "video game", "console", "pc gaming"],
-                    "Music & Arts": ["music", "art", "creative", "design", "culture"]
+                    "Automotive": ["automotive", "car", "vehicle", "engine", "motorcycle", "racing", "mechanic", "repair", "auto"]
+                }
+            },
+            "Science & Nature": {  # 6 videos
+                "keywords": ["science", "nature", "physics", "chemistry", "biology", "research", "discovery", "experiment", "scientific"],
+                "subcategories": {
+                    "Physics & Chemistry": ["physics", "chemistry", "quantum", "molecular", "atomic", "thermal", "energy"]
+                }
+            },
+            "News & Politics": {  # 4 videos
+                "keywords": ["news", "politics", "political", "government", "policy", "election", "democracy", "current events", "international"],
+                "subcategories": {
+                    "Political Analysis": ["political", "analysis", "commentary", "opinion", "debate"],
+                    "Government & Policy": ["government", "policy", "legislation", "regulation", "administration"],
+                    "Current Events": ["current", "events", "breaking", "happening", "today"],
+                    "International Affairs": ["international", "global", "foreign", "diplomacy", "relations"]
+                }
+            },
+            "Entertainment": {  # 3 videos
+                "keywords": ["entertainment", "movie", "film", "music", "comedy", "humor", "performance", "reaction", "funny"],
+                "subcategories": {
+                    "Comedy & Humor": ["comedy", "humor", "funny", "joke", "laugh", "satire"],
+                    "Music & Performance": ["music", "performance", "concert", "artist", "song"],
+                    "Reaction Content": ["reaction", "react", "response", "review reaction"],
+                    "Movies & TV": ["movie", "film", "tv", "series", "cinema", "actor"]
+                }
+            },
+            "Reviews & Products": {  # 2 videos
+                "keywords": ["review", "product", "comparison", "test", "buying", "guide", "recommendation"],
+                "subcategories": {
+                    "Comparisons & Tests": ["comparison", "test", "benchmark", "vs", "versus"],
+                    "Product Reviews": ["product", "review", "unboxing", "first look"],
+                    "Buying Guides": ["buying", "guide", "purchase", "recommendation", "best"]
+                }
+            },
+            "General": {  # 2 videos
+                "keywords": ["general", "mixed", "various", "miscellaneous", "other"],
+                "subcategories": {
+                    "Mixed Content": ["mixed", "various", "general", "miscellaneous", "other"]
+                }
+            },
+            "Computer Hardware": {  # 1 video
+                "keywords": ["hardware", "computer", "pc", "networking", "nas", "cooling", "thermal", "components"],
+                "subcategories": {
+                    "Networking & NAS": ["networking", "nas", "network", "server", "router"],
+                    "Cooling & Thermals": ["cooling", "thermal", "temperature", "fan", "heat"]
+                }
+            },
+            "Astronomy": {  # 1 video
+                "keywords": ["astronomy", "space", "planet", "solar system", "mission", "exploration", "telescope", "mars"],
+                "subcategories": {
+                    "Space Missions & Exploration": ["mission", "exploration", "spacecraft", "probe"],
+                    "Solar System & Planets": ["solar system", "planet", "mars", "jupiter", "saturn"],
+                    "Space News & Discoveries": ["space news", "discovery", "breakthrough", "observation"]
+                }
+            },
+            "Sports": {  # 1 video
+                "keywords": ["sports", "equipment", "gear", "athletic", "fitness", "training"],
+                "subcategories": {
+                    "Equipment & Gear": ["equipment", "gear", "tools", "athletic gear"]
+                }
+            },
+            "News": {  # 1 video (separate from News & Politics)
+                "keywords": ["news", "breaking", "current", "report", "journalism"],
+                "subcategories": {
+                    "General News": ["news", "breaking", "current", "report", "journalism"]
+                }
+            },
+            "World War I (WWI)": {  # 1 video
+                "keywords": ["wwi", "ww1", "world war 1", "world war i", "great war", "1914", "1918", "trench"],
+                "subcategories": {
+                    "Aftermath & Interwar": ["aftermath", "interwar", "post-war", "treaty", "reconstruction"]
                 }
             }
         }
