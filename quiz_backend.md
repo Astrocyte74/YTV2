@@ -140,7 +140,7 @@ curl -X POST https://ytv2-dashboard-postgres.onrender.com/api/fetch-article \
 }
 ```
 
-If the downloaded payload exceeds 500 KB or the extracted text exceeds 30,000 characters, `truncated` is returned as `true` to signal that the text was clipped. The backend trims on paragraph or sentence boundaries whenever possible to avoid mid-sentence endings.
+If the downloaded payload exceeds 500 KB or the extracted text exceeds 100,000 characters, `truncated` is returned as `true` to signal that the text was clipped. The backend trims on paragraph or sentence boundaries whenever possible to avoid mid-sentence endings and stops before the page's **References** section when present.
 
 **Implementation Notes:**
 - Uses `requests` with a custom Quizzernator user agent and 10-second timeout, streaming the body while honoring the 500 KB cap.
@@ -148,6 +148,15 @@ If the downloaded payload exceeds 500 KB or the extracted text exceeds 30,000 ch
 - Paragraph structure is preserved by grouping consecutive lines; clipping prefers double newlines, then sentence boundaries, then whitespace.
 - Response payloads are always UTF-8 JSON and include the `truncated` flag so the client can decide whether to fetch or generate additional chunks locally.
 - Frontend should still segment long articles into model-friendly windows before sending data to LLMs.
+
+**Error Responses:**
+- All failures return HTTP JSON in the shape `{ "success": false, "error": "…", "reason": "…" }`.
+- `reason` values you may see:
+  - `missing_body`, `invalid_json`, `missing_url`, `invalid_url`
+  - `http_error` (non-200 upstream status), `unsupported_content_type`
+  - `network_error` (connection/timeout issues)
+  - `empty_content` (HTML parsed but no readable text)
+  - `internal_error` (unexpected server failure)
 
 **Errors:**
 - `400` when the URL is missing or invalid.

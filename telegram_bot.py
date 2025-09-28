@@ -4295,7 +4295,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({
                     "success": False,
-                    "error": "Request body is required"
+                    "error": "Request body is required",
+                    "reason": "missing_body"
                 }).encode())
                 return
 
@@ -4309,7 +4310,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({
                     "success": False,
-                    "error": "Invalid JSON in request body"
+                    "error": "Invalid JSON in request body",
+                    "reason": "invalid_json"
                 }).encode())
                 return
 
@@ -4322,7 +4324,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({
                     "success": False,
-                    "error": "URL is required"
+                    "error": "URL is required",
+                    "reason": "missing_url"
                 }).encode())
                 return
 
@@ -4334,7 +4337,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({
                     "success": False,
-                    "error": "URL must be an absolute http(s) address"
+                    "error": "URL must be an absolute http(s) address",
+                    "reason": "invalid_url"
                 }).encode())
                 return
 
@@ -4354,7 +4358,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         self.wfile.write(json.dumps({
                             "success": False,
                             "error": "Failed to fetch URL",
-                            "status": status_code
+                            "status": status_code,
+                            "reason": "http_error"
                         }).encode())
                         return
 
@@ -4366,7 +4371,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         self.end_headers()
                         self.wfile.write(json.dumps({
                             "success": False,
-                            "error": "URL is not text/HTML"
+                            "error": "URL is not text/HTML",
+                            "reason": "unsupported_content_type"
                         }).encode())
                         return
 
@@ -4398,7 +4404,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({
                     "success": False,
-                    "error": "Unable to reach URL"
+                    "error": "Unable to reach URL",
+                    "reason": "network_error"
                 }).encode())
                 return
 
@@ -4436,7 +4443,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({
                     "success": False,
-                    "error": "No readable text extracted"
+                    "error": "No readable text extracted",
+                    "reason": "empty_content"
                 }).encode())
                 return
 
@@ -4463,7 +4471,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({
                 "success": False,
-                "error": "Failed to process request"
+                "error": "Failed to process request",
+                "reason": "internal_error"
             }).encode())
 
     def handle_generate_quiz(self):
