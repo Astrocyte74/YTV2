@@ -4325,10 +4325,67 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
             try:
                 with urlopen(request, timeout=30) as response:
-                    response_data = json.loads(response.read().decode('utf-8'))
+                    raw_payload = response.read().decode('utf-8')
+                    try:
+                        response_data = json.loads(raw_payload)
+                    except json.JSONDecodeError:
+                        logger.error("OpenAI response was not valid JSON: %s", raw_payload[:500])
+                        self.send_response(502)
+                        self.set_cors_headers()
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            "error": "OpenAI returned an unreadable response. Please try again.",
+                            "success": False
+                        }).encode())
+                        return
 
-                    content = response_data['choices'][0]['message']['content']
+                    choices = response_data.get('choices') or []
+                    if not choices:
+                        logger.error("OpenAI response missing choices: %s", raw_payload[:500])
+                        self.send_response(502)
+                        self.set_cors_headers()
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            "error": "AI did not return any quiz content. Please try again.",
+                            "success": False
+                        }).encode())
+                        return
+
+                    first_choice = choices[0]
+                    finish_reason = first_choice.get('finish_reason')
+                    message = first_choice.get('message') or {}
+                    content = message.get('content', '')
                     usage = response_data.get('usage', {})
+
+                    if not content.strip():
+                        logger.warning(
+                            "OpenAI returned empty content (finish_reason=%s, usage=%s, prompt_preview=%s, raw_preview=%s)",
+                            finish_reason,
+                            usage,
+                            prompt[:200].replace('\n', ' ') if isinstance(prompt, str) else str(prompt),
+                            raw_payload[:500]
+                        )
+                        self.send_response(502)
+                        self.set_cors_headers()
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            "error": "AI returned an empty response. Please retry the generation.",
+                            "success": False
+                        }).encode())
+                        return
+
+                    preview = content[:240].replace('\n', ' ')
+                    logger.info(
+                        "✅ Quiz generated (finish_reason=%s, prompt_tokens=%s, completion_tokens=%s, total_tokens=%s, preview=%s)",
+                        finish_reason,
+                        usage.get('prompt_tokens'),
+                        usage.get('completion_tokens'),
+                        usage.get('total_tokens'),
+                        preview
+                    )
 
                     # Send successful response
                     self.send_response(200)
