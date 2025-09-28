@@ -19,7 +19,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote, quote
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 import socket
@@ -190,6 +190,83 @@ def clip_article_text(text: str, limit: int):
 
     # Worst case: hard cut at the limit
     return candidate.rstrip(), True
+
+
+def _normalize_heading(text: str) -> str:
+    normalized = re.sub(r'[^a-z0-9]+', ' ', text.lower()).strip()
+    return normalized
+
+
+def build_paragraph_text(raw_text: str) -> str:
+    lines = [line.strip() for line in raw_text.splitlines()]
+
+    paragraphs = []
+    current = []
+    for line in lines:
+        if line:
+            current.append(line)
+        elif current:
+            paragraph = ' '.join(current)
+            if _normalize_heading(paragraph) == 'references':
+                break
+            paragraphs.append(paragraph)
+            current = []
+
+    if current:
+        paragraph = ' '.join(current)
+        if _normalize_heading(paragraph) != 'references':
+            paragraphs.append(paragraph)
+
+    return '\n\n'.join(paragraphs)
+
+
+def fetch_wikipedia_article(parsed_url):
+    path = parsed_url.path or ''
+    if not path.startswith('/wiki/'):
+        return None
+
+    title_part = path[len('/wiki/'):]
+    if not title_part:
+        return None
+
+    title = unquote(title_part)
+    api_title = quote(title, safe='')
+
+    subdomain = parsed_url.netloc.split('.')[0].lower()
+    if subdomain in ('www', 'm'):
+        lang = 'en'
+    else:
+        lang = subdomain
+
+    api_url = f"https://{lang}.wikipedia.org/api/rest_v1/page/plain/{api_title}"
+
+    try:
+        response = requests.get(
+            api_url,
+            headers={**FETCH_ARTICLE_HEADERS, "Accept": "text/plain"},
+            timeout=10
+        )
+    except RequestException as exc:
+        logger.warning(f"Wikipedia API request failed: {exc}")
+        return None
+
+    if response.status_code != 200:
+        logger.warning(
+            "Wikipedia API returned %s for %s",
+            response.status_code,
+            api_url
+        )
+        return None
+
+    content_bytes = response.content
+    truncated_bytes = False
+    if len(content_bytes) > FETCH_ARTICLE_MAX_BYTES:
+        content_bytes = content_bytes[:FETCH_ARTICLE_MAX_BYTES]
+        truncated_bytes = True
+
+    encoding = response.encoding or 'utf-8'
+    text = content_bytes.decode(encoding, errors='ignore')
+    return text, truncated_bytes
 
 def get_postgres_connection():
     """Get a PostgreSQL connection for health checks and database operations."""
@@ -4342,100 +4419,94 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 }).encode())
                 return
 
-            try:
-                with requests.get(
-                    url,
-                    headers=FETCH_ARTICLE_HEADERS,
-                    timeout=10,
-                    stream=True
-                ) as response:
-                    status_code = response.status_code
-                    if status_code != 200:
-                        self.send_response(status_code)
-                        self.set_cors_headers()
-                        self.send_header('Content-type', 'application/json')
-                        self.end_headers()
-                        self.wfile.write(json.dumps({
-                            "success": False,
-                            "error": "Failed to fetch URL",
-                            "status": status_code,
-                            "reason": "http_error"
-                        }).encode())
-                        return
+            truncated_bytes = False
+            text_content = None
 
-                    content_type = response.headers.get('Content-Type', '')
-                    if content_type and 'text' not in content_type.lower():
-                        self.send_response(415)
-                        self.set_cors_headers()
-                        self.send_header('Content-type', 'application/json')
-                        self.end_headers()
-                        self.wfile.write(json.dumps({
-                            "success": False,
-                            "error": "URL is not text/HTML",
-                            "reason": "unsupported_content_type"
-                        }).encode())
-                        return
+            wiki_result = None
+            if parsed.netloc.lower().endswith('wikipedia.org'):
+                wiki_result = fetch_wikipedia_article(parsed)
+                if wiki_result:
+                    wiki_text, truncated_bytes = wiki_result
+                    text_content = build_paragraph_text(wiki_text)
 
-                    buffer = bytearray()
-                    truncated_bytes = False
-                    for chunk in response.iter_content(chunk_size=16384, decode_unicode=False):
-                        if not chunk:
-                            continue
+            if text_content is None:
+                try:
+                    with requests.get(
+                        url,
+                        headers=FETCH_ARTICLE_HEADERS,
+                        timeout=10,
+                        stream=True
+                    ) as response:
+                        status_code = response.status_code
+                        if status_code != 200:
+                            self.send_response(status_code)
+                            self.set_cors_headers()
+                            self.send_header('Content-type', 'application/json')
+                            self.end_headers()
+                            self.wfile.write(json.dumps({
+                                "success": False,
+                                "error": "Failed to fetch URL",
+                                "status": status_code,
+                                "reason": "http_error"
+                            }).encode())
+                            return
 
-                        remaining = FETCH_ARTICLE_MAX_BYTES - len(buffer)
-                        if remaining <= 0:
-                            truncated_bytes = True
-                            break
+                        content_type = response.headers.get('Content-Type', '')
+                        if content_type and 'text' not in content_type.lower():
+                            self.send_response(415)
+                            self.set_cors_headers()
+                            self.send_header('Content-type', 'application/json')
+                            self.end_headers()
+                            self.wfile.write(json.dumps({
+                                "success": False,
+                                "error": "URL is not text/HTML",
+                                "reason": "unsupported_content_type"
+                            }).encode())
+                            return
 
-                        if len(chunk) > remaining:
-                            buffer.extend(chunk[:remaining])
-                            truncated_bytes = True
-                            break
+                        buffer = bytearray()
+                        for chunk in response.iter_content(chunk_size=16384, decode_unicode=False):
+                            if not chunk:
+                                continue
 
-                        buffer.extend(chunk)
+                            remaining = FETCH_ARTICLE_MAX_BYTES - len(buffer)
+                            if remaining <= 0:
+                                truncated_bytes = True
+                                break
 
-                    encoding = response.encoding or 'utf-8'
+                            if len(chunk) > remaining:
+                                buffer.extend(chunk[:remaining])
+                                truncated_bytes = True
+                                break
 
-            except RequestException as e:
-                logger.error(f"Failed to fetch article: {e}")
-                self.send_response(502)
-                self.set_cors_headers()
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({
-                    "success": False,
-                    "error": "Unable to reach URL",
-                    "reason": "network_error"
-                }).encode())
-                return
+                            buffer.extend(chunk)
 
-            try:
-                raw_text = buffer.decode(encoding, errors='ignore')
-            except Exception:
-                raw_text = buffer.decode('utf-8', errors='ignore')
+                        encoding = response.encoding or 'utf-8'
 
-            soup = BeautifulSoup(raw_text, 'html.parser')
-            for element in soup(['script', 'style', 'noscript']):
-                element.decompose()
+                except RequestException as e:
+                    logger.error(f"Failed to fetch article: {e}")
+                    self.send_response(502)
+                    self.set_cors_headers()
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "success": False,
+                        "error": "Unable to reach URL",
+                        "reason": "network_error"
+                    }).encode())
+                    return
 
-            extracted_text = soup.get_text(separator='\n')
-            lines = [line.strip() for line in extracted_text.splitlines()]
+                try:
+                    raw_text = buffer.decode(encoding, errors='ignore')
+                except Exception:
+                    raw_text = buffer.decode('utf-8', errors='ignore')
 
-            paragraphs = []
-            current = []
-            for line in lines:
-                if line:
-                    current.append(line)
-                elif current:
-                    paragraph = ' '.join(current)
-                    paragraphs.append(paragraph)
-                    current = []
-                    if paragraph.lower() == 'references':
-                        break
-            if current and (not paragraphs or paragraphs[-1].lower() != 'references'):
-                paragraphs.append(' '.join(current))
+                soup = BeautifulSoup(raw_text, 'html.parser')
+                for element in soup(['script', 'style', 'noscript']):
+                    element.decompose()
 
-            text_content = '\n\n'.join(paragraphs)
+                extracted_text = soup.get_text(separator='\n')
+                text_content = build_paragraph_text(extracted_text)
             if not text_content:
                 self.send_response(422)
                 self.set_cors_headers()

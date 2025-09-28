@@ -144,6 +144,7 @@ If the downloaded payload exceeds 500 KB or the extracted text exceeds 100,000 c
 
 **Implementation Notes:**
 - Uses `requests` with a custom Quizzernator user agent and 10-second timeout, streaming the body while honoring the 500 KB cap.
+- Wikipedia domains short-circuit to the MediaWiki REST plain-text endpoint before falling back to HTML scraping.
 - HTML is parsed with BeautifulSoup; `script`, `style`, and `noscript` blocks are removed before text extraction.
 - Paragraph structure is preserved by grouping consecutive lines; clipping prefers double newlines, then sentence boundaries, then whitespace.
 - Response payloads are always UTF-8 JSON and include the `truncated` flag so the client can decide whether to fetch or generate additional chunks locally.
