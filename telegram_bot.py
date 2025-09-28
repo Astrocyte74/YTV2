@@ -157,7 +157,7 @@ logger = logging.getLogger(__name__)
 
 # Limits and headers for article fetching endpoint
 FETCH_ARTICLE_MAX_BYTES = 500_000
-FETCH_ARTICLE_MAX_TEXT_CHARS = 30_000
+FETCH_ARTICLE_MAX_TEXT_CHARS = 100_000
 FETCH_ARTICLE_HEADERS = {
     "User-Agent": "Quizzernator/1.0 (+https://quizzernator.app)"
 }
@@ -4420,9 +4420,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 if line:
                     current.append(line)
                 elif current:
-                    paragraphs.append(' '.join(current))
+                    paragraph = ' '.join(current)
+                    paragraphs.append(paragraph)
                     current = []
-            if current:
+                    if paragraph.lower() == 'references':
+                        break
+            if current and (not paragraphs or paragraphs[-1].lower() != 'references'):
                 paragraphs.append(' '.join(current))
 
             text_content = '\n\n'.join(paragraphs)
