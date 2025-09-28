@@ -24,6 +24,9 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 import socket
 import sqlite3
+import requests
+from requests.exceptions import RequestException
+from bs4 import BeautifulSoup
 
 # PostgreSQL support for migration
 try:
@@ -151,6 +154,13 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Limits and headers for article fetching endpoint
+FETCH_ARTICLE_MAX_BYTES = 500_000
+FETCH_ARTICLE_MAX_TEXT_CHARS = 6_000
+FETCH_ARTICLE_HEADERS = {
+    "User-Agent": "Quizzernator/1.0 (+https://quizzernator.app)"
+}
 
 def get_postgres_connection():
     """Get a PostgreSQL connection for health checks and database operations."""
@@ -1071,6 +1081,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_ingest_audio()
         elif self.path.startswith('/api/debug/content'):
             self.handle_debug_content()
+        elif self.path == '/api/fetch-article':
+            self.handle_fetch_article()
         elif self.path == '/api/generate-quiz':
             self.handle_generate_quiz()
         elif self.path == '/api/save-quiz':
@@ -4239,6 +4251,172 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.set_cors_headers()
         self.end_headers()
+
+    def handle_fetch_article(self):
+        """Handle POST /api/fetch-article - Fetch external article content"""
+        try:
+            origin = self.headers.get('Origin', 'unknown')
+            logger.info(f"📰 Fetch article request from origin: {origin}")
+
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length <= 0:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "success": False,
+                    "error": "Request body is required"
+                }).encode())
+                return
+
+            body = self.rfile.read(content_length).decode('utf-8')
+            try:
+                request_data = json.loads(body)
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "success": False,
+                    "error": "Invalid JSON in request body"
+                }).encode())
+                return
+
+            raw_url = request_data.get('url')
+            url = str(raw_url).strip() if raw_url else ''
+            if not url:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "success": False,
+                    "error": "URL is required"
+                }).encode())
+                return
+
+            parsed = urlparse(url)
+            if parsed.scheme not in ('http', 'https') or not parsed.netloc:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "success": False,
+                    "error": "URL must be an absolute http(s) address"
+                }).encode())
+                return
+
+            try:
+                with requests.get(
+                    url,
+                    headers=FETCH_ARTICLE_HEADERS,
+                    timeout=10,
+                    stream=True
+                ) as response:
+                    status_code = response.status_code
+                    if status_code != 200:
+                        self.send_response(status_code)
+                        self.set_cors_headers()
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            "success": False,
+                            "error": "Failed to fetch URL",
+                            "status": status_code
+                        }).encode())
+                        return
+
+                    content_type = response.headers.get('Content-Type', '')
+                    if content_type and 'text' not in content_type.lower():
+                        self.send_response(415)
+                        self.set_cors_headers()
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            "success": False,
+                            "error": "URL is not text/HTML"
+                        }).encode())
+                        return
+
+                    buffer = bytearray()
+                    truncated_bytes = False
+                    for chunk in response.iter_content(chunk_size=16384, decode_unicode=False):
+                        if not chunk:
+                            continue
+
+                        remaining = FETCH_ARTICLE_MAX_BYTES - len(buffer)
+                        if remaining <= 0:
+                            truncated_bytes = True
+                            break
+
+                        if len(chunk) > remaining:
+                            buffer.extend(chunk[:remaining])
+                            truncated_bytes = True
+                            break
+
+                        buffer.extend(chunk)
+
+                    encoding = response.encoding or 'utf-8'
+
+            except RequestException as e:
+                logger.error(f"Failed to fetch article: {e}")
+                self.send_response(502)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "success": False,
+                    "error": "Unable to reach URL"
+                }).encode())
+                return
+
+            try:
+                raw_text = buffer.decode(encoding, errors='ignore')
+            except Exception:
+                raw_text = buffer.decode('utf-8', errors='ignore')
+
+            soup = BeautifulSoup(raw_text, 'html.parser')
+            for element in soup(['script', 'style', 'noscript']):
+                element.decompose()
+
+            text_content = ' '.join(soup.get_text(separator=' ').split())
+            if not text_content:
+                self.send_response(422)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "success": False,
+                    "error": "No readable text extracted"
+                }).encode())
+                return
+
+            clipped_text = text_content[:FETCH_ARTICLE_MAX_TEXT_CHARS]
+            truncated_text = len(text_content) > FETCH_ARTICLE_MAX_TEXT_CHARS
+
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "success": True,
+                "text": clipped_text,
+                "truncated": truncated_bytes or truncated_text
+            }).encode())
+
+        except Exception as e:
+            logger.error(f"Unexpected error during fetch-article: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "success": False,
+                "error": "Failed to process request"
+            }).encode())
 
     def handle_generate_quiz(self):
         """Handle POST /api/generate-quiz - AI quiz generation endpoint"""

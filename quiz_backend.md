@@ -6,6 +6,7 @@
 |--------|----------|-------------|
 | **POST** | `/api/generate-quiz` | Generate quiz using OpenAI GPT-5-nano |
 | **POST** | `/api/save-quiz` | Save generated quiz to persistent storage |
+| **POST** | `/api/fetch-article` | Retrieve and sanitize article text for quiz generation |
 | **GET** | `/api/list-quizzes` | List all saved quizzes with metadata |
 | **GET** | `/api/quiz/:filename` | Load specific quiz by filename |
 | **POST** | `/api/categorize-quiz` | AI-powered topic categorization |
@@ -112,6 +113,40 @@ Example: javascript_basics_20250921_143052.json
   "path": "/app/data/quiz/javascript_basics_quiz.json"
 }
 ```
+
+### 2a. Fetch Article Content
+
+**POST /api/fetch-article**
+
+Fetch external article content, sanitize HTML, and return trimmed plain text for downstream quiz generation. The endpoint enforces content-length limits and a safety user agent.
+
+```bash
+curl -X POST https://ytv2-dashboard-postgres.onrender.com/api/fetch-article \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com/generative-ai-trends"
+  }'
+```
+
+**Request Parameters:**
+- `url` (required): Absolute HTTP or HTTPS URL to fetch.
+
+**Response:**
+```json
+{
+  "success": true,
+  "text": "Generative AI adoption continues to accelerate...",
+  "truncated": false
+}
+```
+
+If the downloaded payload exceeds 500 KB or the extracted text exceeds 6,000 characters, `truncated` is returned as `true` to signal that the text was clipped.
+
+**Errors:**
+- `400` when the URL is missing or invalid.
+- `415` when the resource is not text/HTML.
+- `422` when no readable text is extracted.
+- `502` when the upstream site cannot be reached.
 
 ### 3. List All Saved Quizzes
 
