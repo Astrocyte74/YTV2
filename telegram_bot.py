@@ -157,7 +157,7 @@ logger = logging.getLogger(__name__)
 
 # Limits and headers for article fetching endpoint
 FETCH_ARTICLE_MAX_BYTES = 500_000
-FETCH_ARTICLE_MAX_TEXT_CHARS = 6_000
+FETCH_ARTICLE_MAX_TEXT_CHARS = 30_000
 FETCH_ARTICLE_HEADERS = {
     "User-Agent": "Quizzernator/1.0 (+https://quizzernator.app)"
 }

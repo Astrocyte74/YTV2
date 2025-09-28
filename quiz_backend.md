@@ -140,7 +140,7 @@ curl -X POST https://ytv2-dashboard-postgres.onrender.com/api/fetch-article \
 }
 ```
 
-If the downloaded payload exceeds 500 KB or the extracted text exceeds 6,000 characters, `truncated` is returned as `true` to signal that the text was clipped.
+If the downloaded payload exceeds 500 KB or the extracted text exceeds 30,000 characters, `truncated` is returned as `true` to signal that the text was clipped.
 
 **Errors:**
 - `400` when the URL is missing or invalid.
