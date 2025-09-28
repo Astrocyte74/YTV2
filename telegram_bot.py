@@ -202,19 +202,28 @@ def build_paragraph_text(raw_text: str) -> str:
 
     paragraphs = []
     current = []
+    total_chars = 0
     for line in lines:
         if line:
             current.append(line)
-        elif current:
-            paragraph = ' '.join(current)
-            if _normalize_heading(paragraph) == 'references':
-                break
-            paragraphs.append(paragraph)
-            current = []
+            continue
+
+        if not current:
+            continue
+
+        paragraph = ' '.join(current)
+        normalized = _normalize_heading(paragraph)
+        if normalized == 'references' and total_chars > 2000:
+            break
+
+        paragraphs.append(paragraph)
+        total_chars += len(paragraph)
+        current = []
 
     if current:
         paragraph = ' '.join(current)
-        if _normalize_heading(paragraph) != 'references':
+        normalized = _normalize_heading(paragraph)
+        if normalized != 'references' or total_chars > 2000:
             paragraphs.append(paragraph)
 
     return '\n\n'.join(paragraphs)
@@ -238,12 +247,22 @@ def fetch_wikipedia_article(parsed_url):
     else:
         lang = subdomain
 
-    api_url = f"https://{lang}.wikipedia.org/api/rest_v1/page/plain/{api_title}"
+    api_url = f"https://{lang}.wikipedia.org/w/api.php"
+    params = {
+        "action": "query",
+        "prop": "extracts",
+        "explaintext": 1,
+        "exsectionformat": "plain",
+        "redirects": 1,
+        "titles": title,
+        "format": "json"
+    }
 
     try:
         response = requests.get(
             api_url,
-            headers={**FETCH_ARTICLE_HEADERS, "Accept": "text/plain"},
+            params=params,
+            headers={**FETCH_ARTICLE_HEADERS, "Accept": "application/json"},
             timeout=10
         )
     except RequestException as exc:
@@ -258,15 +277,22 @@ def fetch_wikipedia_article(parsed_url):
         )
         return None
 
-    content_bytes = response.content
-    truncated_bytes = False
-    if len(content_bytes) > FETCH_ARTICLE_MAX_BYTES:
-        content_bytes = content_bytes[:FETCH_ARTICLE_MAX_BYTES]
-        truncated_bytes = True
+    try:
+        data = response.json()
+    except ValueError as exc:
+        logger.warning(f"Failed to parse Wikipedia API response: {exc}")
+        return None
 
-    encoding = response.encoding or 'utf-8'
-    text = content_bytes.decode(encoding, errors='ignore')
-    return text, truncated_bytes
+    pages = data.get("query", {}).get("pages", {})
+    if not pages:
+        return None
+
+    page = next(iter(pages.values()))
+    extract = page.get("extract")
+    if not extract:
+        return None
+
+    return extract, False
 
 def get_postgres_connection():
     """Get a PostgreSQL connection for health checks and database operations."""
