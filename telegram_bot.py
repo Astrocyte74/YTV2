@@ -162,6 +162,35 @@ FETCH_ARTICLE_HEADERS = {
     "User-Agent": "Quizzernator/1.0 (+https://quizzernator.app)"
 }
 
+
+def clip_article_text(text: str, limit: int):
+    """Clip text to limit, preferring paragraph or sentence boundaries when possible."""
+    if len(text) <= limit:
+        return text, False
+
+    candidate = text[:limit]
+
+    # Prefer breaking at paragraph boundaries
+    for separator in ("\n\n", "\n"):
+        idx = candidate.rfind(separator)
+        if idx >= int(limit * 0.6):
+            return candidate[:idx].rstrip(), True
+
+    # Next, look for the last sentence ending near the limit
+    sentence_end = None
+    for match in re.finditer(r"[.!?](?=[\"'\)\]]?\s)", candidate):
+        sentence_end = match.end()
+    if sentence_end and sentence_end >= int(limit * 0.6):
+        return candidate[:sentence_end].rstrip(), True
+
+    # Fallback to the last whitespace to avoid cutting in the middle of a word
+    last_space = candidate.rfind(' ')
+    if last_space >= int(limit * 0.6):
+        return candidate[:last_space].rstrip(), True
+
+    # Worst case: hard cut at the limit
+    return candidate.rstrip(), True
+
 def get_postgres_connection():
     """Get a PostgreSQL connection for health checks and database operations."""
     if not PSYCOPG2_AVAILABLE:
@@ -4382,7 +4411,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             for element in soup(['script', 'style', 'noscript']):
                 element.decompose()
 
-            text_content = ' '.join(soup.get_text(separator=' ').split())
+            extracted_text = soup.get_text(separator='\n')
+            lines = [line.strip() for line in extracted_text.splitlines()]
+            text_content = '\n'.join(line for line in lines if line)
             if not text_content:
                 self.send_response(422)
                 self.set_cors_headers()
@@ -4394,8 +4425,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 }).encode())
                 return
 
-            clipped_text = text_content[:FETCH_ARTICLE_MAX_TEXT_CHARS]
-            truncated_text = len(text_content) > FETCH_ARTICLE_MAX_TEXT_CHARS
+            clipped_text, truncated_text = clip_article_text(
+                text_content,
+                FETCH_ARTICLE_MAX_TEXT_CHARS
+            )
 
             self.send_response(200)
             self.set_cors_headers()
