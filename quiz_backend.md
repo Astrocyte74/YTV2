@@ -26,7 +26,7 @@ The YTV2-Dashboard includes a complete AI-powered quiz generation and storage sy
 - **Clean separation** - no changes to YTV2 UI or database
 
 ### **Technology Stack**
-- **AI Generation**: OpenAI GPT-5-nano (~$0.000045 per quiz)
+- **AI Generation**: OpenRouter models (Gemini 2.5 Flash Lite primary, DeepSeek Terminus fallback)
 - **AI Categorization**: OpenAI GPT-5-nano with JSON mode (~$0.00005 per categorization)
 - **Storage**: JSON files in persistent `/app/data/` mount
 - **CORS**: Full cross-origin support for web frontends
@@ -405,6 +405,11 @@ The quiz categorization system uses OpenAI's GPT-5-nano model with structured JS
 
 Required for AI generation:
 ```bash
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+```
+
+Optional (categorization fallback):
+```bash
 OPENAI_API_KEY=your_openai_api_key_here
 ```
 
@@ -451,7 +456,7 @@ const quizResponse = await fetch('https://ytv2-dashboard-postgres.onrender.com/a
     prompt: `Create 10 ${categorization.category} questions about JavaScript ES6 Features.
              Focus on ${categorization.subcategory} level content.
              Format as JSON with count, meta, and items fields.`,
-    model: "gpt-5-nano"
+    model: "google/gemini-2.5-flash-lite"
   })
 });
 

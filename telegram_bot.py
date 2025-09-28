@@ -4278,148 +4278,139 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "Prompt is required"}).encode())
                 return
 
-            model = request_data.get('model', 'gpt-5-nano')
-            max_tokens = request_data.get('max_tokens', 3000)
+            primary_model = request_data.get('model', 'google/gemini-2.5-flash-lite')
+            fallback_model = request_data.get('fallback_model', 'deepseek/deepseek-v3.1-terminus')
+            max_tokens = request_data.get('max_tokens', 1800)
             temperature = request_data.get('temperature', 0.7)
 
-            # Check for OpenAI API key
-            api_key = os.getenv('OPENAI_API_KEY')
-            if not api_key:
+            # Check for OpenRouter API key
+            openrouter_key = os.getenv('OPENROUTER_API_KEY')
+            if not openrouter_key:
                 self.send_response(500)
                 self.set_cors_headers()
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
-                self.wfile.write(json.dumps({"error": "OpenAI API key not configured"}).encode())
+                self.wfile.write(json.dumps({"error": "OpenRouter API key not configured"}).encode())
                 return
 
-            # Prepare OpenAI API request
-            openai_request_data = {
-                "model": model,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are a quiz question generator. Always respond with valid JSON only, no additional text or formatting."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                "max_completion_tokens": max_tokens,
-                "response_format": {"type": "json_object"}
-            }
-
-            # GPT-5-nano doesn't support temperature parameter
-            if not model.startswith('gpt-5-nano'):
-                openai_request_data["temperature"] = temperature
-
-            # Make request to OpenAI API
-            request = Request(
-                'https://api.openai.com/v1/chat/completions',
-                data=json.dumps(openai_request_data).encode('utf-8'),
-                headers={
-                    'Authorization': f'Bearer {api_key}',
-                    'Content-Type': 'application/json'
+            def build_payload(model_id):
+                payload = {
+                    "model": model_id,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a quiz question generator. Always respond with valid JSON only, no additional text or formatting."
+                        },
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    "max_tokens": max_tokens,
+                    "response_format": {"type": "json_object"}
                 }
-            )
+                if temperature is not None:
+                    payload["temperature"] = temperature
+                return payload
 
-            try:
-                with urlopen(request, timeout=30) as response:
-                    raw_payload = response.read().decode('utf-8')
-                    try:
-                        response_data = json.loads(raw_payload)
-                    except json.JSONDecodeError:
-                        logger.error("OpenAI response was not valid JSON: %s", raw_payload[:500])
-                        self.send_response(502)
-                        self.set_cors_headers()
-                        self.send_header('Content-type', 'application/json')
-                        self.end_headers()
-                        self.wfile.write(json.dumps({
-                            "error": "OpenAI returned an unreadable response. Please try again.",
-                            "success": False
-                        }).encode())
-                        return
-
-                    choices = response_data.get('choices') or []
-                    if not choices:
-                        logger.error("OpenAI response missing choices: %s", raw_payload[:500])
-                        self.send_response(502)
-                        self.set_cors_headers()
-                        self.send_header('Content-type', 'application/json')
-                        self.end_headers()
-                        self.wfile.write(json.dumps({
-                            "error": "AI did not return any quiz content. Please try again.",
-                            "success": False
-                        }).encode())
-                        return
-
-                    first_choice = choices[0]
-                    finish_reason = first_choice.get('finish_reason')
-                    message = first_choice.get('message') or {}
-                    content = message.get('content', '')
-                    usage = response_data.get('usage', {})
-
-                    if not content.strip():
-                        logger.warning(
-                            "OpenAI returned empty content (finish_reason=%s, usage=%s, prompt_preview=%s, raw_preview=%s)",
-                            finish_reason,
-                            usage,
-                            prompt[:200].replace('\n', ' ') if isinstance(prompt, str) else str(prompt),
-                            raw_payload[:500]
-                        )
-                        self.send_response(502)
-                        self.set_cors_headers()
-                        self.send_header('Content-type', 'application/json')
-                        self.end_headers()
-                        self.wfile.write(json.dumps({
-                            "error": "AI returned an empty response. Please retry the generation.",
-                            "success": False
-                        }).encode())
-                        return
-
-                    preview = content[:240].replace('\n', ' ')
-                    logger.info(
-                        "✅ Quiz generated (finish_reason=%s, prompt_tokens=%s, completion_tokens=%s, total_tokens=%s, preview=%s)",
-                        finish_reason,
-                        usage.get('prompt_tokens'),
-                        usage.get('completion_tokens'),
-                        usage.get('total_tokens'),
-                        preview
-                    )
-
-                    # Send successful response
-                    self.send_response(200)
-                    self.set_cors_headers()
-                    self.send_header('Content-type', 'application/json')
-                    self.end_headers()
-
-                    result = {
-                        "success": True,
-                        "content": content,
-                        "usage": usage
+            def invoke_model(model_id):
+                payload = build_payload(model_id)
+                req = Request(
+                    'https://openrouter.ai/api/v1/chat/completions',
+                    data=json.dumps(payload).encode('utf-8'),
+                    headers={
+                        'Authorization': f'Bearer {openrouter_key}',
+                        'Content-Type': 'application/json',
+                        'HTTP-Referer': 'https://quizzernator.onrender.com',
+                        'X-Title': 'Quizzernator Generator'
                     }
-                    self.wfile.write(json.dumps(result).encode())
+                )
+                return req
 
-            except HTTPError as e:
-                error_data = e.read().decode('utf-8')
+            last_error = None
+            for model_id in (primary_model, fallback_model):
+                request = invoke_model(model_id)
                 try:
-                    error_json = json.loads(error_data)
-                    error_message = error_json.get('error', {}).get('message', 'Unknown OpenAI API error')
-                except:
-                    error_message = f"OpenAI API error: {e.code}"
+                    with urlopen(request, timeout=45) as response:
+                        raw_payload = response.read().decode('utf-8')
+                        try:
+                            response_data = json.loads(raw_payload)
+                        except json.JSONDecodeError:
+                            logger.error("OpenRouter response was not valid JSON (model=%s): %s", model_id, raw_payload[:500])
+                            last_error = {"error": "OpenRouter returned unreadable response", "model": model_id}
+                            continue
 
-                self.send_response(500)
-                self.set_cors_headers()
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": error_message}).encode())
+                        choices = response_data.get('choices') or []
+                        if not choices:
+                            logger.error("OpenRouter response missing choices (model=%s): %s", model_id, raw_payload[:500])
+                            last_error = {"error": "AI did not return any quiz content", "model": model_id}
+                            continue
 
-            except URLError as e:
-                self.send_response(500)
-                self.set_cors_headers()
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": f"Network error: {str(e)}"}).encode())
+                        first_choice = choices[0]
+                        finish_reason = first_choice.get('finish_reason')
+                        message = first_choice.get('message') or {}
+                        content = message.get('content', '')
+                        usage = response_data.get('usage', {})
+
+                        if not content.strip():
+                            logger.warning(
+                                "OpenRouter returned empty content (model=%s, finish_reason=%s, usage=%s, prompt_preview=%s, raw_preview=%s)",
+                                model_id,
+                                finish_reason,
+                                usage,
+                                prompt[:200].replace('\n', ' ') if isinstance(prompt, str) else str(prompt),
+                                raw_payload[:500]
+                            )
+                            last_error = {"error": "AI returned empty content", "model": model_id}
+                            continue
+
+                        preview = content[:240].replace('\n', ' ')
+                        logger.info(
+                            "✅ Quiz generated via %s (finish_reason=%s, prompt_tokens=%s, completion_tokens=%s, total_tokens=%s, preview=%s)",
+                            model_id,
+                            finish_reason,
+                            usage.get('prompt_tokens'),
+                            usage.get('completion_tokens'),
+                            usage.get('total_tokens'),
+                            preview
+                        )
+
+                        self.send_response(200)
+                        self.set_cors_headers()
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+
+                        result = {
+                            "success": True,
+                            "content": content,
+                            "usage": usage,
+                            "model": model_id
+                        }
+                        self.wfile.write(json.dumps(result).encode())
+                        return
+
+                except HTTPError as e:
+                    error_data = e.read().decode('utf-8')
+                    logger.error("OpenRouter HTTP error (model=%s): %s", model_id, error_data[:500])
+                    try:
+                        last_error = json.loads(error_data)
+                    except json.JSONDecodeError:
+                        last_error = {"error": f"OpenRouter HTTP error {e.code}", "model": model_id}
+                except URLError as e:
+                    logger.error("OpenRouter network error (model=%s): %s", model_id, str(e))
+                    last_error = {"error": f"Network error: {str(e)}", "model": model_id}
+
+            self.send_response(502 if last_error else 500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            failure = {
+                "error": last_error.get("error") if last_error else "Failed to generate quiz",
+                "model": last_error.get("model") if last_error else None,
+                "success": False
+            }
+            self.wfile.write(json.dumps(failure).encode())
+            return
 
         except Exception as e:
             logger.error(f"Quiz generation error: {e}")
