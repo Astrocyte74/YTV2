@@ -4413,7 +4413,19 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
             extracted_text = soup.get_text(separator='\n')
             lines = [line.strip() for line in extracted_text.splitlines()]
-            text_content = '\n'.join(line for line in lines if line)
+
+            paragraphs = []
+            current = []
+            for line in lines:
+                if line:
+                    current.append(line)
+                elif current:
+                    paragraphs.append(' '.join(current))
+                    current = []
+            if current:
+                paragraphs.append(' '.join(current))
+
+            text_content = '\n\n'.join(paragraphs)
             if not text_content:
                 self.send_response(422)
                 self.set_cors_headers()
