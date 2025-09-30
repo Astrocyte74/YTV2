@@ -85,9 +85,21 @@ class AudioDashboard {
         // Telemetry buffer
         this.telemetryBuf = [];
         this.telemetryFlushTimer = null;
+        // Realtime ingest state
+        this.eventSource = null;
+        this.realtimeBackoff = 1000;
+        this.realtimeReconnectTimer = null;
+        this.realtimeEventBuffer = [];
+        this.realtimeFlushTimer = null;
+        this.realtimePendingCount = 0;
+        this.latestIndexedAt = null;
+        this.lastRealtimeRefresh = 0;
+        this.pollTimer = null;
+        this.initialLoadComplete = false;
         
         this.initializeElements();
         this.bindEvents();
+        this.initRealtimeUpdates();
         this.loadInitialData();
     }
 
@@ -171,6 +183,12 @@ class AudioDashboard {
         this.settingsMenu = document.getElementById('settingsMenu');
         this.themeButtons = this.settingsMenu ? this.settingsMenu.querySelectorAll('[data-theme]') : [];
         this.themeMode = localStorage.getItem('ytv2.theme') || 'system';
+
+        // Realtime banner
+        this.realtimeBanner = document.getElementById('realtimeBanner');
+        this.realtimeBannerText = document.getElementById('realtimeBannerText');
+        this.realtimeRefreshBtn = document.getElementById('realtimeRefreshBtn');
+        this.realtimeDismissBtn = document.getElementById('realtimeDismissBtn');
     }
 
     bindEvents() {
@@ -445,6 +463,13 @@ class AudioDashboard {
                 }
             }
         });
+
+        if (this.realtimeRefreshBtn) {
+            this.realtimeRefreshBtn.addEventListener('click', () => this.refreshForRealtime());
+        }
+        if (this.realtimeDismissBtn) {
+            this.realtimeDismissBtn.addEventListener('click', () => this.dismissRealtimeBanner());
+        }
     }
 
     async loadInitialData() {
@@ -477,6 +502,206 @@ class AudioDashboard {
         } catch (error) {
             console.error('Failed to load initial data:', error);
             this.showError('Failed to load dashboard data');
+        } finally {
+            this.initialLoadComplete = true;
+            this.flushRealtimeBuffer(true);
+        }
+    }
+
+    // Realtime ingest event handling -------------------------------------------------
+
+    initRealtimeUpdates() {
+        if (typeof window === 'undefined') return;
+        if (window.EventSource) {
+            this.connectEventSource();
+        } else {
+            console.warn('EventSource not supported; falling back to polling');
+            this.startPollingFallback();
+        }
+    }
+
+    connectEventSource() {
+        if (typeof window === 'undefined' || !window.EventSource) return;
+        if (this.eventSource) {
+            try { this.eventSource.close(); } catch (_) {}
+        }
+        try {
+            const source = new EventSource('/api/report-events');
+            this.eventSource = source;
+            source.addEventListener('open', () => {
+                this.realtimeBackoff = 1000;
+                if (this.realtimeReconnectTimer) {
+                    window.clearTimeout(this.realtimeReconnectTimer);
+                    this.realtimeReconnectTimer = null;
+                }
+                this.stopPollingFallback();
+            });
+            source.addEventListener('error', () => {
+                try { source.close(); } catch (_) {}
+                this.eventSource = null;
+                this.scheduleRealtimeReconnect();
+                this.startPollingFallback();
+            });
+            source.addEventListener('report-added', (evt) => {
+                try {
+                    const payload = JSON.parse(evt.data || '{}');
+                    this.handleReportAddedEvent(payload || {}, { transport: 'sse' });
+                } catch (error) {
+                    console.error('Failed to parse report-added event', error);
+                }
+            });
+        } catch (error) {
+            console.error('Failed to connect to report events', error);
+            this.scheduleRealtimeReconnect();
+            this.startPollingFallback();
+        }
+    }
+
+    scheduleRealtimeReconnect() {
+        if (typeof window === 'undefined') return;
+        if (this.realtimeReconnectTimer) return;
+        const delay = this.realtimeBackoff || 1000;
+        this.realtimeReconnectTimer = window.setTimeout(() => {
+            this.realtimeReconnectTimer = null;
+            this.connectEventSource();
+        }, delay);
+        this.realtimeBackoff = Math.min((this.realtimeBackoff || 1000) * 2, 30000);
+    }
+
+    startPollingFallback() {
+        if (typeof window === 'undefined') return;
+        if (this.pollTimer) return;
+        this.pollTimer = window.setInterval(() => this.pollLatestReport(), 45000);
+    }
+
+    stopPollingFallback() {
+        if (typeof window === 'undefined') return;
+        if (this.pollTimer) {
+            window.clearInterval(this.pollTimer);
+            this.pollTimer = null;
+        }
+    }
+
+    async pollLatestReport() {
+        try {
+            const response = await fetch('/api/reports?latest=true', { cache: 'no-store' });
+            if (!response.ok) return;
+            const payload = await response.json();
+            if (!payload || !payload.report) return;
+            this.handleReportAddedEvent(payload.report, { transport: 'poll' });
+        } catch (error) {
+            console.warn('Polling latest report failed', error);
+        }
+    }
+
+    handleReportAddedEvent(data = {}, meta = {}) {
+        if (!data) return;
+        const videoId = data.video_id || data.videoId || null;
+        let summaryTypes = data.summary_types || data.summaryTypes || [];
+        if (!Array.isArray(summaryTypes)) {
+            summaryTypes = summaryTypes ? [summaryTypes] : [];
+        }
+        const singleType = data.summary_type || data.summaryType;
+        if (singleType) summaryTypes.push(singleType);
+        summaryTypes = [...new Set(summaryTypes.map((v) => String(v)).filter(Boolean))];
+
+        const timestamp = data.timestamp || data.indexed_at || data.indexedAt || null;
+        const tsValue = this.normalizeTimestamp(timestamp);
+        const currentTs = this.normalizeTimestamp(this.latestIndexedAt);
+        if (currentTs && tsValue && tsValue <= currentTs) {
+            return;
+        }
+        if (tsValue && (!currentTs || tsValue > currentTs)) {
+            this.latestIndexedAt = timestamp;
+        }
+
+        this.realtimeEventBuffer.push({ videoId, summaryTypes, timestamp, meta });
+        this.scheduleRealtimeFlush();
+    }
+
+    scheduleRealtimeFlush() {
+        if (typeof window === 'undefined') return;
+        if (this.realtimeFlushTimer) return;
+        this.realtimeFlushTimer = window.setTimeout(() => this.flushRealtimeBuffer(), 800);
+    }
+
+    flushRealtimeBuffer(force = false) {
+        if (this.realtimeFlushTimer) {
+            window.clearTimeout(this.realtimeFlushTimer);
+            this.realtimeFlushTimer = null;
+        }
+        if (!this.initialLoadComplete && !force) {
+            return;
+        }
+        if (!this.realtimeEventBuffer.length) return;
+
+        const buffer = this.realtimeEventBuffer.splice(0);
+        const uniqueVideoIds = new Set(buffer.map((evt) => evt.videoId).filter(Boolean));
+        const newCount = uniqueVideoIds.size || buffer.length;
+        this.realtimePendingCount += newCount;
+
+        const now = Date.now();
+        const sinceLast = now - (this.lastRealtimeRefresh || 0);
+        const canAutoRefresh = (this.currentPage === 1) || force;
+
+        if (canAutoRefresh && sinceLast > 2000) {
+            this.lastRealtimeRefresh = now;
+            this.currentPage = 1;
+            Promise.resolve(this.loadContent())
+                .catch((error) => console.error('Realtime refresh failed', error))
+                .finally(() => {
+                    this.realtimePendingCount = 0;
+                    this.hideRealtimeBanner();
+                });
+        } else {
+            this.showRealtimeBanner(this.realtimePendingCount);
+        }
+    }
+
+    showRealtimeBanner(count) {
+        if (!this.realtimeBanner || !this.realtimeBannerText) return;
+        const label = count === 1 ? '1 new report available' : `${count} new reports available`;
+        this.realtimeBannerText.textContent = label;
+        this.realtimeBanner.classList.remove('hidden');
+        this.realtimeBanner.setAttribute('aria-hidden', 'false');
+    }
+
+    hideRealtimeBanner() {
+        if (!this.realtimeBanner) return;
+        this.realtimeBanner.classList.add('hidden');
+        this.realtimeBanner.setAttribute('aria-hidden', 'true');
+    }
+
+    async refreshForRealtime() {
+        this.hideRealtimeBanner();
+        this.realtimePendingCount = 0;
+        this.currentPage = 1;
+        try {
+            await this.loadContent();
+        } catch (error) {
+            console.error('Realtime refresh failed', error);
+        }
+    }
+
+    dismissRealtimeBanner() {
+        this.realtimePendingCount = 0;
+        this.hideRealtimeBanner();
+    }
+
+    normalizeTimestamp(value) {
+        if (!value) return 0;
+        const parsed = Date.parse(value);
+        return Number.isNaN(parsed) ? 0 : parsed;
+    }
+
+    updateLatestIndexFromItems(items) {
+        if (!Array.isArray(items) || !items.length) return;
+        if (this.currentPage !== 1) return;
+        const firstTs = items[0]?.indexed_at || items[0]?.indexedAt || null;
+        const tsValue = this.normalizeTimestamp(firstTs);
+        const current = this.normalizeTimestamp(this.latestIndexedAt);
+        if (tsValue && (!current || tsValue >= current)) {
+            this.latestIndexedAt = firstTs;
         }
     }
 
@@ -1098,6 +1323,7 @@ class AudioDashboard {
 
 
             this.currentItems = items;
+            this.updateLatestIndexFromItems(items);
             this.renderContent(this.currentItems);
             this.renderPagination(data.pagination);
             this.updateResultsInfo(data.pagination);

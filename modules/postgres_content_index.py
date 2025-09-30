@@ -792,6 +792,46 @@ class PostgreSQLContentIndex:
         """Alias for get_filters() for compatibility with existing API."""
         return self.get_filters(active_filters)
 
+    def get_latest_report_metadata(self) -> Optional[Dict[str, Any]]:
+        """Return minimal metadata for the most recently indexed report."""
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT video_id, summary_type_latest, indexed_at
+                FROM content
+                WHERE indexed_at IS NOT NULL
+                ORDER BY indexed_at DESC
+                LIMIT 1
+                """
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+
+            if isinstance(row, dict):
+                data = row
+            else:
+                data = {
+                    "video_id": row[0],
+                    "summary_type_latest": row[1],
+                    "indexed_at": row[2],
+                }
+
+            return {
+                "video_id": data.get("video_id"),
+                "summary_type": data.get("summary_type_latest"),
+                "indexed_at": self._normalize_datetime(data.get("indexed_at")),
+            }
+        except Exception:
+            logger.exception("Failed to fetch latest report metadata")
+            return None
+        finally:
+            if conn:
+                conn.close()
+
     # ------------------------------------------------------------------
     # Ingest methods for NAS sync (T-Y020C)
     # ------------------------------------------------------------------

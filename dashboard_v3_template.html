@@ -476,6 +476,21 @@
                         </div>
                     </div>
 
+                    <div id="realtimeBanner" class="hidden items-center justify-between px-4 py-3 rounded-2xl border border-audio-200/70 dark:border-audio-500/40 bg-audio-50/80 dark:bg-audio-900/40 text-sm shadow" aria-hidden="true">
+                        <div class="flex items-center gap-2 text-audio-700 dark:text-audio-100" id="realtimeBannerText">
+                            New reports available
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button id="realtimeDismissBtn" class="text-xs font-medium text-audio-600 dark:text-audio-300 hover:text-audio-700">Dismiss</button>
+                            <button id="realtimeRefreshBtn" class="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-audio-500 text-white text-xs font-semibold shadow hover:bg-audio-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-300">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v6h6M20 20v-6h-6M20 9a8 8 0 00-15.5-2M4 15a8 8 0 0015.5 2" />
+                                </svg>
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Audio-Centric Content Cards -->
                     <div class="space-y-4" id="contentGrid">
                         <!-- Dynamic content cards will be inserted here -->

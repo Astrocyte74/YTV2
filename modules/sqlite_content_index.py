@@ -663,4 +663,38 @@ class SQLiteContentIndex:
     def get_facets(self, active_filters: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Get facets/filters - alias for get_filters() for compatibility."""
         return self.get_filters()
-    
+
+    def get_latest_report_metadata(self) -> Optional[Dict[str, Any]]:
+        """Return minimal metadata for the most recently indexed report."""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT video_id, summary_type_latest, indexed_at
+                FROM content
+                WHERE indexed_at IS NOT NULL
+                ORDER BY indexed_at DESC
+                LIMIT 1
+                """
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            indexed_at = row['indexed_at'] if 'indexed_at' in row.keys() else None
+            if isinstance(indexed_at, datetime):
+                indexed_at_str = indexed_at.isoformat()
+            else:
+                indexed_at_str = str(indexed_at) if indexed_at else ""
+
+            return {
+                'video_id': row['video_id'],
+                'summary_type': row.get('summary_type_latest'),
+                'indexed_at': indexed_at_str,
+            }
+        except Exception:
+            logger.exception("Failed to fetch latest report metadata (sqlite)")
+            return None
+        finally:
+            conn.close()

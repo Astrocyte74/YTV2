@@ -13,11 +13,13 @@ import logging
 import time
 import hashlib
 import json
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from datetime import datetime, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 import threading
+import queue
+from socketserver import ThreadingMixIn
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote, quote
 from urllib.request import Request, urlopen
@@ -154,6 +156,92 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+class SSEClient:
+    """Lightweight holder for per-connection event queues."""
+
+    def __init__(self, handler: SimpleHTTPRequestHandler):
+        self.handler = handler
+        self.queue: "queue.Queue[str]" = queue.Queue(maxsize=64)
+        self.alive = True
+
+    def enqueue(self, message: str) -> None:
+        """Attempt to queue a message, dropping the oldest on overflow."""
+        if not self.alive:
+            return
+        try:
+            self.queue.put_nowait(message)
+        except queue.Full:
+            try:
+                _ = self.queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self.queue.put_nowait(message)
+            except queue.Full:
+                # Give up if we still cannot enqueue
+                logger.debug("SSE queue overflow; dropping event")
+
+
+class ReportEventStream:
+    """Simple server-sent events broadcaster shared across handlers."""
+
+    def __init__(self) -> None:
+        self._clients: set[SSEClient] = set()
+        self._lock = threading.Lock()
+
+    def register(self, handler: SimpleHTTPRequestHandler) -> SSEClient:
+        client = SSEClient(handler)
+        with self._lock:
+            self._clients.add(client)
+        logger.debug("SSE client registered; total=%s", len(self._clients))
+        return client
+
+    def unregister(self, client: SSEClient) -> None:
+        client.alive = False
+        with self._lock:
+            self._clients.discard(client)
+        logger.debug("SSE client unregistered; total=%s", len(self._clients))
+
+    def broadcast(self, event_name: str, payload: Dict[str, Any]) -> int:
+        if not event_name:
+            return 0
+        message = self._format_message(event_name, payload)
+        stale: list[SSEClient] = []
+        delivered = 0
+        with self._lock:
+            clients = list(self._clients)
+        for client in clients:
+            try:
+                client.enqueue(message)
+                delivered += 1
+            except Exception:
+                logger.exception("Failed to enqueue SSE message; marking client stale")
+                stale.append(client)
+        if stale:
+            for client in stale:
+                self.unregister(client)
+        return delivered
+
+    @staticmethod
+    def _format_message(event_name: str, payload: Dict[str, Any]) -> str:
+        try:
+            data = json.dumps(payload or {}, ensure_ascii=False)
+        except TypeError:
+            logger.exception("Failed to serialize SSE payload for %s", event_name)
+            data = "{}"
+        return f"event: {event_name}\ndata: {data}\n\n"
+
+
+report_event_stream = ReportEventStream()
+
+
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    """HTTP server that handles each request in its own thread."""
+
+    daemon_threads = True
+    allow_reuse_address = True
+
 
 # Limits and headers for article fetching endpoint
 FETCH_ARTICLE_MAX_BYTES = 500_000
@@ -2417,6 +2505,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_refresh()
             elif path == '/api/backup':
                 self.serve_api_backup()
+            elif path == '/api/report-events':
+                self.serve_api_report_events()
             elif path.startswith('/api/backup/'):
                 self.serve_backup_file()
             elif path == '/api/download-database':
@@ -2430,7 +2520,47 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error serving API {self.path}: {e}")
             self.send_error(500, "API error")
-    
+
+    def serve_api_report_events(self):
+        """Stream report ingest events to the frontend via Server-Sent Events."""
+        self.send_response(200)
+        self.send_header('Content-type', 'text/event-stream')
+        self.send_header('Cache-Control', 'no-cache')
+        self.send_header('Connection', 'keep-alive')
+        self.send_header('X-Accel-Buffering', 'no')
+        self.end_headers()
+
+        client = report_event_stream.register(self)
+        self.close_connection = False
+
+        try:
+            try:
+                self.wfile.write(b": connected\n\n")
+                self.wfile.flush()
+            except Exception:
+                logger.debug("Failed to send SSE handshake; closing connection")
+                return
+
+            while True:
+                try:
+                    message = client.queue.get(timeout=15)
+                except queue.Empty:
+                    try:
+                        self.wfile.write(b": keep-alive\n\n")
+                        self.wfile.flush()
+                    except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                        break
+                    continue
+
+                try:
+                    self.wfile.write(message.encode('utf-8'))
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                    break
+        finally:
+            report_event_stream.unregister(client)
+            self.close_connection = True
+
     def serve_api_filters(self, query_params: Dict[str, List[str]]):
         """Serve Phase 2 filters API endpoint with faceted search"""
         try:
@@ -2494,7 +2624,22 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             if not content_index:
                 # Fallback to legacy method
                 return self.serve_api_reports()
-            
+
+            latest_only = query_params.get('latest', ['false'])[0].lower() == 'true'
+            if latest_only:
+                latest_report = None
+                if hasattr(content_index, 'get_latest_report_metadata'):
+                    try:
+                        latest_report = content_index.get_latest_report_metadata()
+                    except Exception:
+                        logger.exception("Failed to fetch latest report metadata")
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Cache-Control', 'no-cache')
+                self.end_headers()
+                self.wfile.write(json.dumps({'report': latest_report}, ensure_ascii=False).encode())
+                return
+
             # Parse query parameters
             filters = {}
             
@@ -4170,6 +4315,32 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 if summaries and hasattr(content_index, 'upsert_summaries'):
                     summaries_upserted = content_index.upsert_summaries(video_id, summaries)
 
+                # Prepare realtime event broadcast before responding
+                summary_types: List[str] = []
+                for summary in summaries or []:
+                    if isinstance(summary, dict):
+                        st = summary.get('summary_type') or summary.get('summaryType') or summary.get('variant')
+                        if st:
+                            summary_types.append(str(st))
+                for key in ('summary_type', 'summary_type_latest'):
+                    st_val = payload.get(key)
+                    if st_val:
+                        summary_types.append(str(st_val))
+                # Deduplicate while preserving order
+                seen = set()
+                summary_types = [s for s in summary_types if not (s in seen or seen.add(s))]
+
+                event_payload = {
+                    "video_id": video_id,
+                    "summary_types": summary_types,
+                    "timestamp": payload.get("indexed_at") or datetime.utcnow().isoformat() + "Z"
+                }
+                try:
+                    listeners = report_event_stream.broadcast('report-added', event_payload)
+                    logger.debug("Broadcast report-added for %s to %s listeners", video_id, listeners)
+                except Exception:
+                    logger.exception("Failed to broadcast ingest event for %s", video_id)
+
                 # Success response
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
@@ -5217,7 +5388,8 @@ def start_http_server():
     
     try:
         server_address = ('', port)
-        httpd = HTTPServer(server_address, ModernDashboardHTTPRequestHandler)
+        httpd = ThreadedHTTPServer(server_address, ModernDashboardHTTPRequestHandler)
+        setattr(httpd, 'content_index', content_index)
         
         logger.info(f"🌐 HTTP Server started on port {port}")
         logger.info(f"📊 Dashboard available at: http://localhost:{port}")
