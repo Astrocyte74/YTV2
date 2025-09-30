@@ -820,12 +820,17 @@ class AudioDashboard {
     async fetchMetrics() {
         try {
             const response = await fetch('/api/metrics', { cache: 'no-store' });
+            if (response.status === 404) {
+                if (this.metricsPanel) this.metricsPanel.classList.add('hidden');
+                return;
+            }
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
             const data = await response.json();
             this.metricsData = data;
             this.updateMetricsUI(data);
+            if (this.metricsPanel) this.metricsPanel.classList.remove('hidden');
         } catch (error) {
             console.warn('Failed to load metrics snapshot', error);
         }
