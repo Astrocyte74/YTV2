@@ -97,11 +97,19 @@ class AudioDashboard {
         this.pollTimer = null;
         this.initialLoadComplete = false;
         this.disableRealtimeSSE = this.shouldDisableRealtimeSSE();
+        this.metricsTimer = null;
+        this.metricsData = null;
+        this.metricsRefreshTimer = null;
+        this.reprocessToken = (typeof window !== 'undefined' && window.REPROCESS_TOKEN) ? window.REPROCESS_TOKEN : null;
+        this.reprocessTokenSource = this.reprocessToken ? 'window' : null;
+        this.pendingReprocess = null;
         
         this.initializeElements();
+        this.updateReprocessFootnote();
         this.showNowPlayingPlaceholder();
         this.bindEvents();
         this.initRealtimeUpdates();
+        this.startMetricsPolling();
         this.loadInitialData();
     }
 
@@ -188,9 +196,24 @@ class AudioDashboard {
 
         // Realtime banner
         this.realtimeBanner = document.getElementById('realtimeBanner');
-        this.realtimeBannerText = document.getElementById('realtimeBannerText');
-        this.realtimeRefreshBtn = document.getElementById('realtimeRefreshBtn');
-        this.realtimeDismissBtn = document.getElementById('realtimeDismissBtn');
+       this.realtimeBannerText = document.getElementById('realtimeBannerText');
+       this.realtimeRefreshBtn = document.getElementById('realtimeRefreshBtn');
+       this.realtimeDismissBtn = document.getElementById('realtimeDismissBtn');
+
+        // Metrics panel
+        this.metricsPanel = document.getElementById('metricsPanel');
+        this.metricsLastIngestEl = document.getElementById('metricsLastIngest');
+        this.metricsCountersEl = document.getElementById('metricsCounters');
+        this.metricsSseEl = document.getElementById('metricsSse');
+
+        // Reprocess modal
+        this.reprocessModal = document.getElementById('reprocessModal');
+        this.reprocessText = document.getElementById('reprocessText');
+        this.reprocessAudioToggle = document.getElementById('reprocessAudioToggle');
+        this.reprocessFootnote = document.getElementById('reprocessFootnote');
+        this.reprocessTokenReset = document.getElementById('reprocessTokenReset');
+        this.confirmReprocessBtn = document.getElementById('confirmReprocessBtn');
+        this.cancelReprocessBtn = document.getElementById('cancelReprocessBtn');
     }
 
     bindEvents() {
@@ -473,6 +496,19 @@ class AudioDashboard {
             this.realtimeDismissBtn.addEventListener('click', () => this.dismissRealtimeBanner());
         }
 
+        if (this.confirmReprocessBtn) {
+            this.confirmReprocessBtn.addEventListener('click', () => this.submitReprocess());
+        }
+        if (this.cancelReprocessBtn) {
+            this.cancelReprocessBtn.addEventListener('click', () => this.closeReprocessModal());
+        }
+        if (this.reprocessTokenReset) {
+            this.reprocessTokenReset.addEventListener('click', (event) => {
+                event.preventDefault();
+                this.resetStoredReprocessToken();
+            });
+        }
+
         window.addEventListener('beforeunload', () => this.shutdownRealtime());
         window.addEventListener('pagehide', () => this.shutdownRealtime());
     }
@@ -548,6 +584,7 @@ class AudioDashboard {
                     this.realtimeReconnectTimer = null;
                 }
                 this.stopPollingFallback();
+                this.requestMetricsRefresh(500);
             });
             source.addEventListener('error', () => {
                 try { source.close(); } catch (_) {}
@@ -555,13 +592,43 @@ class AudioDashboard {
                 this.scheduleRealtimeReconnect();
                 this.startPollingFallback();
             });
-            source.addEventListener('report-added', (evt) => {
+            const safeParse = (evt) => {
                 try {
-                    const payload = JSON.parse(evt.data || '{}');
-                    this.handleReportAddedEvent(payload || {}, { transport: 'sse' });
+                    return JSON.parse(evt.data || '{}') || {};
                 } catch (error) {
-                    console.error('Failed to parse report-added event', error);
+                    console.error('Failed to parse SSE event payload', error);
+                    return {};
                 }
+            };
+
+            const successEvents = ['report-added', 'report-synced', 'audio-synced', 'reprocess-complete'];
+            successEvents.forEach((name) => {
+                source.addEventListener(name, (evt) => {
+                    const payload = safeParse(evt);
+                    this.handleReportAddedEvent(payload, { transport: 'sse', eventName: name });
+                });
+            });
+
+            const infoEvents = ['reprocess-scheduled', 'reprocess-requested'];
+            infoEvents.forEach((name) => {
+                source.addEventListener(name, (evt) => {
+                    const payload = safeParse(evt);
+                    this.handleReprocessLifecycle(name, payload);
+                });
+            });
+
+            const failureEvents = [
+                'report-sync-failed',
+                'report-sync-error',
+                'audio-sync-failed',
+                'audio-sync-error',
+                'reprocess-error'
+            ];
+            failureEvents.forEach((name) => {
+                source.addEventListener(name, (evt) => {
+                    const payload = safeParse(evt);
+                    this.handleRealtimeFailure(name, payload);
+                });
             });
         } catch (error) {
             console.error('Failed to connect to report events', error);
@@ -601,7 +668,7 @@ class AudioDashboard {
             if (!response.ok) return;
             const payload = await response.json();
             if (!payload || !payload.report) return;
-            this.handleReportAddedEvent(payload.report, { transport: 'poll' });
+            this.handleReportAddedEvent(payload.report, { transport: 'poll', eventName: 'report-synced' });
         } catch (error) {
             console.warn('Polling latest report failed', error);
         }
@@ -609,7 +676,14 @@ class AudioDashboard {
 
     handleReportAddedEvent(data = {}, meta = {}) {
         if (!data) return;
-        const videoId = data.video_id || data.videoId || null;
+        const eventName = (meta.eventName || 'report-added').toLowerCase();
+        let videoId = data.video_id || data.videoId || data.id || null;
+        if (!videoId && meta.videoId) videoId = meta.videoId;
+        if (!videoId) {
+            console.warn('Realtime event missing video_id', data, meta);
+            return;
+        }
+
         let summaryTypes = data.summary_types || data.summaryTypes || [];
         if (!Array.isArray(summaryTypes)) {
             summaryTypes = summaryTypes ? [summaryTypes] : [];
@@ -618,18 +692,30 @@ class AudioDashboard {
         if (singleType) summaryTypes.push(singleType);
         summaryTypes = [...new Set(summaryTypes.map((v) => String(v)).filter(Boolean))];
 
-        const timestamp = data.timestamp || data.indexed_at || data.indexedAt || null;
+        let timestamp = data.timestamp || data.indexed_at || data.indexedAt || data.created_at || data.updated_at || null;
+        if (!timestamp) {
+            timestamp = new Date().toISOString();
+        }
         const tsValue = this.normalizeTimestamp(timestamp);
         const currentTs = this.normalizeTimestamp(this.latestIndexedAt);
-        if (currentTs && tsValue && tsValue <= currentTs) {
+        const bypassRecencyCheck = ['audio-synced', 'reprocess-complete'].includes(eventName);
+        if (!bypassRecencyCheck && currentTs && tsValue && tsValue <= currentTs) {
             return;
         }
         if (tsValue && (!currentTs || tsValue > currentTs)) {
             this.latestIndexedAt = timestamp;
         }
 
-        this.realtimeEventBuffer.push({ videoId, summaryTypes, timestamp, meta });
+        if (eventName === 'audio-synced') {
+            this.showToast(`Audio ready for ${this.describeVideo(data)}`, 'success');
+        }
+        if (eventName === 'reprocess-complete') {
+            this.showToast(`Reprocess finished for ${this.describeVideo(data)}`, 'success');
+        }
+
+        this.realtimeEventBuffer.push({ videoId, summaryTypes, timestamp, meta: { ...meta, eventName } });
         this.scheduleRealtimeFlush();
+        this.requestMetricsRefresh(2000);
     }
 
     scheduleRealtimeFlush() {
@@ -651,6 +737,7 @@ class AudioDashboard {
         const buffer = this.realtimeEventBuffer.splice(0);
         const uniqueVideoIds = new Set(buffer.map((evt) => evt.videoId).filter(Boolean));
         const newCount = uniqueVideoIds.size || buffer.length;
+        const eventNames = buffer.map((evt) => (evt.meta && evt.meta.eventName) ? evt.meta.eventName : 'report-added');
         this.realtimePendingCount += newCount;
 
         const now = Date.now();
@@ -665,15 +752,20 @@ class AudioDashboard {
                 .finally(() => {
                     this.realtimePendingCount = 0;
                     this.hideRealtimeBanner();
+                    this.requestMetricsRefresh(1200);
                 });
         } else {
-            this.showRealtimeBanner(this.realtimePendingCount);
+            this.showRealtimeBanner(this.realtimePendingCount, eventNames);
+            this.requestMetricsRefresh(2000);
         }
     }
 
-    showRealtimeBanner(count) {
+    showRealtimeBanner(count, eventNames = []) {
         if (!this.realtimeBanner || !this.realtimeBannerText) return;
-        const label = count === 1 ? '1 new report available' : `${count} new reports available`;
+        let label = count === 1 ? '1 update available' : `${count} updates available`;
+        if (eventNames.length === 1) {
+            label = `${this.formatEventLabel(eventNames[0])} ready`;
+        }
         this.realtimeBannerText.textContent = label;
         this.realtimeBanner.classList.remove('hidden');
         this.realtimeBanner.setAttribute('aria-hidden', 'false');
@@ -705,6 +797,119 @@ class AudioDashboard {
             this.eventSource = null;
         }
         this.stopPollingFallback();
+        if (this.metricsTimer) {
+            window.clearInterval(this.metricsTimer);
+            this.metricsTimer = null;
+        }
+        if (this.metricsRefreshTimer) {
+            window.clearTimeout(this.metricsRefreshTimer);
+            this.metricsRefreshTimer = null;
+        }
+    }
+
+    startMetricsPolling() {
+        if (typeof window === 'undefined') return;
+        if (this.metricsTimer) {
+            window.clearInterval(this.metricsTimer);
+            this.metricsTimer = null;
+        }
+        this.fetchMetrics();
+        this.metricsTimer = window.setInterval(() => this.fetchMetrics(), 60000);
+    }
+
+    async fetchMetrics() {
+        try {
+            const response = await fetch('/api/metrics', { cache: 'no-store' });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            this.metricsData = data;
+            this.updateMetricsUI(data);
+        } catch (error) {
+            console.warn('Failed to load metrics snapshot', error);
+        }
+    }
+
+    updateMetricsUI(data) {
+        if (!data || !this.metricsPanel) return;
+
+        const success = Number(data.ingest_success ?? data.ingest_success_total ?? data.ingest_success_count ?? 0);
+        const failure = Number(data.ingest_failure ?? data.ingest_failure_total ?? data.ingest_failure_count ?? 0);
+        if (this.metricsCountersEl) {
+            this.metricsCountersEl.textContent = `Ingest ✓ ${success} • ✕ ${failure}`;
+        }
+
+        const sseClients = Number(data.sse_clients_current ?? data.sse_clients ?? 0);
+        if (this.metricsSseEl) {
+            this.metricsSseEl.textContent = `SSE clients: ${sseClients}`;
+        }
+
+        const lastVideo = data.last_ingest_video || data.last_ingest_id || '';
+        const lastTimestamp = data.last_ingest_timestamp || data.last_ingest_time || data.last_ingest_at || '';
+        if (this.metricsLastIngestEl) {
+            if (lastVideo || lastTimestamp) {
+                const label = this.truncateText(lastVideo || '—', 18);
+                const relative = this.formatRelativeTime(lastTimestamp);
+                const parts = [`Last ingest: ${label}`];
+                if (relative) parts.push(relative);
+                this.metricsLastIngestEl.textContent = parts.join(' • ');
+            } else {
+                this.metricsLastIngestEl.textContent = 'Last ingest: —';
+            }
+        }
+    }
+
+    requestMetricsRefresh(delay = 2000) {
+        if (typeof window === 'undefined') return;
+        if (this.metricsRefreshTimer) {
+            window.clearTimeout(this.metricsRefreshTimer);
+        }
+        this.metricsRefreshTimer = window.setTimeout(() => this.fetchMetrics(), delay);
+    }
+
+    handleReprocessLifecycle(eventName, payload = {}) {
+        const label = this.describeVideo(payload);
+        if (eventName === 'reprocess-scheduled') {
+            this.showToast(`Reprocess scheduled for ${label}`, 'info');
+        }
+        if (eventName === 'reprocess-requested') {
+            this.showToast(`Reprocess started for ${label}`, 'info');
+        }
+        this.requestMetricsRefresh(2500);
+    }
+
+    handleRealtimeFailure(eventName, payload = {}) {
+        const label = this.describeVideo(payload);
+        const message = payload.message || payload.error || 'Unexpected error';
+        const text = `${this.formatEventLabel(eventName)} for ${label} failed: ${message}`;
+        this.showToast(text, 'error');
+        this.requestMetricsRefresh(2000);
+    }
+
+    describeVideo(payload = {}) {
+        const title = payload.title || payload.video_title;
+        const videoId = payload.video_id || payload.videoId || payload.id;
+        if (title) return this.truncateText(title, 40);
+        if (videoId) return this.truncateText(videoId, 16);
+        return 'item';
+    }
+
+    formatEventLabel(name) {
+        const map = {
+            'report-added': 'New report',
+            'report-synced': 'Report update',
+            'audio-synced': 'Audio update',
+            'reprocess-scheduled': 'Reprocess scheduled',
+            'reprocess-requested': 'Reprocess started',
+            'reprocess-complete': 'Reprocess complete',
+            'report-sync-failed': 'Report sync failed',
+            'report-sync-error': 'Report sync error',
+            'audio-sync-failed': 'Audio sync failed',
+            'audio-sync-error': 'Audio sync error',
+            'reprocess-error': 'Reprocess error'
+        };
+        return map[name] || name.replace(/[-_]/g, ' ');
     }
 
     async refreshForRealtime() {
@@ -1572,6 +1777,10 @@ class AudioDashboard {
         if (action === 'menu') { this.toggleKebabMenu(card, true, btn); }
         if (action === 'menu-close') { this.toggleKebabMenu(card, false); }
         if (action === 'copy-link') { this.copyLink(card, id); this.toggleKebabMenu(card, false); }
+        if (action === 'reprocess') {
+            this.toggleKebabMenu(card, false);
+            this.openReprocessModal(id, card);
+        }
         if (action === 'confirm-delete') { this.handleDelete(id, card); this.sendTelemetry('cta_delete', { id }); }
         if (action === 'cancel-delete') this.toggleDeletePopover(card, false);
         if (action === 'collapse') this.collapseCardInline(id);
@@ -1896,6 +2105,104 @@ class AudioDashboard {
         }
     }
 
+    openReprocessModal(reportId, card) {
+        if (!this.reprocessModal) {
+            this.showToast('Reprocess dialog unavailable', 'error');
+            return;
+        }
+        const item = (this.currentItems || []).find((x) => x.file_stem === reportId) || null;
+        const title = item?.title || card?.querySelector('h3')?.textContent?.trim() || reportId;
+        const videoId = item?.video_id || card?.dataset.videoId;
+        if (!videoId) {
+            this.showToast('Missing video id for reprocess', 'error');
+            return;
+        }
+
+        this.pendingReprocess = {
+            id: reportId,
+            videoId,
+            title,
+            hasAudio: Boolean(item?.media?.has_audio || card?.dataset.hasAudio === 'true')
+        };
+
+        if (this.reprocessText) {
+            const safeTitle = this.escapeHtml(title || 'this video');
+            this.reprocessText.innerHTML = `Re-run the summarizer for <strong>${safeTitle}</strong>?`;
+        }
+        if (this.reprocessAudioToggle) {
+            this.reprocessAudioToggle.checked = Boolean(this.pendingReprocess.hasAudio);
+        }
+
+        this.updateReprocessFootnote();
+
+        this.reprocessModal.classList.remove('hidden');
+        this.reprocessModal.classList.add('flex');
+        this.reprocessModal.setAttribute('aria-hidden', 'false');
+        const focusTarget = this.confirmReprocessBtn || this.cancelReprocessBtn;
+        if (focusTarget) focusTarget.focus();
+    }
+
+    closeReprocessModal() {
+        if (this.reprocessModal) {
+            this.reprocessModal.classList.add('hidden');
+            this.reprocessModal.classList.remove('flex');
+            this.reprocessModal.setAttribute('aria-hidden', 'true');
+        }
+        if (this.confirmReprocessBtn) {
+            this.confirmReprocessBtn.disabled = false;
+        }
+        this.pendingReprocess = null;
+    }
+
+    async submitReprocess() {
+        if (!this.pendingReprocess) return;
+        const videoId = this.pendingReprocess.videoId;
+        if (!videoId) {
+            this.showToast('Missing video id for reprocess', 'error');
+            return;
+        }
+        const regenerateAudio = this.reprocessAudioToggle ? !!this.reprocessAudioToggle.checked : true;
+        const token = this.getReprocessToken();
+        if (!token) {
+            this.showToast('Reprocess token required', 'warn');
+            return;
+        }
+
+        if (this.confirmReprocessBtn) {
+            this.confirmReprocessBtn.disabled = true;
+        }
+
+        try {
+            const payload = {
+                video_id: videoId,
+                summary_types: ['comprehensive'],
+                regenerate_audio: regenerateAudio
+            };
+            const response = await fetch('/api/reprocess', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Reprocess-Token': token
+                },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || `HTTP ${response.status}`);
+            }
+            this.showToast(`Reprocess scheduled for ${this.describeVideo(this.pendingReprocess)}`, 'success');
+            this.requestMetricsRefresh(2000);
+            this.closeReprocessModal();
+        } catch (error) {
+            console.error('Reprocess request failed', error);
+            this.showToast(`Reprocess failed: ${error.message || error}`, 'error');
+        } finally {
+            if (this.confirmReprocessBtn) {
+                this.confirmReprocessBtn.disabled = false;
+            }
+        }
+    }
+
     async handleDelete(id, cardEl) {
         try {
             // Optimistic UI: show busy state
@@ -2059,6 +2366,7 @@ class AudioDashboard {
                               </button>
                               <div class=\"absolute right-0 mt-2 w-44 bg-white/95 dark:bg-slate-800/95 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl hidden z-50\" data-kebab-menu role=\"menu\">
                                 <button class=\"w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors\" role=\"menuitem\" data-action=\"copy-link\">Copy link</button>
+                                <button class=\"w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors\" role=\"menuitem\" data-action=\"reprocess\">Reprocess…</button>
                                 <button class=\"w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors\" role=\"menuitem\" data-action=\"delete\">Delete…</button>
                               </div>
                             </div>
@@ -3537,6 +3845,101 @@ class AudioDashboard {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    truncateText(value, max = 24) {
+        if (!value) return '';
+        const str = String(value);
+        if (str.length <= max) return str;
+        return `${str.slice(0, max - 1)}…`;
+    }
+
+    formatRelativeTime(value) {
+        if (!value) return '';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        const diffMs = Date.now() - date.getTime();
+        const absMs = Math.abs(diffMs);
+        if (absMs < 5000) return 'just now';
+        const units = [
+            { label: 'day', ms: 86400000 },
+            { label: 'hour', ms: 3600000 },
+            { label: 'minute', ms: 60000 },
+            { label: 'second', ms: 1000 }
+        ];
+        for (const { label, ms } of units) {
+            if (absMs >= ms || label === 'second') {
+                const valueRounded = Math.round(absMs / ms);
+                if (valueRounded === 0) return 'just now';
+                const plural = valueRounded === 1 ? label : `${label}s`;
+                return diffMs >= 0 ? `${valueRounded} ${plural} ago` : `in ${valueRounded} ${plural}`;
+            }
+        }
+        return '';
+    }
+
+    getReprocessToken(forcePrompt = false) {
+        if (!forcePrompt && this.reprocessToken) {
+            return this.reprocessToken;
+        }
+        try {
+            if (!forcePrompt && this.reprocessTokenSource !== 'prompt') {
+                const stored = localStorage.getItem('ytv2.reprocessToken');
+                if (stored) {
+                    this.reprocessToken = stored;
+                    this.reprocessTokenSource = 'storage';
+                    this.updateReprocessFootnote();
+                    return stored;
+                }
+            }
+        } catch (_) {
+            // ignore storage errors
+        }
+
+        if (!forcePrompt && this.reprocessTokenSource !== 'window' && typeof window !== 'undefined' && window.REPROCESS_TOKEN) {
+            this.reprocessToken = window.REPROCESS_TOKEN;
+            this.reprocessTokenSource = 'window';
+            this.updateReprocessFootnote();
+            return this.reprocessToken;
+        }
+
+        const entered = typeof window !== 'undefined' ? window.prompt('Enter reprocess token') : null;
+        if (entered) {
+            this.reprocessToken = entered.trim();
+            this.reprocessTokenSource = 'prompt';
+            try { localStorage.setItem('ytv2.reprocessToken', this.reprocessToken); this.reprocessTokenSource = 'storage'; } catch (_) {}
+            this.updateReprocessFootnote();
+            return this.reprocessToken;
+        }
+
+        this.updateReprocessFootnote();
+        return null;
+    }
+
+    resetStoredReprocessToken() {
+        try { localStorage.removeItem('ytv2.reprocessToken'); } catch (_) {}
+        if (typeof window !== 'undefined' && window.REPROCESS_TOKEN) {
+            this.reprocessToken = window.REPROCESS_TOKEN;
+            this.reprocessTokenSource = 'window';
+        } else {
+            this.reprocessToken = null;
+            this.reprocessTokenSource = null;
+        }
+        this.updateReprocessFootnote();
+        this.showToast('Reprocess token cleared. You will be prompted next time.', 'info');
+    }
+
+    updateReprocessFootnote() {
+        if (!this.reprocessFootnote) return;
+        let text = 'Provide the shared token when prompted.';
+        if (this.reprocessTokenSource === 'window') {
+            text = 'Token provided by backend configuration.';
+        } else if (this.reprocessTokenSource === 'storage') {
+            text = 'Using token saved locally. Change token to update.';
+        } else if (this.reprocessTokenSource === 'prompt') {
+            text = 'Token cached locally for quick access.';
+        }
+        this.reprocessFootnote.textContent = text;
     }
 
     /**

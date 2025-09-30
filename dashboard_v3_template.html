@@ -465,6 +465,11 @@
                                 <p class="text-sm text-slate-600 dark:text-slate-300 mt-2" id="resultsSubtitle">Your daily audio briefing</p>
                                 <p class="text-sm sm:text-base text-slate-500 dark:text-slate-300 mt-2" id="resultsCount">Loading summaries...</p>
                                 <div class="mt-4 flex flex-wrap gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 hidden" id="heroBadges"></div>
+                                <div class="mt-4 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400" id="metricsPanel">
+                                    <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/40 dark:bg-slate-800/50 border border-white/40 dark:border-slate-700/50" id="metricsLastIngest">Last ingest: —</span>
+                                    <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/40 dark:bg-slate-800/50 border border-white/40 dark:border-slate-700/50" id="metricsCounters">Ingest ✓ 0 • ✕ 0</span>
+                                    <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-white/40 dark:bg-slate-800/50 border border-white/40 dark:border-slate-700/50" id="metricsSse">SSE clients: 0</span>
+                                </div>
                             </div>
                             <div class="flex flex-col gap-3 items-start md:items-end">
                                 <span class="text-xs font-semibold tracking-wide uppercase text-slate-500 dark:text-slate-400">View</span>
@@ -531,6 +536,29 @@
             <div class="mt-6 flex items-center justify-end gap-3">
               <button id="cancelDeleteBtn" class="px-3 py-2 text-sm rounded-lg border border-slate-200 hover:bg-slate-50">Cancel</button>
               <button id="confirmDeleteBtn" class="px-3 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700">Delete</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Reprocess Modal -->
+        <div id="reprocessModal" class="fixed inset-0 bg-black/40 backdrop-blur-sm hidden items-center justify-center z-50">
+          <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h3 class="text-lg font-semibold text-slate-800 mb-2">Reprocess Summary</h3>
+            <p class="text-slate-600 text-sm" id="reprocessText">Re-run the summarizer for this video?</p>
+            <div class="mt-4 space-y-3 text-sm">
+              <div class="flex items-center gap-2">
+                <input type="checkbox" id="reprocessAudioToggle" class="rounded border-slate-300 text-audio-500 focus:ring-audio-400" checked>
+                <label for="reprocessAudioToggle" class="text-slate-600">Regenerate audio (if available)</label>
+              </div>
+              <p class="text-xs text-slate-500">All existing summary types will be regenerated unless customised later.</p>
+              <div class="flex items-center justify-between text-xs text-slate-500">
+                <span id="reprocessFootnote">Token can be saved locally after the first run.</span>
+                <button id="reprocessTokenReset" class="text-audio-600 hover:text-audio-500 font-medium">Change token</button>
+              </div>
+            </div>
+            <div class="mt-6 flex items-center justify-end gap-3">
+              <button id="cancelReprocessBtn" class="px-3 py-2 text-sm rounded-lg border border-slate-200 hover:bg-slate-50">Cancel</button>
+              <button id="confirmReprocessBtn" class="px-3 py-2 text-sm rounded-lg bg-audio-600 text-white hover:bg-audio-500">Start reprocess</button>
             </div>
           </div>
         </div>
