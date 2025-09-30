@@ -99,6 +99,7 @@ class AudioDashboard {
         this.disableRealtimeSSE = this.shouldDisableRealtimeSSE();
         
         this.initializeElements();
+        this.showNowPlayingPlaceholder();
         this.bindEvents();
         this.initRealtimeUpdates();
         this.loadInitialData();
@@ -498,10 +499,13 @@ class AudioDashboard {
             if (this.flags.queueEnabled) {
                 this.restoreQueue();
             }
-            // Default select first item (do not autoplay)
-            if (!this.currentAudio && this.currentItems && this.currentItems.length > 0) {
-                const first = this.currentItems[0];
-                this.setCurrentFromItem(first);
+            if (!this.currentAudio) {
+                const playableItems = this.getPlayableItems(this.currentItems);
+                if (playableItems.length) {
+                    this.setCurrentFromItem(playableItems[0]);
+                } else {
+                    this.showNowPlayingPlaceholder();
+                }
             }
         } catch (error) {
             console.error('Failed to load initial data:', error);
@@ -755,6 +759,72 @@ class AudioDashboard {
             console.warn('Unable to evaluate SSE disable flag', error);
         }
         return false;
+    }
+
+    getPlayableItems(items = this.currentItems) {
+        if (!Array.isArray(items)) return [];
+        return items.filter(item => item && item.media && item.media.has_audio);
+    }
+
+    rebuildPlaylist(items = this.currentItems) {
+        const playable = this.getPlayableItems(items);
+        this.playlist = playable.map(item => item.file_stem);
+        return playable;
+    }
+
+    getAudioSourceForItem(item) {
+        if (!item || !item.media || !item.media.has_audio) return null;
+        if (item.media.audio_url) return item.media.audio_url;
+        const videoId = item.video_id;
+        if (videoId) return `/exports/by_video/${videoId}.mp3`;
+        const reportId = item.file_stem;
+        return reportId ? `/exports/${reportId}.mp3` : null;
+    }
+
+    resetAudioElement() {
+        if (!this.audioElement) return;
+        try {
+            this.audioElement.pause();
+        } catch (_) {}
+        this.audioElement.removeAttribute('src');
+        this.audioElement.load();
+        if (this.progressBar) this.progressBar.style.width = '0%';
+        if (this.currentTimeEl) this.currentTimeEl.textContent = '0:00';
+        if (this.totalTimeEl) this.totalTimeEl.textContent = '0:00';
+    }
+
+    showNowPlayingPlaceholder(item = null) {
+        this.currentAudio = null;
+        this.isPlaying = false;
+        this.resetAudioElement();
+
+        if (this.nowPlayingPreview) this.nowPlayingPreview.classList.remove('hidden');
+
+        if (this.nowPlayingTitle) {
+            if (item && item.title) {
+                const label = item.title || 'Summary';
+                this.nowPlayingTitle.textContent = `${label} (no audio)`;
+            } else {
+                this.nowPlayingTitle.textContent = 'Select an audio summary';
+            }
+        }
+
+        if (this.nowPlayingMeta) {
+            this.nowPlayingMeta.textContent = item ? 'Audio not available' : 'Choose a summary with audio';
+        }
+
+        if (this.nowPlayingThumb) {
+            if (item && item.thumbnail_url) {
+                this.nowPlayingThumb.src = item.thumbnail_url;
+                this.nowPlayingThumb.classList.remove('hidden');
+            } else {
+                this.nowPlayingThumb.classList.add('hidden');
+            }
+        }
+
+        this.updatePlayButton();
+        this.updatePlayingCard();
+        this.updateNowPlayingPreview();
     }
 
     // Wait until filters are mounted and at least some have their checked state applied
@@ -1379,12 +1449,15 @@ class AudioDashboard {
             this.renderContent(this.currentItems);
             this.renderPagination(data.pagination);
             this.updateResultsInfo(data.pagination);
-            // Default playlist and current item (no autoplay)
-            if (this.currentItems && this.currentItems.length > 0) {
-                this.playlist = this.currentItems.map(i => i.file_stem);
+            const playableItems = this.rebuildPlaylist(this.currentItems);
+            if (playableItems.length > 0) {
                 this.currentTrackIndex = 0;
-                this.setCurrentFromItem(this.currentItems[0]);
+                this.setCurrentFromItem(playableItems[0]);
+            } else {
+                this.currentTrackIndex = -1;
+                this.showNowPlayingPlaceholder();
             }
+            this.renderQueue();
         } catch (error) {
             console.error('Failed to load content:', error);
             this.showError('Failed to load content');
@@ -2406,28 +2479,51 @@ class AudioDashboard {
             const reportCard = document.querySelector(`[data-report-id="${reportId}"]`);
             if (!reportCard) return;
 
+            if (reportCard.dataset.hasAudio !== 'true') {
+                this.showToast('Audio not available for this summary', 'warn');
+                return;
+            }
+
+            const item = (this.currentItems || []).find(x => x.file_stem === reportId);
+            const audioSrc = this.getAudioSourceForItem(item);
+            if (!audioSrc) {
+                this.showToast('Audio not available for this summary', 'warn');
+                return;
+            }
+
             // Extract report info from the card
-            const title = reportCard.querySelector('h3').textContent.trim();
-            const videoId = reportCard.dataset.videoId;
-            // Use server-side resolver to map videoId to latest audio file
-            const audioSrc = videoId ? `/exports/by_video/${videoId}.mp3` : `/exports/${reportId}.mp3`;
+            const title = item?.title || reportCard.querySelector('h3').textContent.trim();
             
             // Reset per-card progress bars
             try { document.querySelectorAll('[data-card-progress]').forEach(el => { el.style.width = '0%'; el.setAttribute('aria-valuenow', '0'); }); } catch(_) {}
-            // Update current track info
-            this.currentAudio = {
-                id: reportId,
-                title: title,
-                src: audioSrc
-            };
+
+            // Update current track info and mini player
+            if (item) {
+                this.setCurrentFromItem(item);
+            } else {
+                // Fallback: ensure audio metadata is set even if item missing
+                this.currentAudio = { id: reportId, title, src: audioSrc };
+                this.resetAudioElement();
+                if (this.audioElement) {
+                    this.audioElement.src = audioSrc;
+                    this.audioElement.load();
+                }
+                if (this.nowPlayingTitle) this.nowPlayingTitle.textContent = title;
+                if (this.nowPlayingMeta) this.nowPlayingMeta.textContent = 'Ready';
+                this.updateNowPlayingPreview();
+                this.updatePlayButton();
+            }
 
             // Queue management (Phase 3)
             if (this.flags.queueEnabled && Array.isArray(this.currentItems)) {
-                this.playlist = this.currentItems.map(i => i.file_stem);
+                this.rebuildPlaylist();
                 this.currentTrackIndex = this.playlist.indexOf(reportId);
                 if (this.currentTrackIndex < 0) this.currentTrackIndex = 0;
                 this.renderQueue();
                 this.saveQueue();
+            } else {
+                this.rebuildPlaylist();
+                this.currentTrackIndex = this.playlist.indexOf(reportId);
             }
 
             // Update player info
@@ -2500,6 +2596,25 @@ class AudioDashboard {
     }
 
     updatePlayButton() {
+        const hasTrack = !!this.currentAudio;
+        if (this.playPauseBtn) {
+            this.playPauseBtn.disabled = !hasTrack;
+            this.playPauseBtn.classList.toggle('opacity-60', !hasTrack);
+            this.playPauseBtn.classList.toggle('cursor-not-allowed', !hasTrack);
+        }
+        if (this.prevBtn) {
+            const enablePrev = hasTrack && Array.isArray(this.playlist) && this.playlist.length > 1;
+            this.prevBtn.disabled = !enablePrev;
+            this.prevBtn.classList.toggle('opacity-60', !enablePrev);
+            this.prevBtn.classList.toggle('cursor-not-allowed', !enablePrev);
+        }
+        if (this.nextBtn) {
+            const enableNext = hasTrack && Array.isArray(this.playlist) && this.playlist.length > 1;
+            this.nextBtn.disabled = !enableNext;
+            this.nextBtn.classList.toggle('opacity-60', !enableNext);
+            this.nextBtn.classList.toggle('cursor-not-allowed', !enableNext);
+        }
+
         if (this.isPlaying) {
             this.playIcon.classList.add('hidden');
             this.pauseIcon.classList.remove('hidden');
@@ -2560,23 +2675,49 @@ class AudioDashboard {
     }
 
     setCurrentFromItem(item) {
-
-        const reportId = item.file_stem;
-        const title = item.title;
-        const videoId = item.video_id;
-        const audioSrc = videoId ? `/exports/by_video/${videoId}.mp3` : `/exports/${reportId}.mp3`;
-        this.currentAudio = { id: reportId, title, src: audioSrc };
-        if (this.nowPlayingTitle) this.nowPlayingTitle.textContent = title;
-        if (this.nowPlayingMeta) this.nowPlayingMeta.textContent = 'Ready';
-        if (this.nowPlayingThumb && item.thumbnail_url) {
-            this.nowPlayingThumb.src = item.thumbnail_url;
-            this.nowPlayingThumb.classList.remove('hidden');
+        if (!item) {
+            this.showNowPlayingPlaceholder();
+            return;
         }
-        // Do not autoplay here; will load when user hits play
-        this.audioElement.src = audioSrc;
-        this.audioElement.load();
+
+        const audioSrc = this.getAudioSourceForItem(item);
+        if (!audioSrc) {
+            this.showNowPlayingPlaceholder(item);
+            return;
+        }
+
+        this.currentAudio = {
+            id: item.file_stem,
+            title: item.title,
+            src: audioSrc
+        };
+        this.isPlaying = false;
+
+        this.resetAudioElement();
+        if (this.audioElement) {
+            this.audioElement.src = audioSrc;
+            this.audioElement.load();
+        }
+
+        if (this.nowPlayingTitle) {
+            this.nowPlayingTitle.textContent = item.title || 'Audio summary';
+        }
+        if (this.nowPlayingMeta) {
+            this.nowPlayingMeta.textContent = 'Ready';
+        }
+
+        if (this.nowPlayingThumb) {
+            if (item.thumbnail_url) {
+                this.nowPlayingThumb.src = item.thumbnail_url;
+                this.nowPlayingThumb.classList.remove('hidden');
+            } else {
+                this.nowPlayingThumb.classList.add('hidden');
+            }
+        }
+
         this.updateNowPlayingPreview();
         this.updatePlayingCard();
+        this.updatePlayButton();
     }
 
     updatePlayingCard() {
@@ -2908,11 +3049,13 @@ class AudioDashboard {
     }
 
     updateNowPlayingPreview() {
-        if (this.currentAudio) {
-            this.nowPlayingPreview.classList.remove('hidden');
-            this.nowPlayingTitle.textContent = this.currentAudio.title;
-        } else {
-            this.nowPlayingPreview.classList.add('hidden');
+        if (!this.nowPlayingPreview) return;
+        this.nowPlayingPreview.classList.remove('hidden');
+        if (!this.currentAudio && this.nowPlayingTitle) {
+            const text = (this.nowPlayingTitle.textContent || '').trim();
+            if (!text) {
+                this.nowPlayingTitle.textContent = 'Select an audio summary';
+            }
         }
     }
 
@@ -3215,8 +3358,11 @@ class AudioDashboard {
     }
 
     playAllResults() {
-        if (!this.currentItems || this.currentItems.length === 0) return;
-        this.playlist = this.currentItems.map(i => i.file_stem);
+        const playableItems = this.rebuildPlaylist();
+        if (!playableItems.length) {
+            this.showToast('No audio summaries available', 'warn');
+            return;
+        }
         this.currentTrackIndex = 0;
         this.playAudio(this.playlist[0]);
     }
@@ -3705,11 +3851,22 @@ class AudioDashboard {
             if (!raw) return;
             const data = JSON.parse(raw);
             if (Array.isArray(data.playlist) && typeof data.index === 'number') {
-                this.playlist = data.playlist;
-                this.currentTrackIndex = Math.min(Math.max(0, data.index), this.playlist.length - 1);
-                const id = this.playlist[this.currentTrackIndex];
-                const item = (this.currentItems || []).find(x => x.file_stem === id) || this.currentItems[0];
-                if (item) this.setCurrentFromItem(item);
+                const playableItems = this.getPlayableItems();
+                const playableIds = new Set(playableItems.map(item => item.file_stem));
+                const filtered = data.playlist.filter(id => playableIds.has(id));
+                this.playlist = filtered.length ? filtered : playableItems.map(item => item.file_stem);
+
+                if (this.playlist.length) {
+                    this.currentTrackIndex = Math.min(Math.max(0, data.index), this.playlist.length - 1);
+                    const id = this.playlist[this.currentTrackIndex];
+                    const item = playableItems.find(x => x.file_stem === id) || playableItems[0];
+                    if (item) {
+                        this.setCurrentFromItem(item);
+                    }
+                } else {
+                    this.currentTrackIndex = -1;
+                    this.showNowPlayingPlaceholder();
+                }
                 this.renderQueue();
             }
         } catch (_) {}
