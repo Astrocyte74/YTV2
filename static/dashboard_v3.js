@@ -96,6 +96,7 @@ class AudioDashboard {
         this.lastRealtimeRefresh = 0;
         this.pollTimer = null;
         this.initialLoadComplete = false;
+        this.disableRealtimeSSE = this.shouldDisableRealtimeSSE();
         
         this.initializeElements();
         this.bindEvents();
@@ -470,6 +471,9 @@ class AudioDashboard {
         if (this.realtimeDismissBtn) {
             this.realtimeDismissBtn.addEventListener('click', () => this.dismissRealtimeBanner());
         }
+
+        window.addEventListener('beforeunload', () => this.shutdownRealtime());
+        window.addEventListener('pagehide', () => this.shutdownRealtime());
     }
 
     async loadInitialData() {
@@ -512,6 +516,11 @@ class AudioDashboard {
 
     initRealtimeUpdates() {
         if (typeof window === 'undefined') return;
+        if (this.disableRealtimeSSE) {
+            console.info('Realtime SSE disabled by flag; using polling fallback');
+            this.startPollingFallback();
+            return;
+        }
         if (window.EventSource) {
             this.connectEventSource();
         } else {
@@ -672,6 +681,28 @@ class AudioDashboard {
         this.realtimeBanner.setAttribute('aria-hidden', 'true');
     }
 
+    shutdownRealtime() {
+        if (typeof window !== 'undefined') {
+            if (this.realtimeReconnectTimer) {
+                window.clearTimeout(this.realtimeReconnectTimer);
+                this.realtimeReconnectTimer = null;
+            }
+            if (this.realtimeFlushTimer) {
+                window.clearTimeout(this.realtimeFlushTimer);
+                this.realtimeFlushTimer = null;
+            }
+        }
+        if (this.eventSource) {
+            try {
+                this.eventSource.close();
+            } catch (_) {
+                // already closed
+            }
+            this.eventSource = null;
+        }
+        this.stopPollingFallback();
+    }
+
     async refreshForRealtime() {
         this.hideRealtimeBanner();
         this.realtimePendingCount = 0;
@@ -703,6 +734,27 @@ class AudioDashboard {
         if (tsValue && (!current || tsValue >= current)) {
             this.latestIndexedAt = firstTs;
         }
+    }
+
+    shouldDisableRealtimeSSE() {
+        if (typeof window === 'undefined') {
+            return false;
+        }
+        try {
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('noSSE') || params.get('disableSSE') === '1') {
+                return true;
+            }
+            if (window.localStorage) {
+                const stored = window.localStorage.getItem('ytv2.disableSSE');
+                if (stored === '1') {
+                    return true;
+                }
+            }
+        } catch (error) {
+            console.warn('Unable to evaluate SSE disable flag', error);
+        }
+        return false;
     }
 
     // Wait until filters are mounted and at least some have their checked state applied
