@@ -1026,6 +1026,7 @@ class AudioDashboard {
                 url.username = this.nasBasicUser || '';
                 url.password = this.nasBasicPass || '';
             }
+            url.searchParams.set('ngrok-skip-browser-warning', 'true');
             return url.toString();
         } catch (error) {
             console.warn('Failed to build SSE URL', error);
@@ -1042,6 +1043,7 @@ class AudioDashboard {
         if (this.basicAuthHeader) {
             headers.set('Authorization', this.basicAuthHeader);
         }
+        headers.set('ngrok-skip-browser-warning', 'true');
         return fetch(url, { ...options, headers });
     }
 
