@@ -1058,11 +1058,15 @@ class AudioDashboard {
 
     getAudioSourceForItem(item) {
         if (!item || !item.media || !item.media.has_audio) return null;
-        if (item.media.audio_url) return item.media.audio_url;
+        const explicit = item.media.audio_url;
+        if (explicit) {
+            return this.nasBaseUrl ? this.joinNasUrl(explicit) : explicit;
+        }
         const videoId = item.video_id;
-        if (videoId) return `/exports/by_video/${videoId}.mp3`;
-        const reportId = item.file_stem;
-        return reportId ? `/exports/${reportId}.mp3` : null;
+        let path = null;
+        if (videoId) path = `/exports/by_video/${videoId}.mp3`;
+        else if (item.file_stem) path = `/exports/${item.file_stem}.mp3`;
+        return path ? this.joinNasUrl(path) : null;
     }
 
     resetAudioElement() {
