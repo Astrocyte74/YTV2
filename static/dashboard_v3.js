@@ -100,11 +100,17 @@ class AudioDashboard {
         this.metricsTimer = null;
         this.metricsData = null;
         this.metricsRefreshTimer = null;
-        this.reprocessToken = (typeof window !== 'undefined' && window.REPROCESS_TOKEN) ? window.REPROCESS_TOKEN : null;
-        this.reprocessTokenSource = this.reprocessToken ? 'window' : null;
+        this.nasBaseUrl = '';
+        this.nasBasicUser = '';
+        this.nasBasicPass = '';
+        this.basicAuthHeader = null;
+        this.hasNasBridge = false;
+        this.reprocessToken = null;
+        this.reprocessTokenSource = null;
         this.pendingReprocess = null;
-        
+
         this.initializeElements();
+        this.initNasConfig();
         this.updateReprocessFootnote();
         this.showNowPlayingPlaceholder();
         this.bindEvents();
@@ -575,7 +581,8 @@ class AudioDashboard {
             try { this.eventSource.close(); } catch (_) {}
         }
         try {
-            const source = new EventSource('/api/report-events');
+            const sseUrl = this.hasNasBridge ? this.buildSseUrl('/api/report-events') : '/api/report-events';
+            const source = new EventSource(sseUrl);
             this.eventSource = source;
             source.addEventListener('open', () => {
                 this.realtimeBackoff = 1000;
@@ -664,7 +671,7 @@ class AudioDashboard {
 
     async pollLatestReport() {
         try {
-            const response = await fetch('/api/reports?latest=true', { cache: 'no-store' });
+            const response = await this.nasFetch('/api/reports?latest=true', { cache: 'no-store' });
             if (!response.ok) return;
             const payload = await response.json();
             if (!payload || !payload.report) return;
@@ -819,7 +826,7 @@ class AudioDashboard {
 
     async fetchMetrics() {
         try {
-            const response = await fetch('/api/metrics', { cache: 'no-store' });
+            const response = await this.nasFetch('/api/metrics', { cache: 'no-store' });
             if (response.status === 404) {
                 if (this.metricsPanel) this.metricsPanel.classList.add('hidden');
                 return;
@@ -969,6 +976,73 @@ class AudioDashboard {
             console.warn('Unable to evaluate SSE disable flag', error);
         }
         return false;
+    }
+
+    initNasConfig() {
+        const cfg = (typeof window !== 'undefined' && window.NAS_CONFIG) || {};
+        this.nasBaseUrl = cfg.base_url || '';
+        this.nasBasicUser = cfg.basic_user || '';
+        this.nasBasicPass = cfg.basic_pass || '';
+        this.hasNasBridge = Boolean(this.nasBaseUrl);
+
+        if (!this.reprocessToken) {
+            this.reprocessToken = (typeof window !== 'undefined' && window.REPROCESS_TOKEN) || null;
+            this.reprocessTokenSource = this.reprocessToken ? 'window' : null;
+        }
+
+        if (!this.reprocessToken && typeof window !== 'undefined') {
+            try {
+                const stored = localStorage.getItem('ytv2.reprocessToken');
+                if (stored) {
+                    this.reprocessToken = stored;
+                    this.reprocessTokenSource = 'storage';
+                }
+            } catch (_) {
+                // Ignore storage errors
+            }
+        }
+
+        if (this.nasBasicUser || this.nasBasicPass) {
+            const credentials = `${this.nasBasicUser || ''}:${this.nasBasicPass || ''}`;
+            this.basicAuthHeader = 'Basic ' + this.encodeBase64(credentials);
+        }
+    }
+
+    joinNasUrl(path) {
+        if (!this.nasBaseUrl) return path;
+        try {
+            return new URL(path, this.nasBaseUrl).toString();
+        } catch (error) {
+            console.warn('Failed to build NAS URL', error);
+            return path;
+        }
+    }
+
+    buildSseUrl(path) {
+        if (!this.nasBaseUrl) return path;
+        try {
+            const url = new URL(path, this.nasBaseUrl);
+            if (this.nasBasicUser || this.nasBasicPass) {
+                url.username = this.nasBasicUser || '';
+                url.password = this.nasBasicPass || '';
+            }
+            return url.toString();
+        } catch (error) {
+            console.warn('Failed to build SSE URL', error);
+            return path;
+        }
+    }
+
+    nasFetch(path, options = {}) {
+        if (!this.nasBaseUrl) {
+            return fetch(path, options);
+        }
+        const url = this.joinNasUrl(path);
+        const headers = new Headers(options.headers || {});
+        if (this.basicAuthHeader) {
+            headers.set('Authorization', this.basicAuthHeader);
+        }
+        return fetch(url, { ...options, headers });
     }
 
     getPlayableItems(items = this.currentItems) {
@@ -2183,7 +2257,7 @@ class AudioDashboard {
                 summary_types: ['comprehensive'],
                 regenerate_audio: regenerateAudio
             };
-            const response = await fetch('/api/reprocess', {
+            const response = await this.nasFetch('/api/reprocess', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -3945,6 +4019,24 @@ class AudioDashboard {
             text = 'Token cached locally for quick access.';
         }
         this.reprocessFootnote.textContent = text;
+    }
+
+    encodeBase64(value) {
+        if (typeof btoa === 'function') {
+            try {
+                return btoa(value);
+            } catch (_) {
+                try {
+                    return btoa(unescape(encodeURIComponent(value)));
+                } catch (error) {
+                    console.warn('Base64 encoding failed', error);
+                }
+            }
+        }
+        if (typeof Buffer !== 'undefined') {
+            return Buffer.from(value, 'utf8').toString('base64');
+        }
+        return value;
     }
 
     /**

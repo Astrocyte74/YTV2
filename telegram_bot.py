@@ -1428,14 +1428,17 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 template_content = load_template('dashboard_template.html')
             
             if template_content:
-                # Get base URL
-                base_url = os.getenv('NGROK_URL', 'https://chief-inspired-lab.ngrok-free.app')
-                
+                nas_config = {
+                    "base_url": os.getenv('NGROK_BASE_URL') or os.getenv('NGROK_URL') or '',
+                    "basic_user": os.getenv('NGROK_BASIC_USER', ''),
+                    "basic_pass": os.getenv('NGROK_BASIC_PASS', ''),
+                }
+
                 # Replace template placeholders (safe replacement for templates with {})
                 dashboard_html = template_content.replace(
                     '{reports_data}', json.dumps(reports_data, ensure_ascii=False)
                 ).replace(
-                    '{base_url}', base_url
+                    '{nas_config}', json.dumps(nas_config)
                 )
                 
                 self.send_response(200)
