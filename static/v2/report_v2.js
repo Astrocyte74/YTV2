@@ -5,6 +5,112 @@
 
   const $ = (id) => document.getElementById(id);
 
+  const VARIANT_META = {
+    'comprehensive': { label: 'Comprehensive', icon: '📝', kind: 'text' },
+    'bullet-points': { label: 'Key Points', icon: '🎯', kind: 'text' },
+    'key-insights': { label: 'Insights', icon: '💡', kind: 'text' }
+  };
+
+  const normalizeVariantId = (value) => {
+    if (!value) return '';
+    return String(value).toLowerCase().replace(/_/g, '-');
+  };
+
+  const formatSummaryText = (text) => {
+    if (!text || typeof text !== 'string') return '';
+    const trimmed = text.replace(/\r\n?/g, '\n').trim();
+    if (!trimmed) return '';
+    // basic bullet detection
+    const lines = trimmed.split(/\n+/);
+    const htmlLines = lines.map((line) => {
+      if (/^\s*[-*•]/.test(line)) {
+        return `<li>${line.replace(/^\s*[-*•]\s*/, '')}</li>`;
+      }
+      return `<p>${line}</p>`;
+    });
+    if (htmlLines.every((line) => line.startsWith('<li>'))) {
+      return `<ul>${htmlLines.join('')}</ul>`;
+    }
+    return htmlLines.join('\n');
+  };
+
+  const initSummaryVariants = () => {
+    const variantData = Array.isArray(window.SUMMARY_VARIANT_DATA) ? window.SUMMARY_VARIANT_DATA : [];
+    const defaultVariant = normalizeVariantId(window.SUMMARY_DEFAULT_VARIANT || 'comprehensive');
+    const controls = $("summaryVariantControls");
+    const summaryBody = $("summaryBody");
+    if (!controls || !summaryBody) return;
+
+    const variants = new Map();
+    const addVariant = (id, html, text) => {
+      const normalized = normalizeVariantId(id);
+      const meta = VARIANT_META[normalized];
+      if (!meta || meta.kind !== 'text') return;
+      if (variants.has(normalized)) return;
+      const contentHtml = html ? String(html) : formatSummaryText(text || '');
+      if (!contentHtml) return;
+      variants.set(normalized, {
+        id: normalized,
+        label: meta.label,
+        icon: meta.icon,
+        html: contentHtml
+      });
+    };
+
+    variantData.forEach((item) => {
+      if (!item || typeof item !== 'object') return;
+      addVariant(item.variant || item.summary_type || item.type || item.id, item.html, item.text || item.content);
+    });
+
+    if (!variants.size) {
+      addVariant(defaultVariant || 'comprehensive', summaryBody.innerHTML, null);
+    }
+
+    if (!variants.has(defaultVariant)) {
+      addVariant(defaultVariant || 'comprehensive', summaryBody.innerHTML, null);
+    }
+
+    if (variants.size <= 1) {
+      controls.style.display = 'none';
+      return;
+    }
+
+    controls.style.display = '';
+    controls.innerHTML = Array.from(variants.values()).map((variant) => {
+      return `<button type="button" data-variant="${variant.id}"
+                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-white/60 dark:border-slate-700/60 bg-white/85 dark:bg-slate-900/60 text-slate-600 dark:text-slate-200 hover:bg-white transition">
+                <span class="text-base">${variant.icon}</span>
+                <span class="font-medium">${variant.label}</span>
+              </button>`;
+    }).join('');
+
+    const setActive = (variantId) => {
+      const variant = variants.get(variantId);
+      if (!variant) return;
+      summaryBody.innerHTML = variant.html;
+      controls.querySelectorAll('[data-variant]').forEach((btn) => {
+        const active = btn.dataset.variant === variantId;
+        btn.classList.toggle('bg-gradient-to-r', active);
+        btn.classList.toggle('from-audio-500', active);
+        btn.classList.toggle('to-indigo-500', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('shadow', active);
+        btn.classList.toggle('border-transparent', active);
+        btn.classList.toggle('bg-white/85', !active);
+        btn.classList.toggle('dark:bg-slate-900/60', !active);
+        btn.classList.toggle('text-slate-600', !active);
+        btn.classList.toggle('dark:text-slate-200', !active);
+      });
+    };
+
+    controls.querySelectorAll('[data-variant]').forEach((btn) => {
+      btn.addEventListener('click', () => setActive(btn.dataset.variant));
+    });
+
+    const initialVariant = variants.has(defaultVariant) ? defaultVariant : variants.keys().next().value;
+    setActive(initialVariant);
+  };
+
   const player = $("player");
   const playPause = $("playPause");
   const seek = $("seek");
@@ -262,4 +368,5 @@
   updateButtons();
   updateTime();
   maybeShowSticky();
+  initSummaryVariants();
 })();

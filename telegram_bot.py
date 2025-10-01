@@ -1219,6 +1219,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             "back_url": "/",
             "youtube_url": video.get("url") or report_data.get("url") or report_data.get("canonical_url", ""),
             "cache_bust": cache_bust,
+            "summary_variants": report_data.get('summary_variants') or summary.get('variants') or [],
+            "summary_variant_default": summary_type or report_data.get('summary_type_latest') or report_data.get('summary_variant') or 'comprehensive'
         }
     
     def do_GET(self):
