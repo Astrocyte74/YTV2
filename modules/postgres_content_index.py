@@ -24,6 +24,30 @@ logger = logging.getLogger(__name__)
 class PostgreSQLContentIndex:
     """PostgreSQL-based content management for YTV2 Dashboard with variant fallback."""
 
+    SUMMARY_VARIANT_ORDER: List[str] = [
+        'key-insights',
+        'bullet-points',
+        'comprehensive',
+        'key-points',
+        'executive',
+        'audio',
+        'audio-fr',
+        'audio-es',
+        'language'
+    ]
+
+    @classmethod
+    def _variant_order_expression(cls, alias: str = 'vs') -> str:
+        clauses = []
+        for idx, variant in enumerate(cls.SUMMARY_VARIANT_ORDER):
+            if variant == 'language':
+                continue
+            clauses.append(f"WHEN {alias}.variant = '{variant}' THEN {idx}")
+
+        default_rank = len(clauses) + 1
+        case_expression = "CASE " + " ".join(clauses) + f" ELSE {default_rank} END"
+        return case_expression
+
     def __init__(self, postgres_url: str = None):
         """Initialize with PostgreSQL connection."""
         if not PSYCOPG2_AVAILABLE:
@@ -134,7 +158,10 @@ class PostgreSQLContentIndex:
         safe_title = ''.join(c for c in title.lower() if c.isalnum() or c in '-_')
         return safe_title[:50] or 'unknown'
 
-    def _format_report_for_api(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    def _format_report_for_api(
+        self,
+        row: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Match the legacy SQLite API contract for dashboard consumption."""
 
         analysis_json = row.get('analysis_json') or {}
@@ -230,6 +257,62 @@ class PostgreSQLContentIndex:
             content_dict['summary_html'] = summary_html or ''
             content_dict['summary_variant'] = summary_variant
 
+        summary_variants_raw = row.get('summary_variants')
+        parsed_variants = self._parse_json_field(summary_variants_raw)
+        variant_order = {name: idx for idx, name in enumerate(self.SUMMARY_VARIANT_ORDER)}
+        cleaned_variants: List[Dict[str, Any]] = []
+
+        if isinstance(parsed_variants, list):
+            for item in parsed_variants:
+                if not isinstance(item, dict):
+                    continue
+
+                variant_id = str(item.get('variant', '')).strip().lower()
+                if not variant_id or variant_id == 'language':
+                    continue
+
+                text_value = item.get('text') or ''
+                html_value = item.get('html') or ''
+                if not text_value and not html_value:
+                    continue
+
+                summary_type_value = item.get('summary_type') or variant_id
+                if isinstance(summary_type_value, str):
+                    summary_type_value = summary_type_value.strip().lower() or variant_id
+
+                kind_value = item.get('kind') or ('audio' if variant_id.startswith('audio') else 'text')
+                generated_at_value = self._normalize_datetime(item.get('generated_at')) if item.get('generated_at') else ''
+
+                cleaned_entry: Dict[str, Any] = {
+                    'variant': variant_id,
+                    'summary_type': summary_type_value,
+                    'text': text_value,
+                    'html': html_value,
+                    'kind': kind_value
+                }
+
+                if generated_at_value:
+                    cleaned_entry['generated_at'] = generated_at_value
+
+                language_value = item.get('language')
+                if language_value:
+                    cleaned_entry['language'] = str(language_value)
+
+                headline_value = item.get('headline')
+                if headline_value:
+                    cleaned_entry['headline'] = str(headline_value)
+
+                cleaned_variants.append(cleaned_entry)
+
+        cleaned_variants.sort(
+            key=lambda item: (
+                variant_order.get(item['variant'], len(variant_order)),
+                item.get('generated_at') or ''
+            )
+        )
+
+        content_dict['summary_variants'] = cleaned_variants
+
         return content_dict
 
     def get_reports(self, filters: Dict[str, Any] = None, sort: str = "newest",
@@ -238,15 +321,18 @@ class PostgreSQLContentIndex:
 
         conn = self._get_connection()
         try:
-            # Build base query with LEFT JOIN LATERAL for variant fallback
-            query = """
+            variant_order_sql = self._variant_order_expression('vs')
+
+            # Build base query with summary fallback plus variant aggregation
+            query = f"""
                 SELECT
                     c.*,
                     ls.variant as summary_variant,
                     ls.text as summary_text,
                     ls.html as summary_html,
                     ls.revision as summary_revision,
-                    ls.created_at as summary_created_at
+                    ls.created_at as summary_created_at,
+                    variants.summary_variants AS summary_variants
                 FROM content c
                 LEFT JOIN LATERAL (
                     SELECT s.*
@@ -265,6 +351,24 @@ class PostgreSQLContentIndex:
                     )
                     LIMIT 1
                 ) ls ON true
+                LEFT JOIN LATERAL (
+                    SELECT json_agg(
+                        json_build_object(
+                            'variant', lower(trim(vs.variant)),
+                            'summary_type', lower(trim(COALESCE(NULLIF(vs.summary_type, ''), vs.variant))),
+                            'text', vs.text,
+                            'html', vs.html,
+                            'generated_at', vs.created_at,
+                            'kind', CASE WHEN vs.variant LIKE 'audio%%' THEN 'audio' ELSE 'text' END,
+                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END
+                        )
+                        ORDER BY {variant_order_sql}, vs.created_at DESC
+                    ) AS summary_variants
+                    FROM v_latest_summaries vs
+                    WHERE vs.video_id = c.video_id
+                      AND (vs.text IS NOT NULL OR vs.html IS NOT NULL)
+                      AND vs.variant <> 'language'
+                ) variants ON true
                 WHERE ls.html IS NOT NULL
             """
             params = []
@@ -433,14 +537,17 @@ class PostgreSQLContentIndex:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("""
+            variant_order_sql = self._variant_order_expression('vs')
+            cursor.execute(
+                f"""
                 SELECT
                     c.*,
                     ls.variant as summary_variant,
                     ls.text as summary_text,
                     ls.html as summary_html,
                     ls.revision as summary_revision,
-                    ls.created_at as summary_created_at
+                    ls.created_at as summary_created_at,
+                    variants.summary_variants AS summary_variants
                 FROM content c
                 LEFT JOIN LATERAL (
                     SELECT s.*
@@ -459,14 +566,36 @@ class PostgreSQLContentIndex:
                     )
                     LIMIT 1
                 ) ls ON true
+                LEFT JOIN LATERAL (
+                    SELECT json_agg(
+                        json_build_object(
+                            'variant', lower(trim(vs.variant)),
+                            'summary_type', lower(trim(COALESCE(NULLIF(vs.summary_type, ''), vs.variant))),
+                            'text', vs.text,
+                            'html', vs.html,
+                            'generated_at', vs.created_at,
+                            'kind', CASE WHEN vs.variant LIKE 'audio%%' THEN 'audio' ELSE 'text' END,
+                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END
+                        )
+                        ORDER BY {variant_order_sql}, vs.created_at DESC
+                    ) AS summary_variants
+                    FROM v_latest_summaries vs
+                    WHERE vs.video_id = c.video_id
+                      AND (vs.text IS NOT NULL OR vs.html IS NOT NULL)
+                      AND vs.variant <> 'language'
+                ) variants ON true
                 WHERE (c.video_id = %s OR c.id = %s) AND ls.html IS NOT NULL
-            """, [report_id, report_id])
+                """,
+                [report_id, report_id]
+            )
 
             row = cursor.fetchone()
             if not row:
                 return None
 
-            formatted = self._format_report_for_api(dict(row))
+            row_dict = dict(row)
+
+            formatted = self._format_report_for_api(row_dict)
 
             summary_text = row.get('summary_text') or ''
             summary_html = row.get('summary_html') or ''
@@ -515,14 +644,16 @@ class PostgreSQLContentIndex:
             search_term = f"%{query.strip()}%"
 
             # Search in titles and summaries with variant fallback
-            base_query = """
+            variant_order_sql = self._variant_order_expression('vs')
+            base_query = f"""
                 SELECT
                     c.*,
                     ls.variant as summary_variant,
                     ls.text as summary_text,
                     ls.html as summary_html,
                     ls.revision as summary_revision,
-                    ls.created_at as summary_created_at
+                    ls.created_at as summary_created_at,
+                    variants.summary_variants AS summary_variants
                 FROM content c
                 LEFT JOIN LATERAL (
                     SELECT s.*
@@ -541,6 +672,24 @@ class PostgreSQLContentIndex:
                     )
                     LIMIT 1
                 ) ls ON true
+                LEFT JOIN LATERAL (
+                    SELECT json_agg(
+                        json_build_object(
+                            'variant', lower(trim(vs.variant)),
+                            'summary_type', lower(trim(COALESCE(NULLIF(vs.summary_type, ''), vs.variant))),
+                            'text', vs.text,
+                            'html', vs.html,
+                            'generated_at', vs.created_at,
+                            'kind', CASE WHEN vs.variant LIKE 'audio%%' THEN 'audio' ELSE 'text' END,
+                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END
+                        )
+                        ORDER BY {variant_order_sql}, vs.created_at DESC
+                    ) AS summary_variants
+                    FROM v_latest_summaries vs
+                    WHERE vs.video_id = c.video_id
+                      AND (vs.text IS NOT NULL OR vs.html IS NOT NULL)
+                      AND vs.variant <> 'language'
+                ) variants ON true
                 WHERE ls.html IS NOT NULL
                   AND (c.title ILIKE %s OR ls.text ILIKE %s)
             """
