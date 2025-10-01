@@ -548,13 +548,11 @@
           <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <h3 class="text-lg font-semibold text-slate-800 mb-2">Reprocess Summary</h3>
             <p class="text-slate-600 text-sm" id="reprocessText">Re-run the summarizer for this video?</p>
-            <div class="mt-4 space-y-3 text-sm">
-              <div class="flex items-center gap-2">
-                <input type="checkbox" id="reprocessAudioToggle" class="rounded border-slate-300 text-audio-500 focus:ring-audio-400" checked>
-                <label for="reprocessAudioToggle" class="text-slate-600">Regenerate audio (if available)</label>
-              </div>
-              <p class="text-xs text-slate-500">All existing summary types will be regenerated unless customised later.</p>
-              <div class="flex items-center justify-between text-xs text-slate-500">
+            <div class="mt-4 space-y-4 text-sm">
+              <p class="text-slate-600">Choose the outputs to regenerate:</p>
+              <div id="reprocessVariantGrid" class="grid grid-cols-2 gap-2"></div>
+              <div id="reprocessLanguageLevel" class="space-y-3 hidden"></div>
+              <div class="flex items-center justify-between text-xs text-slate-500 pt-1">
                 <span id="reprocessFootnote">Token can be saved locally after the first run.</span>
                 <button id="reprocessTokenReset" class="text-audio-600 hover:text-audio-500 font-medium">Change token</button>
               </div>

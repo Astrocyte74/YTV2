@@ -65,6 +65,21 @@ const SUBCATEGORY_PARENTS = {
     "Other": "General"
 };
 
+const REPROCESS_VARIANTS = [
+    { id: 'comprehensive', label: 'Comprehensive', icon: '📝', kind: 'text' },
+    { id: 'bullet-points', label: 'Key Points', icon: '🎯', kind: 'text' },
+    { id: 'key-insights', label: 'Insights', icon: '💡', kind: 'text' },
+    { id: 'audio', label: 'Audio (EN)', icon: '🎙️', kind: 'audio' },
+    { id: 'audio-fr', label: 'Audio français', icon: '🎙️🇫🇷', kind: 'audio', language: 'fr', proficiency: true },
+    { id: 'audio-es', label: 'Audio español', icon: '🎙️🇪🇸', kind: 'audio', language: 'es', proficiency: true }
+];
+
+const PROFICIENCY_LEVELS = [
+    { level: 'beginner', icon: '🟢', labels: { default: 'Beginner', fr: 'Débutant', es: 'Principiante' } },
+    { level: 'intermediate', icon: '🟡', labels: { default: 'Intermediate', fr: 'Intermédiaire', es: 'Intermedio' } },
+    { level: 'advanced', icon: '🔵', labels: { default: 'Advanced', fr: 'Avancé', es: 'Avanzado' } }
+];
+
 class AudioDashboard {
     constructor() {
         this.currentAudio = null;
@@ -215,7 +230,8 @@ class AudioDashboard {
         // Reprocess modal
         this.reprocessModal = document.getElementById('reprocessModal');
         this.reprocessText = document.getElementById('reprocessText');
-        this.reprocessAudioToggle = document.getElementById('reprocessAudioToggle');
+        this.reprocessVariantGrid = document.getElementById('reprocessVariantGrid');
+        this.reprocessLanguageLevel = document.getElementById('reprocessLanguageLevel');
         this.reprocessFootnote = document.getElementById('reprocessFootnote');
         this.reprocessTokenReset = document.getElementById('reprocessTokenReset');
         this.confirmReprocessBtn = document.getElementById('confirmReprocessBtn');
@@ -2220,11 +2236,12 @@ class AudioDashboard {
             const safeTitle = this.escapeHtml(title || 'this video');
             this.reprocessText.innerHTML = `Re-run the summarizer for <strong>${safeTitle}</strong>?`;
         }
-        if (this.reprocessAudioToggle) {
-            this.reprocessAudioToggle.checked = Boolean(this.pendingReprocess.hasAudio);
-        }
 
         this.updateReprocessFootnote();
+
+        this.initReprocessState(item);
+        this.renderReprocessVariants();
+        this.renderProficiencyControls();
 
         this.reprocessModal.classList.remove('hidden');
         this.reprocessModal.classList.add('flex');
@@ -2243,6 +2260,151 @@ class AudioDashboard {
             this.confirmReprocessBtn.disabled = false;
         }
         this.pendingReprocess = null;
+        this.reprocessState = null;
+        if (this.reprocessVariantGrid) this.reprocessVariantGrid.innerHTML = '';
+        if (this.reprocessLanguageLevel) {
+            this.reprocessLanguageLevel.innerHTML = '';
+            this.reprocessLanguageLevel.classList.add('hidden');
+        }
+    }
+
+    initReprocessState(item) {
+        this.reprocessState = {
+            selected: new Set(['comprehensive']),
+            audioLevels: {
+                'audio-fr': 'intermediate',
+                'audio-es': 'intermediate'
+            }
+        };
+
+        if (item?.media?.has_audio) {
+            this.reprocessState.selected.add('audio');
+        }
+    }
+
+    renderReprocessVariants() {
+        if (!this.reprocessVariantGrid) return;
+        const selected = (this.reprocessState && this.reprocessState.selected) || new Set();
+
+        const html = REPROCESS_VARIANTS.map((variant) => {
+            const isActive = selected.has(variant.id);
+            const baseClasses = [
+                'flex', 'items-center', 'gap-2', 'px-3', 'py-2', 'rounded-xl', 'text-sm', 'transition', 'duration-150', 'border'
+            ];
+            if (isActive) {
+                baseClasses.push('bg-gradient-to-r', 'from-audio-500', 'to-indigo-500', 'text-white', 'border-transparent', 'shadow');
+            } else {
+                baseClasses.push('bg-white/85', 'dark:bg-slate-900/60', 'text-slate-600', 'dark:text-slate-200', 'border-white/60', 'dark:border-slate-700/60', 'hover:bg-white');
+            }
+            return `
+                <button type="button" data-variant="${variant.id}" class="${baseClasses.join(' ')}">
+                    <span class="text-lg">${variant.icon}</span>
+                    <span class="font-medium">${variant.label}</span>
+                </button>
+            `;
+        }).join('');
+
+        this.reprocessVariantGrid.innerHTML = html;
+        this.reprocessVariantGrid.querySelectorAll('[data-variant]').forEach((btn) => {
+            btn.addEventListener('click', () => this.toggleVariantSelection(btn.dataset.variant));
+        });
+    }
+
+    renderProficiencyControls() {
+        if (!this.reprocessLanguageLevel) return;
+        const selected = (this.reprocessState && this.reprocessState.selected) || new Set();
+        const activeLanguages = REPROCESS_VARIANTS.filter((variant) => variant.proficiency && selected.has(variant.id));
+
+        if (!activeLanguages.length) {
+            this.reprocessLanguageLevel.innerHTML = '';
+            this.reprocessLanguageLevel.classList.add('hidden');
+            return;
+        }
+
+        const rows = activeLanguages.map((variant) => {
+            const instruction = variant.language === 'fr'
+                ? '🇫🇷 Choisissez votre niveau de français :'
+                : variant.language === 'es'
+                    ? '🇪🇸 Elige tu nivel de español:'
+                    : 'Choose your proficiency:';
+            const current = (this.reprocessState && this.reprocessState.audioLevels[variant.id]) || 'intermediate';
+
+            const buttons = PROFICIENCY_LEVELS.map((opt) => {
+                const label = opt.labels[variant.language] || opt.labels.default;
+                const isActive = current === opt.level;
+                const classes = [
+                    'flex', 'items-center', 'gap-2', 'px-3', 'py-1.5', 'rounded-xl', 'text-xs', 'font-medium', 'transition'
+                ];
+                if (isActive) {
+                    classes.push('bg-audio-500', 'text-white', 'shadow');
+                } else {
+                    classes.push('bg-white/80', 'dark:bg-slate-900/60', 'text-slate-600', 'dark:text-slate-200', 'border', 'border-white/40', 'dark:border-slate-700/50', 'hover:bg-white');
+                }
+                return `
+                    <button type="button" data-proficiency-option data-variant="${variant.id}" data-level="${opt.level}" class="${classes.join(' ')}">
+                        <span>${opt.icon}</span>
+                        <span>${label}</span>
+                    </button>
+                `;
+            }).join('');
+
+            return `
+                <div class="space-y-2" data-language-variant="${variant.id}">
+                    <p class="text-xs text-slate-500">${instruction}</p>
+                    <div class="flex flex-wrap gap-2">${buttons}</div>
+                </div>
+            `;
+        }).join('');
+
+        this.reprocessLanguageLevel.innerHTML = rows;
+        this.reprocessLanguageLevel.classList.remove('hidden');
+        this.reprocessLanguageLevel.querySelectorAll('[data-proficiency-option]').forEach((btn) => {
+            btn.addEventListener('click', () => this.setAudioProficiency(btn.dataset.variant, btn.dataset.level));
+        });
+    }
+
+    toggleVariantSelection(variantId) {
+        if (!this.reprocessState || !variantId) return;
+        const variant = REPROCESS_VARIANTS.find((v) => v.id === variantId);
+        if (!variant) return;
+
+        if (this.reprocessState.selected.has(variantId)) {
+            this.reprocessState.selected.delete(variantId);
+            if (variant.proficiency) {
+                delete this.reprocessState.audioLevels[variantId];
+            }
+        } else {
+            this.reprocessState.selected.add(variantId);
+            if (variant.proficiency && !this.reprocessState.audioLevels[variantId]) {
+                this.reprocessState.audioLevels[variantId] = 'intermediate';
+            }
+        }
+
+        this.renderReprocessVariants();
+        this.renderProficiencyControls();
+    }
+
+    setAudioProficiency(variantId, level) {
+        if (!this.reprocessState || !variantId || !level) return;
+        if (!this.reprocessState.selected.has(variantId)) return;
+        this.reprocessState.audioLevels[variantId] = level;
+        this.renderProficiencyControls();
+    }
+
+    getSelectedSummaryTypes() {
+        if (!this.reprocessState) return [];
+        const results = [];
+        this.reprocessState.selected.forEach((id) => {
+            const variant = REPROCESS_VARIANTS.find((v) => v.id === id);
+            if (!variant) return;
+            if (variant.proficiency) {
+                const level = this.reprocessState.audioLevels[id] || 'intermediate';
+                results.push(`${id}:${level}`);
+            } else {
+                results.push(id);
+            }
+        });
+        return results;
     }
 
     async submitReprocess() {
@@ -2252,10 +2414,21 @@ class AudioDashboard {
             this.showToast('Missing video id for reprocess', 'error');
             return;
         }
-        const regenerateAudio = this.reprocessAudioToggle ? !!this.reprocessAudioToggle.checked : true;
+        const summaryTypes = this.getSelectedSummaryTypes();
+        if (!summaryTypes.length) {
+            this.showToast('Select at least one summary type', 'warn');
+            if (this.confirmReprocessBtn) {
+                this.confirmReprocessBtn.disabled = false;
+            }
+            return;
+        }
+        const regenerateAudio = summaryTypes.some((type) => type.startsWith('audio'));
         const token = this.getReprocessToken();
         if (!token) {
             this.showToast('Reprocess token required', 'warn');
+            if (this.confirmReprocessBtn) {
+                this.confirmReprocessBtn.disabled = false;
+            }
             return;
         }
 
@@ -2266,9 +2439,11 @@ class AudioDashboard {
         try {
             const payload = {
                 video_id: videoId,
-                summary_types: ['comprehensive'],
                 regenerate_audio: regenerateAudio
             };
+            if (summaryTypes.length) {
+                payload.summary_types = summaryTypes;
+            }
             const response = await this.nasFetch('/api/reprocess', {
                 method: 'POST',
                 headers: {
