@@ -80,6 +80,13 @@ const PROFICIENCY_LEVELS = [
     { level: 'advanced', icon: '🔵', labels: { default: 'Advanced', fr: 'Avancé', es: 'Avanzado' } }
 ];
 
+const VARIANT_META_MAP = REPROCESS_VARIANTS.reduce((map, variant) => {
+    map[variant.id] = variant;
+    return map;
+}, {});
+
+const TEXT_VARIANT_ORDER = REPROCESS_VARIANTS.filter((variant) => variant.kind === 'text').map((variant) => variant.id);
+
 class AudioDashboard {
     constructor() {
         this.currentAudio = null;
@@ -1965,7 +1972,9 @@ class AudioDashboard {
                 } catch { /* ignore */ }
             }
             if (!ok || !data) throw new Error('No detail available');
-            region.innerHTML = this.renderExpandedContent(data);
+            const expandedContent = this.renderExpandedContent(data);
+            region.innerHTML = expandedContent.html;
+            this.bindExpandedVariantControls(region, expandedContent.variantInfo, expandedContent.defaultVariant);
             // Focus expanded wrapper for a11y (title is sr-only)
             const wrapper = region.querySelector('[data-expanded]');
             if (wrapper) {
@@ -2063,51 +2072,52 @@ class AudioDashboard {
         if (data.channel) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.escapeHtml(data.channel)}</span>`);
         if (data.language) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.escapeHtml(data.language)}</span>`);
 
-        // Tolerant summary extraction across shapes - handle NEW and OLD formats
-        let summaryRaw = '';
-        // Use new normalization method to handle both string and object summary content
-        let summaryContent = data.summary;
-        let summaryType = data.summary?.type;
+        const fallbackSummary = this.computeFallbackSummaryHtml(data);
+        const variantInfo = this.extractVariantInfo(data, fallbackSummary);
 
-        // Handle different data structures
-        if (typeof summaryContent === 'string') {
-            summaryRaw = summaryContent;
-        } else if (summaryContent && typeof summaryContent === 'object') {
-            // First try direct properties (summary.comprehensive, summary.summary, etc.)
-            if (summaryContent.content) {
-                summaryRaw = this.normalizeSummaryContent(summaryContent.content, summaryType);
-            } else {
-                summaryRaw = this.normalizeSummaryContent(summaryContent, summaryType);
-            }
+        let summaryHtml = fallbackSummary;
+        let defaultVariant = variantInfo.defaultId;
+        if (defaultVariant && variantInfo.map[defaultVariant]) {
+            summaryHtml = variantInfo.map[defaultVariant].html;
+        } else if (variantInfo.order.length) {
+            const first = variantInfo.order[0];
+            summaryHtml = variantInfo.map[first].html;
+            defaultVariant = first;
         }
 
-        // Additional fallbacks if normalization didn't work - prioritize direct summary_text field
-        if (!summaryRaw) summaryRaw = data.summary_text || data.analysis?.summary || data.analysis?.summary_text || data.summary_preview || '';
-        
-        // Fallback to bullet arrays if available
-        if (!summaryRaw && Array.isArray(data.summary?.bullets)) {
-            summaryRaw = data.summary.bullets
-                .map(b => (typeof b === 'string' ? `• ${b}` : ''))
-                .filter(Boolean)
-                .join('\n');
-        }
-        if (!summaryRaw && Array.isArray(data.analysis?.key_points)) {
-            summaryRaw = data.analysis.key_points.map(b => typeof b === 'string' ? `• ${b}` : '').filter(Boolean).join('\n');
+        if (!summaryHtml) {
+            summaryHtml = '<p>No summary available.</p>';
         }
 
-        // Final string coercion and cleanup
-        summaryRaw = String(summaryRaw || '').replace(/\r\n?/g, '\n').trim();
-        const summary = this.formatKeyPoints(summaryRaw);
+        const controlsHtml = variantInfo.order.length > 1
+            ? `<div class="flex flex-wrap gap-2 text-xs" data-variant-controls>
+                ${variantInfo.order.map((variantId) => {
+                    const meta = variantInfo.map[variantId];
+                    const icon = meta.icon ? `<span class="text-base">${meta.icon}</span>` : '';
+                    return `<button type="button" data-variant="${variantId}" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border transition variant-toggle">
+                                ${icon}
+                                <span class="font-medium">${meta.label}</span>
+                            </button>`;
+                }).join('')}
+               </div>`
+            : '';
 
-        return `
-          <div class="mt-3 mx-[-1rem] md:mx-[-1rem] sm:mx-0 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3 md:p-4 space-y-3 md:space-y-4" data-expanded>
+        const html = `
+          <div class="mt-3 mx-[-1rem] md:mx-[-1rem] sm:mx-0 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3 md:p-4 space-y-3 md:space-y-4" data-expanded data-default-variant="${defaultVariant || ''}">
             ${badges.length ? `<div class="flex items-center gap-2.5 text-slate-600 dark:text-slate-300 text-sm flex-wrap">${badges.join('')}</div>` : ''}
+            ${controlsHtml}
             <h4 class="sr-only" data-expanded-title>Summary</h4>
-            <div class="prose prose-sm sm:prose-base prose-slate dark:prose-invert max-w-none leading-6 sm:leading-7 w-full break-words">${summary}</div>
+            <div class="prose prose-sm sm:prose-base prose-slate dark:prose-invert max-w-none leading-6 sm:leading-7 w-full break-words" data-summary-body>${summaryHtml}</div>
             <div class="flex items-center justify-end">
               <button class="ybtn ybtn-ghost px-3 py-1.5 rounded-md" data-action="collapse">Collapse</button>
             </div>
           </div>`;
+
+        return {
+            html,
+            variantInfo,
+            defaultVariant
+        };
     }
 
     updateHash(id) {
@@ -2405,6 +2415,163 @@ class AudioDashboard {
             }
         });
         return results;
+    }
+
+    computeFallbackSummaryHtml(data) {
+        let summaryRaw = '';
+        let summaryContent = data.summary;
+        let summaryType = data.summary?.type;
+
+        if (typeof summaryContent === 'string') {
+            summaryRaw = summaryContent;
+        } else if (summaryContent && typeof summaryContent === 'object') {
+            if (summaryContent.content) {
+                summaryRaw = this.normalizeSummaryContent(summaryContent.content, summaryType);
+            } else {
+                summaryRaw = this.normalizeSummaryContent(summaryContent, summaryType);
+            }
+        }
+
+        if (!summaryRaw) summaryRaw = data.summary_text || data.analysis?.summary || data.analysis?.summary_text || data.summary_preview || '';
+
+        if (!summaryRaw && Array.isArray(data.summary?.bullets)) {
+            summaryRaw = data.summary.bullets.map((b) => (typeof b === 'string' ? `• ${b}` : '')).filter(Boolean).join('\n');
+        }
+        if (!summaryRaw && Array.isArray(data.analysis?.key_points)) {
+            summaryRaw = data.analysis.key_points.map((b) => (typeof b === 'string' ? `• ${b}` : '')).filter(Boolean).join('\n');
+        }
+
+        summaryRaw = String(summaryRaw || '').replace(/\r\n?/g, '\n').trim();
+        return summaryRaw ? this.formatKeyPoints(summaryRaw) : '';
+    }
+
+    extractVariantInfo(data, fallbackHtml) {
+        const result = {
+            map: {},
+            order: [],
+            defaultId: null
+        };
+
+        const addVariant = (id, payload = {}) => {
+            if (!id) return;
+            const normalized = String(id).toLowerCase();
+            if (normalized === 'language') return;
+
+            const meta = VARIANT_META_MAP[normalized];
+            const isAudioVariant = meta && meta.kind === 'audio';
+
+            let html = payload.html;
+            if (!html && payload.text) {
+                html = this.formatKeyPoints(payload.text);
+            }
+            if (!html) return;
+
+            // Avoid treating language markers as real summaries
+            if (isAudioVariant && (!payload.text || payload.text.trim().length <= 2)) {
+                // audio variant without meaningful text (e.g., "en")
+                return;
+            }
+
+            if (!result.map[normalized]) {
+                const label = meta?.label || this.prettyVariantLabel(normalized);
+                const icon = meta?.icon || '';
+                result.map[normalized] = { id: normalized, label, icon, html };
+                result.order.push(normalized);
+            }
+        };
+
+        const variantArrays = [];
+        if (Array.isArray(data.summary_variants)) variantArrays.push(data.summary_variants);
+        if (Array.isArray(data.summary?.variants)) variantArrays.push(data.summary.variants);
+
+        variantArrays.forEach((arr) => {
+            arr.forEach((item) => {
+                if (!item || typeof item !== 'object') return;
+                const variantId = item.variant || item.summary_type || item.type || item.id || item.name;
+                const html = item.html || item.content?.html || '';
+                const text = item.text || item.content || item.content?.text || '';
+                addVariant(variantId, { html, text });
+            });
+        });
+
+        if (data.summary && typeof data.summary === 'object' && !Array.isArray(data.summary)) {
+            const aliasMap = {
+                comprehensive: 'comprehensive',
+                summary: 'comprehensive',
+                bullet_points: 'bullet-points',
+                bullets: 'bullet-points',
+                key_points: 'bullet-points',
+                key_insights: 'key-insights',
+                insights: 'key-insights'
+            };
+            Object.entries(data.summary).forEach(([key, value]) => {
+                if (typeof value !== 'string') return;
+                const mapped = aliasMap[key];
+                if (!mapped) return;
+                addVariant(mapped, { text: value });
+            });
+        }
+
+        if (!result.order.length && fallbackHtml) {
+            addVariant('comprehensive', { html: fallbackHtml });
+        }
+
+        // Ordering preference
+        const uniqueOrder = [...new Set(result.order)];
+        const textFirst = TEXT_VARIANT_ORDER.filter((id) => uniqueOrder.includes(id));
+        const remaining = uniqueOrder.filter((id) => !textFirst.includes(id));
+        result.order = [...textFirst, ...remaining];
+
+        const preferred = [data.summary_type, data.summary?.type, data.summary_type_latest, data.summary?.variant];
+        for (const candidate of preferred) {
+            const norm = candidate && String(candidate).toLowerCase();
+            if (norm && result.map[norm]) {
+                result.defaultId = norm;
+                break;
+            }
+        }
+        if (!result.defaultId && result.order.length) {
+            result.defaultId = result.order[0];
+        }
+
+        return result;
+    }
+
+    bindExpandedVariantControls(region, variantInfo, defaultVariant) {
+        if (!variantInfo || !variantInfo.order || variantInfo.order.length <= 1) return;
+        const controls = region.querySelector('[data-variant-controls]');
+        const body = region.querySelector('[data-summary-body]');
+        if (!controls || !body) return;
+
+        const setActive = (variantId) => {
+            if (!variantId || !variantInfo.map[variantId]) return;
+            controls.querySelectorAll('[data-variant]').forEach((btn) => {
+                const isActive = btn.dataset.variant === variantId;
+                btn.classList.toggle('bg-audio-500', isActive);
+                btn.classList.toggle('text-white', isActive);
+                btn.classList.toggle('border-transparent', isActive);
+                btn.classList.toggle('shadow', isActive);
+                btn.classList.toggle('bg-white/80', !isActive);
+                btn.classList.toggle('dark:bg-slate-900/60', !isActive);
+                btn.classList.toggle('text-slate-600', !isActive);
+                btn.classList.toggle('dark:text-slate-200', !isActive);
+                btn.classList.toggle('border-white/60', !isActive);
+                btn.classList.toggle('dark:border-slate-700/60', !isActive);
+            });
+            body.innerHTML = variantInfo.map[variantId].html;
+            controls.dataset.currentVariant = variantId;
+        };
+
+        controls.querySelectorAll('[data-variant]').forEach((btn) => {
+            btn.addEventListener('click', () => setActive(btn.dataset.variant));
+        });
+
+        setActive(defaultVariant || variantInfo.order[0]);
+    }
+
+    prettyVariantLabel(id) {
+        const spaced = id.replace(/[-_]+/g, ' ');
+        return spaced.charAt(0).toUpperCase() + spaced.slice(1);
     }
 
     async submitReprocess() {
