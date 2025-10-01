@@ -200,6 +200,146 @@ body {
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* ================================================
+   Variant Toggle Compact Actions
+   ================================================ */
+
+.variant-toggle-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.75rem;
+}
+
+.variant-toggle {
+    flex: 1 1 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.08);
+    color: inherit;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    transition: background var(--transition-base), border-color var(--transition-base), transform var(--transition-fast);
+}
+
+.variant-toggle:hover,
+.variant-toggle:focus-visible {
+    background: rgba(255, 255, 255, 0.16);
+    border-color: rgba(255, 255, 255, 0.32);
+}
+
+.variant-toggle--disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.variant-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.85rem;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.variant-toggle:hover .variant-icon,
+.variant-toggle:focus-visible .variant-icon {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.variant-toggle--playing {
+    background: rgba(129, 140, 248, 0.2);
+    border-color: rgba(129, 140, 248, 0.55);
+    box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.25);
+}
+
+.variant-label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    font-weight: 600;
+    font-size: 0.75rem;
+    line-height: 1.1;
+    opacity: 0;
+    max-width: 0;
+    overflow: hidden;
+    transition: opacity 140ms ease, max-width 140ms ease;
+}
+
+.variant-toggle:hover .variant-label,
+.variant-toggle:focus-visible .variant-label,
+.variant-toggle[aria-pressed="true"] .variant-label {
+    opacity: 1;
+    max-width: 5.5rem;
+}
+
+.variant-duration {
+    font-size: 0.68rem;
+    font-weight: 500;
+    opacity: 0.75;
+}
+
+@media (max-width: 640px) {
+    .variant-toggle-group {
+        gap: 0.4rem;
+    }
+
+    .variant-toggle {
+        padding: 0.5rem 0.65rem;
+    }
+}
+
+/* ================================================
+   Category Accordion Chips
+   ================================================ */
+
+.category-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.65rem;
+}
+
+.category-row--extra {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.35rem;
+}
+
+.category-row--extra.hidden {
+    display: none;
+}
+
+.category-pill--more {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.4rem 0.8rem;
+    border-radius: 999px;
+    border: 1px dashed rgba(148, 163, 184, 0.45);
+    background: rgba(148, 163, 184, 0.12);
+    color: var(--gray-600);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--transition-base), border-color var(--transition-base), color var(--transition-base);
+}
+
+.category-pill--more:hover,
+.category-pill--more:focus-visible {
+    background: rgba(148, 163, 184, 0.24);
+    border-color: rgba(148, 163, 184, 0.6);
+    color: var(--gray-800);
+}
+
 .controls-inner {
     max-width: 1400px;
     margin: 0 auto;

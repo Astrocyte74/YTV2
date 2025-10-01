@@ -1818,6 +1818,7 @@ class AudioDashboard {
             ? `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(i => this.createGridCard(i)).join('')}</div>`
             : items.map(i => this.createContentCard(i)).join('');
         this.contentGrid.innerHTML = html;
+        this.decorateCards(items);
 
         // Make whole card clickable (except controls)
         this.contentGrid.querySelectorAll('[data-card]').forEach(card => {
@@ -1863,12 +1864,70 @@ class AudioDashboard {
         }
     }
 
+    decorateCards(items) {
+        const cards = this.contentGrid.querySelectorAll('[data-card]');
+        cards.forEach((card, index) => {
+            if (card.dataset.decorated === 'true') return;
+            const rawItem = items[index];
+            if (!rawItem) return;
+
+            const normalizedItem = this.normalizeCardItem(rawItem);
+            const buttonDurations = this.getButtonDurations(normalizedItem);
+            const hasAudio = Boolean(normalizedItem.media && normalizedItem.media.has_audio);
+            const actionContainer = card.querySelector('[data-action="read"]')?.parentElement;
+            if (!actionContainer) return;
+
+            const { categories, subcatPairs } = this.extractCatsAndSubcats(normalizedItem);
+
+            // Remove legacy category/subcategory containers before injecting new layout
+            const legacyContainers = new Set(
+                Array.from(card.querySelectorAll('button[data-filter-chip="category"], button[data-filter-chip="subcategory"]'))
+                    .map(btn => btn.parentElement)
+            );
+            legacyContainers.forEach(container => {
+                if (container && container.parentElement) container.remove();
+            });
+
+            const categoryMarkup = this.renderCategorySection(normalizedItem.file_stem, categories, subcatPairs);
+            if (categoryMarkup && categoryMarkup.trim()) {
+                actionContainer.insertAdjacentHTML('beforebegin', categoryMarkup);
+            }
+
+            const actionMarkup = this.renderActionBar(normalizedItem, buttonDurations, hasAudio);
+            actionContainer.insertAdjacentHTML('beforebegin', actionMarkup);
+            actionContainer.style.display = 'none';
+
+            card.querySelectorAll('[data-category-toggle]').forEach(btn => {
+                if (!btn.dataset.moreLabel) btn.dataset.moreLabel = btn.textContent;
+                btn.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    const targetId = btn.dataset.categoryToggle;
+                    const extra = card.querySelector(`[data-category-extra="${targetId}"]`);
+                    if (!extra) return;
+                    const expanded = btn.getAttribute('aria-expanded') === 'true';
+                    if (expanded) {
+                        extra.classList.add('hidden');
+                        btn.setAttribute('aria-expanded', 'false');
+                        btn.textContent = btn.dataset.moreLabel || '+ more';
+                    } else {
+                        extra.classList.remove('hidden');
+                        btn.setAttribute('aria-expanded', 'true');
+                        btn.textContent = 'Show less';
+                    }
+                });
+            });
+
+            card.dataset.decorated = 'true';
+        });
+    }
+
     onClickCardAction(e) {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         const card = btn.closest('[data-report-id]');
         if (!card) return;
         e.stopPropagation();
+        if (btn.hasAttribute('disabled') || btn.dataset.disabled !== undefined) return;
         if (btn.dataset.busy) return;
         btn.dataset.busy = '1';
         setTimeout(() => { try { delete btn.dataset.busy; } catch(_){} }, 400);
@@ -2728,14 +2787,7 @@ class AudioDashboard {
     }
 
     createContentCard(item) {
-        // Normalize field names between SQLite and PostgreSQL APIs
-        const title = item.title || 'Untitled';
-        const channel = item.channel ?? item.channel_name ?? 'Unknown Channel';
-        const analysis = item.analysis ?? item.analysis_json ?? {};
-        const fileStem = item.file_stem ?? item.video_id ?? '';
-
-        // Create normalized item for consistent access
-        const normalizedItem = { ...item, title, channel, analysis, file_stem: fileStem, summary_type: item.summary_variant || item.summary_type || 'unknown' };
+        const normalizedItem = this.normalizeCardItem(item);
 
         const duration = this.formatDuration(normalizedItem.duration_seconds || 0);
         
@@ -2822,14 +2874,7 @@ class AudioDashboard {
     }
 
     createGridCard(item) {
-        // Normalize field names between SQLite and PostgreSQL APIs
-        const title = item.title || 'Untitled';
-        const channel = item.channel ?? item.channel_name ?? 'Unknown Channel';
-        const analysis = item.analysis ?? item.analysis_json ?? {};
-        const fileStem = item.file_stem ?? item.video_id ?? '';
-
-        // Create normalized item for consistent access
-        const normalizedItem = { ...item, title, channel, analysis, file_stem: fileStem, summary_type: item.summary_variant || item.summary_type || 'unknown' };
+        const normalizedItem = this.normalizeCardItem(item);
 
         const duration = this.formatDuration(normalizedItem.duration_seconds || 0);
         const href = `/${normalizedItem.file_stem}.json?v=2`;
@@ -3495,8 +3540,7 @@ class AudioDashboard {
                 }
             }
 
-            btn.classList.toggle('ring-2', isActive);
-            btn.classList.toggle('ring-indigo-300/60', isActive);
+            btn.classList.toggle('variant-toggle--playing', isActive);
         });
 
         // Toggle thumbnail equalizer overlay on active playing card
@@ -3652,6 +3696,117 @@ class AudioDashboard {
         return `<button class="relative z-10 inline-flex items-center ${base} rounded-full font-medium ${color} hover:opacity-90 transition-all cursor-pointer" data-filter-chip="${type}" data-filter-value="${t}"${dataParent} title="Click to filter by ${t}">${t}</button>`;
     }
 
+    renderCategorySection(itemId, categories = [], subcatPairs = []) {
+        const uniqueCategories = Array.isArray(categories) ? categories.filter(Boolean) : [];
+        const visible = uniqueCategories.slice(0, 2);
+        const hiddenCategories = uniqueCategories.slice(2);
+        const extraPairs = Array.isArray(subcatPairs) ? subcatPairs : [];
+        const hiddenCount = hiddenCategories.length + extraPairs.length;
+
+        if (!visible.length && !hiddenCount) return '';
+
+        const extraId = `cat-extra-${itemId}`;
+        const visibleHtml = visible.map(cat => this.renderChip(cat, 'category', true)).join('');
+        const hiddenCategoryHtml = hiddenCategories.map(cat => this.renderChip(cat, 'category', true)).join('');
+        const hiddenSubcatHtml = extraPairs.map(([parent, sc]) => this.renderChip(sc, 'subcategory', true, parent)).join('');
+        const extraHtml = hiddenCategoryHtml + hiddenSubcatHtml;
+
+        const moreButton = hiddenCount > 0
+            ? `<button type="button" class="category-pill category-pill--more" data-category-toggle="${extraId}" data-more-label="+${hiddenCount} more" aria-expanded="false" aria-controls="${extraId}">+${hiddenCount} more</button>`
+            : '';
+
+        const extraContainer = hiddenCount > 0
+            ? `<div class="category-row category-row--extra hidden" id="${extraId}" data-category-extra="${extraId}">${extraHtml}</div>`
+            : '';
+
+        return `
+            <div class="category-row" data-category-group>
+                ${visibleHtml}
+                ${moreButton}
+            </div>
+            ${extraContainer}
+        `;
+    }
+
+    renderActionBar(item, durations = {}, hasAudio = false) {
+        const groupLabel = 'Summary actions';
+        const segments = [];
+
+        const readDuration = durations.read || '';
+        segments.push({
+            action: 'read',
+            label: 'Read',
+            title: readDuration ? `Read • ${readDuration}` : 'Read summary',
+            icon: '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 012-2h4a2 2 0 012 2v14a1 1 0 01-1.447.894L9 18.118l-2.553 1.776A1 1 0 015 19V5z"/><path d="M12 3h4a2 2 0 012 2v14a1 1 0 01-1.447.894L17 18.118l-2.553 1.776A1 1 0 0113 19V5a2 2 0 00-1-1.732"/></svg>',
+            duration: readDuration,
+            extraAttrs: ''
+        });
+
+        const listenDuration = durations.listen || '';
+        if (hasAudio) {
+            segments.push({
+                action: 'listen',
+                label: 'Listen',
+                title: listenDuration ? `Listen • ${listenDuration}` : 'Play audio summary',
+                icon: '<svg data-icon-play class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><svg data-icon-pause class="w-3.5 h-3.5 hidden" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h3v14H6zm9 0h3v14h-3z"/></svg>',
+                duration: listenDuration,
+                extraAttrs: ' data-listen-button data-default-label="Listen" data-playing-label="Pause"'
+            });
+        } else {
+            segments.push({
+                action: 'listen-disabled',
+                label: 'Listen',
+                title: 'Audio not available',
+                icon: '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+                duration: '',
+                extraAttrs: ' data-disabled'
+            });
+        }
+
+        const watchDuration = durations.watch || '';
+        segments.push({
+            action: 'watch',
+            label: 'Watch',
+            title: watchDuration ? `Watch • ${watchDuration}` : 'Open on YouTube',
+            icon: '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 9l5 3-5 3V9z"/></svg>',
+            duration: watchDuration,
+            extraAttrs: ''
+        });
+
+        const buttonsHtml = segments.map(segment => {
+            const isDisabled = segment.action === 'listen-disabled';
+            const actionAttr = isDisabled ? 'listen' : segment.action;
+            const disabledAttr = isDisabled ? ' disabled aria-disabled="true"' : '';
+            const toggleClass = isDisabled ? 'variant-toggle variant-toggle--disabled' : 'variant-toggle';
+            const durationHtml = segment.duration
+                ? `<span class="variant-duration" ${segment.action === 'listen' ? 'data-duration' : ''}>${segment.duration}</span>`
+                : '';
+            const labelAttr = segment.action === 'listen' ? ' data-label' : '';
+            const labelHtml = `
+                <span class="variant-label" data-label-wrapper>
+                    <span class="variant-text"${labelAttr}>${segment.label}</span>
+                    ${durationHtml}
+                </span>`;
+            return `
+                <button type="button" class="${toggleClass}" data-action="${actionAttr}" title="${segment.title}"${segment.extraAttrs}${disabledAttr}>
+                    <span class="variant-icon">${segment.icon}</span>
+                    ${labelHtml}
+                </button>
+            `;
+        }).join('');
+
+        return `<div class="variant-toggle-group" role="group" aria-label="${groupLabel}">${buttonsHtml}</div>`;
+    }
+
+    normalizeCardItem(item) {
+        const title = item.title || 'Untitled';
+        const channel = item.channel ?? item.channel_name ?? 'Unknown Channel';
+        const analysis = item.analysis ?? item.analysis_json ?? {};
+        const fileStem = item.file_stem ?? item.video_id ?? '';
+        const summaryType = item.summary_variant || item.summary_type || 'unknown';
+        return { ...item, title, channel, analysis, file_stem: fileStem, summary_type: summaryType };
+    }
+
     // Normalize categories & subcategories (prefer new subcategories_json structure)
     extractCatsAndSubcats(item) {
         // Check for new structured subcategories_json field first
@@ -3673,8 +3828,7 @@ class AudioDashboard {
         if (subcategoriesStructure?.categories?.length) {
             const categories = subcategoriesStructure.categories
                 .map(c => c?.category)
-                .filter(Boolean)
-                .slice(0, 3);
+                .filter(Boolean);
 
             const subcatPairs = subcategoriesStructure.categories.flatMap(c => {
                 const parent = c?.category;
@@ -3683,14 +3837,6 @@ class AudioDashboard {
             });
 
             const subcats = Array.from(new Set(subcatPairs.map(([, s]) => s)));
-
-            // Debug logging for new structured data
-            console.log('New Structured Data:', {
-                title: item.title,
-                categories,
-                subcatPairs,
-                subcats
-            });
 
             return { categories, subcats, subcatPairs };
         }
@@ -3721,18 +3867,6 @@ class AudioDashboard {
                 .filter(Boolean);
         }
         
-        categories = categories.slice(0, 3);
-
-        // Debug logging for troubleshooting
-        if (categories.length > 1) {
-            console.log('Multi-category Debug:', {
-                title: item.title,
-                originalCategory: item?.analysis?.category,
-                originalCategories: item?.analysis?.categories,
-                processedCategories: categories
-            });
-        }
-
         // Build [parent, subcat] pairs from rich
         const pairsRich = rich.flatMap(c => {
             const parent = c?.category;
@@ -3773,18 +3907,6 @@ class AudioDashboard {
             return true;
         });
         const subcats = Array.from(new Set(subcatPairs.map(([, s]) => s)));
-        
-        // Debug logging for legacy fallback
-        if (categories.length > 1) {
-            console.log('Legacy Fallback Debug:', {
-                title: item.title,
-                categories,
-                legacySubs,
-                legacyPairs,
-                subcatPairs,
-                subcats
-            });
-        }
         
         return { categories, subcats, subcatPairs };
     }

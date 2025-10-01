@@ -355,7 +355,7 @@ class PostgreSQLContentIndex:
                     SELECT json_agg(
                         json_build_object(
                             'variant', lower(trim(vs.variant)),
-                            'summary_type', lower(trim(COALESCE(NULLIF(vs.summary_type, ''), vs.variant))),
+                            'summary_type', lower(trim(vs.variant)),
                             'text', vs.text,
                             'html', vs.html,
                             'generated_at', vs.created_at,
@@ -570,7 +570,7 @@ class PostgreSQLContentIndex:
                     SELECT json_agg(
                         json_build_object(
                             'variant', lower(trim(vs.variant)),
-                            'summary_type', lower(trim(COALESCE(NULLIF(vs.summary_type, ''), vs.variant))),
+                            'summary_type', lower(trim(vs.variant)),
                             'text', vs.text,
                             'html', vs.html,
                             'generated_at', vs.created_at,
@@ -676,7 +676,7 @@ class PostgreSQLContentIndex:
                     SELECT json_agg(
                         json_build_object(
                             'variant', lower(trim(vs.variant)),
-                            'summary_type', lower(trim(COALESCE(NULLIF(vs.summary_type, ''), vs.variant))),
+                            'summary_type', lower(trim(vs.variant)),
                             'text', vs.text,
                             'html', vs.html,
                             'generated_at', vs.created_at,
