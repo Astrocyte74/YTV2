@@ -1009,19 +1009,29 @@ class AudioDashboard {
     }
 
     joinNasUrl(path) {
-        if (!this.nasBaseUrl) return path;
+        if (!path) return path;
+        const asString = String(path);
+        if (/^https?:\/\//i.test(asString)) {
+            return asString;
+        }
+        if (!this.nasBaseUrl) return asString;
         try {
-            return new URL(path, this.nasBaseUrl).toString();
+            return new URL(asString, this.nasBaseUrl).toString();
         } catch (error) {
             console.warn('Failed to build NAS URL', error);
-            return path;
+            return asString;
         }
     }
 
     buildSseUrl(path) {
-        if (!this.nasBaseUrl) return path;
+        if (!path) return path;
+        const asString = String(path);
+        if (/^https?:\/\//i.test(asString)) {
+            return asString;
+        }
+        if (!this.nasBaseUrl) return asString;
         try {
-            const url = new URL(path, this.nasBaseUrl);
+            const url = new URL(asString, this.nasBaseUrl);
             if (this.nasBasicUser || this.nasBasicPass) {
                 url.username = this.nasBasicUser || '';
                 url.password = this.nasBasicPass || '';
@@ -1030,7 +1040,7 @@ class AudioDashboard {
             return url.toString();
         } catch (error) {
             console.warn('Failed to build SSE URL', error);
-            return path;
+            return asString;
         }
     }
 
