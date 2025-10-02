@@ -8,12 +8,21 @@
   const VARIANT_META = {
     'comprehensive': { label: 'Comprehensive', icon: '📝', kind: 'text' },
     'bullet-points': { label: 'Key Points', icon: '🎯', kind: 'text' },
-    'key-insights': { label: 'Insights', icon: '💡', kind: 'text' }
+    'key-insights': { label: 'Insights', icon: '💡', kind: 'text' },
+    'audio': { label: 'Audio (EN)', icon: '🎙️', kind: 'audio' },
+    'audio-fr': { label: 'Audio (FR)', icon: '🎙️🇫🇷', kind: 'audio' },
+    'audio-es': { label: 'Audio (ES)', icon: '🎙️🇪🇸', kind: 'audio' }
   };
 
   const normalizeVariantId = (value) => {
     if (!value) return '';
     return String(value).toLowerCase().replace(/_/g, '-');
+  };
+
+  const prettifyVariantId = (value) => {
+    if (!value) return '';
+    const normalized = normalizeVariantId(value);
+    return normalized.replace(/[-_]+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
   };
 
   const formatSummaryText = (text) => {
@@ -42,32 +51,50 @@
     if (!controls || !summaryBody) return;
 
     const variants = new Map();
-    const addVariant = (id, html, text) => {
-      const normalized = normalizeVariantId(id);
-      const meta = VARIANT_META[normalized];
-      if (!meta || meta.kind !== 'text') return;
+    const audioSource = (() => {
+      if (!player) return '';
+      const currentSrc = player.currentSrc || '';
+      if (currentSrc) return currentSrc;
+      const sourceEl = player.querySelector('source');
+      return sourceEl ? sourceEl.src : '';
+    })();
+
+    const addVariant = (payload = {}) => {
+      if (!payload) return;
+      const normalized = normalizeVariantId(payload.id || payload.variant || payload.summary_type || payload.type);
+      if (!normalized) return;
       if (variants.has(normalized)) return;
-      const contentHtml = html ? String(html) : formatSummaryText(text || '');
-      if (!contentHtml) return;
+
+      const meta = VARIANT_META[normalized] || { label: prettifyVariantId(normalized), icon: '📝', kind: 'text' };
+      const kind = meta.kind || 'text';
+
+      const explicitHtml = payload.html ? String(payload.html) : (payload.content && payload.content.html ? String(payload.content.html) : '');
+      const fallbackText = payload.text || payload.content?.text || '';
+      const contentHtml = explicitHtml || (kind === 'text' ? formatSummaryText(fallbackText || '') : '');
+
+      if (kind === 'text' && !contentHtml) return;
+
       variants.set(normalized, {
         id: normalized,
-        label: meta.label,
-        icon: meta.icon,
-        html: contentHtml
+        label: payload.label || meta.label || prettifyVariantId(normalized),
+        icon: meta.icon || '📝',
+        kind,
+        html: contentHtml,
+        audioSrc: kind === 'audio' ? (payload.audio_src || payload.audioUrl || audioSource) : null
       });
     };
 
     variantData.forEach((item) => {
       if (!item || typeof item !== 'object') return;
-      addVariant(item.variant || item.summary_type || item.type || item.id, item.html, item.text || item.content);
+      addVariant(item);
     });
 
     if (!variants.size) {
-      addVariant(defaultVariant || 'comprehensive', summaryBody.innerHTML, null);
+      addVariant({ id: defaultVariant || 'comprehensive', html: summaryBody.innerHTML });
     }
 
     if (!variants.has(defaultVariant)) {
-      addVariant(defaultVariant || 'comprehensive', summaryBody.innerHTML, null);
+      addVariant({ id: defaultVariant || 'comprehensive', html: summaryBody.innerHTML });
     }
 
     if (variants.size <= 1) {
@@ -78,33 +105,47 @@
     controls.style.display = '';
     controls.innerHTML = Array.from(variants.values()).map((variant) => {
       return `<button type="button" data-variant="${variant.id}"
-                class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-white/60 dark:border-slate-700/60 bg-white/85 dark:bg-slate-900/60 text-slate-600 dark:text-slate-200 hover:bg-white transition">
+                class="inline-flex items-center gap-2 rounded-full border border-white/50 bg-white/80 px-3.5 py-1.5 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-white dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-200">
                 <span class="text-base">${variant.icon}</span>
-                <span class="font-medium">${variant.label}</span>
+                <span>${variant.label}</span>
               </button>`;
     }).join('');
 
     const setActive = (variantId) => {
       const variant = variants.get(variantId);
       if (!variant) return;
-      summaryBody.innerHTML = variant.html;
+
+      if (variant.kind === 'audio') {
+        summaryBody.innerHTML = renderReportAudioVariant(variant);
+        attachReportAudioHandlers(summaryBody, variant);
+      } else {
+        summaryBody.innerHTML = variant.html;
+      }
+
       controls.querySelectorAll('[data-variant]').forEach((btn) => {
         const active = btn.dataset.variant === variantId;
         btn.classList.toggle('bg-gradient-to-r', active);
         btn.classList.toggle('from-audio-500', active);
         btn.classList.toggle('to-indigo-500', active);
         btn.classList.toggle('text-white', active);
-        btn.classList.toggle('shadow', active);
+        btn.classList.toggle('shadow-lg', active);
         btn.classList.toggle('border-transparent', active);
-        btn.classList.toggle('bg-white/85', !active);
+        btn.classList.toggle('bg-white/80', !active);
         btn.classList.toggle('dark:bg-slate-900/60', !active);
         btn.classList.toggle('text-slate-600', !active);
         btn.classList.toggle('dark:text-slate-200', !active);
       });
+
+      controls.dataset.currentVariant = variantId;
+      refreshAudioVariantState();
     };
 
     controls.querySelectorAll('[data-variant]').forEach((btn) => {
-      btn.addEventListener('click', () => setActive(btn.dataset.variant));
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setActive(btn.dataset.variant);
+      });
     });
 
     const initialVariant = variants.has(defaultVariant) ? defaultVariant : variants.keys().next().value;
@@ -146,6 +187,7 @@
     const icon = player.paused ? "▶" : "⏸";
     playPause.textContent = icon;
     mPlayPause.textContent = icon;
+    refreshAudioVariantState();
   };
 
   const updateTime = () => {
@@ -175,11 +217,13 @@
       seek.value = progress;
       if (mSeek) mSeek.value = progress;
     }
-    
+
     // Debug logging
     if (dur === 0 && displayDur > 0) {
       console.log('[V2 Debug] Using template duration:', displayDur, 'audio duration:', dur);
     }
+
+    refreshAudioVariantState();
   };
 
   // sticky visibility rules:
@@ -197,6 +241,110 @@
     if (shouldShow && wasHidden) {
       console.log('[V2 Telemetry] sticky_shown', { scrolled, playing });
     }
+  };
+
+  const resolveAudioSource = (fallback = '') => {
+    if (player) {
+      if (player.currentSrc) return player.currentSrc;
+      const sourceEl = player.querySelector('source');
+      if (sourceEl && sourceEl.src) return sourceEl.src;
+    }
+    return fallback;
+  };
+
+  const renderReportAudioVariant = (variant) => {
+    const audioSrc = resolveAudioSource(variant.audioSrc || '');
+    const available = Boolean(audioSrc);
+    const playing = available && player && !player.paused && !player.ended;
+    const status = !available
+      ? 'Audio summary is not available for this report.'
+      : playing
+        ? 'Now playing via the audio controls above.'
+        : 'Ready to play. Use the button below or the main controls to start playback.';
+    const actionLabel = !available ? 'Unavailable' : (playing ? 'Pause audio' : 'Play audio');
+    const buttonState = available ? '' : 'disabled aria-disabled="true"';
+    const downloadMarkup = available
+      ? `<a href="${audioSrc}" download
+            class="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            data-report-audio-download>
+            Download
+         </a>`
+      : '';
+
+    return `
+      <div class="rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-sm dark:border-slate-800 dark:bg-slate-900/60"
+           data-report-audio-variant data-audio-available="${available ? '1' : ''}">
+        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div class="space-y-1">
+            <p class="font-semibold text-slate-800 dark:text-slate-100">${variant.label || 'Audio summary'}</p>
+            <p class="text-slate-600 dark:text-slate-300" data-audio-status>${status}</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Use the primary player controls above to scrub or change speed.</p>
+          </div>
+          <div class="flex items-center gap-2 self-start md:self-auto">
+            ${downloadMarkup}
+            <button type="button" ${buttonState}
+                    class="inline-flex items-center gap-2 rounded-full border border-white/40 bg-gradient-to-r from-audio-500 to-indigo-500 px-4 py-1.5 text-sm font-semibold text-white shadow-md disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500 dark:disabled:border-slate-700 dark:disabled:bg-slate-800 dark:disabled:text-slate-400"
+                    data-report-audio-btn>
+              ${actionLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  };
+
+  const attachReportAudioHandlers = (container, variant) => {
+    const block = container.querySelector('[data-report-audio-variant]');
+    if (!block) return;
+    const playBtn = block.querySelector('[data-report-audio-btn]');
+    if (playBtn) {
+      playBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!player) return;
+        if (player.paused) {
+          player.play().catch((err) => console.error('Audio play failed', err));
+        } else {
+          player.pause();
+        }
+      });
+    }
+
+    const downloadLink = block.querySelector('[data-report-audio-download]');
+    if (downloadLink) {
+      downloadLink.addEventListener('click', (event) => event.stopPropagation());
+    }
+  };
+
+  const refreshAudioVariantState = () => {
+    document.querySelectorAll('[data-report-audio-variant]').forEach((block) => {
+      const available = block.getAttribute('data-audio-available') === '1';
+      const statusEl = block.querySelector('[data-audio-status]');
+      const btn = block.querySelector('[data-report-audio-btn]');
+      const audioSrc = resolveAudioSource();
+
+      if (!available || !audioSrc) {
+        if (statusEl) statusEl.textContent = 'Audio summary is not available for this report.';
+        if (btn) {
+          btn.textContent = 'Unavailable';
+          btn.disabled = true;
+        }
+        return;
+      }
+
+      const playing = player && !player.paused && !player.ended;
+      if (statusEl) {
+        statusEl.textContent = playing
+          ? 'Now playing via the audio controls above.'
+          : 'Ready to play. Use the button below or the main controls to start playback.';
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = playing ? 'Pause audio' : 'Play audio';
+      }
+      const downloadLink = block.querySelector('[data-report-audio-download]');
+      if (downloadLink) downloadLink.href = audioSrc;
+    });
   };
 
   // events

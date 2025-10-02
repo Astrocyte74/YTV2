@@ -1110,6 +1110,7 @@ class AudioDashboard {
         if (this.progressBar) this.progressBar.style.width = '0%';
         if (this.currentTimeEl) this.currentTimeEl.textContent = '0:00';
         if (this.totalTimeEl) this.totalTimeEl.textContent = '0:00';
+        this.refreshAudioVariantBlocks();
     }
 
     showNowPlayingPlaceholder(item = null) {
@@ -2505,10 +2506,16 @@ class AudioDashboard {
     }
 
     extractVariantInfo(data, fallbackHtml) {
+        const audioSrcForData = this.getAudioSourceForItem(data);
+        const inferredReportId = data?.file_stem || data?.report_id || data?.id || data?.video_id || '';
+
         const result = {
             map: {},
             order: [],
-            defaultId: null
+            defaultId: null,
+            audioSrc: audioSrcForData,
+            reportId: inferredReportId,
+            data
         };
 
         const addVariant = (id, payload = {}) => {
@@ -2523,18 +2530,21 @@ class AudioDashboard {
             if (!html && payload.text) {
                 html = this.formatKeyPoints(payload.text);
             }
-            if (!html) return;
-
-            // Avoid treating language markers as real summaries
-            if (isAudioVariant && (!payload.text || payload.text.trim().length <= 2)) {
-                // audio variant without meaningful text (e.g., "en")
-                return;
-            }
+            if (!html && !isAudioVariant) return;
 
             if (!result.map[normalized]) {
                 const label = meta?.label || this.prettyVariantLabel(normalized);
                 const icon = meta?.icon || '';
-                result.map[normalized] = { id: normalized, label, icon, html };
+                result.map[normalized] = {
+                    id: normalized,
+                    label,
+                    icon,
+                    html: html || '',
+                    kind: meta?.kind || 'text',
+                    audioSrc: payload.audioSrc || audioSrcForData || null,
+                    raw: payload,
+                    meta
+                };
                 result.order.push(normalized);
             }
         };
@@ -2604,6 +2614,7 @@ class AudioDashboard {
 
         const setActive = (variantId) => {
             if (!variantId || !variantInfo.map[variantId]) return;
+            const entry = variantInfo.map[variantId];
             controls.querySelectorAll('[data-variant]').forEach((btn) => {
                 const isActive = btn.dataset.variant === variantId;
                 btn.classList.toggle('bg-audio-500', isActive);
@@ -2617,12 +2628,31 @@ class AudioDashboard {
                 btn.classList.toggle('border-white/60', !isActive);
                 btn.classList.toggle('dark:border-slate-700/60', !isActive);
             });
-            body.innerHTML = variantInfo.map[variantId].html;
+
+            if (entry.kind === 'audio') {
+                const card = region.closest('[data-card]');
+                const reportId = card?.dataset.reportId || variantInfo.reportId || '';
+                let audioSrc = entry.audioSrc || variantInfo.audioSrc || null;
+                if (!audioSrc && card) {
+                    const videoId = card.dataset.videoId;
+                    if (videoId) audioSrc = `/exports/by_video/${videoId}.mp3`;
+                    else if (reportId) audioSrc = `/exports/${reportId}.mp3`;
+                }
+                body.innerHTML = this.renderInlineAudioVariant(reportId, entry, audioSrc);
+                this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
+            } else {
+                body.innerHTML = entry.html || '<p class="text-sm text-slate-500">No summary available for this variant.</p>';
+            }
             controls.dataset.currentVariant = variantId;
+            this.refreshAudioVariantBlocks();
         };
 
         controls.querySelectorAll('[data-variant]').forEach((btn) => {
-            btn.addEventListener('click', () => setActive(btn.dataset.variant));
+            btn.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setActive(btn.dataset.variant);
+            });
         });
 
         setActive(defaultVariant || variantInfo.order[0]);
@@ -3222,6 +3252,7 @@ class AudioDashboard {
             const fallback = `/exports/${this.currentAudio.id}.mp3`;
             this.audioElement.src = fallback;
             this.audioElement.load();
+            this.refreshAudioVariantBlocks();
         }
     }
 
@@ -3236,6 +3267,7 @@ class AudioDashboard {
                 this.showError('Playback failed');
             });
         }
+        this.refreshAudioVariantBlocks();
     }
 
     handleCanPlay() {
@@ -3244,6 +3276,7 @@ class AudioDashboard {
                 this.isPlaying = true;
                 this.updatePlayButton();
                 this.updatePlayingCard();
+                this.refreshAudioVariantBlocks();
             }).catch(error => {
                 console.error('Auto-play failed:', error);
             }).finally(() => {
@@ -3310,6 +3343,8 @@ class AudioDashboard {
                 }, 300);
             }
         }
+
+        this.refreshAudioVariantBlocks();
     }
 
     setViewMode(mode) {
@@ -3519,6 +3554,8 @@ class AudioDashboard {
         if (wasPlaying !== this.isPlaying) {
             this.updatePlayButton();
         }
+
+        this.refreshAudioVariantBlocks();
     }
 
     // UI helpers
@@ -3618,6 +3655,113 @@ class AudioDashboard {
                 ${extraMarkup}
             </div>
         `;
+    }
+
+    renderInlineAudioVariant(reportId, entry, audioSrc) {
+        const available = Boolean(audioSrc);
+        const isActive = this.currentAudio && this.currentAudio.id === reportId;
+        const isPlaying = isActive && this.isPlaying;
+        const statusText = !available
+            ? 'Audio summary is not available for this item.'
+            : isActive
+                ? (isPlaying ? 'Now playing via the global controls.' : 'Ready – press play to resume.')
+                : 'Ready to play. Use the button below to start playback.';
+        const buttonLabel = !available
+            ? 'Unavailable'
+            : isActive && isPlaying ? 'Pause audio' : 'Play audio';
+
+        const buttonState = available ? '' : 'disabled aria-disabled="true"';
+        const downloadLink = available
+            ? `<a class="inline-flex items-center gap-1 rounded-full border border-white/30 bg-white/20 px-3 py-1 text-xs font-semibold text-white/90 backdrop-blur hover:bg-white/30 dark:border-slate-600/50 dark:bg-slate-700/40"
+                   href="${audioSrc}" download
+                   data-variant-audio-download>
+                   Download
+               </a>`
+            : '';
+
+        return `
+            <div class="rounded-xl border border-slate-200/80 bg-slate-50/80 p-4 text-sm dark:border-slate-700/70 dark:bg-slate-800/60"
+                 data-audio-variant data-report-id="${reportId || ''}" data-audio-available="${available ? '1' : ''}">
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div class="space-y-1">
+                        <p class="font-semibold text-slate-800 dark:text-slate-100">${this.escapeHtml(entry.label || 'Audio summary')}</p>
+                        <p class="text-slate-600 dark:text-slate-300" data-audio-status>${statusText}</p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400">Use the primary player controls to scrub or adjust speed.</p>
+                    </div>
+                    <div class="flex items-center gap-2 self-start md:self-auto">
+                        ${downloadLink}
+                        <button type="button" ${buttonState}
+                                class="inline-flex items-center gap-2 rounded-full border border-white/40 bg-gradient-to-r from-audio-500 to-indigo-500 px-4 py-1.5 text-sm font-semibold text-white shadow-md disabled:cursor-not-allowed disabled:border-slate-400 disabled:bg-slate-300 disabled:text-slate-600 dark:disabled:border-slate-600 dark:disabled:bg-slate-700 dark:disabled:text-slate-300"
+                                data-variant-audio-btn>
+                            ${buttonLabel}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    attachInlineAudioVariantHandlers(container, reportId, audioSrc) {
+        const block = container.querySelector('[data-audio-variant]');
+        if (!block) return;
+
+        const playBtn = block.querySelector('[data-variant-audio-btn]');
+        if (playBtn) {
+            playBtn.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!audioSrc) return;
+                const isActive = this.currentAudio && this.currentAudio.id === reportId;
+                if (isActive && this.isPlaying) {
+                    this.togglePlayPause();
+                } else {
+                    this.playAudio(reportId);
+                }
+                this.refreshAudioVariantBlocks();
+            });
+        }
+
+        const downloadLink = block.querySelector('[data-variant-audio-download]');
+        if (downloadLink) {
+            downloadLink.addEventListener('click', (event) => {
+                event.stopPropagation();
+            });
+        }
+    }
+
+    refreshAudioVariantBlocks() {
+        const blocks = document.querySelectorAll('[data-audio-variant]');
+        if (!blocks.length) return;
+
+        blocks.forEach((block) => {
+            const reportId = block.getAttribute('data-report-id');
+            const available = block.getAttribute('data-audio-available') === '1';
+            const statusEl = block.querySelector('[data-audio-status]');
+            const button = block.querySelector('[data-variant-audio-btn]');
+
+            if (!available) {
+                if (statusEl) statusEl.textContent = 'Audio summary is not available for this item.';
+                if (button) {
+                    button.textContent = 'Unavailable';
+                    button.disabled = true;
+                }
+                return;
+            }
+
+            const isActive = this.currentAudio && this.currentAudio.id === reportId;
+            const isPlaying = isActive && this.isPlaying;
+
+            if (statusEl) {
+                statusEl.textContent = isActive
+                    ? (isPlaying ? 'Now playing via the global controls.' : 'Ready – press play to resume.')
+                    : 'Ready to play. Use the button below to start playback.';
+            }
+
+            if (button) {
+                button.disabled = false;
+                button.textContent = isActive && isPlaying ? 'Pause audio' : 'Play audio';
+            }
+        });
     }
 
     renderActionBar(item, durations = {}, hasAudio = false) {
@@ -3882,7 +4026,7 @@ class AudioDashboard {
             if (bar) bar.style.width = `${pct * 100}%`;
             
             // Check if this is the currently active card (dynamic check during drag)
-            const isCurrentlyActive = this.currentAudio && this.currentAudio.id === id && this.isPlaying;
+            const isCurrentlyActive = this.currentAudio && this.currentAudio.id === id;
             if (isCurrentlyActive && this.audioElement) {
                 const duration = this.audioElement.duration;
                 if (duration && !isNaN(duration)) {
@@ -3895,9 +4039,8 @@ class AudioDashboard {
         const moveTouch = (e) => onMove(e.touches[0].clientX);
         
         const up = () => {
-            // Check if this was a non-active card drag that needs to start playback
-            const wasActiveCard = this.currentAudio && this.currentAudio.id === id && this.isPlaying;
-            if (!wasActiveCard) {
+            const isActiveCard = this.currentAudio && this.currentAudio.id === id;
+            if (!isActiveCard) {
                 this._pendingSeek = finalSeekPct;
                 this.playAudio(id);
             }
