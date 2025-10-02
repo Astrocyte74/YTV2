@@ -1500,6 +1500,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         """Serve CSS files"""
         try:
             filename = self.path[1:]  # Remove leading slash
+            # Strip query string (e.g., dashboard.css?v=123)
+            if '?' in filename:
+                filename = filename.split('?', 1)[0]
+            if '#' in filename:
+                filename = filename.split('#', 1)[0]
             # Remove 'static/' prefix if present to avoid static/static/ duplication
             if filename.startswith('static/'):
                 filename = filename[7:]  # Remove 'static/' prefix
