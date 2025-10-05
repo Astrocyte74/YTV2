@@ -2859,10 +2859,35 @@ class AudioDashboard {
             : '';
 
         const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
+        const menuMarkup = `
+                        <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <circle cx="5" cy="12" r="1.5"></circle>
+                                <circle cx="12" cy="12" r="1.5"></circle>
+                                <circle cx="19" cy="12" r="1.5"></circle>
+                            </svg>
+                        </button>
+                        <div class="summary-card__menu hidden" data-kebab-menu role="menu">
+                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                            <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
+                        </div>
+                        <div class="summary-card__popover hidden" data-delete-popover>
+                            <div class="summary-card__popover-panel">
+                                <p>Delete this summary?</p>
+                                <div class="summary-card__popover-actions">
+                                    <button type="button" data-action="cancel-delete">Cancel</button>
+                                    <button type="button" data-action="confirm-delete">Delete</button>
+                                </div>
+                            </div>
+                        </div>`;
+        const mediaMenuMarkup = view === 'grid' ? menuMarkup : '';
+        const outerMenuMarkup = view === 'grid' ? '' : menuMarkup;
 
         return `
             <div data-card data-decorated="true" data-report-id="${normalizedItem.file_stem}" data-video-id="${normalizedItem.video_id || ''}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="${cardClasses.join(' ')}"${styleAttr}>
                 <div class="summary-card__inner">
+                    ${outerMenuMarkup}
                     <div class="summary-card__media">
                         ${thumbnail}
                         <div class="summary-card__eq ${isPlaying ? '' : 'hidden'}" data-card-eq>
@@ -2874,26 +2899,7 @@ class AudioDashboard {
                                 <span class="waveform-bar" style="--delay:4"></span>
                             </div>
                         </div>
-                        <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <circle cx="5" cy="12" r="1.5"></circle>
-                                <circle cx="12" cy="12" r="1.5"></circle>
-                                <circle cx="19" cy="12" r="1.5"></circle>
-                            </svg>
-                        </button>
-                        <div class="summary-card__menu hidden" data-kebab-menu role="menu">
-                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
-                            <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
-                        </div>
-                        <div class="summary-card__popover hidden" data-delete-popover>
-                            <div class="summary-card__popover-panel">
-                                <p>Delete this summary?</p>
-                                <div class="summary-card__popover-actions">
-                                    <button type="button" data-action="cancel-delete">Cancel</button>
-                                    <button type="button" data-action="confirm-delete">Delete</button>
-                                </div>
-                            </div>
-                        </div>
+                        ${mediaMenuMarkup}
                         <div class="summary-card__progress" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
                             <div class="summary-card__progress-bar" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
                         </div>
