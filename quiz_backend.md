@@ -54,6 +54,21 @@ Quizzernator can auto-load a saved quiz via URL parameters. This enables one-tap
 
 If the quiz cannot be loaded (missing/deleted), Quizzernator falls back to the default selection with a friendly notice.
 
+Storage shape is preserved as `options[] + correct` for compatibility; Quizzernator normalizes to `choices[] + solution` at load time. Minimum `meta` fields recommended on save: `topic`, `difficulty`, `language`, `category`, `subcategory`, `count` (equals `items.length`), and when applicable `auto_categorized`, `categorization_confidence`.
+
+### Quizzernator Deep Linking
+
+Quizzernator can auto-load a saved quiz via URL parameters. This enables one-tap playback from the Telegram bot or other tools once a quiz is saved here.
+
+- Load by filename stored on this backend:
+  - `https://quizzernator.onrender.com/?quiz=api:<filename>`
+- Autoplay immediately after loading:
+  - `https://quizzernator.onrender.com/?quiz=api:<filename>&autoplay=1`
+- Full API URL also supported (mapped internally):
+  - `https://quizzernator.onrender.com/?quiz=https://ytv2-dashboard-postgres.onrender.com/api/quiz/<filename>`
+
+If the quiz cannot be loaded (missing/deleted), Quizzernator falls back to the default selection with a friendly notice.
+
 Storage shape is preserved as `options[] + correct` for compatibility; Quizzernator normalizes to `choices[] + solution` at load time.
 
 Filename convention used by the Telegram bot: `slug(title)[videoId][timestamp].json`.
@@ -157,6 +172,17 @@ Example: javascript_basics_20250921_143052.json
 ```
 
 The handler stores quizzes under `data/quiz/` relative to the app working directory (mounted to `/app/data/quiz/` in production).
+
+**Storage shape:**
+- Canonical format retains `options[]` + `correct` for choice questions (MCQ/TF/YesNo). The frontend normalizes this to `choices[]` + `solution` internally.
+- Include `meta.language` and `meta.count` to aid downstream UIs.
+
+## Interoperability & Troubleshooting
+
+- The NAS Telegram bot calls quiz endpoints server‑to‑server over HTTPS; CORS is irrelevant for the bot.
+- Public read endpoints (e.g., `/api/quiz/:filename`) are designed for Quizzernator and other clients.
+- If a model emits TF/YesNo items without `options`, clients may provide defaults `["True","False"]` or `["Yes","No"]` before validation/save.
+- Prefer canonical type strings: `multiplechoice`, `truefalse`, `yesno`, `shortanswer`.
 
 **Frontend expectations:** saved payloads should include `meta.topic`, `meta.difficulty`, `meta.language`, `meta.category`, `meta.subcategory`, `meta.count` (equals `items.length` when unspecified), and (when auto-categorised) `meta.auto_categorized`/`meta.categorization_confidence`. The Quizzernator UI injects or consumes these fields so the same metadata is available when the quiz is reloaded.
 

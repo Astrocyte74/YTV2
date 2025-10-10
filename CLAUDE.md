@@ -57,8 +57,8 @@ This is the **dashboard/web interface component** of YTV2 that:
 
 ### Frontend
 - **Template**: `dashboard_v3_template.html` with glass morphism UI (ACTIVE VERSION)
-- **Styling**: `static/dashboard_v3.css` - Modern responsive design
-- **Interactivity**: `static/dashboard_v3.js` - Audio player and filtering (ONLY JS FILE LOADED)
+- **Styling**: `static/dashboard.css` (loaded as `dashboard.css?v=…` from the template)
+- **Interactivity**: `static/dashboard_v3.js` - Audio player, filtering, inline expansions (ONLY JS FILE LOADED)
 - **Audio Integration**: Embedded player with metadata display
 - **Legacy Files**: `dashboard_template.html` and `static/dashboard.js` were removed to prevent confusion
 
@@ -125,8 +125,8 @@ YTV2-Dashboard/
 ├── modules/                     # Dashboard utilities
 │   └── sqlite_content_index.py # SQLite database interface (WITH CHANNEL SUPPORT)
 ├── static/                      # Frontend assets
-│   ├── dashboard_v3.css        # UI styling (ACTIVE VERSION)
-│   └── dashboard_v3.js         # Interactive features (ONLY JS FILE LOADED)
+│   ├── dashboard.css          # UI styling + card layout (ACTIVE VERSION)
+│   └── dashboard_v3.js        # Interactive features (ONLY JS FILE LOADED)
 ├── data/                       # Local data (if any)  
 ├── exports/                    # Audio files
 └── requirements.txt            # Python dependencies
@@ -224,11 +224,19 @@ sqlite3 ytv2_content.db
 - **Fix pattern**: Strip `static/` prefix before joining with `Path('static')`
 - **Alternative**: Use Flask's built-in static serving instead of custom handler
 
-### CSS Architecture (Updated September 14, 2025)
+### CSS Architecture (Updated October 2025)
 - **Shared styles** → `/static/shared.css` (Key Points formatting, future common styles)
-- **Dashboard-specific** → `dashboard_v3_template.html` inline `<style>` (waveform, layout offsets)  
+- **Dashboard cards & layout** → `static/dashboard.css` (loaded from template as `dashboard.css?v=…`)
+- **Template-inlined CSS** → `dashboard_v3_template.html` only contains small helper rules (waveform keyframes, offsets)
 - **Report-specific** → `templates/report_v2.html` inline `<style>` (iOS safe areas, audio controls)
-- **⚠️ CRITICAL**: When adding new common styles, use `/static/shared.css` to avoid duplication
+- **⚠️ CRITICAL**: Keep card styling inside `dashboard.css`; do not reintroduce additional dashboard style sheets or inline overrides—conflicts were the root cause of earlier layout regressions.
+
+### Card Layout & Variant Interactions (New)
+- `renderSummaryCard()` in `static/dashboard_v3.js` emits the markup for both list and grid cards. Update this method when structural changes are needed.
+- Action button styling, category chips, and the “summary-card” shell live in `static/dashboard.css`. When tweaking the layout, update the CSS and bump the version suffix in `dashboard_v3_template.html` to bust caches.
+- Inline summary variants (insights vs. audio) are managed via `bindExpandedVariantControls()` in `dashboard_v3.js`. Audio variants rely on the global player; the helper `refreshAudioVariantBlocks()` keeps inline buttons in sync with playback.
+- Individual report pages reuse the same variant data via `static/v2/report_v2.js`. Both dashboards and report pages expect text variants plus optional audio variants—keep IDs consistent across back end and front end.
+- Scrub bars (main player + card mini-bars) are handled by `beginProgressDrag()` and `beginCardScrubDrag()` in `dashboard_v3.js`. If you restructure the DOM, retain the `data-card-progress*` hooks so dragging and tooltips continue to work.
 
 ### Debugging Quick Reference
 ```bash
