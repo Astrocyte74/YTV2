@@ -4,7 +4,7 @@
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| **POST** | `/api/generate-quiz` | Generate quiz using OpenAI GPT-5-nano |
+| **POST** | `/api/generate-quiz` | Generate quiz using OpenRouter LLMs (Gemini 2.5 Flash Lite default) |
 | **POST** | `/api/save-quiz` | Save generated quiz to persistent storage |
 | **POST** | `/api/fetch-article` | Retrieve and sanitize article text for quiz generation |
 | **GET** | `/api/list-quizzes` | List all saved quizzes with metadata |
@@ -19,19 +19,50 @@ The YTV2-Dashboard includes a complete AI-powered quiz generation and storage sy
 ## Architecture
 
 ### **Minimal Integration Design**
-- **AI-powered generation** using OpenAI GPT-5-nano (ultra cost-effective)
-- **AI-powered categorization** with semantic understanding (not keyword-based)
-- **File-based storage** in `/app/data/quiz/` directory
+- **AI-powered generation** using OpenRouter (Gemini 2.5 Flash Lite primary, DeepSeek Terminus fallback)
+- **AI-powered categorization** with semantic understanding (OpenAI GPT-5-nano)
+- **File-based storage** in `data/quiz/` (persisted to `/app/data/quiz/` in production)
 - **CORS enabled** for cross-origin requests from Quizzernator
 - **Zero hosting costs** - reuses existing YTV2 infrastructure
 - **Clean separation** - no changes to YTV2 UI or database
 
 ### **Technology Stack**
-- **AI Generation**: OpenRouter models (Gemini 2.5 Flash Lite primary, DeepSeek Terminus fallback)
-- **AI Categorization**: OpenAI GPT-5-nano with JSON mode (~$0.00005 per categorization)
+- **AI Generation**: OpenRouter chat completions (`google/gemini-2.5-flash-lite`, fallback `deepseek/deepseek-v3.1-terminus`)
+- **AI Categorization**: OpenAI GPT-5-nano with JSON mode (requires `OPENAI_API_KEY`)
 - **Storage**: JSON files in persistent `/app/data/` mount
 - **CORS**: Full cross-origin support for web frontends
 - **Security**: Filename sanitization, input validation
+
+## Frontend Integration
+
+The Quizzernator web client (`quizzernator` repo) consumes these endpoints directly. Important coordination points:
+- The browser client hardcodes the same OpenRouter defaults documented here (`google/gemini-2.5-flash-lite` with `deepseek/deepseek-v3.1-terminus` fallback, `max_tokens=1800`, `temperature=0.7`). Updating defaults in one place should be mirrored in the other.
+- `/api/list-quizzes` returns filename/topic/difficulty/count/created only. The frontend now hydrates each entry by calling `/api/quiz/:filename`, caching the payload locally (`quizDetailCache`) so taxonomy metadata (category/subcategory, confidence) is available without re-fetching on every view.
+- Saves from the UI include enriched `meta` fields (topic, difficulty, category, subcategory, `auto_categorized`, `categorization_confidence`) so that a subsequent list + detail fetch round-trips the same data.
+- Deletes and edits in the UI evict or refresh the local cache to stay aligned with the backend.
+
+### Quizzernator Deep Linking
+
+Quizzernator can auto-load a saved quiz via URL parameters. This enables one-tap playback from the Telegram bot or other tools once a quiz is saved here.
+
+- Load by filename stored on this backend:
+  - `https://quizzernator.onrender.com/?quiz=api:<filename>`
+- Autoplay immediately after loading:
+  - `https://quizzernator.onrender.com/?quiz=api:<filename>&autoplay=1`
+- Full API URL also supported (mapped internally):
+  - `https://quizzernator.onrender.com/?quiz=https://ytv2-dashboard-postgres.onrender.com/api/quiz/<filename>`
+
+If the quiz cannot be loaded (missing/deleted), Quizzernator falls back to the default selection with a friendly notice.
+
+Storage shape is preserved as `options[] + correct` for compatibility; Quizzernator normalizes to `choices[] + solution` at load time.
+
+Filename convention used by the Telegram bot: `slug(title)[videoId][timestamp].json`.
+
+Minimum `meta` fields to include on save: `topic`, `difficulty`, `language`, `category`, `subcategory`, `count` (equals `items.length`), and when applicable `auto_categorized`, `categorization_confidence`.
+
+Defaults used by the bot for generation: 10 items, `multiplechoice` + `truefalse`, `temperature=0.7`, `max_tokens=1800`, `model=google/gemini-2.5-flash-lite`, `fallback_model=deepseek/deepseek-v3.1-terminus`. Language matches the summary language.
+
+Rate limiting guidance: cap concurrent generations per user/chat; queue overflow to manage cost.
 
 ## API Endpoints
 
@@ -39,23 +70,25 @@ The YTV2-Dashboard includes a complete AI-powered quiz generation and storage sy
 
 **POST /api/generate-quiz**
 
-Generate quiz questions using OpenAI's language models.
+Generate quiz questions using OpenRouter-hosted language models.
 
 ```bash
 curl -X POST https://ytv2-dashboard-postgres.onrender.com/api/generate-quiz \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "Generate 5 multiple choice questions about JavaScript basics",
-    "model": "gpt-5-nano",
-    "max_tokens": 3000,
+    "model": "google/gemini-2.5-flash-lite",
+    "fallback_model": "deepseek/deepseek-v3.1-terminus",
+    "max_tokens": 1800,
     "temperature": 0.7
   }'
 ```
 
 **Request Parameters:**
 - `prompt` (required): Quiz generation instructions
-- `model` (optional): OpenAI model (default: `gpt-5-nano`)
-- `max_tokens` (optional): Response length limit (default: `3000`)
+- `model` (optional): Primary OpenRouter model (default: `google/gemini-2.5-flash-lite`)
+- `fallback_model` (optional): Alternate model used if the primary fails (default: `deepseek/deepseek-v3.1-terminus`)
+- `max_tokens` (optional): Response length limit (default: `1800`)
 - `temperature` (optional): AI creativity level (default: `0.7`)
 
 **Response:**
@@ -67,9 +100,18 @@ curl -X POST https://ytv2-dashboard-postgres.onrender.com/api/generate-quiz \
     "prompt_tokens": 45,
     "completion_tokens": 892,
     "total_tokens": 937
-  }
+  },
+  "model": "google/gemini-2.5-flash-lite"
 }
 ```
+
+**Notes:**
+- Requires `OPENROUTER_API_KEY` in the environment.
+- Set `fallback_model` to `null` to skip the automatic retry.
+- The Quizzernator frontend posts both `model` and `fallback_model` with these defaults; changing them here requires updating the frontend constants too.
+- Prompt structure differs slightly by use case:
+  - **Topic-only requests** (no reference text) instruct the model to “Create a `<count>`-question quiz about `<topic>` for a `<difficulty>` learner” and enforce a JSON schema with the selected question types.
+  - **Reference/URL-backed requests** (initiated after `/api/fetch-article`) stream the article in chunks; each chunk prompt says “This is chunk X of Y… Aim to produce `<chunkGoal>` questions drawn strictly from this chunk,” and reiterates the JSON schema rules. The frontend merges chunk results client-side before saving.
 
 ### 2. Save Generated Quiz
 
@@ -110,9 +152,13 @@ Example: javascript_basics_20250921_143052.json
 {
   "success": true,
   "filename": "javascript_basics_quiz.json",
-  "path": "/app/data/quiz/javascript_basics_quiz.json"
+  "path": "data/quiz/javascript_basics_quiz.json"
 }
 ```
+
+The handler stores quizzes under `data/quiz/` relative to the app working directory (mounted to `/app/data/quiz/` in production).
+
+**Frontend expectations:** saved payloads should include `meta.topic`, `meta.difficulty`, `meta.language`, `meta.category`, `meta.subcategory`, `meta.count` (equals `items.length` when unspecified), and (when auto-categorised) `meta.auto_categorized`/`meta.categorization_confidence`. The Quizzernator UI injects or consumes these fields so the same metadata is available when the quiz is reloaded.
 
 ### 2a. Fetch Article Content
 
@@ -185,18 +231,23 @@ curl https://ytv2-dashboard-postgres.onrender.com/api/list-quizzes
       "topic": "JavaScript Basics",
       "count": 5,
       "difficulty": "intermediate",
-      "created": "2025-09-21T14:30:52Z"
+      "created": "2025-09-21T14:30:52.813245"
     },
     {
       "filename": "python_advanced_quiz.json",
       "topic": "Python Advanced Concepts",
       "count": 10,
       "difficulty": "advanced",
-      "created": "2025-09-20T16:45:12Z"
+      "created": "2025-09-20T16:45:12.104572"
     }
   ]
 }
 ```
+
+`created` is populated from quiz metadata when available; otherwise it falls back to the file's modification timestamp (float seconds since epoch).
+
+> ⚠️ The listing does not include category/subcategory metadata. Fetch an individual quiz via `/api/quiz/:filename` to inspect taxonomy fields.
+> The Quizzernator frontend does this automatically and memoizes each detail response client-side so repeated visits avoid extra backend reads.
 
 ### 4. Load Specific Quiz
 
@@ -242,7 +293,7 @@ curl https://ytv2-dashboard-postgres.onrender.com/api/quiz/javascript_basics_qui
 
 **POST /api/categorize-quiz**
 
-Automatically categorize quiz topics using OpenAI GPT-5-nano with semantic understanding. This AI-based system provides much more accurate categorization than keyword matching, especially for complex or multi-domain topics.
+Automatically categorize quiz topics using OpenAI GPT-5-nano with semantic understanding. This AI-based system provides much more accurate categorization than keyword matching, especially for complex or multi-domain topics. Configure `OPENAI_API_KEY`; without it the handler falls back to a generic "General → Mixed Content" classification.
 
 ```bash
 curl -X POST https://ytv2-dashboard-postgres.onrender.com/api/categorize-quiz \
@@ -266,41 +317,136 @@ curl -X POST https://ytv2-dashboard-postgres.onrender.com/api/categorize-quiz \
   "confidence": 0.9,
   "alternatives": [
     {
-      "category": "AI Software Development",
-      "subcategory": "AI Tools & Platforms",
-      "confidence": 0.77
+      "category": "Technology",
+      "subcategory": "Software Tutorials",
+      "confidence": 0.2
     },
     {
-      "category": "Education",
-      "subcategory": "Educational Content",
-      "confidence": 0.65
+      "category": "AI Software Development",
+      "subcategory": "Agents & MCP/Orchestration",
+      "confidence": 0.2
     }
   ],
   "available_categories": [
     "Technology",
     "AI Software Development",
     "History",
-    "Science & Nature",
-    "Business",
     "Education",
-    "Entertainment"
+    "Business",
+    "World War II (WWII)",
+    "Hobbies & Special Interests",
+    "Science & Nature",
+    "News & Politics",
+    "Entertainment",
+    "Reviews & Products",
+    "General",
+    "Computer Hardware",
+    "Astronomy",
+    "Sports",
+    "News",
+    "World War I (WWI)"
   ],
   "available_subcategories": {
     "Technology": [
-      "Programming & Software Development",
-      "Tech Reviews",
-      "AI & Machine Learning",
       "Software Tutorials",
-      "Tech News & Trends"
+      "Tech Reviews & Comparisons",
+      "Tech News & Trends",
+      "Programming & Software Development",
+      "Mobile Development",
+      "Web Development",
+      "DevOps & Infrastructure",
+      "Cybersecurity",
+      "Databases & Data Science"
     ],
     "AI Software Development": [
-      "AI Tools & Platforms",
-      "Machine Learning",
-      "AI Applications"
+      "Agents & MCP/Orchestration",
+      "APIs & SDKs",
+      "Model Selection & Evaluation",
+      "Deployment & Serving",
+      "Cost Optimisation",
+      "Security & Safety",
+      "Prompt Engineering & RAG",
+      "Data Engineering & ETL",
+      "Training & Fine-Tuning"
+    ],
+    "History": [
+      "Modern History",
+      "Historical Analysis",
+      "Cultural Heritage",
+      "Ancient Civilizations"
+    ],
+    "Education": [
+      "Tutorials & Courses",
+      "Teaching Methods",
+      "Academic Subjects"
+    ],
+    "Business": [
+      "Industry Analysis",
+      "Finance & Investing",
+      "Career Development",
+      "Marketing & Sales",
+      "Leadership & Management"
+    ],
+    "World War II (WWII)": [
+      "European Theatre",
+      "Aftermath & Reconstruction",
+      "Technology & Weapons",
+      "Causes & Prelude",
+      "Biographies & Commanders",
+      "Home Front & Society",
+      "Pacific Theatre",
+      "Holocaust & War Crimes",
+      "Intelligence & Codebreaking"
+    ],
+    "Hobbies & Special Interests": [
+      "Automotive"
+    ],
+    "Science & Nature": [
+      "Physics & Chemistry"
+    ],
+    "News & Politics": [
+      "Political Analysis",
+      "Government & Policy",
+      "Current Events",
+      "International Affairs"
+    ],
+    "Entertainment": [
+      "Comedy & Humor",
+      "Music & Performance",
+      "Reaction Content",
+      "Movies & TV"
+    ],
+    "Reviews & Products": [
+      "Comparisons & Tests",
+      "Product Reviews",
+      "Buying Guides"
+    ],
+    "General": [
+      "Mixed Content"
+    ],
+    "Computer Hardware": [
+      "Networking & NAS",
+      "Cooling & Thermals"
+    ],
+    "Astronomy": [
+      "Space Missions & Exploration",
+      "Solar System & Planets",
+      "Space News & Discoveries"
+    ],
+    "Sports": [
+      "Equipment & Gear"
+    ],
+    "News": [
+      "General News"
+    ],
+    "World War I (WWI)": [
+      "Aftermath & Interwar"
     ]
   }
 }
 ```
+
+`alternatives` is a static helper list intended for dropdown population.
 
 ### 6. Delete Quiz
 
@@ -353,8 +499,10 @@ The quiz categorization system uses OpenAI's GPT-5-nano model with structured JS
   "meta": {
     "topic": "JavaScript ES6 Features",
     "difficulty": "beginner|intermediate|advanced",
+    "language": "en|fr|es|...",
     "category": "Technology",
     "subcategory": "Programming & Software Development",
+    "count": 5,
     "auto_categorized": true,
     "categorization_confidence": 0.92,
     "description": "Modern JavaScript ES6+ features and syntax",
@@ -378,6 +526,10 @@ The quiz categorization system uses OpenAI's GPT-5-nano model with structured JS
   }
 }
 ```
+
+Notes:
+- Persisted storage uses `options[] + correct` for multiple-choice, `correct: "yes"|"no"` for yes/no when applicable, and `correct: true|false` for true/false. Short answers should include a string in `correct`.
+- Quizzernator normalizes these items on load to a runtime shape with `choices[] + solution` where needed; no backend change is required.
 
 ### Question Types
 
@@ -444,8 +596,8 @@ The quiz categorization system uses OpenAI's GPT-5-nano model with structured JS
    - Auto-adds `.json` extension
 
 2. **Input Validation**
-   - JSON schema validation
-   - Required field checking
+   - Request body presence and JSON parsing safeguards
+   - Required field checking (prompt, quiz payload, topic, etc.)
    - File existence verification
 
 3. **CORS Configuration**
@@ -543,29 +695,39 @@ console.log('Quiz saved with YTV2 taxonomy integration!');
 
 ### Category-Based Quiz Browsing
 
+`/api/list-quizzes` does not return taxonomy data, so fetch each quiz to enrich the listing before grouping.
+
 ```javascript
-// Load all quizzes with category organization
-const quizzesResponse = await fetch('https://ytv2-dashboard-postgres.onrender.com/api/list-quizzes');
-const { quizzes } = await quizzesResponse.json();
+const listResponse = await fetch('https://ytv2-dashboard-postgres.onrender.com/api/list-quizzes');
+const { quizzes } = await listResponse.json();
 
-// Group by category for hierarchical display
-const quizzesByCategory = quizzes.reduce((acc, quiz) => {
-  const category = quiz.category || 'Uncategorized';
-  if (!acc[category]) acc[category] = {};
+// Fetch full quiz details to access meta.category / meta.subcategory
+const quizzesWithTaxonomy = await Promise.all(
+  quizzes.map(async (quiz) => {
+    const detailResponse = await fetch(`https://ytv2-dashboard-postgres.onrender.com/api/quiz/${quiz.filename}`);
+    const detail = await detailResponse.json();
+    const meta = detail?.quiz?.meta || {};
 
-  const subcategory = quiz.subcategory || 'General';
-  if (!acc[category][subcategory]) acc[category][subcategory] = [];
+    return {
+      ...quiz,
+      category: meta.category || 'Uncategorized',
+      subcategory: meta.subcategory || 'General'
+    };
+  })
+);
 
-  acc[category][subcategory].push(quiz);
+const quizzesByCategory = quizzesWithTaxonomy.reduce((acc, quiz) => {
+  acc[quiz.category] = acc[quiz.category] || {};
+  acc[quiz.category][quiz.subcategory] = acc[quiz.category][quiz.subcategory] || [];
+  acc[quiz.category][quiz.subcategory].push(quiz);
   return acc;
 }, {});
 
-// Render hierarchical quiz browser
 Object.entries(quizzesByCategory).forEach(([category, subcategories]) => {
   console.log(`📁 ${category}`);
-  Object.entries(subcategories).forEach(([subcategory, quizzes]) => {
-    console.log(`  └── ${subcategory} (${quizzes.length} quizzes)`);
-    quizzes.forEach(quiz => {
+  Object.entries(subcategories).forEach(([subcategory, grouped]) => {
+    console.log(`  └── ${subcategory} (${grouped.length} quizzes)`);
+    grouped.forEach(quiz => {
       console.log(`      • ${quiz.topic} (${quiz.difficulty})`);
     });
   });
@@ -613,23 +775,31 @@ categorySelect.addEventListener('change', (e) => {
 
 ```javascript
 // Find quizzes related to a specific video's categories
-function findRelatedQuizzes(videoCategories, videoSubcategories) {
-  return fetch('https://ytv2-dashboard-postgres.onrender.com/api/list-quizzes')
-    .then(response => response.json())
-    .then(data => {
-      return data.quizzes.filter(quiz => {
-        // Exact category match
-        if (videoCategories.includes(quiz.category)) return true;
+async function findRelatedQuizzes(videoCategories, videoSubcategories) {
+  const listResponse = await fetch('https://ytv2-dashboard-postgres.onrender.com/api/list-quizzes');
+  const { quizzes } = await listResponse.json();
 
-        // Subcategory match across categories
-        if (videoSubcategories.includes(quiz.subcategory)) return true;
+  const detailedQuizzes = await Promise.all(
+    quizzes.map(async (quiz) => {
+      const detailResponse = await fetch(`https://ytv2-dashboard-postgres.onrender.com/api/quiz/${quiz.filename}`);
+      const detail = await detailResponse.json();
+      const meta = detail?.quiz?.meta || {};
 
-        return false;
-      });
-    });
+      return {
+        ...quiz,
+        category: meta.category,
+        subcategory: meta.subcategory
+      };
+    })
+  );
+
+  return detailedQuizzes.filter((quiz) => {
+    if (quiz.category && videoCategories.includes(quiz.category)) return true;
+    if (quiz.subcategory && videoSubcategories.includes(quiz.subcategory)) return true;
+    return false;
+  });
 }
 
-// Usage example
 const relatedQuizzes = await findRelatedQuizzes(
   ['Technology', 'AI Software Development'],
   ['Programming & Software Development', 'AI Tools & Platforms']
@@ -640,15 +810,14 @@ console.log(`Found ${relatedQuizzes.length} related quizzes:`, relatedQuizzes);
 
 ### Cost Optimization
 
-**GPT-5-nano pricing** (recommended):
-- Ultra cost-effective: ~$0.00005 per categorization
-- ~20,000 categorizations per $1
-- Typical quiz generation: ~900 tokens = ~$0.000045 per quiz
+**OpenRouter Generation Costs**:
+- Pricing is determined by OpenRouter's current rates for `google/gemini-2.5-flash-lite` (primary) and `deepseek/deepseek-v3.1-terminus` (fallback).
+- Review https://openrouter.ai/pricing for the latest per-token charges before high-volume use.
+- Monitor the `/api/generate-quiz` JSON `usage` object to capture actual prompt/completion token counts per request.
 
-**Model Comparison**:
-- **GPT-5-nano**: ~$0.000045 per quiz (20,000 quizzes/$1)
-- **GPT-4o-mini**: ~$0.00012 per quiz (8,333 quizzes/$1)
-- **GPT-3.5-turbo**: ~$0.00135 per quiz (740 quizzes/$1)
+**Categorization Costs**:
+- `gpt-5-nano` runs through OpenAI's API and typically remains inexpensive for the short prompts used here.
+- Leave categorization disabled (or provide manual overrides) if you need to avoid OpenAI charges.
 
 ## Future Enhancements
 
@@ -675,11 +844,11 @@ console.log(`Found ${relatedQuizzes.length} related quizzes:`, relatedQuizzes);
    ```
    **Solution**: Verify origin is in allowed list, check OPTIONS preflight
 
-2. **OpenAI API Errors**
+2. **OpenRouter API Errors**
    ```
-   {"error": "OpenAI API key not configured"}
+   {"error": "OpenRouter API key not configured"}
    ```
-   **Solution**: Set `OPENAI_API_KEY` environment variable in Render
+   **Solution**: Set `OPENROUTER_API_KEY` environment variable in Render
 
 3. **File Storage Issues**
    ```
