@@ -131,6 +131,9 @@ class AudioDashboard {
         this.reprocessTokenSource = null;
         this.pendingReprocess = null;
 
+        // Filter state helpers
+        this.initialSourceFilters = null;
+
         this.initializeElements();
         this.initNasConfig();
         this.updateReprocessFootnote();
@@ -1208,6 +1211,7 @@ class AudioDashboard {
                 return { ...item, value: slug || 'other', label };
             });
             this.renderFilterSection(sourceItems, this.sourceFilters, 'source');
+            this.initialSourceFilters = sourceItems.slice();
             this.renderFilterSection(filters.categories, this.categoryFilters, 'category');
             this.renderFilterSection(filters.channels, this.channelFilters, 'channel');
             this.renderFilterSection(filters.content_type, this.contentTypeFilters, 'content_type');
@@ -1227,6 +1231,72 @@ class AudioDashboard {
         } catch (error) {
             console.error('Failed to load filters:', error);
         }
+    }
+    
+    augmentSourceFiltersFromItems(items = []) {
+        if (!Array.isArray(items) || !this.sourceFilters) return;
+        const baseline = new Map((this.initialSourceFilters || []).map(item => [item.value, { ...item }]));
+        const counts = new Map();
+
+        for (const item of items) {
+            const { slug, label } = this.inferSource(item);
+            if (!slug) continue;
+            const existing = counts.get(slug) || { value: slug, label, count: 0 };
+            existing.count += 1;
+            counts.set(slug, existing);
+        }
+
+        if (!counts.size) return;
+
+        let changed = false;
+        for (const [slug, entry] of counts.entries()) {
+            if (!baseline.has(slug)) {
+                baseline.set(slug, entry);
+                changed = true;
+            }
+        }
+
+        const normalizeCount = (value) => {
+            const num = Number(value);
+            return Number.isFinite(num) ? num : 0;
+        };
+
+        if (!changed) {
+            // Update counts for existing entries when available
+            baseline.forEach((entry, slug) => {
+                const derived = counts.get(slug);
+                if (derived) entry.count = normalizeCount(derived.count);
+                else entry.count = normalizeCount(entry.count);
+            });
+            this.initialSourceFilters = Array.from(baseline.values());
+            return;
+        }
+
+        // Ensure every entry has a numeric count for display/sorting
+        baseline.forEach((entry, slug) => {
+            const derived = counts.get(slug);
+            if (derived) entry.count = normalizeCount(derived.count);
+            else entry.count = normalizeCount(entry.count);
+        });
+
+        const augmented = Array.from(baseline.values()).sort((a, b) => {
+            if (b.count !== a.count) return b.count - a.count;
+            return (a.label || a.value || '').localeCompare(b.label || b.value || '');
+        });
+        this.initialSourceFilters = augmented;
+
+        const previouslySelected = new Set(this.currentFilters?.source || []);
+        this.renderFilterSection(augmented, this.sourceFilters, 'source');
+
+        // Restore prior selections (default is all checked)
+        if (previouslySelected.size > 0) {
+            this.sourceFilters.querySelectorAll('input[data-filter="source"]').forEach((input) => {
+                if (!previouslySelected.has(input.value)) input.checked = false;
+            });
+        }
+
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateHeroBadges();
     }
     
     bindShowMoreToggles() {
@@ -1773,6 +1843,7 @@ class AudioDashboard {
 
 
             this.currentItems = items;
+            this.augmentSourceFiltersFromItems(items);
             this.updateLatestIndexFromItems(items);
             this.renderContent(this.currentItems);
             this.renderPagination(data.pagination);
@@ -2878,7 +2949,7 @@ class AudioDashboard {
         if (isPlaying) cardClasses.push('is-playing');
 
         const styleAttr = view === 'grid' ? '' : ' style="--thumbW: 240px;"';
-        const sourceBadge = this.renderSourceBadge(normalizedItem.source_label || normalizedItem.content_source || 'youtube');
+        const sourceBadge = this.renderSourceBadge(normalizedItem.content_source || 'youtube', normalizedItem.source_label || null);
         const languageChip = this.renderLanguageChip(normalizedItem.analysis?.language);
         const summaryTypeChip = this.renderSummaryTypeChip(normalizedItem.summary_type);
         const nowPlayingPill = isPlaying ? '<span class="summary-pill summary-pill--playing">Now playing</span>' : '';
@@ -3634,13 +3705,40 @@ class AudioDashboard {
         return `<span class="summary-pill summary-pill--lang">${this.escapeHtml(label)}</span>`;
     }
 
-    renderSourceBadge(source) {
+    inferSource(item = {}) {
+        const raw = (item.content_source ?? item.source ?? '').toString().trim();
+        const canonicalUrl = (item.canonical_url ?? item.url ?? '').toString().trim();
+        const videoId = (item.video_id ?? '').toString().trim();
+        let slug = raw.toLowerCase();
+
+        if (!slug) {
+            if (videoId) slug = 'youtube';
+            else if (/reddit\.com/i.test(canonicalUrl)) slug = 'reddit';
+        }
+
+        if (slug === 'youtube' && !videoId && /reddit\.com/i.test(canonicalUrl)) {
+            slug = 'reddit';
+        }
+
+        if (!slug) slug = 'other';
+
+        let label = raw;
+        if (!label) {
+            if (slug === 'youtube') label = 'YouTube';
+            else if (slug === 'reddit') label = 'Reddit';
+            else label = this.prettySourceLabel(slug);
+        }
+
+        return { slug, label };
+    }
+
+    renderSourceBadge(source, displayLabel = null) {
         const slug = (source || 'youtube').toLowerCase();
         const map = {
             'youtube': { label: 'YouTube', icon: '▶️', value: 'youtube' },
             'reddit': { label: 'Reddit', icon: '🧵', value: 'reddit' }
         };
-        const entry = map[slug] || { label: this.prettySourceLabel(source), icon: '🔗', value: slug || 'other' };
+        const entry = map[slug] || { label: displayLabel || this.prettySourceLabel(source), icon: '🔗', value: slug || 'other' };
         const label = `${entry.icon} ${entry.label}`;
         return `<span class="summary-pill summary-pill--source" data-filter-chip="source" data-filter-value="${this.escapeHtml(entry.value)}" title="Filter by ${this.escapeHtml(entry.label)}">${this.escapeHtml(label)}</span>`;
     }
@@ -3949,10 +4047,9 @@ class AudioDashboard {
         const analysis = item.analysis ?? item.analysis_json ?? {};
         const fileStem = item.file_stem ?? item.video_id ?? '';
         const summaryType = item.summary_variant || item.summary_type || 'unknown';
-        const rawSource = (item.content_source || item.source || 'youtube').toString().trim();
-        const contentSource = rawSource.toLowerCase();
         const canonicalUrl = item.canonical_url || item.url || '';
-        return { ...item, title, channel, analysis, file_stem: fileStem, summary_type: summaryType, content_source: contentSource, source_label: rawSource, canonical_url: canonicalUrl };
+        const { slug: contentSource, label: sourceLabel } = this.inferSource({ ...item, canonical_url: canonicalUrl });
+        return { ...item, title, channel, analysis, file_stem: fileStem, summary_type: summaryType, content_source: contentSource, source_label: sourceLabel, canonical_url: canonicalUrl };
     }
 
     // Normalize categories & subcategories (prefer new subcategories_json structure)
