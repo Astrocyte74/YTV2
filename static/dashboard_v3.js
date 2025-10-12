@@ -182,6 +182,7 @@ class AudioDashboard {
         // Search and filters
         this.searchInput = document.getElementById('searchInput');
         this.sortToolbar = document.getElementById('sortToolbar');
+        this.sourceFilters = document.getElementById('sourceFilters');
         this.categoryFilters = document.getElementById('categoryFilters');
         this.channelFilters = document.getElementById('channelFilters');
         this.contentTypeFilters = document.getElementById('contentTypeFilters');
@@ -1200,6 +1201,11 @@ class AudioDashboard {
             const response = await fetch('/api/filters');
             const filters = await response.json();
             
+            const sourceItems = (filters.content_source || filters.source || []).map(item => ({
+                ...item,
+                label: item.value === 'youtube' ? 'YouTube' : item.value === 'reddit' ? 'Reddit' : (item.label || item.value)
+            }));
+            this.renderFilterSection(sourceItems, this.sourceFilters, 'source');
             this.renderFilterSection(filters.categories, this.categoryFilters, 'category');
             this.renderFilterSection(filters.channels, this.channelFilters, 'channel');
             this.renderFilterSection(filters.content_type, this.contentTypeFilters, 'content_type');
@@ -1296,7 +1302,7 @@ class AudioDashboard {
                         <button class="filter-only-btn text-xs text-audio-600 hover:text-audio-700 hover:underline" 
                                 data-filter-only="category" 
                                 data-filter-only-value="${this.escapeHtml(item.value)}"
-                                title="Show only ${this.escapeHtml(item.value)}">only</button>
+                                title="Show only ${this.escapeHtml(item.label || item.value)}">only</button>
                     </div>
                     ${hasSubcategories ? `
                         <div id="${categoryId}" class="subcategory-list ml-8 mt-1 hidden">
@@ -1308,13 +1314,13 @@ class AudioDashboard {
                                            data-parent-category="${this.escapeHtml(item.value)}"
                                            checked
                                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
-                                    <span class="text-sm text-slate-600 dark:text-slate-300 flex-1">${this.escapeHtml(sub.value)}</span>
+                                    <span class="text-sm text-slate-600 dark:text-slate-300 flex-1">${this.escapeHtml(sub.label || sub.value || sub)}</span>
                                     <span class="text-xs text-slate-400 dark:text-slate-500 mr-2">${sub.count}</span>
                                     <button class="filter-only-btn text-xs text-audio-600 hover:text-audio-700 hover:underline" 
                                             data-filter-only="subcategory" 
                                             data-filter-only-value="${this.escapeHtml(sub.value)}"
                                             data-parent-category="${this.escapeHtml(item.value)}"
-                                            title="Show only ${this.escapeHtml(sub.value)}">only</button>
+                                            title="Show only ${this.escapeHtml(sub.label || sub.value || sub)}">only</button>
                                 </label>
                             `).join('')}
                         </div>
@@ -1333,13 +1339,13 @@ class AudioDashboard {
                            data-filter="${filterType}"
                            checked
                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
-                    <span class="text-sm text-slate-700 dark:text-slate-200">${this.escapeHtml(item.value)}</span>
+                    <span class="text-sm text-slate-700 dark:text-slate-200">${this.escapeHtml(item.label || item.value)}</span>
                     <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
                 </label>
                 <button class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors cursor-pointer" 
                         data-filter-only="${filterType}" 
                         data-filter-only-value="${this.escapeHtml(item.value)}"
-                        title="Show only ${this.escapeHtml(item.value)}">only</button>
+                        title="Show only ${this.escapeHtml(item.label || item.value)}">only</button>
             </div>
         `;
         
@@ -1946,7 +1952,13 @@ class AudioDashboard {
             this.sendTelemetry('cta_listen', { id });
         }
         if (action === 'read') { this.handleRead(id); this.sendTelemetry('cta_read', { id }); }
-        if (action === 'watch') { this.openYoutube(card.dataset.videoId); this.sendTelemetry('cta_watch', { id, video_id: card.dataset.videoId }); }
+        if (action === 'watch') {
+            const source = card.dataset.source || 'youtube';
+            const videoId = card.dataset.videoId || '';
+            const canonicalUrl = card.dataset.canonicalUrl || '';
+            this.openSourceLink(source, videoId, canonicalUrl);
+            this.sendTelemetry('cta_watch', { id, source, video_id: videoId || null });
+        }
         if (action === 'delete') { this._lastDeleteTrigger = btn; this.toggleDeletePopover(card, true); }
         if (action === 'menu') { this.toggleKebabMenu(card, true, btn); }
         if (action === 'menu-close') { this.toggleKebabMenu(card, false); }
@@ -2829,6 +2841,8 @@ class AudioDashboard {
 
     renderSummaryCard(normalizedItem, { view = 'list' } = {}) {
         const hasAudio = Boolean(normalizedItem.media && normalizedItem.media.has_audio);
+        const source = normalizedItem.content_source || 'youtube';
+        const hasWatchLink = source === 'youtube' ? Boolean(normalizedItem.video_id) : Boolean(normalizedItem.canonical_url);
         const href = `/${normalizedItem.file_stem}.json?v=2`;
         const buttonDurations = this.getButtonDurations(normalizedItem);
         const { categories, subcatPairs } = this.extractCatsAndSubcats(normalizedItem);
@@ -2846,14 +2860,15 @@ class AudioDashboard {
         if (isPlaying) cardClasses.push('is-playing');
 
         const styleAttr = view === 'grid' ? '' : ' style="--thumbW: 240px;"';
+        const sourceBadge = this.renderSourceBadge(normalizedItem.content_source || 'youtube');
         const languageChip = this.renderLanguageChip(normalizedItem.analysis?.language);
         const summaryTypeChip = this.renderSummaryTypeChip(normalizedItem.summary_type);
         const nowPlayingPill = isPlaying ? '<span class="summary-pill summary-pill--playing">Now playing</span>' : '';
-        const identityMetaParts = [languageChip, summaryTypeChip, nowPlayingPill].filter(Boolean);
+        const identityMetaParts = [sourceBadge, languageChip, summaryTypeChip, nowPlayingPill].filter(Boolean);
         const identityMeta = identityMetaParts.length ? `<div class="summary-card__meta">${identityMetaParts.join('')}</div>` : '';
 
         const taxonomyMarkup = this.renderCategorySection(normalizedItem.file_stem, categories, subcatPairs);
-        const consumptionMarkup = this.renderConsumptionSummary(buttonDurations, hasAudio);
+        const consumptionMarkup = this.renderConsumptionSummary(buttonDurations, hasAudio, source, hasWatchLink);
         const thumbnail = normalizedItem.thumbnail_url
             ? `<img src="${normalizedItem.thumbnail_url}" alt="" loading="lazy">`
             : '';
@@ -2885,7 +2900,7 @@ class AudioDashboard {
         const outerMenuMarkup = view === 'grid' ? '' : menuMarkup;
 
         return `
-            <div data-card data-decorated="true" data-report-id="${normalizedItem.file_stem}" data-video-id="${normalizedItem.video_id || ''}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="${cardClasses.join(' ')}"${styleAttr}>
+            <div data-card data-decorated="true" data-report-id="${normalizedItem.file_stem}" data-video-id="${normalizedItem.video_id || ''}" data-source="${normalizedItem.content_source || 'youtube'}" data-canonical-url="${normalizedItem.canonical_url || ''}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="${cardClasses.join(' ')}"${styleAttr}>
                 <div class="summary-card__inner">
                     ${outerMenuMarkup}
                     <div class="summary-card__media">
@@ -2924,7 +2939,7 @@ class AudioDashboard {
             </div>`;
     }
 
-    renderConsumptionSummary(durations = {}, hasAudio = false) {
+    renderConsumptionSummary(durations = {}, hasAudio = false, source = 'youtube', hasWatchLink = false) {
         const segments = [];
         if (durations.read) {
             segments.push({ text: `Read ${durations.read}` });
@@ -2934,8 +2949,13 @@ class AudioDashboard {
         } else {
             segments.push({ text: 'Listen N/A', muted: true });
         }
+        const watchLabel = source === 'youtube' ? 'Watch' : 'Open';
         if (durations.watch) {
-            segments.push({ text: `Watch ${durations.watch}` });
+            segments.push({ text: `${watchLabel} ${durations.watch}` });
+        } else if (hasWatchLink) {
+            segments.push({ text: `${watchLabel} ready` });
+        } else if (source !== 'youtube') {
+            segments.push({ text: `${watchLabel} N/A`, muted: true });
         }
 
         if (!segments.length) return '';
@@ -2982,13 +3002,23 @@ class AudioDashboard {
         const categoryFilters = this.currentFilters?.category || [];
         const allCategories = Array.from(document.querySelectorAll('input[data-filter="category"]')).map(el => el.value);
 
-        // Show category chips ONLY when some categories are unchecked (actively filtering)
-        // When all categories are selected = no filter applied = no chips shown
         if (categoryFilters.length > 0 && categoryFilters.length < allCategories.length) {
             categoryFilters.forEach(val =>
                 sections.push({
                     type: 'category',
                     label: 'Category',
+                    value: val
+                })
+            );
+        }
+
+        const sourceFilters = this.currentFilters?.source || [];
+        const allSources = Array.from(document.querySelectorAll('input[data-filter="source"]')).map(el => el.value);
+        if (sourceFilters.length > 0 && sourceFilters.length < allSources.length) {
+            sourceFilters.forEach(val =>
+                sections.push({
+                    type: 'source',
+                    label: 'Source',
                     value: val
                 })
             );
@@ -3041,9 +3071,11 @@ class AudioDashboard {
                 this.searchQuery = '';
             }
         } else if (filterType === 'category') {
-            // Uncheck specific category
             const categoryInput = document.querySelector(`input[data-filter="category"][value="${filterValue}"]`);
             if (categoryInput) categoryInput.checked = false;
+        } else if (filterType === 'source') {
+            const sourceInput = document.querySelector(`input[data-filter="source"][value="${filterValue}"]`);
+            if (sourceInput) sourceInput.checked = false;
         } else if (filterType === 'subcategory') {
             // Uncheck specific subcategory
             const subcategoryInput = document.querySelector(`input[data-filter="subcategory"][value="${filterValue}"]`);
@@ -3583,6 +3615,16 @@ class AudioDashboard {
         return `<span class="summary-pill summary-pill--lang">${this.escapeHtml(label)}</span>`;
     }
 
+    renderSourceBadge(source) {
+        const map = {
+            'youtube': { label: 'YouTube', icon: '▶️', value: 'youtube' },
+            'reddit': { label: 'Reddit', icon: '🧵', value: 'reddit' }
+        };
+        const entry = map[source] || map.youtube;
+        const label = `${entry.icon} ${entry.label}`;
+        return `<span class="summary-pill summary-pill--source" data-filter-chip="source" data-filter-value="${this.escapeHtml(entry.value)}" title="Filter by ${this.escapeHtml(entry.label)}">${this.escapeHtml(label)}</span>`;
+    }
+
     renderSummaryTypeChip(type) {
         if (!type || type === 'unknown') return '';
 
@@ -3773,6 +3815,8 @@ class AudioDashboard {
     renderActionBar(item, durations = {}, hasAudio = false) {
         const groupLabel = 'Summary actions';
         const segments = [];
+        const source = item.content_source || item.source || 'youtube';
+        const hasWatchLink = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
 
         const readDuration = durations.read || '';
         segments.push({
@@ -3858,7 +3902,9 @@ class AudioDashboard {
         const analysis = item.analysis ?? item.analysis_json ?? {};
         const fileStem = item.file_stem ?? item.video_id ?? '';
         const summaryType = item.summary_variant || item.summary_type || 'unknown';
-        return { ...item, title, channel, analysis, file_stem: fileStem, summary_type: summaryType };
+        const contentSource = item.content_source || item.source || 'youtube';
+        const canonicalUrl = item.canonical_url || item.url || '';
+        return { ...item, title, channel, analysis, file_stem: fileStem, summary_type: summaryType, content_source: contentSource, canonical_url: canonicalUrl };
     }
 
     // Normalize categories & subcategories (prefer new subcategories_json structure)
@@ -4400,7 +4446,7 @@ class AudioDashboard {
                 const id = card.dataset.reportId;
                 if (event.code === 'KeyL') this.playAudio(id);
                 if (event.code === 'KeyR') this.handleRead(id);
-                if (event.code === 'KeyW') this.openYoutube(card.dataset.videoId);
+                if (event.code === 'KeyW') this.openSourceLink(card.dataset.source || 'youtube', card.dataset.videoId || '', card.dataset.canonicalUrl || '');
                 break;
             }
         }
