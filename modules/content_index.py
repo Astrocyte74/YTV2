@@ -219,10 +219,10 @@ class ContentIndex:
                     title_parts = file_stem.replace(video_id, '').strip('_').split('_')
                     title = ' '.join(title_parts[:-2] if len(title_parts) > 2 else title_parts).replace('_', ' ')
                     title = title.strip()
-                if not title:
-                    title = file_stem.replace('_', ' ')
+            if not title:
+                title = file_stem.replace('_', ' ')
             
-            content_source = report_data.get('content_source', 'youtube')
+            content_source = report_data.get('content_source')
             duration_seconds = report_data.get('duration_seconds', 0)
             
             # Extract published date - look in multiple places
@@ -300,7 +300,7 @@ class ContentIndex:
             if not title:
                 title = file_stem.replace('_', ' ')
             
-            content_source = report_data.get('content_source', 'youtube')
+            content_source = report_data.get('content_source')
             published_at = report_data.get('published_at', '')
             
             # Enhanced schema duration support - check multiple sources
@@ -334,7 +334,12 @@ class ContentIndex:
                 gen = (report_data.get('metadata') or {}).get('generated_at', '')
                 if gen:
                     published_at = gen
-        
+        content_source = self._determine_content_source(
+            content_source,
+            report_data,
+            file_stem,
+            report_id
+        )
             # Universal schema - extract analysis data, check both locations
             analysis = report_data.get('analysis', {})
             summary_analysis = report_data.get('summary', {}).get('analysis', {})
@@ -450,6 +455,62 @@ class ContentIndex:
         # Build search index (title + key topics)
         search_text = f"{title} {' '.join(key_topics)}".lower()
         self.search_index[report_id] = search_text
+    
+    def _determine_content_source(
+        self,
+        explicit_source: Optional[str],
+        report_data: Dict[str, Any],
+        file_stem: str,
+        report_id: str
+    ) -> str:
+        """Infer content source (youtube, reddit, etc.) with robust fallbacks."""
+        source = (explicit_source or '').strip().lower()
+        if source in {'youtube', 'reddit'}:
+            return source
+
+        def _safe_str(value: Any) -> str:
+            return str(value).strip().lower() if value is not None else ''
+
+        # Gather hints from multiple fields
+        canonical_url = _safe_str(
+            report_data.get('canonical_url')
+            or report_data.get('url')
+            or (report_data.get('source_metadata') or {}).get('external_url')
+        )
+        primary_id = _safe_str(report_data.get('id') or report_id)
+        raw_video_id = report_data.get('video_id')
+        legacy_video = report_data.get('video') if isinstance(report_data.get('video'), dict) else {}
+        video_id = _safe_str(
+            raw_video_id
+            or legacy_video.get('id')
+            or legacy_video.get('video_id')
+        )
+
+        def _looks_like_reddit(value: str) -> bool:
+            return value.startswith('reddit:') or 'reddit.com' in value
+
+        def _looks_like_youtube(value: str) -> bool:
+            return (
+                value.startswith('yt:')
+                or value.startswith('youtube:')
+                or 'youtube.com' in value
+                or 'youtu.be' in value
+            )
+
+        # Priority order: explicit hints by ID/URL
+        if _looks_like_reddit(primary_id) or _looks_like_reddit(video_id) or _looks_like_reddit(canonical_url):
+            return 'reddit'
+        if _looks_like_youtube(primary_id) or _looks_like_youtube(video_id) or _looks_like_youtube(canonical_url):
+            return 'youtube'
+
+        # Special-case fallback: file stem naming conventions (`reddit:` prefix)
+        if _looks_like_reddit(_safe_str(file_stem)):
+            return 'reddit'
+        if _looks_like_youtube(_safe_str(file_stem)):
+            return 'youtube'
+
+        # Default to youtube to preserve historical behaviour
+        return 'youtube'
     
     def get_facets(self, active_filters: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Get facet counts, optionally filtered by active filters"""
