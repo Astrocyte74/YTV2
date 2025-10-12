@@ -3708,15 +3708,23 @@ class AudioDashboard {
     inferSource(item = {}) {
         const raw = (item.content_source ?? item.source ?? '').toString().trim();
         const canonicalUrl = (item.canonical_url ?? item.url ?? '').toString().trim();
-        const videoId = (item.video_id ?? '').toString().trim();
+        const videoIdRaw = item.video_id ?? '';
+        const videoId = videoIdRaw != null ? videoIdRaw.toString().trim() : '';
         let slug = raw.toLowerCase();
 
         if (!slug) {
-            if (videoId) slug = 'youtube';
-            else if (/reddit\.com/i.test(canonicalUrl)) slug = 'reddit';
+            if (videoId && /^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+                slug = 'youtube';
+            } else if (/^reddit:/i.test(videoId) || /reddit\.com/i.test(canonicalUrl)) {
+                slug = 'reddit';
+            }
         }
 
-        if (slug === 'youtube' && !videoId && /reddit\.com/i.test(canonicalUrl)) {
+        if (!slug && /reddit\.com/i.test(canonicalUrl)) {
+            slug = 'reddit';
+        }
+
+        if (slug === 'youtube' && videoId && !/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
             slug = 'reddit';
         }
 
