@@ -1201,10 +1201,12 @@ class AudioDashboard {
             const response = await fetch('/api/filters');
             const filters = await response.json();
             
-            const sourceItems = (filters.content_source || filters.source || []).map(item => ({
-                ...item,
-                label: item.value === 'youtube' ? 'YouTube' : item.value === 'reddit' ? 'Reddit' : (item.label || item.value)
-            }));
+            const sourceItems = (filters.content_source || filters.source || []).map(item => {
+                const raw = (item.value ?? '').toString();
+                const slug = raw.toLowerCase();
+                const label = slug === 'youtube' ? 'YouTube' : slug === 'reddit' ? 'Reddit' : (item.label || raw || 'Other');
+                return { ...item, value: slug || 'other', label };
+            });
             this.renderFilterSection(sourceItems, this.sourceFilters, 'source');
             this.renderFilterSection(filters.categories, this.categoryFilters, 'category');
             this.renderFilterSection(filters.channels, this.channelFilters, 'channel');
@@ -1297,7 +1299,7 @@ class AudioDashboard {
                                 </svg>
                             </button>
                         ` : '<div class="w-5"></div>'}
-                        <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
+                        <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.label || item.value)}</span>
                         <span class="text-xs text-slate-400 dark:text-slate-500 mr-2">${item.count}</span>
                         <button class="filter-only-btn text-xs text-audio-600 hover:text-audio-700 hover:underline" 
                                 data-filter-only="category" 
@@ -1471,7 +1473,7 @@ class AudioDashboard {
                        data-filter="language"
                        checked
                        class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
-                <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
+                <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.label || item.value)}</span>
                 <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
             </label>
         `).join('');
@@ -1494,7 +1496,7 @@ class AudioDashboard {
                            data-filter="language"
                            checked
                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
-                    <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
+                    <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.label || item.value)}</span>
                     <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
                 </label>
             `).join('');
@@ -1989,7 +1991,22 @@ class AudioDashboard {
             return;
         }
         const url = `https://www.youtube.com/watch?v=${videoId}`;
-        window.open(url, '_blank');
+        const win = window.open(url, '_blank', 'noopener');
+        if (win) win.opener = null;
+    }
+
+    openSourceLink(source, videoId, canonicalUrl) {
+        const slug = (source || 'youtube').toLowerCase();
+        if (slug === 'youtube') {
+            this.openYoutube(videoId);
+            return;
+        }
+        if (!canonicalUrl) {
+            this.showToast('No source link available', 'warn');
+            return;
+        }
+        const win = window.open(canonicalUrl, '_blank', 'noopener');
+        if (win) win.opener = null;
     }
 
     async expandCardInline(id) {
@@ -2841,7 +2858,8 @@ class AudioDashboard {
 
     renderSummaryCard(normalizedItem, { view = 'list' } = {}) {
         const hasAudio = Boolean(normalizedItem.media && normalizedItem.media.has_audio);
-        const source = normalizedItem.content_source || 'youtube';
+        const rawSource = normalizedItem.content_source || 'youtube';
+        const source = rawSource.toLowerCase();
         const hasWatchLink = source === 'youtube' ? Boolean(normalizedItem.video_id) : Boolean(normalizedItem.canonical_url);
         const href = `/${normalizedItem.file_stem}.json?v=2`;
         const buttonDurations = this.getButtonDurations(normalizedItem);
@@ -2860,7 +2878,7 @@ class AudioDashboard {
         if (isPlaying) cardClasses.push('is-playing');
 
         const styleAttr = view === 'grid' ? '' : ' style="--thumbW: 240px;"';
-        const sourceBadge = this.renderSourceBadge(normalizedItem.content_source || 'youtube');
+        const sourceBadge = this.renderSourceBadge(normalizedItem.source_label || normalizedItem.content_source || 'youtube');
         const languageChip = this.renderLanguageChip(normalizedItem.analysis?.language);
         const summaryTypeChip = this.renderSummaryTypeChip(normalizedItem.summary_type);
         const nowPlayingPill = isPlaying ? '<span class="summary-pill summary-pill--playing">Now playing</span>' : '';
@@ -2900,7 +2918,7 @@ class AudioDashboard {
         const outerMenuMarkup = view === 'grid' ? '' : menuMarkup;
 
         return `
-            <div data-card data-decorated="true" data-report-id="${normalizedItem.file_stem}" data-video-id="${normalizedItem.video_id || ''}" data-source="${normalizedItem.content_source || 'youtube'}" data-canonical-url="${normalizedItem.canonical_url || ''}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="${cardClasses.join(' ')}"${styleAttr}>
+            <div data-card data-decorated="true" data-report-id="${normalizedItem.file_stem}" data-video-id="${normalizedItem.video_id || ''}" data-source="${this.escapeHtml(source)}" data-canonical-url="${this.escapeHtml(normalizedItem.canonical_url || '')}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="${cardClasses.join(' ')}"${styleAttr}>
                 <div class="summary-card__inner">
                     ${outerMenuMarkup}
                     <div class="summary-card__media">
@@ -2954,7 +2972,7 @@ class AudioDashboard {
             segments.push({ text: `${watchLabel} ${durations.watch}` });
         } else if (hasWatchLink) {
             segments.push({ text: `${watchLabel} ready` });
-        } else if (source !== 'youtube') {
+        } else {
             segments.push({ text: `${watchLabel} N/A`, muted: true });
         }
 
@@ -3015,13 +3033,14 @@ class AudioDashboard {
         const sourceFilters = this.currentFilters?.source || [];
         const allSources = Array.from(document.querySelectorAll('input[data-filter="source"]')).map(el => el.value);
         if (sourceFilters.length > 0 && sourceFilters.length < allSources.length) {
-            sourceFilters.forEach(val =>
+            sourceFilters.forEach(val => {
                 sections.push({
                     type: 'source',
                     label: 'Source',
-                    value: val
-                })
-            );
+                    value: val,
+                    display: this.prettySourceLabel(val)
+                });
+            });
         }
 
         // Create horizontal scrolling container for chips
@@ -3029,12 +3048,12 @@ class AudioDashboard {
             heroBadges.innerHTML = `
                 <div class="flex overflow-x-auto pb-2 space-x-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent"
                      style="max-height: 80px; scrollbar-width: thin;">
-                    ${sections.map(({ type, label, value }) => `
+                    ${sections.map(({ type, label, value, display }) => `
                         <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/40 dark:border-white/10 bg-white/70 dark:bg-white/5 text-slate-600 dark:text-slate-200 whitespace-nowrap flex-shrink-0">
                             <span class="uppercase tracking-wide text-[10px] text-slate-400 dark:text-slate-500">${this.escapeHtml(String(label))}</span>
-                            <span class="text-[11px] font-medium">${this.escapeHtml(String(value))}</span>
+                            <span class="text-[11px] font-medium">${this.escapeHtml(String(display ?? value))}</span>
                             <button class="ml-1 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full p-0.5 transition-colors"
-                                    data-remove-filter="${type}"
+                                    data-remove-filter="${this.escapeHtml(String(type))}"
                                     data-filter-value="${this.escapeHtml(String(value))}"
                                     title="Remove filter">
                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3616,13 +3635,22 @@ class AudioDashboard {
     }
 
     renderSourceBadge(source) {
+        const slug = (source || 'youtube').toLowerCase();
         const map = {
             'youtube': { label: 'YouTube', icon: '▶️', value: 'youtube' },
             'reddit': { label: 'Reddit', icon: '🧵', value: 'reddit' }
         };
-        const entry = map[source] || map.youtube;
+        const entry = map[slug] || { label: this.prettySourceLabel(source), icon: '🔗', value: slug || 'other' };
         const label = `${entry.icon} ${entry.label}`;
         return `<span class="summary-pill summary-pill--source" data-filter-chip="source" data-filter-value="${this.escapeHtml(entry.value)}" title="Filter by ${this.escapeHtml(entry.label)}">${this.escapeHtml(label)}</span>`;
+    }
+
+    prettySourceLabel(source) {
+        const slug = (source || '').toLowerCase();
+        if (slug === 'youtube') return 'YouTube';
+        if (slug === 'reddit') return 'Reddit';
+        if (!slug) return 'Other';
+        return slug.charAt(0).toUpperCase() + slug.slice(1);
     }
 
     renderSummaryTypeChip(type) {
@@ -3815,7 +3843,7 @@ class AudioDashboard {
     renderActionBar(item, durations = {}, hasAudio = false) {
         const groupLabel = 'Summary actions';
         const segments = [];
-        const source = item.content_source || item.source || 'youtube';
+        const source = (item.content_source || item.source || 'youtube').toString().toLowerCase();
         const hasWatchLink = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
 
         const readDuration = durations.read || '';
@@ -3853,15 +3881,34 @@ class AudioDashboard {
         }
 
         const watchDuration = durations.watch || '';
-        segments.push({
-            key: 'watch',
-            label: 'Watch',
-            title: watchDuration ? `Watch • ${watchDuration}` : 'Open on YouTube',
-            icon: '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 9l5 3-5 3V9z"/></svg>',
-            duration: watchDuration,
-            listen: false,
-            disabled: false
-        });
+        const watchLabel = source === 'youtube' ? 'Watch' : 'Open';
+        const watchIcon = source === 'youtube'
+            ? '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 9l5 3-5 3V9z"/></svg>'
+            : '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l9-9"/><path d="M7 7h9v9"/></svg>';
+        const watchTitle = watchDuration
+            ? `${watchLabel} • ${watchDuration}`
+            : (source === 'youtube' ? 'Open on YouTube' : 'Open original source');
+        if (hasWatchLink) {
+            segments.push({
+                key: 'watch',
+                label: watchLabel,
+                title: watchTitle,
+                icon: watchIcon,
+                duration: watchDuration,
+                listen: false,
+                disabled: false
+            });
+        } else if (source === 'youtube') {
+            segments.push({
+                key: 'watch',
+                label: watchLabel,
+                title: 'Source link not available',
+                icon: watchIcon,
+                duration: watchDuration,
+                listen: false,
+                disabled: true
+            });
+        }
 
         const buttonsHtml = segments.map((segment) => {
             const classes = ['variant-toggle', 'summary-card__action', `summary-card__action--${segment.key}`];
@@ -3902,9 +3949,10 @@ class AudioDashboard {
         const analysis = item.analysis ?? item.analysis_json ?? {};
         const fileStem = item.file_stem ?? item.video_id ?? '';
         const summaryType = item.summary_variant || item.summary_type || 'unknown';
-        const contentSource = item.content_source || item.source || 'youtube';
+        const rawSource = (item.content_source || item.source || 'youtube').toString().trim();
+        const contentSource = rawSource.toLowerCase();
         const canonicalUrl = item.canonical_url || item.url || '';
-        return { ...item, title, channel, analysis, file_stem: fileStem, summary_type: summaryType, content_source: contentSource, canonical_url: canonicalUrl };
+        return { ...item, title, channel, analysis, file_stem: fileStem, summary_type: summaryType, content_source: contentSource, source_label: rawSource, canonical_url: canonicalUrl };
     }
 
     // Normalize categories & subcategories (prefer new subcategories_json structure)
