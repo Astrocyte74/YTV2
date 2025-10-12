@@ -1235,7 +1235,9 @@ class AudioDashboard {
     
     augmentSourceFiltersFromItems(items = []) {
         if (!Array.isArray(items) || !this.sourceFilters) return;
-        const baseline = new Map((this.initialSourceFilters || []).map(item => [item.value, { ...item }]));
+        const existingFilters = this.initialSourceFilters || [];
+        const baseline = new Map(existingFilters.map(item => [item.value, { ...item }]));
+        const previouslyKnownSlugs = new Set(existingFilters.map(item => item.value));
         const counts = new Map();
 
         for (const item of items) {
@@ -1289,11 +1291,22 @@ class AudioDashboard {
         this.renderFilterSection(augmented, this.sourceFilters, 'source');
 
         // Restore prior selections (default is all checked)
-        if (previouslySelected.size > 0) {
-            this.sourceFilters.querySelectorAll('input[data-filter="source"]').forEach((input) => {
-                if (!previouslySelected.has(input.value)) input.checked = false;
-            });
-        }
+        const inputs = this.sourceFilters.querySelectorAll('input[data-filter="source"]');
+        inputs.forEach((input) => {
+            const value = input.value;
+            const isKnown = previouslyKnownSlugs.has(value);
+            const isSelected = previouslySelected.has(value);
+            if (isSelected) {
+                input.checked = true;
+            } else if (!isKnown) {
+                // Newly discovered source → default to checked
+                input.checked = true;
+            } else if (previouslySelected.size === 0) {
+                input.checked = true;
+            } else {
+                input.checked = false;
+            }
+        });
 
         this.currentFilters = this.computeFiltersFromDOM();
         this.updateHeroBadges();
