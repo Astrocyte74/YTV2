@@ -2622,13 +2622,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.exception("Error serving filters API")  # logs stacktrace
             # Return JSON error instead of HTML (per OpenAI recommendation)
-            import traceback
-            error_data = {
-                "error": "Filters API error",
-                "message": str(e),
-                "status": "error",
-                "trace": traceback.format_exc()
-            }
+            error_data = {"error": "Filters API error", "message": str(e), "status": "error"}
             self.send_response(500)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
