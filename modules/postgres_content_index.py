@@ -48,19 +48,22 @@ class PostgreSQLContentIndex:
         case_expression = "CASE " + " ".join(clauses) + f" ELSE {default_rank} END"
         return case_expression
 
-    @staticmethod
-    def _source_case_expression(alias: str = 'c') -> str:
+    def _source_case_expression(self, alias: str = 'c', conn=None) -> str:
         """Normalize content source using database fields with sensible fallbacks."""
-        return f"""
-            CASE
-                WHEN TRIM(COALESCE({alias}.content_source, '')) <> ''
-                    THEN LOWER(TRIM({alias}.content_source))
-                WHEN LOWER(COALESCE({alias}.video_id::text, '')) LIKE 'reddit:%'
-                     OR LOWER(COALESCE({alias}.canonical_url::text, '')) LIKE '%reddit.com%'
-                    THEN 'reddit'
-                ELSE 'youtube'
-            END
-        """
+        clauses = ["CASE"]
+        if self._has_content_source_column(conn):
+            clauses.append(
+                f"WHEN TRIM(COALESCE({alias}.content_source, '')) <> '' "
+                f"THEN LOWER(TRIM({alias}.content_source))"
+            )
+        clauses.append(
+            f"WHEN LOWER(COALESCE({alias}.video_id::text, '')) LIKE 'reddit:%' "
+            f"OR LOWER(COALESCE({alias}.canonical_url::text, '')) LIKE '%reddit.com%' "
+            f"THEN 'reddit'"
+        )
+        clauses.append("ELSE 'youtube'")
+        clauses.append("END")
+        return " ".join(clauses)
 
     def __init__(self, postgres_url: str = None):
         """Initialize with PostgreSQL connection."""
@@ -72,6 +75,7 @@ class PostgreSQLContentIndex:
             raise ValueError("PostgreSQL URL not provided and DATABASE_URL_POSTGRES_NEW not set")
 
         logger.info(f"Using PostgreSQL database")
+        self._content_source_column_present: Optional[bool] = None
 
     def _get_connection(self):
         """Get PostgreSQL connection with RealDictCursor."""
@@ -79,6 +83,36 @@ class PostgreSQLContentIndex:
             self.postgres_url,
             cursor_factory=psycopg2.extras.RealDictCursor
         )
+
+    def _has_content_source_column(self, conn=None) -> bool:
+        """Detect whether content.content_source column exists (cached)."""
+        if self._content_source_column_present is None:
+            close_conn = False
+            cursor = None
+            try:
+                if conn is None:
+                    conn = self._get_connection()
+                    close_conn = True
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = %s AND column_name = %s
+                    LIMIT 1
+                    """,
+                    ('content', 'content_source')
+                )
+                self._content_source_column_present = cursor.fetchone() is not None
+            except Exception:
+                logger.exception("Unable to determine presence of content.content_source column")
+                self._content_source_column_present = False
+            finally:
+                if cursor:
+                    cursor.close()
+                if close_conn and conn:
+                    conn.close()
+        return bool(self._content_source_column_present)
 
     # ------------------------------------------------------------------
     # Helper utilities (parity with legacy SQLite implementation)
@@ -384,7 +418,7 @@ class PostgreSQLContentIndex:
         conn = self._get_connection()
         try:
             variant_order_sql = self._variant_order_expression('vs')
-            source_case = self._source_case_expression('c')
+            source_case = self._source_case_expression('c', conn)
 
             # Build base query with summary fallback plus variant aggregation
             query = f"""
@@ -862,7 +896,7 @@ class PostgreSQLContentIndex:
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            source_case = self._source_case_expression('c')
+            source_case = self._source_case_expression('c', conn)
 
             # Optimized SQL query for summary_type facet counts
             cursor.execute("""
@@ -888,6 +922,11 @@ class PostgreSQLContentIndex:
                     sql_filters = f"WHERE ({source_case}) = ANY(%s)"
                     params.append(cleaned_sources)
 
+            if self._has_content_source_column(conn):
+                content_source_select = "c.content_source"
+            else:
+                content_source_select = "NULL::text AS content_source"
+
             cursor.execute(
                 f"""
                 SELECT
@@ -898,7 +937,7 @@ class PostgreSQLContentIndex:
                     subcategories_json,
                     canonical_url,
                     video_id,
-                    content_source,
+                    {content_source_select},
                     {source_case} AS normalized_source
                 FROM content c
                 {sql_filters}
