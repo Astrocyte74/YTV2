@@ -1693,6 +1693,22 @@ class AudioDashboard {
             return;
         }
 
+        // Require at least one source selection when source filters are available
+        const hasSourceSelection = this.currentFilters.source && this.currentFilters.source.length > 0;
+        const hasSourceOptions = document.querySelectorAll('input[data-filter="source"]').length > 0;
+        if (!this.searchQuery && hasSourceOptions && !hasSourceSelection) {
+            this.currentItems = [];
+            this.renderContent([]);
+            this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
+            this.updateResultsInfo({ page: 1, size: 12, total_count: 0, total_pages: 0 });
+            this.contentGrid.innerHTML = `
+                <div class="text-center py-12 text-slate-400">
+                    <div class="text-lg mb-2">Choose one or more sources</div>
+                    <div class="text-sm">Clear Source = no sources selected → no results</div>
+                </div>`;
+            return;
+        }
+
         // Build effectiveFilters by treating "ALL selected" as no filter for that type
         const effectiveFilters = {};
         Object.entries(this.currentFilters).forEach(([filterType, selectedValues]) => {
