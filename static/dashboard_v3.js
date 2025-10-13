@@ -1207,11 +1207,12 @@ class AudioDashboard {
             const sourceItems = (filters.content_source || filters.source || []).map(item => {
                 const raw = (item.value ?? '').toString();
                 const slug = raw.toLowerCase();
-                const label = slug === 'youtube' ? 'YouTube' : slug === 'reddit' ? 'Reddit' : (item.label || raw || 'Other');
+                const label = item.label || this.prettySourceLabel(slug || raw || 'other');
                 return { ...item, value: slug || 'other', label };
             });
             this.renderFilterSection(sourceItems, this.sourceFilters, 'source');
             this.initialSourceFilters = sourceItems.slice();
+            this.serverSourceFilters = sourceItems.slice();
             this.renderFilterSection(filters.categories, this.categoryFilters, 'category');
             this.renderFilterSection(filters.channels, this.channelFilters, 'channel');
             this.renderFilterSection(filters.content_type, this.contentTypeFilters, 'content_type');
@@ -1237,49 +1238,50 @@ class AudioDashboard {
         if (!Array.isArray(items) || !this.sourceFilters) return;
         const existingFilters = this.initialSourceFilters || [];
         const baseline = new Map(existingFilters.map(item => [item.value, { ...item }]));
-        const previouslyKnownSlugs = new Set(existingFilters.map(item => item.value));
-        const counts = new Map();
+        const knownSlugs = new Set(baseline.keys());
 
+        const derivedCounts = new Map();
         for (const item of items) {
             const { slug, label } = this.inferSource(item);
             if (!slug) continue;
-            const existing = counts.get(slug) || { value: slug, label, count: 0 };
+            const existing = derivedCounts.get(slug) || { value: slug, label, count: 0 };
             existing.count += 1;
-            counts.set(slug, existing);
+            derivedCounts.set(slug, existing);
         }
 
-        if (!counts.size) return;
+        if (!derivedCounts.size) return;
 
-        let changed = false;
-        for (const [slug, entry] of counts.entries()) {
-            if (!baseline.has(slug)) {
-                baseline.set(slug, entry);
-                changed = true;
-            }
-        }
-
-        const normalizeCount = (value) => {
-            const num = Number(value);
-            return Number.isFinite(num) ? num : 0;
-        };
-
-        if (!changed) {
-            // Update counts for existing entries when available
-            baseline.forEach((entry, slug) => {
-                const derived = counts.get(slug);
-                if (derived) entry.count = normalizeCount(derived.count);
-                else entry.count = normalizeCount(entry.count);
+        const serverDefined = Array.isArray(this.serverSourceFilters) && this.serverSourceFilters.length > 0;
+        if (serverDefined) {
+            let added = false;
+            derivedCounts.forEach((entry, slug) => {
+                if (!knownSlugs.has(slug)) {
+                    baseline.set(slug, {
+                        value: slug,
+                        label: entry.label || this.prettySourceLabel(slug),
+                        count: entry.count
+                    });
+                    knownSlugs.add(slug);
+                    added = true;
+                }
             });
-            this.initialSourceFilters = Array.from(baseline.values());
-            return;
+            if (!added) return;
+        } else {
+            // No server counts; update in-place using derived data
+            baseline.forEach((entry, slug) => {
+                const derived = derivedCounts.get(slug);
+                entry.count = Number.isFinite(derived?.count) ? derived.count : Number(entry.count) || 0;
+            });
+            derivedCounts.forEach((entry, slug) => {
+                if (!baseline.has(slug)) {
+                    baseline.set(slug, {
+                        value: slug,
+                        label: entry.label || this.prettySourceLabel(slug),
+                        count: entry.count
+                    });
+                }
+            });
         }
-
-        // Ensure every entry has a numeric count for display/sorting
-        baseline.forEach((entry, slug) => {
-            const derived = counts.get(slug);
-            if (derived) entry.count = normalizeCount(derived.count);
-            else entry.count = normalizeCount(entry.count);
-        });
 
         const augmented = Array.from(baseline.values()).sort((a, b) => {
             if (b.count !== a.count) return b.count - a.count;
@@ -1290,21 +1292,14 @@ class AudioDashboard {
         const previouslySelected = new Set(this.currentFilters?.source || []);
         this.renderFilterSection(augmented, this.sourceFilters, 'source');
 
-        // Restore prior selections (default is all checked)
         const inputs = this.sourceFilters.querySelectorAll('input[data-filter="source"]');
         inputs.forEach((input) => {
             const value = input.value;
-            const isKnown = previouslyKnownSlugs.has(value);
-            const isSelected = previouslySelected.has(value);
-            if (isSelected) {
+            if (previouslySelected.size === 0 || previouslySelected.has(value)) {
                 input.checked = true;
-            } else if (!isKnown) {
-                // Newly discovered source → default to checked
+            } else if (!knownSlugs.has(value)) {
+                // auto-enable brand new sources
                 input.checked = true;
-            } else if (previouslySelected.size === 0) {
-                input.checked = true;
-            } else {
-                input.checked = false;
             }
         });
 
@@ -3720,36 +3715,36 @@ class AudioDashboard {
 
     inferSource(item = {}) {
         const raw = (item.content_source ?? item.source ?? '').toString().trim();
-        const canonicalUrl = (item.canonical_url ?? item.url ?? '').toString().trim();
+        const canonicalUrl = (item.canonical_url ?? item.url ?? '').toString().trim().toLowerCase();
         const videoIdRaw = item.video_id ?? '';
-        const videoId = videoIdRaw != null ? videoIdRaw.toString().trim() : '';
-        let slug = raw.toLowerCase();
+        const videoId = videoIdRaw != null ? videoIdRaw.toString().trim().toLowerCase() : '';
+        const recordId = (item.id ?? '').toString().trim().toLowerCase();
+
+        const normalized = raw.toLowerCase();
+        const known = new Set(['youtube', 'reddit', 'wikipedia', 'lds', 'web', 'other']);
+        let slug = normalized && known.has(normalized) ? normalized : '';
+
+        const hasCanonical = (needle) => canonicalUrl.includes(needle);
 
         if (!slug) {
-            if (videoId && /^[A-Za-z0-9_-]{11}$/.test(videoId)) {
-                slug = 'youtube';
-            } else if (/^reddit:/i.test(videoId) || /reddit\.com/i.test(canonicalUrl)) {
-                slug = 'reddit';
-            }
+            if (hasCanonical('wikipedia.org')) slug = 'wikipedia';
+            else if (hasCanonical('churchofjesuschrist.org') || hasCanonical('lds.org')) slug = 'lds';
+            else if (hasCanonical('reddit.com')) slug = 'reddit';
+            else if (hasCanonical('youtube.com') || hasCanonical('youtu.be')) slug = 'youtube';
         }
 
-        if (!slug && /reddit\.com/i.test(canonicalUrl)) {
-            slug = 'reddit';
+        if (!slug) {
+            if (videoId.startsWith('reddit:') || recordId.startsWith('reddit:')) slug = 'reddit';
+            else if (/^[a-z0-9_-]{11}$/i.test(videoId)) slug = 'youtube';
         }
 
-        if (slug === 'youtube' && videoId && !/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
-            slug = 'reddit';
+        if (!slug && !canonicalUrl && !videoId) {
+            slug = normalized || 'other';
         }
 
-        if (!slug) slug = 'other';
+        if (!slug) slug = 'web';
 
-        let label = raw;
-        if (!label) {
-            if (slug === 'youtube') label = 'YouTube';
-            else if (slug === 'reddit') label = 'Reddit';
-            else label = this.prettySourceLabel(slug);
-        }
-
+        const label = raw || this.prettySourceLabel(slug);
         return { slug, label };
     }
 
@@ -3757,7 +3752,11 @@ class AudioDashboard {
         const slug = (source || 'youtube').toLowerCase();
         const map = {
             'youtube': { label: 'YouTube', icon: '▶️', value: 'youtube' },
-            'reddit': { label: 'Reddit', icon: '🧵', value: 'reddit' }
+            'reddit': { label: 'Reddit', icon: '🧵', value: 'reddit' },
+            'wikipedia': { label: 'Wikipedia', icon: '📚', value: 'wikipedia' },
+            'lds': { label: 'Gospel Library', icon: '🙏', value: 'lds' },
+            'web': { label: 'Web', icon: '🌐', value: 'web' },
+            'other': { label: 'Other', icon: '🔗', value: 'other' }
         };
         const entry = map[slug] || { label: displayLabel || this.prettySourceLabel(source), icon: '🔗', value: slug || 'other' };
         const label = `${entry.icon} ${entry.label}`;
@@ -3768,6 +3767,10 @@ class AudioDashboard {
         const slug = (source || '').toLowerCase();
         if (slug === 'youtube') return 'YouTube';
         if (slug === 'reddit') return 'Reddit';
+        if (slug === 'wikipedia') return 'Wikipedia';
+        if (slug === 'lds') return 'Gospel Library';
+        if (slug === 'web') return 'Web';
+        if (slug === 'other') return 'Other';
         if (!slug) return 'Other';
         return slug.charAt(0).toUpperCase() + slug.slice(1);
     }

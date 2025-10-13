@@ -36,6 +36,15 @@ class PostgreSQLContentIndex:
         'language'
     ]
 
+    SOURCE_LABELS = {
+        'youtube': 'YouTube',
+        'reddit': 'Reddit',
+        'wikipedia': 'Wikipedia',
+        'lds': 'Gospel Library',
+        'web': 'Web',
+        'other': 'Other'
+    }
+
     @classmethod
     def _variant_order_expression(cls, alias: str = 'vs') -> str:
         clauses = []
@@ -58,6 +67,7 @@ class PostgreSQLContentIndex:
             raise ValueError("PostgreSQL URL not provided and DATABASE_URL_POSTGRES_NEW not set")
 
         logger.info(f"Using PostgreSQL database")
+        self._content_source_column_present: Optional[bool] = None
 
     def _get_connection(self):
         """Get PostgreSQL connection with RealDictCursor."""
@@ -65,6 +75,71 @@ class PostgreSQLContentIndex:
             self.postgres_url,
             cursor_factory=psycopg2.extras.RealDictCursor
         )
+
+    def _has_content_source_column(self, conn=None) -> bool:
+        """Detect whether the content table exposes an explicit content_source column."""
+        if self._content_source_column_present is None:
+            close_conn = False
+            cursor = None
+            try:
+                if conn is None:
+                    conn = self._get_connection()
+                    close_conn = True
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = %s AND column_name = %s
+                    LIMIT 1
+                    """,
+                    ('content', 'content_source')
+                )
+                self._content_source_column_present = cursor.fetchone() is not None
+            except Exception:
+                logger.exception("Failed to detect content.content_source column")
+                self._content_source_column_present = False
+            finally:
+                if cursor:
+                    cursor.close()
+                if close_conn and conn:
+                    conn.close()
+        return bool(self._content_source_column_present)
+
+    def _source_case_expression(self, alias: str = 'c', conn=None) -> str:
+        """Build SQL CASE expression that normalizes source slugs without schema assumptions."""
+        clauses = ["CASE"]
+        if self._has_content_source_column(conn):
+            clauses.append(
+                f"WHEN TRIM(COALESCE({alias}.content_source, '')) <> '' "
+                f"THEN LOWER(TRIM({alias}.content_source))"
+            )
+
+        canonical = f"LOWER(COALESCE({alias}.canonical_url::text, ''))"
+        video_id = f"LOWER(COALESCE({alias}.video_id::text, ''))"
+        record_id = f"LOWER(COALESCE({alias}.id::text, ''))"
+
+        clauses.append(
+            f"WHEN {canonical} LIKE '%wikipedia.org%' THEN 'wikipedia'"
+        )
+        clauses.append(
+            f"WHEN {canonical} LIKE '%churchofjesuschrist.org%' "
+            f"OR {canonical} LIKE '%lds.org%' THEN 'lds'"
+        )
+        clauses.append(
+            f"WHEN {canonical} LIKE '%reddit.com%' "
+            f"OR {video_id} LIKE 'reddit:%' "
+            f"OR {record_id} LIKE 'reddit:%' THEN 'reddit'"
+        )
+        clauses.append(
+            f"WHEN {canonical} LIKE '%youtube.com%' "
+            f"OR {canonical} LIKE '%youtu.be%' "
+            f"OR {video_id} ~ '^[a-z0-9_-]{{11}}$' THEN 'youtube'"
+        )
+        clauses.append("WHEN TRIM(COALESCE({0}.canonical_url::text, '')) = '' THEN 'other'".format(alias))
+        clauses.append("ELSE 'web'")
+        clauses.append("END")
+        return " ".join(clauses)
 
     # ------------------------------------------------------------------
     # Helper utilities (parity with legacy SQLite implementation)
@@ -158,6 +233,49 @@ class PostgreSQLContentIndex:
         safe_title = ''.join(c for c in title.lower() if c.isalnum() or c in '-_')
         return safe_title[:50] or 'unknown'
 
+    @classmethod
+    def _infer_content_source(
+        cls,
+        explicit: Optional[str],
+        canonical_url: Optional[str],
+        video_id: Optional[str],
+        record_id: Optional[str]
+    ) -> str:
+        """Infer a normalized content source slug."""
+        known = set(cls.SOURCE_LABELS.keys())
+
+        def _clean(value: Optional[str]) -> str:
+            return str(value or '').strip().lower()
+
+        explicit_slug = _clean(explicit)
+        if explicit_slug in known:
+            return explicit_slug
+
+        canonical = _clean(canonical_url)
+        vid = _clean(video_id)
+        rec = _clean(record_id)
+
+        if not canonical and not vid and not rec:
+            return 'other'
+
+        # Domain-based detection
+        if 'wikipedia.org' in canonical:
+            return 'wikipedia'
+        if 'churchofjesuschrist.org' in canonical or 'lds.org' in canonical:
+            return 'lds'
+        if 'reddit.com' in canonical:
+            return 'reddit'
+        if 'youtube.com' in canonical or 'youtu.be' in canonical:
+            return 'youtube'
+
+        # Identifier-based detection
+        if vid.startswith('reddit:') or rec.startswith('reddit:'):
+            return 'reddit'
+        if len(vid) == 11 and all(ch.isalnum() or ch in '-_' for ch in vid):
+            return 'youtube'
+
+        return 'web'
+
     def _format_report_for_api(
         self,
         row: Dict[str, Any]
@@ -197,6 +315,15 @@ class PostgreSQLContentIndex:
 
         language = analysis_json.get('language') or 'en'
 
+        normalized_source = row.get('normalized_source')
+        inferred_source = self._infer_content_source(
+            normalized_source or row.get('content_source'),
+            row.get('canonical_url'),
+            row.get('video_id'),
+            row.get('id')
+        )
+        source_label = self.SOURCE_LABELS.get(inferred_source, inferred_source.title())
+
         # Summary metadata (only attached for detailed view, but we pass through here)
         summary_variant = row.get('summary_variant') or 'comprehensive'
         summary_text = row.get('summary_text')
@@ -217,6 +344,9 @@ class PostgreSQLContentIndex:
             'canonical_url': row.get('canonical_url') or '',
             'channel': row.get('channel_name') or '',
             'channel_name': row.get('channel_name') or '',
+            'content_source': inferred_source,
+            'source': inferred_source,
+            'source_label': source_label,
             'published_at': self._normalize_datetime(row.get('published_at')),
             'duration_seconds': row.get('duration_seconds') or 0,
             'analysis': {
@@ -322,11 +452,13 @@ class PostgreSQLContentIndex:
         conn = self._get_connection()
         try:
             variant_order_sql = self._variant_order_expression('vs')
+            source_case = self._source_case_expression('c', conn)
 
             # Build base query with summary fallback plus variant aggregation
             query = f"""
                 SELECT
                     c.*,
+                    {source_case} AS normalized_source,
                     ls.variant as summary_variant,
                     ls.text as summary_text,
                     ls.html as summary_html,
@@ -392,6 +524,18 @@ class PostgreSQLContentIndex:
 
                     if cat_conditions:
                         where_conditions.append(f"({' OR '.join(cat_conditions)})")
+
+                # Source filters
+                if 'source' in filters and filters['source']:
+                    sources = filters['source'] if isinstance(filters['source'], list) else [filters['source']]
+                    normalized_sources = [
+                        str(source).strip().lower()
+                        for source in sources
+                        if str(source).strip()
+                    ]
+                    if normalized_sources:
+                        where_conditions.append(f"({source_case}) = ANY(%s)")
+                        params.append(normalized_sources)
 
                 # Channel filters
                 if 'channel' in filters and filters['channel']:
@@ -645,9 +789,11 @@ class PostgreSQLContentIndex:
 
             # Search in titles and summaries with variant fallback
             variant_order_sql = self._variant_order_expression('vs')
+            source_case = self._source_case_expression('c', conn)
             base_query = f"""
                 SELECT
                     c.*,
+                    {source_case} AS normalized_source,
                     ls.variant as summary_variant,
                     ls.text as summary_text,
                     ls.html as summary_html,
@@ -695,12 +841,60 @@ class PostgreSQLContentIndex:
             """
 
             params = [search_term, search_term]
+            where_conditions = []
 
             # Apply additional filters if provided
             if filters:
-                # Add filtering logic similar to get_reports
-                # (simplified for now - can be expanded)
-                pass
+                if 'category' in filters and filters['category']:
+                    categories = filters['category'] if isinstance(filters['category'], list) else [filters['category']]
+                    cat_conditions = []
+                    for cat in categories:
+                        cat_conditions.append("""(
+                            (c.subcategories_json IS NOT NULL AND
+                             c.subcategories_json->'categories' @> %s::jsonb) OR
+                            (c.analysis_json->'categories' IS NOT NULL AND
+                             c.analysis_json->'categories' @> %s::jsonb)
+                        )""")
+                        cat_json = json.dumps([{"category": cat}])
+                        params.extend([cat_json, cat_json])
+                    if cat_conditions:
+                        where_conditions.append(f"({' OR '.join(cat_conditions)})")
+
+                if 'source' in filters and filters['source']:
+                    sources = filters['source'] if isinstance(filters['source'], list) else [filters['source']]
+                    normalized_sources = [
+                        str(source).strip().lower()
+                        for source in sources
+                        if str(source).strip()
+                    ]
+                    if normalized_sources:
+                        where_conditions.append(f"({source_case}) = ANY(%s)")
+                        params.append(normalized_sources)
+
+                if 'channel' in filters and filters['channel']:
+                    channels = filters['channel'] if isinstance(filters['channel'], list) else [filters['channel']]
+                    channel_placeholders = ','.join(['%s'] * len(channels))
+                    where_conditions.append(f"c.channel_name IN ({channel_placeholders})")
+                    params.extend(channels)
+
+                if 'language' in filters and filters['language']:
+                    languages = filters['language'] if isinstance(filters['language'], list) else [filters['language']]
+                    lang_placeholders = ','.join(['%s'] * len(languages))
+                    where_conditions.append(f"c.language IN ({lang_placeholders})")
+                    params.extend(languages)
+
+                if 'has_audio' in filters:
+                    where_conditions.append("c.has_audio = %s")
+                    params.append(filters['has_audio'])
+
+                if 'summary_type' in filters and filters['summary_type']:
+                    summary_types = filters['summary_type'] if isinstance(filters['summary_type'], list) else [filters['summary_type']]
+                    database_variants = [self._get_database_variant(st) for st in summary_types]
+                    where_conditions.append("COALESCE(ls.variant, 'unknown') = ANY(%s)")
+                    params.append(database_variants)
+
+            if where_conditions:
+                base_query += " AND " + " AND ".join(where_conditions)
 
             # Count query
             count_query = f"""
@@ -726,6 +920,9 @@ class PostgreSQLContentIndex:
                 WHERE ls.html IS NOT NULL
                   AND (c.title ILIKE %s OR ls.text ILIKE %s)
             """
+
+            if where_conditions:
+                count_query += " AND " + " AND ".join(where_conditions)
 
             cursor = conn.cursor()
             cursor.execute(count_query, params)
@@ -786,6 +983,34 @@ class PostgreSQLContentIndex:
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            source_case = self._source_case_expression('c', conn)
+
+            # Aggregate sources using normalized slug expression
+            try:
+                cursor.execute(
+                    f"""
+                    SELECT {source_case} AS slug, COUNT(*) AS count
+                    FROM content c
+                    GROUP BY slug
+                    ORDER BY COUNT(*) DESC
+                    """
+                )
+                source_rows = cursor.fetchall()
+            except Exception:
+                logger.exception("Failed to compute source facet counts")
+                source_rows = []
+
+            source_items = []
+            total_count = 0
+            for row in source_rows:
+                slug = (row.get('slug') or 'other').strip().lower() or 'other'
+                count = int(row.get('count') or 0)
+                total_count += count
+                source_items.append({
+                    'value': slug,
+                    'label': self.SOURCE_LABELS.get(slug, slug.title()),
+                    'count': count
+                })
 
             # Optimized SQL query for summary_type facet counts
             cursor.execute("""
@@ -801,12 +1026,12 @@ class PostgreSQLContentIndex:
                 SELECT channel_name,
                        COALESCE(has_audio, FALSE) AS has_audio,
                        analysis_json,
-                       subcategories_json
+                       subcategories_json,
+                       canonical_url,
+                       video_id
                 FROM content
             """)
             rows = cursor.fetchall()
-
-            total_count = len(rows)
 
             language_counter: Counter[str] = Counter()
             content_type_counter: Counter[str] = Counter()
@@ -814,6 +1039,7 @@ class PostgreSQLContentIndex:
             channel_counter: Counter[str] = Counter()
             has_audio_counter: Counter[bool] = Counter()
             category_hierarchy: Dict[str, Dict[str, Any]] = {}
+            source_counter: Counter[str] = Counter()
 
             for row in rows:
                 analysis_json = row.get('analysis_json') or {}
@@ -840,6 +1066,14 @@ class PostgreSQLContentIndex:
                     channel_counter[channel] += 1
 
                 has_audio_counter[bool(row.get('has_audio'))] += 1
+
+                inferred_source = self._infer_content_source(
+                    None,
+                    row.get('canonical_url'),
+                    row.get('video_id'),
+                    None
+                )
+                source_counter[inferred_source] += 1
 
                 structured_categories = (
                     self._parse_subcategories_json(row.get('subcategories_json'))
@@ -874,7 +1108,30 @@ class PostgreSQLContentIndex:
                             entry['count'] += 1
 
             filters: Dict[str, List[Dict[str, Any]]] = {}
-            filters['source'] = [{'value': 'youtube', 'count': total_count}]
+            if source_items:
+                filters['source'] = [
+                    {
+                        'value': item['value'],
+                        'label': item.get('label') or self.SOURCE_LABELS.get(item['value'], item['value'].title()),
+                        'count': item['count']
+                    }
+                    for item in source_items
+                ]
+            else:
+                # Fallback to counts derived from in-memory iteration
+                filters['source'] = [
+                    {
+                        'value': slug,
+                        'label': self.SOURCE_LABELS.get(slug, slug.title()),
+                        'count': count
+                    }
+                    for slug, count in sorted(source_counter.items(), key=lambda x: (-x[1], x[0]))
+                ] or [{
+                    'value': 'youtube',
+                    'label': self.SOURCE_LABELS.get('youtube', 'YouTube'),
+                    'count': sum(source_counter.values())
+                }]
+            filters['content_source'] = filters['source']
 
             filters['languages'] = [  # Changed to plural for JS compatibility
                 {'value': lang, 'count': count}
