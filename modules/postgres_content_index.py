@@ -48,20 +48,6 @@ class PostgreSQLContentIndex:
         case_expression = "CASE " + " ".join(clauses) + f" ELSE {default_rank} END"
         return case_expression
 
-    @staticmethod
-    def _source_case_expression(alias: str = 'c') -> str:
-        """Normalize content source using database fields with sensible fallbacks."""
-        return f"""
-            CASE
-                WHEN TRIM(COALESCE({alias}.content_source, '')) <> ''
-                    THEN LOWER(TRIM({alias}.content_source))
-                WHEN LOWER(COALESCE({alias}.video_id::text, '')) LIKE 'reddit:%'
-                     OR LOWER(COALESCE({alias}.canonical_url::text, '')) LIKE '%reddit.com%'
-                    THEN 'reddit'
-                ELSE 'youtube'
-            END
-        """
-
     def __init__(self, postgres_url: str = None):
         """Initialize with PostgreSQL connection."""
         if not PSYCOPG2_AVAILABLE:
@@ -172,44 +158,6 @@ class PostgreSQLContentIndex:
         safe_title = ''.join(c for c in title.lower() if c.isalnum() or c in '-_')
         return safe_title[:50] or 'unknown'
 
-    @staticmethod
-    def _infer_content_source(
-        explicit: Optional[str],
-        canonical_url: Optional[str],
-        video_id: Optional[str],
-        record_id: Optional[str]
-    ) -> str:
-        """Infer a content source slug using available metadata."""
-        def _safe(value: Optional[str]) -> str:
-            return str(value or '').strip().lower()
-
-        explicit_slug = _safe(explicit)
-        if explicit_slug in {'youtube', 'reddit'}:
-            return explicit_slug
-
-        canonical = _safe(canonical_url)
-        vid = _safe(video_id)
-        rec_id = _safe(record_id)
-
-        def _is_reddit(val: str) -> bool:
-            return val.startswith('reddit:') or 'reddit.com' in val
-
-        def _is_youtube(val: str) -> bool:
-            return (
-                val.startswith('yt:') or
-                val.startswith('youtube:') or
-                'youtube.com' in val or
-                'youtu.be' in val or
-                len(val) == 11
-            )
-
-        if any(_is_reddit(value) for value in (canonical, vid, rec_id)):
-            return 'reddit'
-        if any(_is_youtube(value) for value in (canonical, vid, rec_id)):
-            return 'youtube'
-
-        return 'youtube'
-
     def _format_report_for_api(
         self,
         row: Dict[str, Any]
@@ -262,14 +210,6 @@ class PostgreSQLContentIndex:
         else:
             subcategories_json = None
 
-        normalized_source = row.get('normalized_source')
-        inferred_source = normalized_source or self._infer_content_source(
-            row.get('content_source'),
-            row.get('canonical_url'),
-            row.get('video_id'),
-            row.get('id')
-        )
-
         content_dict = {
             'id': row.get('id') or row.get('video_id') or '',
             'title': row.get('title') or 'Untitled',
@@ -277,8 +217,6 @@ class PostgreSQLContentIndex:
             'canonical_url': row.get('canonical_url') or '',
             'channel': row.get('channel_name') or '',
             'channel_name': row.get('channel_name') or '',
-            'content_source': inferred_source,
-            'source': inferred_source,
             'published_at': self._normalize_datetime(row.get('published_at')),
             'duration_seconds': row.get('duration_seconds') or 0,
             'analysis': {
@@ -384,13 +322,11 @@ class PostgreSQLContentIndex:
         conn = self._get_connection()
         try:
             variant_order_sql = self._variant_order_expression('vs')
-            source_case = self._source_case_expression('c')
 
             # Build base query with summary fallback plus variant aggregation
             query = f"""
                 SELECT
                     c.*,
-                    {source_case} AS normalized_source,
                     ls.variant as summary_variant,
                     ls.text as summary_text,
                     ls.html as summary_html,
@@ -456,18 +392,6 @@ class PostgreSQLContentIndex:
 
                     if cat_conditions:
                         where_conditions.append(f"({' OR '.join(cat_conditions)})")
-
-                # Source filters
-                source_filter_values = filters.get('source') or filters.get('content_source')
-                if source_filter_values:
-                    sources = [
-                        str(s).strip().lower()
-                        for s in (source_filter_values if isinstance(source_filter_values, list) else [source_filter_values])
-                        if str(s).strip()
-                    ]
-                    if sources:
-                        where_conditions.append(f"({source_case}) = ANY(%s)")
-                        params.append(sources)
 
                 # Channel filters
                 if 'channel' in filters and filters['channel']:
@@ -862,7 +786,6 @@ class PostgreSQLContentIndex:
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            source_case = self._source_case_expression('c')
 
             # Optimized SQL query for summary_type facet counts
             cursor.execute("""
@@ -874,37 +797,13 @@ class PostgreSQLContentIndex:
             """)
             summary_type_rows = cursor.fetchall()
 
-            sql_filters = ""
-            params: List[Any] = []
-
-            source_filter_values = (active_filters or {}).get('source') or (active_filters or {}).get('content_source')
-            if source_filter_values:
-                cleaned_sources = [
-                    str(s).strip().lower()
-                    for s in (source_filter_values if isinstance(source_filter_values, list) else [source_filter_values])
-                    if str(s).strip()
-                ]
-                if cleaned_sources:
-                    sql_filters = f"WHERE ({source_case}) = ANY(%s)"
-                    params.append(cleaned_sources)
-
-            cursor.execute(
-                f"""
-                SELECT
-                    id,
-                    channel_name,
-                    COALESCE(has_audio, FALSE) AS has_audio,
-                    analysis_json,
-                    subcategories_json,
-                    canonical_url,
-                    video_id,
-                    content_source,
-                    {source_case} AS normalized_source
-                FROM content c
-                {sql_filters}
-                """,
-                params
-            )
+            cursor.execute("""
+                SELECT channel_name,
+                       COALESCE(has_audio, FALSE) AS has_audio,
+                       analysis_json,
+                       subcategories_json
+                FROM content
+            """)
             rows = cursor.fetchall()
 
             total_count = len(rows)
@@ -914,7 +813,6 @@ class PostgreSQLContentIndex:
             complexity_counter: Counter[str] = Counter()
             channel_counter: Counter[str] = Counter()
             has_audio_counter: Counter[bool] = Counter()
-            source_counter: Counter[str] = Counter()
             category_hierarchy: Dict[str, Dict[str, Any]] = {}
 
             for row in rows:
@@ -942,14 +840,6 @@ class PostgreSQLContentIndex:
                     channel_counter[channel] += 1
 
                 has_audio_counter[bool(row.get('has_audio'))] += 1
-
-                inferred_source = row.get('normalized_source') or self._infer_content_source(
-                    row.get('content_source'),
-                    row.get('canonical_url'),
-                    row.get('video_id'),
-                    row.get('id')
-                )
-                source_counter[inferred_source] += 1
 
                 structured_categories = (
                     self._parse_subcategories_json(row.get('subcategories_json'))
@@ -984,11 +874,7 @@ class PostgreSQLContentIndex:
                             entry['count'] += 1
 
             filters: Dict[str, List[Dict[str, Any]]] = {}
-            filters['source'] = [
-                {'value': slug, 'count': count}
-                for slug, count in sorted(source_counter.items(), key=lambda x: (-x[1], x[0]))
-            ] or [{'value': 'youtube', 'count': total_count}]
-            filters['content_source'] = filters['source']
+            filters['source'] = [{'value': 'youtube', 'count': total_count}]
 
             filters['languages'] = [  # Changed to plural for JS compatibility
                 {'value': lang, 'count': count}
