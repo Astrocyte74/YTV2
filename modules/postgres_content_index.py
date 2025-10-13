@@ -482,11 +482,14 @@ class PostgreSQLContentIndex:
 
                 # Source filters
                 if 'source' in filters and filters['source']:
-                    sources = [str(s).strip().lower() for s in (filters['source'] if isinstance(filters['source'], list) else [filters['source']]) if str(s).strip()]
+                    sources = [
+                        str(s).strip().lower()
+                        for s in (filters['source'] if isinstance(filters['source'], list) else [filters['source']])
+                        if str(s).strip()
+                    ]
                     if sources:
-                        placeholders = ','.join(['%s'] * len(sources))
-                        where_conditions.append(f"({source_case}) IN ({placeholders})")
-                        params.extend(sources)
+                        where_conditions.append(f"({source_case}) = ANY(%s)")
+                        params.append(sources)
 
                 # Has audio filter
                 if 'has_audio' in filters:
@@ -870,9 +873,14 @@ class PostgreSQLContentIndex:
             params: List[Any] = []
 
             if active_filters and active_filters.get('source'):
-                placeholders = ','.join(['%s'] * len(active_filters['source']))
-                sql_filters = f"WHERE ({source_case}) IN ({placeholders})"
-                params.extend([str(s).strip().lower() for s in active_filters['source']])
+                cleaned_sources = [
+                    str(s).strip().lower()
+                    for s in active_filters['source']
+                    if str(s).strip()
+                ]
+                if cleaned_sources:
+                    sql_filters = f"WHERE ({source_case}) = ANY(%s)"
+                    params.append(cleaned_sources)
 
             cursor.execute(f"""
                 SELECT channel_name,
