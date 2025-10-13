@@ -53,16 +53,11 @@ class PostgreSQLContentIndex:
         """Normalize content source using database fields with sensible fallbacks."""
         return f"""
             CASE
-                WHEN COALESCE(NULLIF(TRIM(LOWER({alias}.content_source)), ''), '') <> ''
-                    THEN LOWER({alias}.content_source)
+                WHEN TRIM(COALESCE({alias}.content_source, '')) <> ''
+                    THEN LOWER(TRIM({alias}.content_source))
                 WHEN LOWER(COALESCE({alias}.video_id::text, '')) LIKE 'reddit:%'
                      OR LOWER(COALESCE({alias}.canonical_url::text, '')) LIKE '%reddit.com%'
                     THEN 'reddit'
-                WHEN LOWER(COALESCE({alias}.canonical_url::text, '')) LIKE '%youtube.com%'
-                     OR LOWER(COALESCE({alias}.canonical_url::text, '')) LIKE '%youtu.be%'
-                     OR LOWER(COALESCE({alias}.video_id::text, '')) LIKE 'yt:%'
-                     OR LENGTH(COALESCE({alias}.video_id::text, '')) = 11
-                    THEN 'youtube'
                 ELSE 'youtube'
             END
         """
