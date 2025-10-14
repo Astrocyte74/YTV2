@@ -3198,15 +3198,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             logger.info(f"✅ SQLite database updated: {db_path}")
             
             # Reinitialize content index with new database
-            global content_index, USING_SQLITE
-            try:
-                if USING_SQLITE:
-                    content_index = ContentIndex(str(db_path))
-                    logger.info(f"🔄 Content index reinitialized with new database")
-                else:
-                    logger.warning("⚠️ SQLite backend not available, cannot reinitialize")
-            except Exception as reinit_error:
-                logger.error(f"❌ Failed to reinitialize content index: {reinit_error}")
+            # Postgres-only: no SQLite reinitialization in this build
             
             # Send success response
             self.send_response(200)
