@@ -3065,35 +3065,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         except Exception as e:
                             errors.append(f"Failed to delete audio {audio_path}: {e}")
         
-        # Delete from SQLite database if using SQLite backend
-        if content_index and hasattr(content_index, 'db_path'):
-            try:
-                import sqlite3
-                conn = sqlite3.connect(content_index.db_path)
-                cursor = conn.cursor()
-                
-                # Delete from content_summaries first (foreign key constraint)
-                cursor.execute("DELETE FROM content_summaries WHERE content_id = ? OR content_id LIKE ?", 
-                             (report_id, f"%{report_id}%"))
-                summary_deleted = cursor.rowcount
-                
-                # Delete from content table
-                cursor.execute("DELETE FROM content WHERE id = ? OR video_id = ? OR id LIKE ?", 
-                             (report_id, report_id, f"%{report_id}%"))
-                content_deleted = cursor.rowcount
-                
-                conn.commit()
-                conn.close()
-                
-                if content_deleted > 0 or summary_deleted > 0:
-                    deleted_files.append(f"SQLite: {content_deleted} content, {summary_deleted} summaries")
-                    logger.info(f"Deleted from SQLite: {content_deleted} content records, {summary_deleted} summaries")
-                else:
-                    logger.info(f"No SQLite records found for {report_id}")
-                    
-            except Exception as e:
-                errors.append(f"Failed to delete from SQLite database: {e}")
-                logger.error(f"SQLite deletion error for {report_id}: {e}")
+        # (SQLite deletion removed in Postgres-only mode)
 
         # Delete from PostgreSQL database if using PostgreSQL backend
         video_id = (report_id or "").replace("yt:", "").strip()
