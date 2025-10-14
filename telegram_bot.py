@@ -71,7 +71,6 @@ except ImportError as e:
 
 # Use PostgreSQL backend
 from modules.postgres_content_index import PostgreSQLContentIndex as ContentIndex
-USING_SQLITE = False
 print("✅ Using PostgreSQL content index")
 
 # Load environment variables from .env file and stack.env
@@ -1966,7 +1965,6 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # Get backend information
             backend_info = {
                 "backend": type(content_index).__name__ if content_index else "None",
-                "using_sqlite": USING_SQLITE,
                 "dsn_set": bool(os.getenv("DATABASE_URL_POSTGRES_NEW")),
                 "psycopg2_available": PSYCOPG2_AVAILABLE,
                 "timestamp": datetime.now().isoformat()
