@@ -1,6 +1,0 @@
-timestamp,sqlite_latency_ms,sqlite_status,sqlite_success,postgres_latency_ms,postgres_status,postgres_success,postgres_faster,difference_ms,ratio
-2025-09-18T17:23:43.026197+00:00,190.85,404,False,494.07,200,True,,,
-2025-09-18T17:23:45.649321+00:00,178.26,404,False,436.77,200,True,,,
-2025-09-18T17:23:48.291255+00:00,140.05,404,False,494.78,200,True,,,
-2025-09-18T17:23:50.926716+00:00,161.9,404,False,467.42,200,True,,,
-2025-09-18T17:23:53.489142+00:00,144.29,404,False,409.78,200,True,,,
