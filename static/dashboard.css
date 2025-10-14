@@ -319,19 +319,19 @@ body {
 :root {
     --card-surface: rgba(255, 255, 255, 0.94);
     --card-surface-hover: rgba(255, 255, 255, 0.98);
-    --card-border: rgba(15, 23, 42, 0.08);
-    --card-shadow: 0 24px 36px -28px rgba(15, 23, 42, 0.45);
+    --card-border: rgba(15, 23, 42, 0.10);
+    --card-shadow: 0 20px 34px -28px rgba(15, 23, 42, 0.40);
     --card-shadow-strong: 0 30px 60px -32px rgba(56, 189, 248, 0.35);
     --card-text-muted: rgba(71, 85, 105, 0.75);
 }
 
 .dark {
-    --card-surface: rgba(15, 23, 42, 0.78);
-    --card-surface-hover: rgba(15, 23, 42, 0.86);
+    --card-surface: rgba(15, 23, 42, 0.82);
+    --card-surface-hover: rgba(15, 23, 42, 0.88);
     --card-border: rgba(148, 163, 184, 0.18);
-    --card-shadow: 0 26px 38px -30px rgba(8, 47, 73, 0.7);
-    --card-shadow-strong: 0 36px 64px -32px rgba(37, 99, 235, 0.4);
-    --card-text-muted: rgba(148, 163, 184, 0.75);
+    --card-shadow: 0 20px 34px -28px rgba(8, 47, 73, 0.55);
+    --card-shadow-strong: 0 36px 64px -32px rgba(37, 99, 235, 0.40);
+    --card-text-muted: rgba(148, 163, 184, 0.78);
 }
 
 .summary-card {
@@ -339,7 +339,7 @@ body {
     display: block;
     background: var(--card-surface);
     border: 1px solid var(--card-border);
-    border-radius: 1.5rem;
+    border-radius: 1.25rem;
     box-shadow: var(--card-shadow);
     transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
 }
@@ -359,8 +359,8 @@ body {
 .summary-card__inner {
     position: relative;
     display: flex;
-    gap: 1.5rem;
-    padding: 1.35rem 1.5rem;
+    gap: 1.25rem;
+    padding: 1.1rem 1.25rem;
 }
 
 .summary-card--grid .summary-card__inner {
@@ -379,7 +379,7 @@ body {
     flex: 0 0 240px;
     width: 240px;
     aspect-ratio: 16/9;
-    border-radius: 1.1rem;
+    border-radius: 1rem;
     overflow: hidden;
     background: rgba(15, 23, 42, 0.08);
     box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.12);
@@ -405,11 +405,23 @@ body {
     height: 100%;
     object-fit: cover;
     display: block;
-    transition: transform 240ms ease;
+    transition: transform 180ms ease;
+}
+
+/* Top-left media badge (e.g., Now playing) */
+.summary-card__badge {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 3;
+}
+.summary-card__badge .summary-pill {
+    backdrop-filter: saturate(120%) blur(4px);
+    -webkit-backdrop-filter: saturate(120%) blur(4px);
 }
 
 .summary-card:hover .summary-card__media img {
-    transform: scale(1.02);
+    transform: scale(1.015);
 }
 
 .summary-card__menu-btn {
@@ -693,10 +705,14 @@ body {
 
 .summary-card__title {
     margin: 0;
-    font-size: 1.1rem;
-    line-height: 1.35;
-    font-weight: 650;
+    font-size: 1.2rem;
+    line-height: 1.3;
+    font-weight: 700;
     color: inherit;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .summary-card__title + .summary-card__taxonomy {
@@ -704,7 +720,7 @@ body {
 }
 
 .summary-card__taxonomy {
-    margin-top: 0.65rem;
+    margin-top: 0.5rem;
 }
 
 .summary-card__tags {
@@ -725,11 +741,11 @@ body {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    padding: 0.32rem 0.75rem;
+    padding: 0.28rem 0.6rem;
     border-radius: 999px;
-    border: 1px solid rgba(148, 163, 184, 0.35);
-    background: rgba(248, 250, 252, 0.85);
-    font-size: 0.75rem;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: rgba(248, 250, 252, 0.82);
+    font-size: 0.72rem;
     font-weight: 600;
     color: rgba(15, 23, 42, 0.75);
     cursor: pointer;
@@ -802,7 +818,7 @@ body {
 }
 
 .summary-card__consumption-item--muted {
-    color: rgba(148, 163, 184, 0.65);
+    color: rgba(148, 163, 184, 0.5);
 }
 
 .summary-card__footer {
