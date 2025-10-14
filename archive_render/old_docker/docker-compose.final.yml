@@ -17,7 +17,7 @@ services:
         groupadd -g 1000 appuser && 
         useradd -r -u 1000 -g appuser appuser && 
         chown -R appuser:appuser /app/downloads /app/exports && 
-        su appuser -c 'python /app/telegram_bot.py'
+        su appuser -c 'python /app/server.py'
       "
     
     environment:

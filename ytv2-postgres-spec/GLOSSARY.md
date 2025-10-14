@@ -41,7 +41,7 @@ Render-hosted web interface for content viewing:
 
 ### Telegram Bot
 Interface component within NAS for user interaction:
-- **File**: `telegram_bot.py` (exists in both components with different purposes)
+- **File**: `server.py` (formerly `telegram_bot.py`)
 - **NAS Role**: Actual Telegram bot for user commands
 - **Dashboard Role**: Web server (not Telegram bot, confusing naming)
 - **Processing**: Triggers auto-sync after video processing completion

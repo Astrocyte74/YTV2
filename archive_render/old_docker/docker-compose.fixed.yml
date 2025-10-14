@@ -14,7 +14,7 @@ services:
         apt-get update && 
         apt-get install -y ffmpeg git curl && 
         pip install --no-cache-dir -r /app/requirements.txt && 
-        python /app/telegram_bot.py
+        python /app/server.py
       "
     
     environment:

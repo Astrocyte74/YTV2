@@ -11,7 +11,7 @@ Copy these files from your local YTV2 project to `/volume1/Docker/YTV2/` on your
 
 ```bash
 # Updated core files
-telegram_bot.py          # ✅ Web server integration added
+server.py (formerly telegram_bot.py)          # ✅ Web server integration added
 docker-compose.simple.yml # ✅ Port 8080 exposed
 ```
 
@@ -76,7 +76,7 @@ WEB_BASE_URL=https://chief-inspired-lab.ngrok-free.app
 ### Option B: Via Command Line (if you have SSH access)
 ```bash
 # Copy to NAS (adjust IP address)
-scp telegram_bot.py admin@YOUR_NAS_IP:/volume1/Docker/YTV2/
+scp server.py admin@YOUR_NAS_IP:/volume1/Docker/YTV2/
 scp docker-compose.simple.yml admin@YOUR_NAS_IP:/volume1/Docker/YTV2/
 ```
 

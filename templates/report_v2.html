@@ -290,8 +290,9 @@
         </div>
         <span class="text-slate-900 dark:text-slate-100">Summary</span>
       </h2>
-      <article class="prose prose-lg max-w-none prose-slate dark:prose-invert">
-        <div class="text-slate-700 dark:text-slate-300 leading-relaxed space-y-4">
+      <div id="summaryVariantControls" class="mb-3 flex flex-wrap gap-2 text-xs"></div>
+      <article class="prose prose-lg max-w-none prose-slate dark:prose-invert" data-summary-body>
+        <div id="summaryBody" class="text-slate-700 dark:text-slate-300 leading-relaxed space-y-4">
           {{ summary_html | safe }}
         </div>
       </article>
@@ -326,6 +327,10 @@
     </div>
   </div>
 
+  <script>
+    window.SUMMARY_VARIANT_DATA = {{ summary_variants | tojson | safe }};
+    window.SUMMARY_DEFAULT_VARIANT = {{ summary_variant_default | tojson | safe }};
+  </script>
   <script src="/static/v2/report_v2.js?v={{ cache_bust }}"></script>
 </body>
 </html>
