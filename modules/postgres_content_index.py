@@ -534,6 +534,7 @@ class PostgreSQLContentIndex:
                         if str(source).strip()
                     ]
                     if normalized_sources:
+                        logger.info("Applying source filters: %s", normalized_sources)
                         where_conditions.append(f"({source_case}) = ANY(%s)")
                         params.append(normalized_sources)
 
