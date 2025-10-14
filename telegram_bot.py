@@ -2291,6 +2291,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps(data).encode())
             except ValueError:
                 self.wfile.write(resp.content)
+        except Exception as e:
+            logger.error(f"Error proxying metrics: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "metrics proxy error", "message": str(e)}).encode())
 
     def serve_api_filters(self, query_params: Dict[str, List[str]]):
         """Serve Phase 2 filters API endpoint with faceted search"""
