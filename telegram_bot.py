@@ -2194,6 +2194,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(410, "Endpoint removed")
             elif path == '/api/report-events':
                 self.serve_api_report_events()
+            elif path == '/api/metrics':
+                self.serve_api_metrics()
             elif path.startswith('/api/backup/'):
                 self.send_error(410, "Endpoint removed")
             elif path == '/api/download-database':
@@ -2247,6 +2249,50 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         finally:
             report_event_stream.unregister(client)
             self.close_connection = True
+
+    def serve_api_metrics(self):
+        """Proxy NAS metrics to avoid browser CORS issues."""
+        try:
+            base_url = os.getenv('NGROK_BASE_URL') or os.getenv('NGROK_URL') or ''
+            if not base_url:
+                # No NAS configured; hide metrics panel
+                self.send_response(404)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "nas not configured"}).encode())
+                return
+
+            # Compose target URL
+            target = base_url.rstrip('/') + '/api/metrics'
+
+            headers = {
+                'ngrok-skip-browser-warning': 'true'
+            }
+            user = os.getenv('NGROK_BASIC_USER', '')
+            pwd = os.getenv('NGROK_BASIC_PASS', '')
+
+            auth = (user, pwd) if (user or pwd) else None
+
+            try:
+                resp = requests.get(target, headers=headers, auth=auth, timeout=5)
+            except RequestException as e:
+                logger.warning(f"Metrics proxy request failed: {e}")
+                self.send_response(502)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "metrics upstream unavailable"}).encode())
+                return
+
+            # Forward JSON payload
+            self.send_response(resp.status_code)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            try:
+                data = resp.json()
+                self.wfile.write(json.dumps(data).encode())
+            except ValueError:
+                self.wfile.write(resp.content)
 
     def serve_api_filters(self, query_params: Dict[str, List[str]]):
         """Serve Phase 2 filters API endpoint with faceted search"""

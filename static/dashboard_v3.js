@@ -853,7 +853,8 @@ class AudioDashboard {
 
     async fetchMetrics() {
         try {
-            const response = await this.nasFetch('/api/metrics', { cache: 'no-store' });
+            // Always fetch metrics from our own server to avoid CORS
+            const response = await fetch('/api/metrics', { cache: 'no-store' });
             if (response.status === 404) {
                 if (this.metricsPanel) this.metricsPanel.classList.add('hidden');
                 return;
