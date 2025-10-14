@@ -2961,7 +2961,7 @@ class AudioDashboard {
         const sourceBadge = this.renderSourceBadge(normalizedItem.content_source || 'youtube', normalizedItem.source_label || null);
         const languageChip = this.renderLanguageChip(normalizedItem.analysis?.language);
         const summaryTypeChip = this.renderSummaryTypeChip(normalizedItem.summary_type);
-        const nowPlayingPill = isPlaying ? '<span class="summary-pill summary-pill--playing">Now playing</span>' : '';
+        const nowPlayingPill = isPlaying ? '<div class="summary-card__badge"><span class="summary-pill summary-pill--playing">Now playing</span></div>' : '';
         const identityMetaParts = [sourceBadge, languageChip, summaryTypeChip, nowPlayingPill].filter(Boolean);
         const identityMeta = identityMetaParts.length ? `<div class="summary-card__meta">${identityMetaParts.join('')}</div>` : '';
 
@@ -3002,6 +3002,7 @@ class AudioDashboard {
                 <div class="summary-card__inner">
                     ${outerMenuMarkup}
                     <div class="summary-card__media">
+                        ${nowPlayingPill}
                         ${thumbnail}
                         <div class="summary-card__eq ${isPlaying ? '' : 'hidden'}" data-card-eq>
                             <div class="summary-card__eq-bars">
