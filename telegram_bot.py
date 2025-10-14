@@ -70,41 +70,10 @@ except ImportError as e:
 # Import dashboard components only
 from modules.report_generator import JSONReportGenerator
 
-# Check environment to determine database backend
-READ_FROM_POSTGRES = os.getenv('READ_FROM_POSTGRES', 'false').lower() == 'true'
-
-print(f"🔍 DB mode: READ_FROM_POSTGRES={READ_FROM_POSTGRES}, PSYCOPG2_AVAILABLE={PSYCOPG2_AVAILABLE}")
-print(f"🔍 DATABASE_URL_POSTGRES_NEW set? {bool(os.getenv('DATABASE_URL_POSTGRES_NEW'))}")
-
-# Startup sanity log for debugging after compaction (using print since logger not yet initialized)
-print(
-    f"🔍 Startup: READ_FROM_POSTGRES={READ_FROM_POSTGRES}, "
-    f"PSYCOPG2_AVAILABLE={PSYCOPG2_AVAILABLE}, "
-    f"DATABASE_URL_POSTGRES_NEW set? {bool(os.getenv('DATABASE_URL_POSTGRES_NEW'))}"
-)
-
-if READ_FROM_POSTGRES and PSYCOPG2_AVAILABLE:
-    # Use PostgreSQL backend
-    try:
-        from modules.postgres_content_index import PostgreSQLContentIndex as ContentIndex
-        USING_SQLITE = False
-        print("✅ Using PostgreSQL content index")
-    except Exception as e:
-        print(f"❌ Failed to initialize PostgreSQL content index; falling back to SQLite: {e}")
-        import traceback
-        traceback.print_exc()
-        from modules.sqlite_content_index import SQLiteContentIndex as ContentIndex
-        USING_SQLITE = True
-else:
-    # Fallback to SQLite backend
-    try:
-        from modules.sqlite_content_index import SQLiteContentIndex as ContentIndex
-        USING_SQLITE = True
-        print("Using SQLite content index")
-    except ImportError:
-        from modules.content_index import ContentIndex
-        USING_SQLITE = False
-        print("Using legacy JSON content index")
+# Use PostgreSQL backend
+from modules.postgres_content_index import PostgreSQLContentIndex as ContentIndex
+USING_SQLITE = False
+print("✅ Using PostgreSQL content index")
 
 # Load environment variables from .env file and stack.env
 load_dotenv()
@@ -486,88 +455,13 @@ def create_empty_ytv2_database(db_path: Path):
     conn.close()
     logger.info(f"✅ Empty database created with YTV2 schema")
 
-# Initialize global content index for Phase 2 API
-logger.info(f"🔍 Backend available: SQLite={USING_SQLITE}")
-
+logger.info("🔍 Backend: PostgreSQL")
 try:
-    if USING_SQLITE:
-        # Check multiple possible database locations on Render
-        # Prioritize persistent disk if it exists
-        db_paths = [
-            Path('/app/data/ytv2_content.db'), # Render persistent disk mount
-            Path('./data/ytv2_content.db'),    # Local data subdirectory
-            Path('/app/ytv2_content.db'),      # Root app directory
-            Path('./ytv2_content.db')          # Current directory (fallback)
-        ]
-        
-        database_found = False
-        for db_path in db_paths:
-            if db_path.exists():
-                content_index = ContentIndex(str(db_path))
-                logger.info(f"✅ SQLiteContentIndex initialized with database: {db_path}")
-                database_found = True
-                break
-        
-        if not database_found:
-            logger.warning(f"⚠️ No SQLite database found in paths: {[str(p) for p in db_paths]}")
-            # Try to create empty database with proper schema
-            logger.info("🗄️ Creating empty database with YTV2 schema...")
-            try:
-                # Use the first path that exists or can be created
-                target_path = None
-                for db_path in db_paths:
-                    try:
-                        db_path.parent.mkdir(parents=True, exist_ok=True)
-                        target_path = db_path
-                        break
-                    except:
-                        continue
-                
-                if target_path:
-                    create_empty_ytv2_database(target_path)
-                    content_index = ContentIndex(str(target_path))
-                    logger.info(f"✅ Created and initialized empty database: {target_path}")
-                    database_found = True
-                else:
-                    raise Exception("Could not create database in any path")
-                    
-            except Exception as e:
-                logger.error(f"❌ Failed to create database: {e}")
-                # Fallback to JSON backend
-                USING_SQLITE = False
-                logger.info("🔄 Falling back to JSON backend")
-    
-    if not USING_SQLITE:
-        # Check if we're using PostgreSQL or JSON backend
-        if READ_FROM_POSTGRES and PSYCOPG2_AVAILABLE:
-            # PostgreSQL backend - use named parameter to avoid confusion
-            content_index = ContentIndex(postgres_url=os.getenv('DATABASE_URL_POSTGRES_NEW'))
-            logger.info("📊 PostgreSQL ContentIndex initialized (singleton)")
-        else:
-            # JSON-based index as fallback
-            if Path('/app/data/reports').exists():
-                content_index = ContentIndex('/app/data/reports')
-                logger.info("📊 JSON ContentIndex initialized with Render data directory")
-            else:
-                content_index = ContentIndex('./data/reports')
-                logger.info("📊 JSON ContentIndex initialized with local data directory")
-            
+    content_index = ContentIndex(postgres_url=os.getenv('DATABASE_URL_POSTGRES_NEW'))
+    logger.info("📊 PostgreSQL ContentIndex initialized (singleton)")
 except Exception as e:
     logger.error(f"❌ ContentIndex initialization failed: {e}")
     content_index = None
-
-# Debug logging for future troubleshooting
-if content_index:
-    logger.info(
-        "🔍 ContentIndex ready: READ_FROM_POSTGRES=%s, index=%s, dsn_set=%s",
-        READ_FROM_POSTGRES, type(content_index).__name__,
-        bool(os.getenv("DATABASE_URL_POSTGRES_NEW"))
-    )
-
-# Log final backend status
-if content_index:
-    backend_type = "SQLite" if USING_SQLITE else "JSON"
-    logger.info(f"🎯 Using {backend_type} backend for content management")
 
 # Template loading utility
 def load_template(template_name: str) -> Optional[str]:
@@ -1374,11 +1268,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         }
                         reports_data.append(report_data)
 
-                    backend_type = "PostgreSQL" if not USING_SQLITE else "SQLite"
+    backend_type = "PostgreSQL"
                     logger.info(f"✅ Dashboard using {backend_type} data: {len(reports_data)} reports")
 
                 except Exception as e:
-                    backend_type = "PostgreSQL" if not USING_SQLITE else "SQLite"
+    backend_type = "PostgreSQL"
                     logger.error(f"❌ {backend_type} dashboard data failed: {e}")
                     # Fall back to file-based approach
                     reports_data = []
@@ -2319,7 +2213,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             ]
             
             db_info = {
-                "database_backend": "SQLite" if USING_SQLITE else "JSON",
+                "database_backend": "PostgreSQL",
                 "current_database": str(getattr(content_index, 'db_path', 'unknown')) if 'content_index' in globals() else None,
                 "searched_paths": [],
                 "found_databases": [],
