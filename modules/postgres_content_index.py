@@ -612,11 +612,11 @@ class PostgreSQLContentIndex:
             count_params = list(params)
             try:
                 placeholder_count = count_query.count('%s')
-                logger.debug(
-                    "Count query placeholders=%s param_count=%s params=%s",
+                logger.info(
+                    "Count placeholders=%s param_count=%s where_clause=%s",
                     placeholder_count,
                     len(count_params),
-                    count_params
+                    where_clause
                 )
                 bound_params = count_params[:placeholder_count]
                 if placeholder_count != len(count_params):
@@ -659,11 +659,11 @@ class PostgreSQLContentIndex:
 
             try:
                 placeholder_count = final_query.count('%s')
-                logger.debug(
-                    "Main query placeholders=%s param_count=%s params=%s",
+                logger.info(
+                    "Main placeholders=%s param_count=%s sql_ordered=%s",
                     placeholder_count,
                     len(params),
-                    params
+                    sort_clause
                 )
                 bound_params = params[:placeholder_count]
                 if placeholder_count != len(params):
