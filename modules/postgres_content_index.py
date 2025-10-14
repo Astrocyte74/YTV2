@@ -535,8 +535,9 @@ class PostgreSQLContentIndex:
                     ]
                     if normalized_sources:
                         logger.info("Applying source filters: %s", normalized_sources)
-                        where_conditions.append(f"({source_case}) = ANY(%s)")
-                        params.append(normalized_sources)
+                        placeholders = ','.join(['%s'] * len(normalized_sources))
+                        where_conditions.append(f"({source_case}) IN ({placeholders})")
+                        params.extend(normalized_sources)
 
                 # Channel filters
                 if 'channel' in filters and filters['channel']:
