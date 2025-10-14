@@ -618,8 +618,15 @@ class PostgreSQLContentIndex:
                     len(count_params),
                     count_params
                 )
-                if count_params:
-                    cursor.execute(count_query, count_params)
+                bound_params = count_params[:placeholder_count]
+                if placeholder_count != len(count_params):
+                    logger.debug(
+                        "Trimming count params to match placeholders: was %s now %s",
+                        len(count_params),
+                        len(bound_params)
+                    )
+                if bound_params:
+                    cursor.execute(count_query, bound_params)
                 else:
                     cursor.execute(count_query)
             except Exception:
@@ -658,8 +665,15 @@ class PostgreSQLContentIndex:
                     len(params),
                     params
                 )
-                if params:
-                    cursor.execute(final_query, params)
+                bound_params = params[:placeholder_count]
+                if placeholder_count != len(params):
+                    logger.debug(
+                        "Trimming main params to match placeholders: was %s now %s",
+                        len(params),
+                        len(bound_params)
+                    )
+                if bound_params:
+                    cursor.execute(final_query, bound_params)
                 else:
                     cursor.execute(final_query)
             except Exception:
