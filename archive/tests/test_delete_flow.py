@@ -97,7 +97,7 @@ def test_dashboard_delete_api():
     
     except requests.exceptions.ConnectionError:
         print(f"❌ Could not connect to dashboard at {dashboard_url}")
-        print("   Make sure the dashboard server is running with: python telegram_bot.py")
+        print("   Make sure the dashboard server is running with: python server.py")
         return False
     except Exception as e:
         print(f"❌ DELETE API test error: {e}")

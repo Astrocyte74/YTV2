@@ -52,7 +52,7 @@ class SummaryMigrator:
         )
 
     def format_key_points(self, raw_text: str) -> str:
-        """Format Key Points with structured markers - extracted from telegram_bot.py"""
+        """Format Key Points with structured markers - extracted from server.py (formerly telegram_bot.py)"""
         if not raw_text or not isinstance(raw_text, str):
             return '<p class="mb-6 leading-relaxed">No summary available.</p>'
 
@@ -104,7 +104,7 @@ class SummaryMigrator:
         return '\n'.join(result)
 
     def _render_structured_key_points(self, text: str) -> str:
-        """Render structured Key Points with proper formatting - extracted from telegram_bot.py"""
+        """Render structured Key Points with proper formatting - extracted from server.py (formerly telegram_bot.py)"""
         parts = []
 
         # 1) Extract main topic

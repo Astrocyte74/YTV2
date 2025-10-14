@@ -25,7 +25,7 @@ This is the **dashboard/web interface component** of YTV2 that:
 
 ## Dashboard Server Architecture
 
-### `telegram_bot.py` - Dashboard Server (Not Telegram!)
+### `server.py` (formerly `telegram_bot.py`) - Dashboard Server (Not Telegram!)
 - HTTP server that serves the dashboard interface
 - Handles JSON report endpoints (`/<stem>.json`)
 - Serves audio files via `/exports/<filename>`
