@@ -578,27 +578,10 @@ class PostgreSQLContentIndex:
                     where_conditions.append("COALESCE(ls.variant, 'unknown') = ANY(%s)")
                     params.append(database_variants)
 
-            # Add WHERE clause
+            where_clause = ""
             if where_conditions:
-                query += " AND " + " AND ".join(where_conditions)
+                where_clause = " AND " + " AND ".join(where_conditions)
 
-            # Add sorting
-            if sort == "added_desc":
-                query += " ORDER BY c.indexed_at DESC"
-            elif sort == "video_newest":
-                query += " ORDER BY c.published_at DESC"
-            elif sort == "title_az":
-                query += " ORDER BY c.title ASC"
-            elif sort == "title_za":
-                query += " ORDER BY c.title DESC"
-            elif sort == "channel_az":
-                query += " ORDER BY c.channel_name ASC"
-            elif sort == "channel_za":
-                query += " ORDER BY c.channel_name DESC"
-            else:  # Default to newest
-                query += " ORDER BY c.indexed_at DESC"
-
-            # Count total results for pagination
             count_query = f"""
                 SELECT COUNT(*) as total
                 FROM content c
@@ -620,10 +603,8 @@ class PostgreSQLContentIndex:
                     LIMIT 1
                 ) ls ON true
                 WHERE ls.html IS NOT NULL
-            """
-
-            if where_conditions:
-                count_query += " AND " + " AND ".join(where_conditions)
+                {where_clause}
+            """.format(where_clause=where_clause)
 
             cursor = conn.cursor()
             count_params = list(params)
@@ -641,21 +622,31 @@ class PostgreSQLContentIndex:
                 raise
             total_count = cursor.fetchone()['total']
 
-            # Add pagination
+            sort_clause = " ORDER BY c.indexed_at DESC"
+            if sort == "video_newest":
+                sort_clause = " ORDER BY c.published_at DESC"
+            elif sort == "title_az":
+                sort_clause = " ORDER BY c.title ASC"
+            elif sort == "title_za":
+                sort_clause = " ORDER BY c.title DESC"
+            elif sort == "channel_az":
+                sort_clause = " ORDER BY c.channel_name ASC"
+            elif sort == "channel_za":
+                sort_clause = " ORDER BY c.channel_name DESC"
+
             size = int(size or 20)
             offset = (page - 1) * size
-            query += f" LIMIT {size} OFFSET {offset}"
+            final_query = query + where_clause + sort_clause + f" LIMIT {size} OFFSET {offset}"
 
-            # Execute main query
             try:
-                cursor.execute(query, params)
+                cursor.execute(final_query, params)
             except Exception:
                 logger.error(
                     "Main query failed for get_reports: params=%s count=%s placeholders=%s sql=%s",
                     params,
                     len(params),
-                    query.count('%s'),
-                    query,
+                    final_query.count('%s'),
+                    final_query,
                     exc_info=True
                 )
                 raise
