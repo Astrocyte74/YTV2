@@ -503,8 +503,8 @@ class PostgreSQLContentIndex:
                 ) variants ON true
                 WHERE ls.html IS NOT NULL
             """
-            params = []
-            where_conditions = []
+            params: List[Any] = []
+            where_conditions: List[str] = []
 
             # Apply filters
             if filters:
@@ -626,16 +626,18 @@ class PostgreSQLContentIndex:
                 count_query += " AND " + " AND ".join(where_conditions)
 
             cursor = conn.cursor()
-            cursor.execute(count_query, params)
+            count_params = list(params)
+            cursor.execute(count_query, count_params)
             total_count = cursor.fetchone()['total']
 
             # Add pagination
             offset = (page - 1) * size
             query += f" LIMIT %s OFFSET %s"
-            params.extend([size, offset])
+            query_params = list(params)
+            query_params.extend([size, offset])
 
             # Execute main query
-            cursor.execute(query, params)
+            cursor.execute(query, query_params)
             rows = cursor.fetchall()
 
             formatted_reports = [self._format_report_for_api(dict(row)) for row in rows]
@@ -840,8 +842,8 @@ class PostgreSQLContentIndex:
                   AND (c.title ILIKE %s OR ls.text ILIKE %s)
             """
 
-            params = [search_term, search_term]
-            where_conditions = []
+            params: List[Any] = [search_term, search_term]
+            where_conditions: List[str] = []
 
             # Apply additional filters if provided
             if filters:
@@ -925,7 +927,8 @@ class PostgreSQLContentIndex:
                 count_query += " AND " + " AND ".join(where_conditions)
 
             cursor = conn.cursor()
-            cursor.execute(count_query, params)
+            count_params = list(params)
+            cursor.execute(count_query, count_params)
             total_count = cursor.fetchone()['total']
 
             # Add sorting and pagination
@@ -937,9 +940,10 @@ class PostgreSQLContentIndex:
             """
 
             offset = (page - 1) * size
-            params.extend([search_term, size, offset])
+            query_params = list(params)
+            query_params.extend([search_term, size, offset])
 
-            cursor.execute(query, params)
+            cursor.execute(query, query_params)
             rows = cursor.fetchall()
 
             reports = [self._format_report_for_api(dict(row)) for row in rows]
