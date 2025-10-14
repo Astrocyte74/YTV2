@@ -1,4 +1,4 @@
-# YTV2 PostgreSQL Migration Cutover Plan
+# (Legacy) YTV2 PostgreSQL Migration Cutover Plan
 
 ## Overview
 This document outlines the complete cutover strategy for migrating YTV2 from dual-SQLite architecture to PostgreSQL, including rollback procedures.

@@ -1,4 +1,4 @@
-# Quiz Backend API Documentation
+# (Legacy) Quiz Backend API Documentation
 
 ## API Endpoints Overview
 

@@ -1,4 +1,4 @@
-# 🗄️ YTV2 PostgreSQL Migration Plan - Production-Ready Implementation
+# (Legacy) 🗄️ YTV2 PostgreSQL Migration Plan - Production-Ready Implementation
 
 ## 🚨 CRITICAL CONTEXT
 

@@ -1,4 +1,4 @@
-# CLAUDE.md - YTV2-Dashboard Web Interface
+# (Legacy) CLAUDE.md - YTV2-Dashboard Web Interface
 
 **🚨 CRITICAL: This deploys to Render automatically on git push!**  
 **⚠️ ALWAYS commit and push changes for them to appear on live site:**

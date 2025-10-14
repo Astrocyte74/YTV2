@@ -1,4 +1,4 @@
-# YTV2 Future Features & Enhancements
+# (Legacy) YTV2 Future Features & Enhancements
 
 ## 🌐 Web Content Processing Feature
 

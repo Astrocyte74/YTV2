@@ -1,4 +1,4 @@
-# 🤖 NEW CLAUDE EMPLOYEE HANDOFF - Dashboard Component
+# (Legacy) 🤖 NEW CLAUDE EMPLOYEE HANDOFF - Dashboard Component
 
 ## 🚨 IMMEDIATE CONTEXT (September 15, 2025)
 

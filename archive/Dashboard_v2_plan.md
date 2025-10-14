@@ -1,4 +1,4 @@
-# YTV2 Dashboard V2 Renovation Plan
+# (Legacy) YTV2 Dashboard V2 Renovation Plan
 
 ## Project Overview
 

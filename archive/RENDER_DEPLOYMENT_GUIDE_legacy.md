@@ -1,8 +1,8 @@
-# YTV2 YouTube Summarizer - RENDER Deployment Guide
+# (Legacy) YTV2 YouTube Summarizer - RENDER Deployment Guide
 
 This guide will help you deploy your YTV2 YouTube Summarizer to RENDER.com.
 
-## Prerequisites
+> Archived. See docs/DEPLOY_RENDER.md for the current dashboard deployment guide.
 
 1. A RENDER.com account (free tier available)
 2. A GitHub repository with your YTV2 code
