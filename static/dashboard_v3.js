@@ -3992,16 +3992,6 @@ class AudioDashboard {
                 listen: true,
                 disabled: false
             });
-        } else {
-            segments.push({
-                key: 'listen',
-                label: 'Listen',
-                title: 'Audio not available',
-                icon: '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
-                duration: '',
-                listen: true,
-                disabled: true
-            });
         }
 
         const watchDuration = durations.watch || '';
@@ -4020,7 +4010,8 @@ class AudioDashboard {
                 icon: watchIcon,
                 duration: watchDuration,
                 listen: false,
-                disabled: false
+                disabled: false,
+                primary: !hasAudio
             });
         } else if (source === 'youtube') {
             segments.push({
@@ -4036,6 +4027,7 @@ class AudioDashboard {
 
         const buttonsHtml = segments.map((segment) => {
             const classes = ['variant-toggle', 'summary-card__action', `summary-card__action--${segment.key}`];
+            if (segment.primary) classes.push('summary-card__action--primary');
             if (segment.disabled) classes.push('variant-toggle--disabled');
 
             const attrs = [`data-action="${segment.key}"`];
