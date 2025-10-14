@@ -24,6 +24,39 @@ logger = logging.getLogger(__name__)
 class PostgreSQLContentIndex:
     """PostgreSQL-based content management for YTV2 Dashboard with variant fallback."""
 
+    SUMMARY_VARIANT_ORDER: List[str] = [
+        'key-insights',
+        'bullet-points',
+        'comprehensive',
+        'key-points',
+        'executive',
+        'audio',
+        'audio-fr',
+        'audio-es',
+        'language'
+    ]
+
+    SOURCE_LABELS = {
+        'youtube': 'YouTube',
+        'reddit': 'Reddit',
+        'wikipedia': 'Wikipedia',
+        'lds': 'Gospel Library',
+        'web': 'Web',
+        'other': 'Other'
+    }
+
+    @classmethod
+    def _variant_order_expression(cls, alias: str = 'vs') -> str:
+        clauses = []
+        for idx, variant in enumerate(cls.SUMMARY_VARIANT_ORDER):
+            if variant == 'language':
+                continue
+            clauses.append(f"WHEN {alias}.variant = '{variant}' THEN {idx}")
+
+        default_rank = len(clauses) + 1
+        case_expression = "CASE " + " ".join(clauses) + f" ELSE {default_rank} END"
+        return case_expression
+
     def __init__(self, postgres_url: str = None):
         """Initialize with PostgreSQL connection."""
         if not PSYCOPG2_AVAILABLE:
@@ -34,6 +67,7 @@ class PostgreSQLContentIndex:
             raise ValueError("PostgreSQL URL not provided and DATABASE_URL_POSTGRES_NEW not set")
 
         logger.info(f"Using PostgreSQL database")
+        self._content_source_column_present: Optional[bool] = None
 
     def _get_connection(self):
         """Get PostgreSQL connection with RealDictCursor."""
@@ -41,6 +75,72 @@ class PostgreSQLContentIndex:
             self.postgres_url,
             cursor_factory=psycopg2.extras.RealDictCursor
         )
+
+    def _has_content_source_column(self, conn=None) -> bool:
+        """Detect whether the content table exposes an explicit content_source column."""
+        if self._content_source_column_present is None:
+            close_conn = False
+            cursor = None
+            try:
+                if conn is None:
+                    conn = self._get_connection()
+                    close_conn = True
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = %s AND column_name = %s
+                    LIMIT 1
+                    """,
+                    ('content', 'content_source')
+                )
+                self._content_source_column_present = cursor.fetchone() is not None
+            except Exception:
+                logger.exception("Failed to detect content.content_source column")
+                self._content_source_column_present = False
+            finally:
+                if cursor:
+                    cursor.close()
+                if close_conn and conn:
+                    conn.close()
+        return bool(self._content_source_column_present)
+
+    def _source_case_expression(self, alias: str = 'c', conn=None) -> str:
+        """Build SQL CASE expression that normalizes source slugs without schema assumptions."""
+        clauses = ["CASE"]
+        if self._has_content_source_column(conn):
+            clauses.append(
+                f"WHEN TRIM(COALESCE({alias}.content_source, '')) <> '' "
+                f"THEN LOWER(TRIM({alias}.content_source))"
+            )
+
+        canonical = f"LOWER(COALESCE({alias}.canonical_url::text, ''))"
+        video_id = f"LOWER(COALESCE({alias}.video_id::text, ''))"
+        record_id = f"LOWER(COALESCE({alias}.id::text, ''))"
+
+        # Double percent signs to avoid psycopg2 placeholder parsing
+        clauses.append(
+            f"WHEN {canonical} LIKE '%%wikipedia.org%%' THEN 'wikipedia'"
+        )
+        clauses.append(
+            f"WHEN {canonical} LIKE '%%churchofjesuschrist.org%%' "
+            f"OR {canonical} LIKE '%%lds.org%%' THEN 'lds'"
+        )
+        clauses.append(
+            f"WHEN {canonical} LIKE '%%reddit.com%%' "
+            f"OR {video_id} LIKE 'reddit:%%' "
+            f"OR {record_id} LIKE 'reddit:%%' THEN 'reddit'"
+        )
+        clauses.append(
+            f"WHEN {canonical} LIKE '%%youtube.com%%' "
+            f"OR {canonical} LIKE '%%youtu.be%%' "
+            f"OR {video_id} ~ '^[a-z0-9_-]{{11}}$' THEN 'youtube'"
+        )
+        clauses.append("WHEN TRIM(COALESCE({0}.canonical_url::text, '')) = '' THEN 'other'".format(alias))
+        clauses.append("ELSE 'web'")
+        clauses.append("END")
+        return " ".join(clauses)
 
     # ------------------------------------------------------------------
     # Helper utilities (parity with legacy SQLite implementation)
@@ -134,7 +234,53 @@ class PostgreSQLContentIndex:
         safe_title = ''.join(c for c in title.lower() if c.isalnum() or c in '-_')
         return safe_title[:50] or 'unknown'
 
-    def _format_report_for_api(self, row: Dict[str, Any]) -> Dict[str, Any]:
+    @classmethod
+    def _infer_content_source(
+        cls,
+        explicit: Optional[str],
+        canonical_url: Optional[str],
+        video_id: Optional[str],
+        record_id: Optional[str]
+    ) -> str:
+        """Infer a normalized content source slug."""
+        known = set(cls.SOURCE_LABELS.keys())
+
+        def _clean(value: Optional[str]) -> str:
+            return str(value or '').strip().lower()
+
+        explicit_slug = _clean(explicit)
+        if explicit_slug in known:
+            return explicit_slug
+
+        canonical = _clean(canonical_url)
+        vid = _clean(video_id)
+        rec = _clean(record_id)
+
+        if not canonical and not vid and not rec:
+            return 'other'
+
+        # Domain-based detection
+        if 'wikipedia.org' in canonical:
+            return 'wikipedia'
+        if 'churchofjesuschrist.org' in canonical or 'lds.org' in canonical:
+            return 'lds'
+        if 'reddit.com' in canonical:
+            return 'reddit'
+        if 'youtube.com' in canonical or 'youtu.be' in canonical:
+            return 'youtube'
+
+        # Identifier-based detection
+        if vid.startswith('reddit:') or rec.startswith('reddit:'):
+            return 'reddit'
+        if len(vid) == 11 and all(ch.isalnum() or ch in '-_' for ch in vid):
+            return 'youtube'
+
+        return 'web'
+
+    def _format_report_for_api(
+        self,
+        row: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Match the legacy SQLite API contract for dashboard consumption."""
 
         analysis_json = row.get('analysis_json') or {}
@@ -170,6 +316,15 @@ class PostgreSQLContentIndex:
 
         language = analysis_json.get('language') or 'en'
 
+        normalized_source = row.get('normalized_source')
+        inferred_source = self._infer_content_source(
+            normalized_source or row.get('content_source'),
+            row.get('canonical_url'),
+            row.get('video_id'),
+            row.get('id')
+        )
+        source_label = self.SOURCE_LABELS.get(inferred_source, inferred_source.title())
+
         # Summary metadata (only attached for detailed view, but we pass through here)
         summary_variant = row.get('summary_variant') or 'comprehensive'
         summary_text = row.get('summary_text')
@@ -190,6 +345,9 @@ class PostgreSQLContentIndex:
             'canonical_url': row.get('canonical_url') or '',
             'channel': row.get('channel_name') or '',
             'channel_name': row.get('channel_name') or '',
+            'content_source': inferred_source,
+            'source': inferred_source,
+            'source_label': source_label,
             'published_at': self._normalize_datetime(row.get('published_at')),
             'duration_seconds': row.get('duration_seconds') or 0,
             'analysis': {
@@ -230,6 +388,62 @@ class PostgreSQLContentIndex:
             content_dict['summary_html'] = summary_html or ''
             content_dict['summary_variant'] = summary_variant
 
+        summary_variants_raw = row.get('summary_variants')
+        parsed_variants = self._parse_json_field(summary_variants_raw)
+        variant_order = {name: idx for idx, name in enumerate(self.SUMMARY_VARIANT_ORDER)}
+        cleaned_variants: List[Dict[str, Any]] = []
+
+        if isinstance(parsed_variants, list):
+            for item in parsed_variants:
+                if not isinstance(item, dict):
+                    continue
+
+                variant_id = str(item.get('variant', '')).strip().lower()
+                if not variant_id or variant_id == 'language':
+                    continue
+
+                text_value = item.get('text') or ''
+                html_value = item.get('html') or ''
+                if not text_value and not html_value:
+                    continue
+
+                summary_type_value = item.get('summary_type') or variant_id
+                if isinstance(summary_type_value, str):
+                    summary_type_value = summary_type_value.strip().lower() or variant_id
+
+                kind_value = item.get('kind') or ('audio' if variant_id.startswith('audio') else 'text')
+                generated_at_value = self._normalize_datetime(item.get('generated_at')) if item.get('generated_at') else ''
+
+                cleaned_entry: Dict[str, Any] = {
+                    'variant': variant_id,
+                    'summary_type': summary_type_value,
+                    'text': text_value,
+                    'html': html_value,
+                    'kind': kind_value
+                }
+
+                if generated_at_value:
+                    cleaned_entry['generated_at'] = generated_at_value
+
+                language_value = item.get('language')
+                if language_value:
+                    cleaned_entry['language'] = str(language_value)
+
+                headline_value = item.get('headline')
+                if headline_value:
+                    cleaned_entry['headline'] = str(headline_value)
+
+                cleaned_variants.append(cleaned_entry)
+
+        cleaned_variants.sort(
+            key=lambda item: (
+                variant_order.get(item['variant'], len(variant_order)),
+                item.get('generated_at') or ''
+            )
+        )
+
+        content_dict['summary_variants'] = cleaned_variants
+
         return content_dict
 
     def get_reports(self, filters: Dict[str, Any] = None, sort: str = "newest",
@@ -238,15 +452,20 @@ class PostgreSQLContentIndex:
 
         conn = self._get_connection()
         try:
-            # Build base query with LEFT JOIN LATERAL for variant fallback
-            query = """
+            variant_order_sql = self._variant_order_expression('vs')
+            source_case = self._source_case_expression('c', conn)
+
+            # Build base query with summary fallback plus variant aggregation
+            query = f"""
                 SELECT
                     c.*,
+                    {source_case} AS normalized_source,
                     ls.variant as summary_variant,
                     ls.text as summary_text,
                     ls.html as summary_html,
                     ls.revision as summary_revision,
-                    ls.created_at as summary_created_at
+                    ls.created_at as summary_created_at,
+                    variants.summary_variants AS summary_variants
                 FROM content c
                 LEFT JOIN LATERAL (
                     SELECT s.*
@@ -265,10 +484,28 @@ class PostgreSQLContentIndex:
                     )
                     LIMIT 1
                 ) ls ON true
+                LEFT JOIN LATERAL (
+                    SELECT json_agg(
+                        json_build_object(
+                            'variant', lower(trim(vs.variant)),
+                            'summary_type', lower(trim(vs.variant)),
+                            'text', vs.text,
+                            'html', vs.html,
+                            'generated_at', vs.created_at,
+                            'kind', CASE WHEN vs.variant LIKE 'audio%%' THEN 'audio' ELSE 'text' END,
+                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END
+                        )
+                        ORDER BY {variant_order_sql}, vs.created_at DESC
+                    ) AS summary_variants
+                    FROM v_latest_summaries vs
+                    WHERE vs.video_id = c.video_id
+                      AND (vs.text IS NOT NULL OR vs.html IS NOT NULL)
+                      AND vs.variant <> 'language'
+                ) variants ON true
                 WHERE ls.html IS NOT NULL
             """
-            params = []
-            where_conditions = []
+            params: List[Any] = []
+            where_conditions: List[str] = []
 
             # Apply filters
             if filters:
@@ -288,6 +525,20 @@ class PostgreSQLContentIndex:
 
                     if cat_conditions:
                         where_conditions.append(f"({' OR '.join(cat_conditions)})")
+
+                # Source filters
+                if 'source' in filters and filters['source']:
+                    sources = filters['source'] if isinstance(filters['source'], list) else [filters['source']]
+                    normalized_sources = [
+                        str(source).strip().lower()
+                        for source in sources
+                        if str(source).strip()
+                    ]
+                    if normalized_sources:
+                        logger.info("Applying source filters: %s", normalized_sources)
+                        placeholders = ','.join(['%s'] * len(normalized_sources))
+                        where_conditions.append(f"({source_case}) IN ({placeholders})")
+                        params.extend(normalized_sources)
 
                 # Channel filters
                 if 'channel' in filters and filters['channel']:
@@ -322,28 +573,19 @@ class PostgreSQLContentIndex:
                     where_conditions.append("c.has_audio = %s")
                     params.append(filters['has_audio'])
 
-            # Add WHERE clause
+                # Summary type filter - convert user-friendly names to database variants
+                if 'summary_type' in filters and filters['summary_type']:
+                    summary_types = filters['summary_type'] if isinstance(filters['summary_type'], list) else [filters['summary_type']]
+                    # Convert user-friendly names to database variants
+                    database_variants = [self._get_database_variant(st) for st in summary_types]
+                    where_conditions.append("COALESCE(ls.variant, 'unknown') = ANY(%s)")
+                    params.append(database_variants)
+
+            where_clause = ""
             if where_conditions:
-                query += " AND " + " AND ".join(where_conditions)
+                where_clause = " AND " + " AND ".join(where_conditions)
 
-            # Add sorting
-            if sort == "added_desc":
-                query += " ORDER BY c.indexed_at DESC"
-            elif sort == "video_newest":
-                query += " ORDER BY c.published_at DESC"
-            elif sort == "title_az":
-                query += " ORDER BY c.title ASC"
-            elif sort == "title_za":
-                query += " ORDER BY c.title DESC"
-            elif sort == "channel_az":
-                query += " ORDER BY c.channel_name ASC"
-            elif sort == "channel_za":
-                query += " ORDER BY c.channel_name DESC"
-            else:  # Default to newest
-                query += " ORDER BY c.indexed_at DESC"
-
-            # Count total results for pagination
-            count_query = f"""
+            base_count_query = """
                 SELECT COUNT(*) as total
                 FROM content c
                 LEFT JOIN LATERAL (
@@ -365,21 +607,86 @@ class PostgreSQLContentIndex:
                 ) ls ON true
                 WHERE ls.html IS NOT NULL
             """
-
-            if where_conditions:
-                count_query += " AND " + " AND ".join(where_conditions)
+            count_query = base_count_query + where_clause
 
             cursor = conn.cursor()
-            cursor.execute(count_query, params)
+            count_params = list(params)
+            try:
+                placeholder_count = count_query.count('%s')
+                logger.info(
+                    "Count placeholders=%s param_count=%s where_clause=%s",
+                    placeholder_count,
+                    len(count_params),
+                    where_clause
+                )
+                bound_params = count_params[:placeholder_count]
+                if placeholder_count != len(count_params):
+                    logger.debug(
+                        "Trimming count params to match placeholders: was %s now %s",
+                        len(count_params),
+                        len(bound_params)
+                    )
+                if bound_params:
+                    cursor.execute(count_query, bound_params)
+                else:
+                    cursor.execute(count_query)
+            except Exception:
+                logger.exception(
+                    "Count query failed for get_reports",
+                    extra={
+                        "sql": count_query,
+                        "param_length": len(count_params),
+                        "params_snapshot": list(count_params)[:10]
+                    }
+                )
+                raise
             total_count = cursor.fetchone()['total']
 
-            # Add pagination
-            offset = (page - 1) * size
-            query += f" LIMIT %s OFFSET %s"
-            params.extend([size, offset])
+            sort_clause = " ORDER BY c.indexed_at DESC"
+            if sort == "video_newest":
+                sort_clause = " ORDER BY c.published_at DESC"
+            elif sort == "title_az":
+                sort_clause = " ORDER BY c.title ASC"
+            elif sort == "title_za":
+                sort_clause = " ORDER BY c.title DESC"
+            elif sort == "channel_az":
+                sort_clause = " ORDER BY c.channel_name ASC"
+            elif sort == "channel_za":
+                sort_clause = " ORDER BY c.channel_name DESC"
 
-            # Execute main query
-            cursor.execute(query, params)
+            size = int(size or 20)
+            offset = (page - 1) * size
+            final_query = query + where_clause + sort_clause + f" LIMIT {size} OFFSET {offset}"
+
+            try:
+                placeholder_count = final_query.count('%s')
+                logger.info(
+                    "Main placeholders=%s param_count=%s sql_ordered=%s",
+                    placeholder_count,
+                    len(params),
+                    sort_clause
+                )
+                bound_params = params[:placeholder_count]
+                if placeholder_count != len(params):
+                    logger.debug(
+                        "Trimming main params to match placeholders: was %s now %s",
+                        len(params),
+                        len(bound_params)
+                    )
+                if bound_params:
+                    cursor.execute(final_query, bound_params)
+                else:
+                    cursor.execute(final_query)
+            except Exception:
+                logger.error(
+                    "Main query failed for get_reports: params=%s count=%s placeholders=%s sql=%s",
+                    params,
+                    len(params),
+                    final_query.count('%s'),
+                    final_query,
+                    exc_info=True
+                )
+                raise
             rows = cursor.fetchall()
 
             formatted_reports = [self._format_report_for_api(dict(row)) for row in rows]
@@ -425,14 +732,17 @@ class PostgreSQLContentIndex:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("""
+            variant_order_sql = self._variant_order_expression('vs')
+            cursor.execute(
+                f"""
                 SELECT
                     c.*,
                     ls.variant as summary_variant,
                     ls.text as summary_text,
                     ls.html as summary_html,
                     ls.revision as summary_revision,
-                    ls.created_at as summary_created_at
+                    ls.created_at as summary_created_at,
+                    variants.summary_variants AS summary_variants
                 FROM content c
                 LEFT JOIN LATERAL (
                     SELECT s.*
@@ -451,14 +761,36 @@ class PostgreSQLContentIndex:
                     )
                     LIMIT 1
                 ) ls ON true
+                LEFT JOIN LATERAL (
+                    SELECT json_agg(
+                        json_build_object(
+                            'variant', lower(trim(vs.variant)),
+                            'summary_type', lower(trim(vs.variant)),
+                            'text', vs.text,
+                            'html', vs.html,
+                            'generated_at', vs.created_at,
+                            'kind', CASE WHEN vs.variant LIKE 'audio%%' THEN 'audio' ELSE 'text' END,
+                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END
+                        )
+                        ORDER BY {variant_order_sql}, vs.created_at DESC
+                    ) AS summary_variants
+                    FROM v_latest_summaries vs
+                    WHERE vs.video_id = c.video_id
+                      AND (vs.text IS NOT NULL OR vs.html IS NOT NULL)
+                      AND vs.variant <> 'language'
+                ) variants ON true
                 WHERE (c.video_id = %s OR c.id = %s) AND ls.html IS NOT NULL
-            """, [report_id, report_id])
+                """,
+                [report_id, report_id]
+            )
 
             row = cursor.fetchone()
             if not row:
                 return None
 
-            formatted = self._format_report_for_api(dict(row))
+            row_dict = dict(row)
+
+            formatted = self._format_report_for_api(row_dict)
 
             summary_text = row.get('summary_text') or ''
             summary_html = row.get('summary_html') or ''
@@ -507,14 +839,18 @@ class PostgreSQLContentIndex:
             search_term = f"%{query.strip()}%"
 
             # Search in titles and summaries with variant fallback
-            base_query = """
+            variant_order_sql = self._variant_order_expression('vs')
+            source_case = self._source_case_expression('c', conn)
+            base_query = f"""
                 SELECT
                     c.*,
+                    {source_case} AS normalized_source,
                     ls.variant as summary_variant,
                     ls.text as summary_text,
                     ls.html as summary_html,
                     ls.revision as summary_revision,
-                    ls.created_at as summary_created_at
+                    ls.created_at as summary_created_at,
+                    variants.summary_variants AS summary_variants
                 FROM content c
                 LEFT JOIN LATERAL (
                     SELECT s.*
@@ -533,17 +869,83 @@ class PostgreSQLContentIndex:
                     )
                     LIMIT 1
                 ) ls ON true
+                LEFT JOIN LATERAL (
+                    SELECT json_agg(
+                        json_build_object(
+                            'variant', lower(trim(vs.variant)),
+                            'summary_type', lower(trim(vs.variant)),
+                            'text', vs.text,
+                            'html', vs.html,
+                            'generated_at', vs.created_at,
+                            'kind', CASE WHEN vs.variant LIKE 'audio%%' THEN 'audio' ELSE 'text' END,
+                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END
+                        )
+                        ORDER BY {variant_order_sql}, vs.created_at DESC
+                    ) AS summary_variants
+                    FROM v_latest_summaries vs
+                    WHERE vs.video_id = c.video_id
+                      AND (vs.text IS NOT NULL OR vs.html IS NOT NULL)
+                      AND vs.variant <> 'language'
+                ) variants ON true
                 WHERE ls.html IS NOT NULL
                   AND (c.title ILIKE %s OR ls.text ILIKE %s)
             """
 
-            params = [search_term, search_term]
+            params: List[Any] = [search_term, search_term]
+            where_conditions: List[str] = []
 
             # Apply additional filters if provided
             if filters:
-                # Add filtering logic similar to get_reports
-                # (simplified for now - can be expanded)
-                pass
+                if 'category' in filters and filters['category']:
+                    categories = filters['category'] if isinstance(filters['category'], list) else [filters['category']]
+                    cat_conditions = []
+                    for cat in categories:
+                        cat_conditions.append("""(
+                            (c.subcategories_json IS NOT NULL AND
+                             c.subcategories_json->'categories' @> %s::jsonb) OR
+                            (c.analysis_json->'categories' IS NOT NULL AND
+                             c.analysis_json->'categories' @> %s::jsonb)
+                        )""")
+                        cat_json = json.dumps([{"category": cat}])
+                        params.extend([cat_json, cat_json])
+                    if cat_conditions:
+                        where_conditions.append(f"({' OR '.join(cat_conditions)})")
+
+                if 'source' in filters and filters['source']:
+                    sources = filters['source'] if isinstance(filters['source'], list) else [filters['source']]
+                    normalized_sources = [
+                        str(source).strip().lower()
+                        for source in sources
+                        if str(source).strip()
+                    ]
+                    if normalized_sources:
+                        where_conditions.append(f"({source_case}) = ANY(%s)")
+                        params.append(normalized_sources)
+
+                if 'channel' in filters and filters['channel']:
+                    channels = filters['channel'] if isinstance(filters['channel'], list) else [filters['channel']]
+                    channel_placeholders = ','.join(['%s'] * len(channels))
+                    where_conditions.append(f"c.channel_name IN ({channel_placeholders})")
+                    params.extend(channels)
+
+                if 'language' in filters and filters['language']:
+                    languages = filters['language'] if isinstance(filters['language'], list) else [filters['language']]
+                    lang_placeholders = ','.join(['%s'] * len(languages))
+                    where_conditions.append(f"c.language IN ({lang_placeholders})")
+                    params.extend(languages)
+
+                if 'has_audio' in filters:
+                    where_conditions.append("c.has_audio = %s")
+                    params.append(filters['has_audio'])
+
+                if 'summary_type' in filters and filters['summary_type']:
+                    summary_types = filters['summary_type'] if isinstance(filters['summary_type'], list) else [filters['summary_type']]
+                    database_variants = [self._get_database_variant(st) for st in summary_types]
+                    where_conditions.append("COALESCE(ls.variant, 'unknown') = ANY(%s)")
+                    params.append(database_variants)
+
+            if where_conditions:
+                base_query += " AND " + " AND ".join(where_conditions)
 
             # Count query
             count_query = f"""
@@ -570,8 +972,26 @@ class PostgreSQLContentIndex:
                   AND (c.title ILIKE %s OR ls.text ILIKE %s)
             """
 
+            if where_conditions:
+                count_query += " AND " + " AND ".join(where_conditions)
+
             cursor = conn.cursor()
-            cursor.execute(count_query, params)
+            count_params = list(params)
+            try:
+                if count_params:
+                    cursor.execute(count_query, count_params)
+                else:
+                    cursor.execute(count_query)
+            except Exception:
+                logger.exception(
+                    "Count query failed for search",
+                    extra={
+                        "sql": count_query,
+                        "param_length": len(count_params),
+                        "params_snapshot": list(count_params)[:10]
+                    }
+                )
+                raise
             total_count = cursor.fetchone()['total']
 
             # Add sorting and pagination
@@ -579,13 +999,30 @@ class PostgreSQLContentIndex:
                 ORDER BY
                     CASE WHEN c.title ILIKE %s THEN 1 ELSE 2 END,
                     c.indexed_at DESC
-                LIMIT %s OFFSET %s
             """
 
+            size = int(size or 20)
             offset = (page - 1) * size
-            params.extend([search_term, size, offset])
+            query += f"""
+                LIMIT {size} OFFSET {offset}
+            """
 
-            cursor.execute(query, params)
+            try:
+                combined_params = params + [search_term]
+                if combined_params:
+                    cursor.execute(query, combined_params)
+                else:
+                    cursor.execute(query)
+            except Exception:
+                logger.error(
+                    "Main query failed for search: params=%s count=%s placeholders=%s sql=%s",
+                    combined_params,
+                    len(combined_params),
+                    query.count('%s'),
+                    query,
+                    exc_info=True
+                )
+                raise
             rows = cursor.fetchall()
 
             reports = [self._format_report_for_api(dict(row)) for row in rows]
@@ -594,21 +1031,90 @@ class PostgreSQLContentIndex:
         finally:
             conn.close()
 
+    def _get_user_friendly_summary_type(self, variant: str) -> str:
+        """Map database variants to user-friendly Telegram interface names."""
+        mapping = {
+            'bullet-points': 'Key Points',
+            'audio': 'Audio Summary',
+            'audio-fr': 'Audio français',
+            'audio-es': 'Audio español',
+            'comprehensive': 'Comprehensive',
+            'key-points': 'Key Points',  # Handle both variants
+            'executive': 'Executive Summary',
+            'key-insights': 'Insights',
+            'insights': 'Insights',
+            'unknown': 'Unknown'
+        }
+        return mapping.get(variant, variant.title())  # Fallback to title case
+
+    def _get_database_variant(self, user_friendly_name: str) -> str:
+        """Map user-friendly names back to database variants for filtering."""
+        reverse_mapping = {
+            'Key Points': 'bullet-points',
+            'Audio Summary': 'audio',
+            'Audio français': 'audio-fr',
+            'Audio español': 'audio-es',
+            'Comprehensive': 'comprehensive',
+            'Executive Summary': 'executive',
+            'Insights': 'key-insights',
+            'Unknown': 'unknown'
+        }
+        return reverse_mapping.get(user_friendly_name, user_friendly_name.lower())
+
     def get_filters(self, active_filters: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Build filter payload matching legacy SQLite structure."""
         conn = self._get_connection()
         try:
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            source_case = self._source_case_expression('c', conn)
+
+            # Aggregate sources using normalized slug expression
+            try:
+                cursor.execute(
+                    f"""
+                    SELECT {source_case} AS slug, COUNT(*) AS count
+                    FROM content c
+                    GROUP BY slug
+                    ORDER BY COUNT(*) DESC
+                    """
+                )
+                source_rows = cursor.fetchall()
+            except Exception:
+                logger.exception("Failed to compute source facet counts")
+                source_rows = []
+
+            source_items = []
+            total_count = 0
+            for row in source_rows:
+                slug = (row.get('slug') or 'other').strip().lower() or 'other'
+                count = int(row.get('count') or 0)
+                total_count += count
+                source_items.append({
+                    'value': slug,
+                    'label': self.SOURCE_LABELS.get(slug, slug.title()),
+                    'count': count
+                })
+
+            # Optimized SQL query for summary_type facet counts
+            cursor.execute("""
+                SELECT COALESCE(ls.variant, 'unknown') AS t, COUNT(*) AS c
+                FROM content c
+                LEFT JOIN v_latest_summaries ls ON c.video_id = ls.video_id
+                GROUP BY 1
+                ORDER BY COUNT(*) DESC
+            """)
+            summary_type_rows = cursor.fetchall()
+
             cursor.execute("""
                 SELECT channel_name,
                        COALESCE(has_audio, FALSE) AS has_audio,
                        analysis_json,
-                       subcategories_json
+                       subcategories_json,
+                       canonical_url,
+                       video_id
                 FROM content
             """)
             rows = cursor.fetchall()
-
-            total_count = len(rows)
 
             language_counter: Counter[str] = Counter()
             content_type_counter: Counter[str] = Counter()
@@ -616,6 +1122,7 @@ class PostgreSQLContentIndex:
             channel_counter: Counter[str] = Counter()
             has_audio_counter: Counter[bool] = Counter()
             category_hierarchy: Dict[str, Dict[str, Any]] = {}
+            source_counter: Counter[str] = Counter()
 
             for row in rows:
                 analysis_json = row.get('analysis_json') or {}
@@ -642,6 +1149,14 @@ class PostgreSQLContentIndex:
                     channel_counter[channel] += 1
 
                 has_audio_counter[bool(row.get('has_audio'))] += 1
+
+                inferred_source = self._infer_content_source(
+                    None,
+                    row.get('canonical_url'),
+                    row.get('video_id'),
+                    None
+                )
+                source_counter[inferred_source] += 1
 
                 structured_categories = (
                     self._parse_subcategories_json(row.get('subcategories_json'))
@@ -676,7 +1191,30 @@ class PostgreSQLContentIndex:
                             entry['count'] += 1
 
             filters: Dict[str, List[Dict[str, Any]]] = {}
-            filters['source'] = [{'value': 'youtube', 'count': total_count}]
+            if source_items:
+                filters['source'] = [
+                    {
+                        'value': item['value'],
+                        'label': item.get('label') or self.SOURCE_LABELS.get(item['value'], item['value'].title()),
+                        'count': item['count']
+                    }
+                    for item in source_items
+                ]
+            else:
+                # Fallback to counts derived from in-memory iteration
+                filters['source'] = [
+                    {
+                        'value': slug,
+                        'label': self.SOURCE_LABELS.get(slug, slug.title()),
+                        'count': count
+                    }
+                    for slug, count in sorted(source_counter.items(), key=lambda x: (-x[1], x[0]))
+                ] or [{
+                    'value': 'youtube',
+                    'label': self.SOURCE_LABELS.get('youtube', 'YouTube'),
+                    'count': sum(source_counter.values())
+                }]
+            filters['content_source'] = filters['source']
 
             filters['languages'] = [  # Changed to plural for JS compatibility
                 {'value': lang, 'count': count}
@@ -717,6 +1255,11 @@ class PostgreSQLContentIndex:
                 for bool_val, count in sorted(has_audio_counter.items(), key=lambda x: (-x[1], not x[0]))
             ]
 
+            filters['summary_type'] = [
+                {'value': self._get_user_friendly_summary_type(r['t']), 'count': int(r['c'])}
+                for r in summary_type_rows
+            ]
+
             return filters
 
         finally:
@@ -737,6 +1280,46 @@ class PostgreSQLContentIndex:
     def get_facets(self, active_filters: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """Alias for get_filters() for compatibility with existing API."""
         return self.get_filters(active_filters)
+
+    def get_latest_report_metadata(self) -> Optional[Dict[str, Any]]:
+        """Return minimal metadata for the most recently indexed report."""
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT video_id, summary_type_latest, indexed_at
+                FROM content
+                WHERE indexed_at IS NOT NULL
+                ORDER BY indexed_at DESC
+                LIMIT 1
+                """
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+
+            if isinstance(row, dict):
+                data = row
+            else:
+                data = {
+                    "video_id": row[0],
+                    "summary_type_latest": row[1],
+                    "indexed_at": row[2],
+                }
+
+            return {
+                "video_id": data.get("video_id"),
+                "summary_type": data.get("summary_type_latest"),
+                "indexed_at": self._normalize_datetime(data.get("indexed_at")),
+            }
+        except Exception:
+            logger.exception("Failed to fetch latest report metadata")
+            return None
+        finally:
+            if conn:
+                conn.close()
 
     # ------------------------------------------------------------------
     # Ingest methods for NAS sync (T-Y020C)
@@ -972,3 +1555,36 @@ class PostgreSQLContentIndex:
         finally:
             if conn:
                 conn.close()
+
+    def delete_content(self, video_id: str) -> dict:
+        """Delete a video and its summaries by YouTube video_id."""
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            # Delete summaries first (FK or not, it's safe)
+            cur.execute("""
+                DELETE FROM content_summaries
+                WHERE video_id = %s
+            """, (video_id,))
+            summaries_deleted = cur.rowcount
+
+            # Delete the content row
+            cur.execute("""
+                DELETE FROM content
+                WHERE video_id = %s
+            """, (video_id,))
+            content_deleted = cur.rowcount
+
+            conn.commit()
+            return {
+                "success": True,
+                "content_deleted": int(content_deleted),
+                "summaries_deleted": int(summaries_deleted),
+            }
+        except Exception as e:
+            if conn: conn.rollback()
+            logger.error(f"PostgreSQL deletion error for {video_id}: {e}")
+            return {"success": False, "error": str(e), "content_deleted": 0, "summaries_deleted": 0}
+        finally:
+            if conn: conn.close()

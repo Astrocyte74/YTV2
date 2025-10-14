@@ -65,6 +65,28 @@ const SUBCATEGORY_PARENTS = {
     "Other": "General"
 };
 
+const REPROCESS_VARIANTS = [
+    { id: 'comprehensive', label: 'Comprehensive', icon: '📝', kind: 'text' },
+    { id: 'bullet-points', label: 'Key Points', icon: '🎯', kind: 'text' },
+    { id: 'key-insights', label: 'Insights', icon: '💡', kind: 'text' },
+    { id: 'audio', label: 'Audio (EN)', icon: '🎙️', kind: 'audio' },
+    { id: 'audio-fr', label: 'Audio français', icon: '🎙️🇫🇷', kind: 'audio', language: 'fr', proficiency: true },
+    { id: 'audio-es', label: 'Audio español', icon: '🎙️🇪🇸', kind: 'audio', language: 'es', proficiency: true }
+];
+
+const PROFICIENCY_LEVELS = [
+    { level: 'beginner', icon: '🟢', labels: { default: 'Beginner', fr: 'Débutant', es: 'Principiante' } },
+    { level: 'intermediate', icon: '🟡', labels: { default: 'Intermediate', fr: 'Intermédiaire', es: 'Intermedio' } },
+    { level: 'advanced', icon: '🔵', labels: { default: 'Advanced', fr: 'Avancé', es: 'Avanzado' } }
+];
+
+const VARIANT_META_MAP = REPROCESS_VARIANTS.reduce((map, variant) => {
+    map[variant.id] = variant;
+    return map;
+}, {});
+
+const TEXT_VARIANT_ORDER = REPROCESS_VARIANTS.filter((variant) => variant.kind === 'text').map((variant) => variant.id);
+
 class AudioDashboard {
     constructor() {
         this.currentAudio = null;
@@ -85,9 +107,40 @@ class AudioDashboard {
         // Telemetry buffer
         this.telemetryBuf = [];
         this.telemetryFlushTimer = null;
-        
+        // Realtime ingest state
+        this.eventSource = null;
+        this.realtimeBackoff = 1000;
+        this.realtimeReconnectTimer = null;
+        this.realtimeEventBuffer = [];
+        this.realtimeFlushTimer = null;
+        this.realtimePendingCount = 0;
+        this.latestIndexedAt = null;
+        this.lastRealtimeRefresh = 0;
+        this.pollTimer = null;
+        this.initialLoadComplete = false;
+        this.disableRealtimeSSE = this.shouldDisableRealtimeSSE();
+        this.metricsTimer = null;
+        this.metricsData = null;
+        this.metricsRefreshTimer = null;
+        this.nasBaseUrl = '';
+        this.nasBasicUser = '';
+        this.nasBasicPass = '';
+        this.basicAuthHeader = null;
+        this.hasNasBridge = false;
+        this.reprocessToken = null;
+        this.reprocessTokenSource = null;
+        this.pendingReprocess = null;
+
+        // Filter state helpers
+        this.initialSourceFilters = null;
+
         this.initializeElements();
+        this.initNasConfig();
+        this.updateReprocessFootnote();
+        this.showNowPlayingPlaceholder();
         this.bindEvents();
+        this.initRealtimeUpdates();
+        this.startMetricsPolling();
         this.loadInitialData();
     }
 
@@ -132,16 +185,20 @@ class AudioDashboard {
         // Search and filters
         this.searchInput = document.getElementById('searchInput');
         this.sortToolbar = document.getElementById('sortToolbar');
+        this.sourceFilters = document.getElementById('sourceFilters');
         this.categoryFilters = document.getElementById('categoryFilters');
         this.channelFilters = document.getElementById('channelFilters');
         this.contentTypeFilters = document.getElementById('contentTypeFilters');
         this.complexityFilters = document.getElementById('complexityFilters');
         this.languageFilters = document.getElementById('languageFilters');
+        this.summaryTypeFilters = document.getElementById('summaryTypeFilters');
         
         // Content area
         this.contentGrid = document.getElementById('contentGrid');
         this.resultsTitle = document.getElementById('resultsTitle');
+        this.resultsSubtitle = document.getElementById('resultsSubtitle');
         this.resultsCount = document.getElementById('resultsCount');
+        this.heroBadges = document.getElementById('heroBadges');
         this.pagination = document.getElementById('pagination');
         this.listViewBtn = document.getElementById('listViewBtn');
         this.gridViewBtn = document.getElementById('gridViewBtn');
@@ -168,6 +225,28 @@ class AudioDashboard {
         this.settingsMenu = document.getElementById('settingsMenu');
         this.themeButtons = this.settingsMenu ? this.settingsMenu.querySelectorAll('[data-theme]') : [];
         this.themeMode = localStorage.getItem('ytv2.theme') || 'system';
+
+        // Realtime banner
+        this.realtimeBanner = document.getElementById('realtimeBanner');
+       this.realtimeBannerText = document.getElementById('realtimeBannerText');
+       this.realtimeRefreshBtn = document.getElementById('realtimeRefreshBtn');
+       this.realtimeDismissBtn = document.getElementById('realtimeDismissBtn');
+
+        // Metrics panel
+        this.metricsPanel = document.getElementById('metricsPanel');
+        this.metricsLastIngestEl = document.getElementById('metricsLastIngest');
+        this.metricsCountersEl = document.getElementById('metricsCounters');
+        this.metricsSseEl = document.getElementById('metricsSse');
+
+        // Reprocess modal
+        this.reprocessModal = document.getElementById('reprocessModal');
+        this.reprocessText = document.getElementById('reprocessText');
+        this.reprocessVariantGrid = document.getElementById('reprocessVariantGrid');
+        this.reprocessLanguageLevel = document.getElementById('reprocessLanguageLevel');
+        this.reprocessFootnote = document.getElementById('reprocessFootnote');
+        this.reprocessTokenReset = document.getElementById('reprocessTokenReset');
+        this.confirmReprocessBtn = document.getElementById('confirmReprocessBtn');
+        this.cancelReprocessBtn = document.getElementById('cancelReprocessBtn');
     }
 
     bindEvents() {
@@ -263,6 +342,7 @@ class AudioDashboard {
                 document.querySelectorAll('input[data-filter="category"]').forEach(cb => { cb.checked = true; });
                 document.querySelectorAll('input[data-filter="subcategory"]').forEach(cb => { cb.checked = true; });
                 this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
                 this.loadContent();
             });
         }
@@ -271,6 +351,7 @@ class AudioDashboard {
                 document.querySelectorAll('input[data-filter="category"]').forEach(cb => { cb.checked = false; });
                 document.querySelectorAll('input[data-filter="subcategory"]').forEach(cb => { cb.checked = false; });
                 this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
                 this.loadContent();
             });
         }
@@ -282,6 +363,7 @@ class AudioDashboard {
             selectAllChannels.addEventListener('click', () => {
                 document.querySelectorAll('input[data-filter="channel"]').forEach(cb => { cb.checked = true; });
                 this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
                 this.loadContent();
             });
         }
@@ -289,6 +371,7 @@ class AudioDashboard {
             clearAllChannels.addEventListener('click', () => {
                 document.querySelectorAll('input[data-filter="channel"]').forEach(cb => { cb.checked = false; });
                 this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
                 this.loadContent();
             });
         }
@@ -302,6 +385,7 @@ class AudioDashboard {
                     cb.checked = true;
                 });
                 this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
                 this.loadContent();
             });
         }
@@ -311,10 +395,35 @@ class AudioDashboard {
                     cb.checked = false;
                 });
                 this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
                 this.loadContent();
             });
         }
-        
+
+        // Select All / Clear All buttons for Summary Types
+        const selectAllSummaryTypes = document.getElementById('selectAllSummaryTypes');
+        const clearAllSummaryTypes = document.getElementById('clearAllSummaryTypes');
+        if (selectAllSummaryTypes) {
+            selectAllSummaryTypes.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="summary_type"]').forEach(cb => {
+                    cb.checked = true;
+                });
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
+                this.loadContent();
+            });
+        }
+        if (clearAllSummaryTypes) {
+            clearAllSummaryTypes.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="summary_type"]').forEach(cb => {
+                    cb.checked = false;
+                });
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
+                this.loadContent();
+            });
+        }
+
         // UI controls
         this.queueToggle.addEventListener('click', () => this.toggleQueue());
         if (this.queueClearBtn) this.queueClearBtn.addEventListener('click', () => this.clearQueue());
@@ -412,6 +521,29 @@ class AudioDashboard {
                 }
             }
         });
+
+        if (this.realtimeRefreshBtn) {
+            this.realtimeRefreshBtn.addEventListener('click', () => this.refreshForRealtime());
+        }
+        if (this.realtimeDismissBtn) {
+            this.realtimeDismissBtn.addEventListener('click', () => this.dismissRealtimeBanner());
+        }
+
+        if (this.confirmReprocessBtn) {
+            this.confirmReprocessBtn.addEventListener('click', () => this.submitReprocess());
+        }
+        if (this.cancelReprocessBtn) {
+            this.cancelReprocessBtn.addEventListener('click', () => this.closeReprocessModal());
+        }
+        if (this.reprocessTokenReset) {
+            this.reprocessTokenReset.addEventListener('click', (event) => {
+                event.preventDefault();
+                this.resetStoredReprocessToken();
+            });
+        }
+
+        window.addEventListener('beforeunload', () => this.shutdownRealtime());
+        window.addEventListener('pagehide', () => this.shutdownRealtime());
     }
 
     async loadInitialData() {
@@ -436,15 +568,588 @@ class AudioDashboard {
             if (this.flags.queueEnabled) {
                 this.restoreQueue();
             }
-            // Default select first item (do not autoplay)
-            if (!this.currentAudio && this.currentItems && this.currentItems.length > 0) {
-                const first = this.currentItems[0];
-                this.setCurrentFromItem(first);
+            if (!this.currentAudio) {
+                const playableItems = this.getPlayableItems(this.currentItems);
+                if (playableItems.length) {
+                    this.setCurrentFromItem(playableItems[0]);
+                } else {
+                    this.showNowPlayingPlaceholder();
+                }
             }
         } catch (error) {
             console.error('Failed to load initial data:', error);
             this.showError('Failed to load dashboard data');
+        } finally {
+            this.initialLoadComplete = true;
+            this.flushRealtimeBuffer(true);
         }
+    }
+
+    // Realtime ingest event handling -------------------------------------------------
+
+    initRealtimeUpdates() {
+        if (typeof window === 'undefined') return;
+        if (this.disableRealtimeSSE) {
+            console.info('Realtime SSE disabled by flag; using polling fallback');
+            this.startPollingFallback();
+            return;
+        }
+        if (window.EventSource) {
+            this.connectEventSource();
+        } else {
+            console.warn('EventSource not supported; falling back to polling');
+            this.startPollingFallback();
+        }
+    }
+
+    connectEventSource() {
+        if (typeof window === 'undefined' || !window.EventSource) return;
+        if (this.eventSource) {
+            try { this.eventSource.close(); } catch (_) {}
+        }
+        try {
+            const sseUrl = this.hasNasBridge ? this.buildSseUrl('/api/report-events') : '/api/report-events';
+            const source = new EventSource(sseUrl);
+            this.eventSource = source;
+            source.addEventListener('open', () => {
+                this.realtimeBackoff = 1000;
+                if (this.realtimeReconnectTimer) {
+                    window.clearTimeout(this.realtimeReconnectTimer);
+                    this.realtimeReconnectTimer = null;
+                }
+                this.stopPollingFallback();
+                this.requestMetricsRefresh(500);
+            });
+            source.addEventListener('error', () => {
+                try { source.close(); } catch (_) {}
+                this.eventSource = null;
+                this.scheduleRealtimeReconnect();
+                this.startPollingFallback();
+            });
+            const safeParse = (evt) => {
+                try {
+                    return JSON.parse(evt.data || '{}') || {};
+                } catch (error) {
+                    console.error('Failed to parse SSE event payload', error);
+                    return {};
+                }
+            };
+
+            const successEvents = ['report-added', 'report-synced', 'audio-synced', 'reprocess-complete'];
+            successEvents.forEach((name) => {
+                source.addEventListener(name, (evt) => {
+                    const payload = safeParse(evt);
+                    this.handleReportAddedEvent(payload, { transport: 'sse', eventName: name });
+                });
+            });
+
+            const infoEvents = ['reprocess-scheduled', 'reprocess-requested'];
+            infoEvents.forEach((name) => {
+                source.addEventListener(name, (evt) => {
+                    const payload = safeParse(evt);
+                    this.handleReprocessLifecycle(name, payload);
+                });
+            });
+
+            const failureEvents = [
+                'report-sync-failed',
+                'report-sync-error',
+                'audio-sync-failed',
+                'audio-sync-error',
+                'reprocess-error'
+            ];
+            failureEvents.forEach((name) => {
+                source.addEventListener(name, (evt) => {
+                    const payload = safeParse(evt);
+                    this.handleRealtimeFailure(name, payload);
+                });
+            });
+        } catch (error) {
+            console.error('Failed to connect to report events', error);
+            this.scheduleRealtimeReconnect();
+            this.startPollingFallback();
+        }
+    }
+
+    scheduleRealtimeReconnect() {
+        if (typeof window === 'undefined') return;
+        if (this.realtimeReconnectTimer) return;
+        const delay = this.realtimeBackoff || 1000;
+        this.realtimeReconnectTimer = window.setTimeout(() => {
+            this.realtimeReconnectTimer = null;
+            this.connectEventSource();
+        }, delay);
+        this.realtimeBackoff = Math.min((this.realtimeBackoff || 1000) * 2, 30000);
+    }
+
+    startPollingFallback() {
+        if (typeof window === 'undefined') return;
+        if (this.pollTimer) return;
+        this.pollTimer = window.setInterval(() => this.pollLatestReport(), 45000);
+    }
+
+    stopPollingFallback() {
+        if (typeof window === 'undefined') return;
+        if (this.pollTimer) {
+            window.clearInterval(this.pollTimer);
+            this.pollTimer = null;
+        }
+    }
+
+    async pollLatestReport() {
+        try {
+            const response = await this.nasFetch('/api/reports?latest=true', { cache: 'no-store' });
+            if (!response.ok) return;
+            const payload = await response.json();
+            if (!payload || !payload.report) return;
+            this.handleReportAddedEvent(payload.report, { transport: 'poll', eventName: 'report-synced' });
+        } catch (error) {
+            console.warn('Polling latest report failed', error);
+        }
+    }
+
+    handleReportAddedEvent(data = {}, meta = {}) {
+        if (!data) return;
+        const eventName = (meta.eventName || 'report-added').toLowerCase();
+        let videoId = data.video_id || data.videoId || data.id || null;
+        if (!videoId && meta.videoId) videoId = meta.videoId;
+        if (!videoId) {
+            console.warn('Realtime event missing video_id', data, meta);
+            return;
+        }
+
+        let summaryTypes = data.summary_types || data.summaryTypes || [];
+        if (!Array.isArray(summaryTypes)) {
+            summaryTypes = summaryTypes ? [summaryTypes] : [];
+        }
+        const singleType = data.summary_type || data.summaryType;
+        if (singleType) summaryTypes.push(singleType);
+        summaryTypes = [...new Set(summaryTypes.map((v) => String(v)).filter(Boolean))];
+
+        let timestamp = data.timestamp || data.indexed_at || data.indexedAt || data.created_at || data.updated_at || null;
+        if (!timestamp) {
+            timestamp = new Date().toISOString();
+        }
+        const tsValue = this.normalizeTimestamp(timestamp);
+        const currentTs = this.normalizeTimestamp(this.latestIndexedAt);
+        const bypassRecencyCheck = ['audio-synced', 'reprocess-complete'].includes(eventName);
+        if (!bypassRecencyCheck && currentTs && tsValue && tsValue <= currentTs) {
+            return;
+        }
+        if (tsValue && (!currentTs || tsValue > currentTs)) {
+            this.latestIndexedAt = timestamp;
+        }
+
+        if (eventName === 'audio-synced') {
+            this.showToast(`Audio ready for ${this.describeVideo(data)}`, 'success');
+        }
+        if (eventName === 'reprocess-complete') {
+            this.showToast(`Reprocess finished for ${this.describeVideo(data)}`, 'success');
+        }
+
+        this.realtimeEventBuffer.push({ videoId, summaryTypes, timestamp, meta: { ...meta, eventName } });
+        this.scheduleRealtimeFlush();
+        this.requestMetricsRefresh(2000);
+    }
+
+    scheduleRealtimeFlush() {
+        if (typeof window === 'undefined') return;
+        if (this.realtimeFlushTimer) return;
+        this.realtimeFlushTimer = window.setTimeout(() => this.flushRealtimeBuffer(), 800);
+    }
+
+    flushRealtimeBuffer(force = false) {
+        if (this.realtimeFlushTimer) {
+            window.clearTimeout(this.realtimeFlushTimer);
+            this.realtimeFlushTimer = null;
+        }
+        if (!this.initialLoadComplete && !force) {
+            return;
+        }
+        if (!this.realtimeEventBuffer.length) return;
+
+        const buffer = this.realtimeEventBuffer.splice(0);
+        const uniqueVideoIds = new Set(buffer.map((evt) => evt.videoId).filter(Boolean));
+        const newCount = uniqueVideoIds.size || buffer.length;
+        const eventNames = buffer.map((evt) => (evt.meta && evt.meta.eventName) ? evt.meta.eventName : 'report-added');
+        this.realtimePendingCount += newCount;
+
+        const now = Date.now();
+        const sinceLast = now - (this.lastRealtimeRefresh || 0);
+        const canAutoRefresh = (this.currentPage === 1) || force;
+
+        if (canAutoRefresh && sinceLast > 2000) {
+            this.lastRealtimeRefresh = now;
+            this.currentPage = 1;
+            Promise.resolve(this.loadContent())
+                .catch((error) => console.error('Realtime refresh failed', error))
+                .finally(() => {
+                    this.realtimePendingCount = 0;
+                    this.hideRealtimeBanner();
+                    this.requestMetricsRefresh(1200);
+                });
+        } else {
+            this.showRealtimeBanner(this.realtimePendingCount, eventNames);
+            this.requestMetricsRefresh(2000);
+        }
+    }
+
+    showRealtimeBanner(count, eventNames = []) {
+        if (!this.realtimeBanner || !this.realtimeBannerText) return;
+        let label = count === 1 ? '1 update available' : `${count} updates available`;
+        if (eventNames.length === 1) {
+            label = `${this.formatEventLabel(eventNames[0])} ready`;
+        }
+        this.realtimeBannerText.textContent = label;
+        this.realtimeBanner.classList.remove('hidden');
+        this.realtimeBanner.setAttribute('aria-hidden', 'false');
+    }
+
+    hideRealtimeBanner() {
+        if (!this.realtimeBanner) return;
+        this.realtimeBanner.classList.add('hidden');
+        this.realtimeBanner.setAttribute('aria-hidden', 'true');
+    }
+
+    shutdownRealtime() {
+        if (typeof window !== 'undefined') {
+            if (this.realtimeReconnectTimer) {
+                window.clearTimeout(this.realtimeReconnectTimer);
+                this.realtimeReconnectTimer = null;
+            }
+            if (this.realtimeFlushTimer) {
+                window.clearTimeout(this.realtimeFlushTimer);
+                this.realtimeFlushTimer = null;
+            }
+        }
+        if (this.eventSource) {
+            try {
+                this.eventSource.close();
+            } catch (_) {
+                // already closed
+            }
+            this.eventSource = null;
+        }
+        this.stopPollingFallback();
+        if (this.metricsTimer) {
+            window.clearInterval(this.metricsTimer);
+            this.metricsTimer = null;
+        }
+        if (this.metricsRefreshTimer) {
+            window.clearTimeout(this.metricsRefreshTimer);
+            this.metricsRefreshTimer = null;
+        }
+    }
+
+    startMetricsPolling() {
+        if (typeof window === 'undefined') return;
+        if (this.metricsTimer) {
+            window.clearInterval(this.metricsTimer);
+            this.metricsTimer = null;
+        }
+        this.fetchMetrics();
+        this.metricsTimer = window.setInterval(() => this.fetchMetrics(), 60000);
+    }
+
+    async fetchMetrics() {
+        try {
+            // Always fetch metrics from our own server to avoid CORS
+            const response = await fetch('/api/metrics', { cache: 'no-store' });
+            if (response.status === 404) {
+                if (this.metricsPanel) this.metricsPanel.classList.add('hidden');
+                return;
+            }
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            this.metricsData = data;
+            this.updateMetricsUI(data);
+            if (this.metricsPanel) this.metricsPanel.classList.remove('hidden');
+        } catch (error) {
+            console.warn('Failed to load metrics snapshot', error);
+        }
+    }
+
+    updateMetricsUI(data) {
+        if (!data || !this.metricsPanel) return;
+
+        const success = Number(data.ingest_success ?? data.ingest_success_total ?? data.ingest_success_count ?? 0);
+        const failure = Number(data.ingest_failure ?? data.ingest_failure_total ?? data.ingest_failure_count ?? 0);
+        if (this.metricsCountersEl) {
+            this.metricsCountersEl.textContent = `Ingest ✓ ${success} • ✕ ${failure}`;
+        }
+
+        const sseClients = Number(data.sse_clients_current ?? data.sse_clients ?? 0);
+        if (this.metricsSseEl) {
+            this.metricsSseEl.textContent = `SSE clients: ${sseClients}`;
+        }
+
+        const lastVideo = data.last_ingest_video || data.last_ingest_id || '';
+        const lastTimestamp = data.last_ingest_timestamp || data.last_ingest_time || data.last_ingest_at || '';
+        if (this.metricsLastIngestEl) {
+            if (lastVideo || lastTimestamp) {
+                const label = this.truncateText(lastVideo || '—', 18);
+                const relative = this.formatRelativeTime(lastTimestamp);
+                const parts = [`Last ingest: ${label}`];
+                if (relative) parts.push(relative);
+                this.metricsLastIngestEl.textContent = parts.join(' • ');
+            } else {
+                this.metricsLastIngestEl.textContent = 'Last ingest: —';
+            }
+        }
+    }
+
+    requestMetricsRefresh(delay = 2000) {
+        if (typeof window === 'undefined') return;
+        if (this.metricsRefreshTimer) {
+            window.clearTimeout(this.metricsRefreshTimer);
+        }
+        this.metricsRefreshTimer = window.setTimeout(() => this.fetchMetrics(), delay);
+    }
+
+    handleReprocessLifecycle(eventName, payload = {}) {
+        const label = this.describeVideo(payload);
+        if (eventName === 'reprocess-scheduled') {
+            this.showToast(`Reprocess scheduled for ${label}`, 'info');
+        }
+        if (eventName === 'reprocess-requested') {
+            this.showToast(`Reprocess started for ${label}`, 'info');
+        }
+        this.requestMetricsRefresh(2500);
+    }
+
+    handleRealtimeFailure(eventName, payload = {}) {
+        const label = this.describeVideo(payload);
+        const message = payload.message || payload.error || 'Unexpected error';
+        const text = `${this.formatEventLabel(eventName)} for ${label} failed: ${message}`;
+        this.showToast(text, 'error');
+        this.requestMetricsRefresh(2000);
+    }
+
+    describeVideo(payload = {}) {
+        const title = payload.title || payload.video_title;
+        const videoId = payload.video_id || payload.videoId || payload.id;
+        if (title) return this.truncateText(title, 40);
+        if (videoId) return this.truncateText(videoId, 16);
+        return 'item';
+    }
+
+    formatEventLabel(name) {
+        const map = {
+            'report-added': 'New report',
+            'report-synced': 'Report update',
+            'audio-synced': 'Audio update',
+            'reprocess-scheduled': 'Reprocess scheduled',
+            'reprocess-requested': 'Reprocess started',
+            'reprocess-complete': 'Reprocess complete',
+            'report-sync-failed': 'Report sync failed',
+            'report-sync-error': 'Report sync error',
+            'audio-sync-failed': 'Audio sync failed',
+            'audio-sync-error': 'Audio sync error',
+            'reprocess-error': 'Reprocess error'
+        };
+        return map[name] || name.replace(/[-_]/g, ' ');
+    }
+
+    async refreshForRealtime() {
+        this.hideRealtimeBanner();
+        this.realtimePendingCount = 0;
+        this.currentPage = 1;
+        try {
+            await this.loadContent();
+        } catch (error) {
+            console.error('Realtime refresh failed', error);
+        }
+    }
+
+    dismissRealtimeBanner() {
+        this.realtimePendingCount = 0;
+        this.hideRealtimeBanner();
+    }
+
+    normalizeTimestamp(value) {
+        if (!value) return 0;
+        const parsed = Date.parse(value);
+        return Number.isNaN(parsed) ? 0 : parsed;
+    }
+
+    updateLatestIndexFromItems(items) {
+        if (!Array.isArray(items) || !items.length) return;
+        if (this.currentPage !== 1) return;
+        const firstTs = items[0]?.indexed_at || items[0]?.indexedAt || null;
+        const tsValue = this.normalizeTimestamp(firstTs);
+        const current = this.normalizeTimestamp(this.latestIndexedAt);
+        if (tsValue && (!current || tsValue >= current)) {
+            this.latestIndexedAt = firstTs;
+        }
+    }
+
+    shouldDisableRealtimeSSE() {
+        if (typeof window === 'undefined') {
+            return false;
+        }
+        try {
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('noSSE') || params.get('disableSSE') === '1') {
+                return true;
+            }
+            if (window.localStorage) {
+                const stored = window.localStorage.getItem('ytv2.disableSSE');
+                if (stored === '1') {
+                    return true;
+                }
+            }
+        } catch (error) {
+            console.warn('Unable to evaluate SSE disable flag', error);
+        }
+        return false;
+    }
+
+    initNasConfig() {
+        const cfg = (typeof window !== 'undefined' && window.NAS_CONFIG) || {};
+        this.nasBaseUrl = cfg.base_url || '';
+        this.nasBasicUser = cfg.basic_user || '';
+        this.nasBasicPass = cfg.basic_pass || '';
+        this.hasNasBridge = Boolean(this.nasBaseUrl);
+
+        if (!this.reprocessToken) {
+            this.reprocessToken = (typeof window !== 'undefined' && window.REPROCESS_TOKEN) || null;
+            this.reprocessTokenSource = this.reprocessToken ? 'window' : null;
+        }
+
+        if (!this.reprocessToken && typeof window !== 'undefined') {
+            try {
+                const stored = localStorage.getItem('ytv2.reprocessToken');
+                if (stored) {
+                    this.reprocessToken = stored;
+                    this.reprocessTokenSource = 'storage';
+                }
+            } catch (_) {
+                // Ignore storage errors
+            }
+        }
+
+        if (this.nasBasicUser || this.nasBasicPass) {
+            const credentials = `${this.nasBasicUser || ''}:${this.nasBasicPass || ''}`;
+            this.basicAuthHeader = 'Basic ' + this.encodeBase64(credentials);
+        }
+    }
+
+    joinNasUrl(path) {
+        if (!path) return path;
+        const asString = String(path);
+        if (/^https?:\/\//i.test(asString)) {
+            return asString;
+        }
+        if (!this.nasBaseUrl) return asString;
+        try {
+            return new URL(asString, this.nasBaseUrl).toString();
+        } catch (error) {
+            console.warn('Failed to build NAS URL', error);
+            return asString;
+        }
+    }
+
+    buildSseUrl(path) {
+        if (!path) return path;
+        const asString = String(path);
+        if (/^https?:\/\//i.test(asString)) {
+            return asString;
+        }
+        if (!this.nasBaseUrl) return asString;
+        try {
+            const url = new URL(asString, this.nasBaseUrl);
+            if (this.nasBasicUser || this.nasBasicPass) {
+                url.username = this.nasBasicUser || '';
+                url.password = this.nasBasicPass || '';
+            }
+            url.searchParams.set('ngrok-skip-browser-warning', 'true');
+            return url.toString();
+        } catch (error) {
+            console.warn('Failed to build SSE URL', error);
+            return asString;
+        }
+    }
+
+    nasFetch(path, options = {}) {
+        if (!this.nasBaseUrl) {
+            return fetch(path, options);
+        }
+        const url = this.joinNasUrl(path);
+        const headers = new Headers(options.headers || {});
+        if (this.basicAuthHeader) {
+            headers.set('Authorization', this.basicAuthHeader);
+        }
+        headers.set('ngrok-skip-browser-warning', 'true');
+        return fetch(url, { ...options, headers });
+    }
+
+    getPlayableItems(items = this.currentItems) {
+        if (!Array.isArray(items)) return [];
+        return items.filter(item => item && item.media && item.media.has_audio);
+    }
+
+    rebuildPlaylist(items = this.currentItems) {
+        const playable = this.getPlayableItems(items);
+        this.playlist = playable.map(item => item.file_stem);
+        return playable;
+    }
+
+    getAudioSourceForItem(item) {
+        if (!item || !item.media || !item.media.has_audio) return null;
+        if (item.media.audio_url) return item.media.audio_url;
+        const videoId = item.video_id;
+        if (videoId) return `/exports/by_video/${videoId}.mp3`;
+        const reportId = item.file_stem;
+        return reportId ? `/exports/${reportId}.mp3` : null;
+    }
+
+    resetAudioElement() {
+        if (!this.audioElement) return;
+        try {
+            this.audioElement.pause();
+        } catch (_) {}
+        this.audioElement.removeAttribute('src');
+        this.audioElement.load();
+        if (this.progressBar) this.progressBar.style.width = '0%';
+        if (this.currentTimeEl) this.currentTimeEl.textContent = '0:00';
+        if (this.totalTimeEl) this.totalTimeEl.textContent = '0:00';
+        this.refreshAudioVariantBlocks();
+    }
+
+    showNowPlayingPlaceholder(item = null) {
+        this.currentAudio = null;
+        this.isPlaying = false;
+        this.resetAudioElement();
+
+        if (this.nowPlayingPreview) this.nowPlayingPreview.classList.remove('hidden');
+
+        if (this.nowPlayingTitle) {
+            if (item && item.title) {
+                const label = item.title || 'Summary';
+                this.nowPlayingTitle.textContent = `${label} (no audio)`;
+            } else {
+                this.nowPlayingTitle.textContent = 'Select an audio summary';
+            }
+        }
+
+        if (this.nowPlayingMeta) {
+            this.nowPlayingMeta.textContent = item ? 'Audio not available' : 'Choose a summary with audio';
+        }
+
+        if (this.nowPlayingThumb) {
+            if (item && item.thumbnail_url) {
+                this.nowPlayingThumb.src = item.thumbnail_url;
+                this.nowPlayingThumb.classList.remove('hidden');
+            } else {
+                this.nowPlayingThumb.classList.add('hidden');
+            }
+        }
+
+        this.updatePlayButton();
+        this.updatePlayingCard();
+        this.updateNowPlayingPreview();
     }
 
     // Wait until filters are mounted and at least some have their checked state applied
@@ -500,11 +1205,21 @@ class AudioDashboard {
             const response = await fetch('/api/filters');
             const filters = await response.json();
             
+            const sourceItems = (filters.content_source || filters.source || []).map(item => {
+                const raw = (item.value ?? '').toString();
+                const slug = raw.toLowerCase();
+                const label = item.label || this.prettySourceLabel(slug || raw || 'other');
+                return { ...item, value: slug || 'other', label };
+            });
+            this.renderFilterSection(sourceItems, this.sourceFilters, 'source');
+            this.initialSourceFilters = sourceItems.slice();
+            this.serverSourceFilters = sourceItems.slice();
             this.renderFilterSection(filters.categories, this.categoryFilters, 'category');
             this.renderFilterSection(filters.channels, this.channelFilters, 'channel');
             this.renderFilterSection(filters.content_type, this.contentTypeFilters, 'content_type');
             this.renderFilterSection(filters.complexity_level, this.complexityFilters, 'complexity');
             this.renderLanguageFilters(filters.languages || []);
+            this.renderFilterSection(filters.summary_type, this.summaryTypeFilters, 'summary_type');
             
             // Bind show more toggles after content is loaded
             this.bindShowMoreToggles();
@@ -512,11 +1227,85 @@ class AudioDashboard {
             // Fix 1: Initialize currentFilters after filters render
             // This ensures visual state (checkboxes) matches internal state
             this.currentFilters = this.computeFiltersFromDOM();
+            this.updateHeroBadges();
             console.log('Initialized currentFilters after render:', this.currentFilters);
             
         } catch (error) {
             console.error('Failed to load filters:', error);
         }
+    }
+    
+    augmentSourceFiltersFromItems(items = []) {
+        if (!Array.isArray(items) || !this.sourceFilters) return;
+        const existingFilters = this.initialSourceFilters || [];
+        const baseline = new Map(existingFilters.map(item => [item.value, { ...item }]));
+        const knownSlugs = new Set(baseline.keys());
+
+        const derivedCounts = new Map();
+        for (const item of items) {
+            const { slug, label } = this.inferSource(item);
+            if (!slug) continue;
+            const existing = derivedCounts.get(slug) || { value: slug, label, count: 0 };
+            existing.count += 1;
+            derivedCounts.set(slug, existing);
+        }
+
+        if (!derivedCounts.size) return;
+
+        const serverDefined = Array.isArray(this.serverSourceFilters) && this.serverSourceFilters.length > 0;
+        if (serverDefined) {
+            let added = false;
+            derivedCounts.forEach((entry, slug) => {
+                if (!knownSlugs.has(slug)) {
+                    baseline.set(slug, {
+                        value: slug,
+                        label: entry.label || this.prettySourceLabel(slug),
+                        count: entry.count
+                    });
+                    knownSlugs.add(slug);
+                    added = true;
+                }
+            });
+            if (!added) return;
+        } else {
+            // No server counts; update in-place using derived data
+            baseline.forEach((entry, slug) => {
+                const derived = derivedCounts.get(slug);
+                entry.count = Number.isFinite(derived?.count) ? derived.count : Number(entry.count) || 0;
+            });
+            derivedCounts.forEach((entry, slug) => {
+                if (!baseline.has(slug)) {
+                    baseline.set(slug, {
+                        value: slug,
+                        label: entry.label || this.prettySourceLabel(slug),
+                        count: entry.count
+                    });
+                }
+            });
+        }
+
+        const augmented = Array.from(baseline.values()).sort((a, b) => {
+            if (b.count !== a.count) return b.count - a.count;
+            return (a.label || a.value || '').localeCompare(b.label || b.value || '');
+        });
+        this.initialSourceFilters = augmented;
+
+        const previouslySelected = new Set(this.currentFilters?.source || []);
+        this.renderFilterSection(augmented, this.sourceFilters, 'source');
+
+        const inputs = this.sourceFilters.querySelectorAll('input[data-filter="source"]');
+        inputs.forEach((input) => {
+            const value = input.value;
+            if (previouslySelected.size === 0 || previouslySelected.has(value)) {
+                input.checked = true;
+            } else if (!knownSlugs.has(value)) {
+                // auto-enable brand new sources
+                input.checked = true;
+            }
+        });
+
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateHeroBadges();
     }
     
     bindShowMoreToggles() {
@@ -589,12 +1378,12 @@ class AudioDashboard {
                                 </svg>
                             </button>
                         ` : '<div class="w-5"></div>'}
-                        <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
+                        <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.label || item.value)}</span>
                         <span class="text-xs text-slate-400 dark:text-slate-500 mr-2">${item.count}</span>
                         <button class="filter-only-btn text-xs text-audio-600 hover:text-audio-700 hover:underline" 
                                 data-filter-only="category" 
                                 data-filter-only-value="${this.escapeHtml(item.value)}"
-                                title="Show only ${this.escapeHtml(item.value)}">only</button>
+                                title="Show only ${this.escapeHtml(item.label || item.value)}">only</button>
                     </div>
                     ${hasSubcategories ? `
                         <div id="${categoryId}" class="subcategory-list ml-8 mt-1 hidden">
@@ -606,13 +1395,13 @@ class AudioDashboard {
                                            data-parent-category="${this.escapeHtml(item.value)}"
                                            checked
                                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
-                                    <span class="text-sm text-slate-600 dark:text-slate-300 flex-1">${this.escapeHtml(sub.value)}</span>
+                                    <span class="text-sm text-slate-600 dark:text-slate-300 flex-1">${this.escapeHtml(sub.label || sub.value || sub)}</span>
                                     <span class="text-xs text-slate-400 dark:text-slate-500 mr-2">${sub.count}</span>
                                     <button class="filter-only-btn text-xs text-audio-600 hover:text-audio-700 hover:underline" 
                                             data-filter-only="subcategory" 
                                             data-filter-only-value="${this.escapeHtml(sub.value)}"
                                             data-parent-category="${this.escapeHtml(item.value)}"
-                                            title="Show only ${this.escapeHtml(sub.value)}">only</button>
+                                            title="Show only ${this.escapeHtml(sub.label || sub.value || sub)}">only</button>
                                 </label>
                             `).join('')}
                         </div>
@@ -631,13 +1420,13 @@ class AudioDashboard {
                            data-filter="${filterType}"
                            checked
                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
-                    <span class="text-sm text-slate-700 dark:text-slate-200">${this.escapeHtml(item.value)}</span>
+                    <span class="text-sm text-slate-700 dark:text-slate-200">${this.escapeHtml(item.label || item.value)}</span>
                     <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
                 </label>
                 <button class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors cursor-pointer" 
                         data-filter-only="${filterType}" 
                         data-filter-only-value="${this.escapeHtml(item.value)}"
-                        title="Show only ${this.escapeHtml(item.value)}">only</button>
+                        title="Show only ${this.escapeHtml(item.label || item.value)}">only</button>
             </div>
         `;
         
@@ -763,7 +1552,7 @@ class AudioDashboard {
                        data-filter="language"
                        checked
                        class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
-                <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
+                <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.label || item.value)}</span>
                 <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
             </label>
         `).join('');
@@ -786,7 +1575,7 @@ class AudioDashboard {
                            data-filter="language"
                            checked
                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
-                    <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.value)}</span>
+                    <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.label || item.value)}</span>
                     <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
                 </label>
             `).join('');
@@ -856,6 +1645,7 @@ class AudioDashboard {
         
         // Fix 2: Recompute state from DOM right before fetching (prevents drift)
         this.currentFilters = this.computeFiltersFromDOM();
+        this.updateHeroBadges();
         const facet = this.computeFacetState();
         
         // Helper functions (OpenAI's drop-in solution)
@@ -1062,15 +1852,20 @@ class AudioDashboard {
 
 
             this.currentItems = items;
+            this.augmentSourceFiltersFromItems(items);
+            this.updateLatestIndexFromItems(items);
             this.renderContent(this.currentItems);
             this.renderPagination(data.pagination);
             this.updateResultsInfo(data.pagination);
-            // Default playlist and current item (no autoplay)
-            if (this.currentItems && this.currentItems.length > 0) {
-                this.playlist = this.currentItems.map(i => i.file_stem);
+            const playableItems = this.rebuildPlaylist(this.currentItems);
+            if (playableItems.length > 0) {
                 this.currentTrackIndex = 0;
-                this.setCurrentFromItem(this.currentItems[0]);
+                this.setCurrentFromItem(playableItems[0]);
+            } else {
+                this.currentTrackIndex = -1;
+                this.showNowPlayingPlaceholder();
             }
+            this.renderQueue();
         } catch (error) {
             console.error('Failed to load content:', error);
             this.showError('Failed to load content');
@@ -1112,6 +1907,7 @@ class AudioDashboard {
             ? `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(i => this.createGridCard(i)).join('')}</div>`
             : items.map(i => this.createContentCard(i)).join('');
         this.contentGrid.innerHTML = html;
+        this.decorateCards(items);
 
         // Make whole card clickable (except controls)
         this.contentGrid.querySelectorAll('[data-card]').forEach(card => {
@@ -1157,12 +1953,70 @@ class AudioDashboard {
         }
     }
 
+    decorateCards(items) {
+        const cards = this.contentGrid.querySelectorAll('[data-card]');
+        cards.forEach((card, index) => {
+            if (card.dataset.decorated === 'true') return;
+            const rawItem = items[index];
+            if (!rawItem) return;
+
+            const normalizedItem = this.normalizeCardItem(rawItem);
+            const buttonDurations = this.getButtonDurations(normalizedItem);
+            const hasAudio = Boolean(normalizedItem.media && normalizedItem.media.has_audio);
+            const actionContainer = card.querySelector('[data-action="read"]')?.parentElement;
+            if (!actionContainer) return;
+
+            const { categories, subcatPairs } = this.extractCatsAndSubcats(normalizedItem);
+
+            // Remove legacy category/subcategory containers before injecting new layout
+            const legacyContainers = new Set(
+                Array.from(card.querySelectorAll('button[data-filter-chip="category"], button[data-filter-chip="subcategory"]'))
+                    .map(btn => btn.parentElement)
+            );
+            legacyContainers.forEach(container => {
+                if (container && container.parentElement) container.remove();
+            });
+
+            const categoryMarkup = this.renderCategorySection(normalizedItem.file_stem, categories, subcatPairs);
+            if (categoryMarkup && categoryMarkup.trim()) {
+                actionContainer.insertAdjacentHTML('beforebegin', categoryMarkup);
+            }
+
+            const actionMarkup = this.renderActionBar(normalizedItem, buttonDurations, hasAudio);
+            actionContainer.insertAdjacentHTML('beforebegin', actionMarkup);
+            actionContainer.style.display = 'none';
+
+            card.querySelectorAll('[data-category-toggle]').forEach(btn => {
+                if (!btn.dataset.moreLabel) btn.dataset.moreLabel = btn.textContent;
+                btn.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    const targetId = btn.dataset.categoryToggle;
+                    const extra = card.querySelector(`[data-category-extra="${targetId}"]`);
+                    if (!extra) return;
+                    const expanded = btn.getAttribute('aria-expanded') === 'true';
+                    if (expanded) {
+                        extra.classList.add('hidden');
+                        btn.setAttribute('aria-expanded', 'false');
+                        btn.textContent = btn.dataset.moreLabel || '+ more';
+                    } else {
+                        extra.classList.remove('hidden');
+                        btn.setAttribute('aria-expanded', 'true');
+                        btn.textContent = 'Show less';
+                    }
+                });
+            });
+
+            card.dataset.decorated = 'true';
+        });
+    }
+
     onClickCardAction(e) {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         const card = btn.closest('[data-report-id]');
         if (!card) return;
         e.stopPropagation();
+        if (btn.hasAttribute('disabled') || btn.dataset.disabled !== undefined) return;
         if (btn.dataset.busy) return;
         btn.dataset.busy = '1';
         setTimeout(() => { try { delete btn.dataset.busy; } catch(_){} }, 400);
@@ -1180,11 +2034,21 @@ class AudioDashboard {
             this.sendTelemetry('cta_listen', { id });
         }
         if (action === 'read') { this.handleRead(id); this.sendTelemetry('cta_read', { id }); }
-        if (action === 'watch') { this.openYoutube(card.dataset.videoId); this.sendTelemetry('cta_watch', { id, video_id: card.dataset.videoId }); }
+        if (action === 'watch') {
+            const source = card.dataset.source || 'youtube';
+            const videoId = card.dataset.videoId || '';
+            const canonicalUrl = card.dataset.canonicalUrl || '';
+            this.openSourceLink(source, videoId, canonicalUrl);
+            this.sendTelemetry('cta_watch', { id, source, video_id: videoId || null });
+        }
         if (action === 'delete') { this._lastDeleteTrigger = btn; this.toggleDeletePopover(card, true); }
         if (action === 'menu') { this.toggleKebabMenu(card, true, btn); }
         if (action === 'menu-close') { this.toggleKebabMenu(card, false); }
         if (action === 'copy-link') { this.copyLink(card, id); this.toggleKebabMenu(card, false); }
+        if (action === 'reprocess') {
+            this.toggleKebabMenu(card, false);
+            this.openReprocessModal(id, card);
+        }
         if (action === 'confirm-delete') { this.handleDelete(id, card); this.sendTelemetry('cta_delete', { id }); }
         if (action === 'cancel-delete') this.toggleDeletePopover(card, false);
         if (action === 'collapse') this.collapseCardInline(id);
@@ -1207,7 +2071,22 @@ class AudioDashboard {
             return;
         }
         const url = `https://www.youtube.com/watch?v=${videoId}`;
-        window.open(url, '_blank');
+        const win = window.open(url, '_blank', 'noopener');
+        if (win) win.opener = null;
+    }
+
+    openSourceLink(source, videoId, canonicalUrl) {
+        const slug = (source || 'youtube').toLowerCase();
+        if (slug === 'youtube') {
+            this.openYoutube(videoId);
+            return;
+        }
+        if (!canonicalUrl) {
+            this.showToast('No source link available', 'warn');
+            return;
+        }
+        const win = window.open(canonicalUrl, '_blank', 'noopener');
+        if (win) win.opener = null;
     }
 
     async expandCardInline(id) {
@@ -1262,7 +2141,9 @@ class AudioDashboard {
                 } catch { /* ignore */ }
             }
             if (!ok || !data) throw new Error('No detail available');
-            region.innerHTML = this.renderExpandedContent(data);
+            const expandedContent = this.renderExpandedContent(data);
+            region.innerHTML = expandedContent.html;
+            this.bindExpandedVariantControls(region, expandedContent.variantInfo, expandedContent.defaultVariant);
             // Focus expanded wrapper for a11y (title is sr-only)
             const wrapper = region.querySelector('[data-expanded]');
             if (wrapper) {
@@ -1360,51 +2241,52 @@ class AudioDashboard {
         if (data.channel) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.escapeHtml(data.channel)}</span>`);
         if (data.language) badges.push(`<span class="px-2 py-0.5 rounded bg-slate-700/50 text-slate-200 text-xs">${this.escapeHtml(data.language)}</span>`);
 
-        // Tolerant summary extraction across shapes - handle NEW and OLD formats
-        let summaryRaw = '';
-        // Use new normalization method to handle both string and object summary content
-        let summaryContent = data.summary;
-        let summaryType = data.summary?.type;
+        const fallbackSummary = this.computeFallbackSummaryHtml(data);
+        const variantInfo = this.extractVariantInfo(data, fallbackSummary);
 
-        // Handle different data structures
-        if (typeof summaryContent === 'string') {
-            summaryRaw = summaryContent;
-        } else if (summaryContent && typeof summaryContent === 'object') {
-            // First try direct properties (summary.comprehensive, summary.summary, etc.)
-            if (summaryContent.content) {
-                summaryRaw = this.normalizeSummaryContent(summaryContent.content, summaryType);
-            } else {
-                summaryRaw = this.normalizeSummaryContent(summaryContent, summaryType);
-            }
+        let summaryHtml = fallbackSummary;
+        let defaultVariant = variantInfo.defaultId;
+        if (defaultVariant && variantInfo.map[defaultVariant]) {
+            summaryHtml = variantInfo.map[defaultVariant].html;
+        } else if (variantInfo.order.length) {
+            const first = variantInfo.order[0];
+            summaryHtml = variantInfo.map[first].html;
+            defaultVariant = first;
         }
 
-        // Additional fallbacks if normalization didn't work
-        if (!summaryRaw) summaryRaw = data.analysis?.summary || data.analysis?.summary_text || data.summary_preview || '';
-        
-        // Fallback to bullet arrays if available
-        if (!summaryRaw && Array.isArray(data.summary?.bullets)) {
-            summaryRaw = data.summary.bullets
-                .map(b => (typeof b === 'string' ? `• ${b}` : ''))
-                .filter(Boolean)
-                .join('\n');
-        }
-        if (!summaryRaw && Array.isArray(data.analysis?.key_points)) {
-            summaryRaw = data.analysis.key_points.map(b => typeof b === 'string' ? `• ${b}` : '').filter(Boolean).join('\n');
+        if (!summaryHtml) {
+            summaryHtml = '<p>No summary available.</p>';
         }
 
-        // Final string coercion and cleanup
-        summaryRaw = String(summaryRaw || '').replace(/\r\n?/g, '\n').trim();
-        const summary = this.formatKeyPoints(summaryRaw);
+        const controlsHtml = variantInfo.order.length > 1
+            ? `<div class="flex flex-wrap gap-2 text-xs" data-variant-controls>
+                ${variantInfo.order.map((variantId) => {
+                    const meta = variantInfo.map[variantId];
+                    const icon = meta.icon ? `<span class="text-base">${meta.icon}</span>` : '';
+                    return `<button type="button" data-variant="${variantId}" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border transition variant-toggle">
+                                ${icon}
+                                <span class="font-medium">${meta.label}</span>
+                            </button>`;
+                }).join('')}
+               </div>`
+            : '';
 
-        return `
-          <div class="mt-3 mx-[-1rem] md:mx-[-1rem] sm:mx-0 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3 md:p-4 space-y-3 md:space-y-4" data-expanded>
-            ${badges.length ? `<div class="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-sm flex-wrap">${badges.join('')}</div>` : ''}
+        const html = `
+          <div class="mt-3 mx-[-1rem] md:mx-[-1rem] sm:mx-0 rounded-xl bg-white/80 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3 md:p-4 space-y-3 md:space-y-4" data-expanded data-default-variant="${defaultVariant || ''}">
+            ${badges.length ? `<div class="flex items-center gap-2.5 text-slate-600 dark:text-slate-300 text-sm flex-wrap">${badges.join('')}</div>` : ''}
+            ${controlsHtml}
             <h4 class="sr-only" data-expanded-title>Summary</h4>
-            <div class="prose prose-sm sm:prose-base prose-slate dark:prose-invert max-w-none leading-6 sm:leading-7 w-full break-words">${summary}</div>
+            <div class="prose prose-sm sm:prose-base prose-slate dark:prose-invert max-w-none leading-6 sm:leading-7 w-full break-words" data-summary-body>${summaryHtml}</div>
             <div class="flex items-center justify-end">
               <button class="ybtn ybtn-ghost px-3 py-1.5 rounded-md" data-action="collapse">Collapse</button>
             </div>
           </div>`;
+
+        return {
+            html,
+            variantInfo,
+            defaultVariant
+        };
     }
 
     updateHash(id) {
@@ -1509,16 +2391,465 @@ class AudioDashboard {
         }
     }
 
+    openReprocessModal(reportId, card) {
+        if (!this.reprocessModal) {
+            this.showToast('Reprocess dialog unavailable', 'error');
+            return;
+        }
+        const item = (this.currentItems || []).find((x) => x.file_stem === reportId) || null;
+        const title = item?.title || card?.querySelector('h3')?.textContent?.trim() || reportId;
+        const videoId = item?.video_id || card?.dataset.videoId;
+        if (!videoId) {
+            this.showToast('Missing video id for reprocess', 'error');
+            return;
+        }
+
+        this.pendingReprocess = {
+            id: reportId,
+            videoId,
+            title,
+            hasAudio: Boolean(item?.media?.has_audio || card?.dataset.hasAudio === 'true')
+        };
+
+        if (this.reprocessText) {
+            const safeTitle = this.escapeHtml(title || 'this video');
+            this.reprocessText.innerHTML = `Re-run the summarizer for <strong>${safeTitle}</strong>?`;
+        }
+
+        this.updateReprocessFootnote();
+
+        this.initReprocessState(item);
+        this.renderReprocessVariants();
+        this.renderProficiencyControls();
+
+        this.reprocessModal.classList.remove('hidden');
+        this.reprocessModal.classList.add('flex');
+        this.reprocessModal.setAttribute('aria-hidden', 'false');
+        const focusTarget = this.confirmReprocessBtn || this.cancelReprocessBtn;
+        if (focusTarget) focusTarget.focus();
+    }
+
+    closeReprocessModal() {
+        if (this.reprocessModal) {
+            this.reprocessModal.classList.add('hidden');
+            this.reprocessModal.classList.remove('flex');
+            this.reprocessModal.setAttribute('aria-hidden', 'true');
+        }
+        if (this.confirmReprocessBtn) {
+            this.confirmReprocessBtn.disabled = false;
+        }
+        this.pendingReprocess = null;
+        this.reprocessState = null;
+        if (this.reprocessVariantGrid) this.reprocessVariantGrid.innerHTML = '';
+        if (this.reprocessLanguageLevel) {
+            this.reprocessLanguageLevel.innerHTML = '';
+            this.reprocessLanguageLevel.classList.add('hidden');
+        }
+    }
+
+    initReprocessState(item) {
+        this.reprocessState = {
+            selected: new Set(['comprehensive']),
+            audioLevels: {
+                'audio-fr': 'intermediate',
+                'audio-es': 'intermediate'
+            }
+        };
+
+        if (item?.media?.has_audio) {
+            this.reprocessState.selected.add('audio');
+        }
+    }
+
+    renderReprocessVariants() {
+        if (!this.reprocessVariantGrid) return;
+        const selected = (this.reprocessState && this.reprocessState.selected) || new Set();
+
+        const html = REPROCESS_VARIANTS.map((variant) => {
+            const isActive = selected.has(variant.id);
+            const baseClasses = [
+                'flex', 'items-center', 'gap-2', 'px-3', 'py-2', 'rounded-xl', 'text-sm', 'transition', 'duration-150', 'border'
+            ];
+            if (isActive) {
+                baseClasses.push('bg-gradient-to-r', 'from-audio-500', 'to-indigo-500', 'text-white', 'border-transparent', 'shadow');
+            } else {
+                baseClasses.push('bg-white/85', 'dark:bg-slate-900/60', 'text-slate-600', 'dark:text-slate-200', 'border-white/60', 'dark:border-slate-700/60', 'hover:bg-white');
+            }
+            return `
+                <button type="button" data-variant="${variant.id}" class="${baseClasses.join(' ')}">
+                    <span class="text-lg">${variant.icon}</span>
+                    <span class="font-medium">${variant.label}</span>
+                </button>
+            `;
+        }).join('');
+
+        this.reprocessVariantGrid.innerHTML = html;
+        this.reprocessVariantGrid.querySelectorAll('[data-variant]').forEach((btn) => {
+            btn.addEventListener('click', () => this.toggleVariantSelection(btn.dataset.variant));
+        });
+    }
+
+    renderProficiencyControls() {
+        if (!this.reprocessLanguageLevel) return;
+        const selected = (this.reprocessState && this.reprocessState.selected) || new Set();
+        const activeLanguages = REPROCESS_VARIANTS.filter((variant) => variant.proficiency && selected.has(variant.id));
+
+        if (!activeLanguages.length) {
+            this.reprocessLanguageLevel.innerHTML = '';
+            this.reprocessLanguageLevel.classList.add('hidden');
+            return;
+        }
+
+        const rows = activeLanguages.map((variant) => {
+            const instruction = variant.language === 'fr'
+                ? '🇫🇷 Choisissez votre niveau de français :'
+                : variant.language === 'es'
+                    ? '🇪🇸 Elige tu nivel de español:'
+                    : 'Choose your proficiency:';
+            const current = (this.reprocessState && this.reprocessState.audioLevels[variant.id]) || 'intermediate';
+
+            const buttons = PROFICIENCY_LEVELS.map((opt) => {
+                const label = opt.labels[variant.language] || opt.labels.default;
+                const isActive = current === opt.level;
+                const classes = [
+                    'flex', 'items-center', 'gap-2', 'px-3', 'py-1.5', 'rounded-xl', 'text-xs', 'font-medium', 'transition'
+                ];
+                if (isActive) {
+                    classes.push('bg-audio-500', 'text-white', 'shadow');
+                } else {
+                    classes.push('bg-white/80', 'dark:bg-slate-900/60', 'text-slate-600', 'dark:text-slate-200', 'border', 'border-white/40', 'dark:border-slate-700/50', 'hover:bg-white');
+                }
+                return `
+                    <button type="button" data-proficiency-option data-variant="${variant.id}" data-level="${opt.level}" class="${classes.join(' ')}">
+                        <span>${opt.icon}</span>
+                        <span>${label}</span>
+                    </button>
+                `;
+            }).join('');
+
+            return `
+                <div class="space-y-2" data-language-variant="${variant.id}">
+                    <p class="text-xs text-slate-500">${instruction}</p>
+                    <div class="flex flex-wrap gap-2">${buttons}</div>
+                </div>
+            `;
+        }).join('');
+
+        this.reprocessLanguageLevel.innerHTML = rows;
+        this.reprocessLanguageLevel.classList.remove('hidden');
+        this.reprocessLanguageLevel.querySelectorAll('[data-proficiency-option]').forEach((btn) => {
+            btn.addEventListener('click', () => this.setAudioProficiency(btn.dataset.variant, btn.dataset.level));
+        });
+    }
+
+    toggleVariantSelection(variantId) {
+        if (!this.reprocessState || !variantId) return;
+        const variant = REPROCESS_VARIANTS.find((v) => v.id === variantId);
+        if (!variant) return;
+
+        if (this.reprocessState.selected.has(variantId)) {
+            this.reprocessState.selected.delete(variantId);
+            if (variant.proficiency) {
+                delete this.reprocessState.audioLevels[variantId];
+            }
+        } else {
+            this.reprocessState.selected.add(variantId);
+            if (variant.proficiency && !this.reprocessState.audioLevels[variantId]) {
+                this.reprocessState.audioLevels[variantId] = 'intermediate';
+            }
+        }
+
+        this.renderReprocessVariants();
+        this.renderProficiencyControls();
+    }
+
+    setAudioProficiency(variantId, level) {
+        if (!this.reprocessState || !variantId || !level) return;
+        if (!this.reprocessState.selected.has(variantId)) return;
+        this.reprocessState.audioLevels[variantId] = level;
+        this.renderProficiencyControls();
+    }
+
+    getSelectedSummaryTypes() {
+        if (!this.reprocessState) return [];
+        const results = [];
+        this.reprocessState.selected.forEach((id) => {
+            const variant = REPROCESS_VARIANTS.find((v) => v.id === id);
+            if (!variant) return;
+            if (variant.proficiency) {
+                const level = this.reprocessState.audioLevels[id] || 'intermediate';
+                results.push(`${id}:${level}`);
+            } else {
+                results.push(id);
+            }
+        });
+        return results;
+    }
+
+    computeFallbackSummaryHtml(data) {
+        let summaryRaw = '';
+        let summaryContent = data.summary;
+        let summaryType = data.summary?.type;
+
+        if (typeof summaryContent === 'string') {
+            summaryRaw = summaryContent;
+        } else if (summaryContent && typeof summaryContent === 'object') {
+            if (summaryContent.content) {
+                summaryRaw = this.normalizeSummaryContent(summaryContent.content, summaryType);
+            } else {
+                summaryRaw = this.normalizeSummaryContent(summaryContent, summaryType);
+            }
+        }
+
+        if (!summaryRaw) summaryRaw = data.summary_text || data.analysis?.summary || data.analysis?.summary_text || data.summary_preview || '';
+
+        if (!summaryRaw && Array.isArray(data.summary?.bullets)) {
+            summaryRaw = data.summary.bullets.map((b) => (typeof b === 'string' ? `• ${b}` : '')).filter(Boolean).join('\n');
+        }
+        if (!summaryRaw && Array.isArray(data.analysis?.key_points)) {
+            summaryRaw = data.analysis.key_points.map((b) => (typeof b === 'string' ? `• ${b}` : '')).filter(Boolean).join('\n');
+        }
+
+        summaryRaw = String(summaryRaw || '').replace(/\r\n?/g, '\n').trim();
+        return summaryRaw ? this.formatKeyPoints(summaryRaw) : '';
+    }
+
+    extractVariantInfo(data, fallbackHtml) {
+        const audioSrcForData = this.getAudioSourceForItem(data);
+        const inferredReportId = data?.file_stem || data?.report_id || data?.id || data?.video_id || '';
+
+        const result = {
+            map: {},
+            order: [],
+            defaultId: null,
+            audioSrc: audioSrcForData,
+            reportId: inferredReportId,
+            data
+        };
+
+        const addVariant = (id, payload = {}) => {
+            if (!id) return;
+            const normalized = String(id).toLowerCase();
+            if (normalized === 'language') return;
+
+            const meta = VARIANT_META_MAP[normalized];
+            const isAudioVariant = meta && meta.kind === 'audio';
+
+            let html = payload.html;
+            if (!html && payload.text) {
+                html = this.formatKeyPoints(payload.text);
+            }
+            if (!html && !isAudioVariant) return;
+
+            if (!result.map[normalized]) {
+                const label = meta?.label || this.prettyVariantLabel(normalized);
+                const icon = meta?.icon || '';
+                result.map[normalized] = {
+                    id: normalized,
+                    label,
+                    icon,
+                    html: html || '',
+                    kind: meta?.kind || 'text',
+                    audioSrc: payload.audioSrc || audioSrcForData || null,
+                    raw: payload,
+                    meta
+                };
+                result.order.push(normalized);
+            }
+        };
+
+        const variantArrays = [];
+        if (Array.isArray(data.summary_variants)) variantArrays.push(data.summary_variants);
+        if (Array.isArray(data.summary?.variants)) variantArrays.push(data.summary.variants);
+
+        variantArrays.forEach((arr) => {
+            arr.forEach((item) => {
+                if (!item || typeof item !== 'object') return;
+                const variantId = item.variant || item.summary_type || item.type || item.id || item.name;
+                const html = item.html || item.content?.html || '';
+                const text = item.text || item.content || item.content?.text || '';
+                addVariant(variantId, { html, text });
+            });
+        });
+
+        if (data.summary && typeof data.summary === 'object' && !Array.isArray(data.summary)) {
+            const aliasMap = {
+                comprehensive: 'comprehensive',
+                summary: 'comprehensive',
+                bullet_points: 'bullet-points',
+                bullets: 'bullet-points',
+                key_points: 'bullet-points',
+                key_insights: 'key-insights',
+                insights: 'key-insights'
+            };
+            Object.entries(data.summary).forEach(([key, value]) => {
+                if (typeof value !== 'string') return;
+                const mapped = aliasMap[key];
+                if (!mapped) return;
+                addVariant(mapped, { text: value });
+            });
+        }
+
+        if (!result.order.length && fallbackHtml) {
+            addVariant('comprehensive', { html: fallbackHtml });
+        }
+
+        // Ordering preference
+        const uniqueOrder = [...new Set(result.order)];
+        const textFirst = TEXT_VARIANT_ORDER.filter((id) => uniqueOrder.includes(id));
+        const remaining = uniqueOrder.filter((id) => !textFirst.includes(id));
+        result.order = [...textFirst, ...remaining];
+
+        const preferred = [data.summary_type, data.summary?.type, data.summary_type_latest, data.summary?.variant];
+        for (const candidate of preferred) {
+            const norm = candidate && String(candidate).toLowerCase();
+            if (norm && result.map[norm]) {
+                result.defaultId = norm;
+                break;
+            }
+        }
+        if (!result.defaultId && result.order.length) {
+            result.defaultId = result.order[0];
+        }
+
+        return result;
+    }
+
+    bindExpandedVariantControls(region, variantInfo, defaultVariant) {
+        if (!variantInfo || !variantInfo.order || variantInfo.order.length <= 1) return;
+        const controls = region.querySelector('[data-variant-controls]');
+        const body = region.querySelector('[data-summary-body]');
+        if (!controls || !body) return;
+
+        const setActive = (variantId) => {
+            if (!variantId || !variantInfo.map[variantId]) return;
+            const entry = variantInfo.map[variantId];
+            controls.querySelectorAll('[data-variant]').forEach((btn) => {
+                const isActive = btn.dataset.variant === variantId;
+                btn.classList.toggle('bg-audio-500', isActive);
+                btn.classList.toggle('text-white', isActive);
+                btn.classList.toggle('border-transparent', isActive);
+                btn.classList.toggle('shadow', isActive);
+                btn.classList.toggle('bg-white/80', !isActive);
+                btn.classList.toggle('dark:bg-slate-900/60', !isActive);
+                btn.classList.toggle('text-slate-600', !isActive);
+                btn.classList.toggle('dark:text-slate-200', !isActive);
+                btn.classList.toggle('border-white/60', !isActive);
+                btn.classList.toggle('dark:border-slate-700/60', !isActive);
+            });
+
+            if (entry.kind === 'audio') {
+                const card = region.closest('[data-card]');
+                const reportId = card?.dataset.reportId || variantInfo.reportId || '';
+                let audioSrc = entry.audioSrc || variantInfo.audioSrc || null;
+                if (!audioSrc && card) {
+                    const videoId = card.dataset.videoId;
+                    if (videoId) audioSrc = `/exports/by_video/${videoId}.mp3`;
+                    else if (reportId) audioSrc = `/exports/${reportId}.mp3`;
+                }
+                body.innerHTML = this.renderInlineAudioVariant(reportId, entry, audioSrc);
+                this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
+            } else {
+                body.innerHTML = entry.html || '<p class="text-sm text-slate-500">No summary available for this variant.</p>';
+            }
+            controls.dataset.currentVariant = variantId;
+            this.refreshAudioVariantBlocks();
+        };
+
+        controls.querySelectorAll('[data-variant]').forEach((btn) => {
+            btn.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setActive(btn.dataset.variant);
+            });
+        });
+
+        setActive(defaultVariant || variantInfo.order[0]);
+    }
+
+    prettyVariantLabel(id) {
+        const spaced = id.replace(/[-_]+/g, ' ');
+        return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+    }
+
+    async submitReprocess() {
+        if (!this.pendingReprocess) return;
+        const videoId = this.pendingReprocess.videoId;
+        if (!videoId) {
+            this.showToast('Missing video id for reprocess', 'error');
+            return;
+        }
+        const summaryTypes = this.getSelectedSummaryTypes();
+        if (!summaryTypes.length) {
+            this.showToast('Select at least one summary type', 'warn');
+            if (this.confirmReprocessBtn) {
+                this.confirmReprocessBtn.disabled = false;
+            }
+            return;
+        }
+        const regenerateAudio = summaryTypes.some((type) => type.startsWith('audio'));
+        const token = this.getReprocessToken();
+        if (!token) {
+            this.showToast('Reprocess token required', 'warn');
+            if (this.confirmReprocessBtn) {
+                this.confirmReprocessBtn.disabled = false;
+            }
+            return;
+        }
+
+        if (this.confirmReprocessBtn) {
+            this.confirmReprocessBtn.disabled = true;
+        }
+
+        try {
+            const payload = {
+                video_id: videoId,
+                regenerate_audio: regenerateAudio
+            };
+            if (summaryTypes.length) {
+                payload.summary_types = summaryTypes;
+            }
+            const response = await this.nasFetch('/api/reprocess', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Reprocess-Token': token
+                },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || `HTTP ${response.status}`);
+            }
+            this.showToast(`Reprocess scheduled for ${this.describeVideo(this.pendingReprocess)}`, 'success');
+            this.requestMetricsRefresh(2000);
+            this.closeReprocessModal();
+        } catch (error) {
+            console.error('Reprocess request failed', error);
+            this.showToast(`Reprocess failed: ${error.message || error}`, 'error');
+        } finally {
+            if (this.confirmReprocessBtn) {
+                this.confirmReprocessBtn.disabled = false;
+            }
+        }
+    }
+
     async handleDelete(id, cardEl) {
         try {
             // Optimistic UI: show busy state
             const pop = cardEl.querySelector('[data-delete-popover]');
             if (pop) pop.classList.add('pointer-events-none', 'opacity-60');
-            
-            // Use the proper DELETE endpoint format
-            const res = await fetch(`/api/delete/${encodeURIComponent(id)}`, {
+
+            // Use video_id from card dataset, not the generic id
+            const videoId = cardEl.dataset.videoId;
+            if (!videoId) {
+                throw new Error('No video ID found on card');
+            }
+
+            // Use the proper DELETE endpoint format with video_id
+            const res = await fetch(`/api/delete/${encodeURIComponent(videoId)}`, {
                 method: 'DELETE',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json'
                 }
             });
@@ -1594,192 +2925,266 @@ class AudioDashboard {
         }
     }
 
+
     createContentCard(item) {
-        // Normalize field names between SQLite and PostgreSQL APIs
-        const title = item.title || 'Untitled';
-        const channel = item.channel ?? item.channel_name ?? 'Unknown Channel';
-        const analysis = item.analysis ?? item.analysis_json ?? {};
-        const fileStem = item.file_stem ?? item.video_id ?? '';
-
-        // Create normalized item for consistent access
-        const normalizedItem = { ...item, title, channel, analysis, file_stem: fileStem };
-
-        const duration = this.formatDuration(normalizedItem.duration_seconds || 0);
-        
-        const hasAudio = normalizedItem.media?.has_audio;
-        const href = `/${normalizedItem.file_stem}.json?v=2`;
-        const buttonDurations = this.getButtonDurations(normalizedItem);
-        const { categories, subcats, subcatPairs } = this.extractCatsAndSubcats(normalizedItem);
-        const totalSecs = (normalizedItem.media_metadata && normalizedItem.media_metadata.mp3_duration_seconds) ? normalizedItem.media_metadata.mp3_duration_seconds : (normalizedItem.duration_seconds || 0);
-        const totalDur = (normalizedItem.media_metadata && normalizedItem.media_metadata.mp3_duration_seconds)
-            ? this.formatDuration(normalizedItem.media_metadata.mp3_duration_seconds)
-            : (normalizedItem.duration_seconds ? this.formatDuration(normalizedItem.duration_seconds) : '');
-
-        const isPlaying = this.currentAudio && this.currentAudio.id === normalizedItem.file_stem && this.isPlaying;
-        const channelInitial = (normalizedItem.channel || '?').trim().charAt(0).toUpperCase();
-        return `
-            <div data-card data-report-id="${normalizedItem.file_stem}" data-video-id="${normalizedItem.video_id || ''}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative list-layout cursor-pointer bg-white/80 dark:bg-slate-800/60 backdrop-blur-sm rounded-xl border border-slate-200/60 dark:border-slate-700 p-3 sm:p-4 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200" style="--thumbW: 240px;">
-                <div class="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start">
-                    <div class="relative w-full sm:w-56 aspect-video overflow-hidden rounded-lg bg-slate-100 flex-shrink-0">
-                        ${normalizedItem.thumbnail_url ? `<img src="${normalizedItem.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
-                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none ${isPlaying ? '' : 'hidden'}" data-card-eq>
-                            <div class="px-2 py-1 rounded-md bg-black/50 backdrop-blur-sm">
-                                <div class="flex items-end gap-1 text-white">
-                                    <span class="w-0.5 sm:w-1 h-3 sm:h-4 bg-current waveform-bar" style="--delay:0"></span>
-                                    <span class="w-0.5 sm:w-1 h-4 sm:h-6 bg-current waveform-bar" style="--delay:1"></span>
-                                    <span class="w-0.5 sm:w-1 h-6 sm:h-8 bg-current waveform-bar" style="--delay:2"></span>
-                                    <span class="w-0.5 sm:w-1 h-4 sm:h-6 bg-current waveform-bar" style="--delay:3"></span>
-                                    <span class="w-0.5 sm:w-1 h-3 sm:h-4 bg-current waveform-bar" style="--delay:4"></span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer" data-card-progress-container data-total-seconds="${totalSecs}">
-                            <div class="h-1.5 sm:h-2 bg-audio-500" style="width:0%" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
-                        </div>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="flex-1 min-w-0 pr-12">
-                                <h3 class="text-base sm:text-lg font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 transition-colors line-clamp-2">
-                                    ${this.escapeHtml(normalizedItem.title)}
-                                </h3>
-                                <div class="text-sm text-slate-500 dark:text-slate-300 mt-0.5 line-clamp-1 flex items-center gap-2">
-                                    <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-200 text-slate-700 text-[10px]">${channelInitial}</span>
-                                    <button class="truncate hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-filter-value="${this.escapeHtml(normalizedItem.channel || '')}" title="Filter by ${this.escapeHtml(normalizedItem.channel || '')}">${this.escapeHtml(normalizedItem.channel || '')}</button>
-                                    ${this.renderLanguageChip(normalizedItem.analysis?.language)}
-                                    ${isPlaying ? '<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-audio-100 text-audio-700 whitespace-nowrap">Now Playing</span>' : ''}
-                                </div>
-                                ${categories.length ? `
-                                  <div class=\"mt-2 flex items-center gap-1.5 flex-wrap\">
-                                    ${categories.map(cat => this.renderChip(cat, 'category')).join('')}
-                                  </div>` : ''}
-                                ${Array.isArray(subcatPairs) && subcatPairs.length ? `
-                                  <div class=\"mt-1 flex items-center gap-1.5 flex-wrap\">
-                                    ${subcatPairs.map(([p, sc]) => this.renderChip(sc, 'subcategory', false, p)).join('')}
-                                  </div>` : ''}
-                            </div>
-                            <div class="absolute top-3 right-3 z-20">
-                              <button class="p-2 rounded-md hover:bg-slate-200/60 dark:hover:bg-slate-700/60" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
-                                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
-                              </button>
-                              <div class="absolute right-0 mt-2 w-44 bg-white/95 dark:bg-slate-800/95 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl hidden z-50" data-kebab-menu role="menu">
-                                <button class="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" role="menuitem" data-action="copy-link">Copy link</button>
-                                <button class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors" role="menuitem" data-action="delete">Delete…</button>
-                              </div>
-                            </div>
-                            <div class="absolute top-14 right-3 hidden z-50" data-delete-popover>
-                              <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-3 text-sm">
-                                <div class="mb-2 text-slate-700 dark:text-slate-200">Delete this summary?</div>
-                                <div class="flex items-center gap-2 justify-end">
-                                  <button class="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700" data-action="cancel-delete">Cancel</button>
-                                  <button class="px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700" data-action="confirm-delete">Delete</button>
-                                </div>
-                              </div>
-                            </div>
-                        </div>
-
-                        <!-- legacy chips row removed; replaced with explicit category/subcategory rows above -->
-                        <!-- CTA row under meta -->
-                        <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                          <button class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm" data-action="read"><span>Read${buttonDurations.read ? ` ${buttonDurations.read}` : ''}</span><span aria-hidden="true">›</span></button>
-                          ${hasAudio ? `<button class=\"inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm\" data-action=\"listen\"><span>Listen${buttonDurations.listen ? ` ${buttonDurations.listen}` : ''}</span><span aria-hidden=\"true\">›</span></button>` : ''}
-                          <button class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full border border-slate-300/60 dark:border-slate-600/60 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 font-medium text-xs sm:text-sm" data-action="watch"><span>Watch${buttonDurations.watch ? ` ${buttonDurations.watch}` : ''}</span><span aria-hidden="true">›</span></button>
-                        </div>
-
-                        <section role="region" aria-live="polite" hidden data-expand-region></section>
-                    </div>
-                </div>
-            </div>
-        `;
+        const normalizedItem = this.normalizeCardItem(item);
+        return this.renderSummaryCard(normalizedItem, { view: 'list' });
     }
 
     createGridCard(item) {
-        // Normalize field names between SQLite and PostgreSQL APIs
-        const title = item.title || 'Untitled';
-        const channel = item.channel ?? item.channel_name ?? 'Unknown Channel';
-        const analysis = item.analysis ?? item.analysis_json ?? {};
-        const fileStem = item.file_stem ?? item.video_id ?? '';
+        const normalizedItem = this.normalizeCardItem(item);
+        return this.renderSummaryCard(normalizedItem, { view: 'grid' });
+    }
 
-        // Create normalized item for consistent access
-        const normalizedItem = { ...item, title, channel, analysis, file_stem: fileStem };
-
-        const duration = this.formatDuration(normalizedItem.duration_seconds || 0);
+    renderSummaryCard(normalizedItem, { view = 'list' } = {}) {
+        const hasAudio = Boolean(normalizedItem.media && normalizedItem.media.has_audio);
+        const rawSource = normalizedItem.content_source || 'youtube';
+        const source = rawSource.toLowerCase();
+        const hasWatchLink = source === 'youtube' ? Boolean(normalizedItem.video_id) : Boolean(normalizedItem.canonical_url);
         const href = `/${normalizedItem.file_stem}.json?v=2`;
-        const isPlaying = this.currentAudio && this.currentAudio.id === normalizedItem.file_stem && this.isPlaying;
-        const channelInitial = (normalizedItem.channel || '?').trim().charAt(0).toUpperCase();
         const buttonDurations = this.getButtonDurations(normalizedItem);
-        const { categories, subcats, subcatPairs } = this.extractCatsAndSubcats(normalizedItem);
-        const totalSecs = (normalizedItem.media_metadata && normalizedItem.media_metadata.mp3_duration_seconds) ? normalizedItem.media_metadata.mp3_duration_seconds : (normalizedItem.duration_seconds || 0);
-        const totalDur = (normalizedItem.media_metadata && normalizedItem.media_metadata.mp3_duration_seconds)
-            ? this.formatDuration(normalizedItem.media_metadata.mp3_duration_seconds)
-            : (normalizedItem.duration_seconds ? this.formatDuration(normalizedItem.duration_seconds) : '');
+        const { categories, subcatPairs } = this.extractCatsAndSubcats(normalizedItem);
+        const totalSecs = (normalizedItem.media_metadata && normalizedItem.media_metadata.mp3_duration_seconds)
+            ? normalizedItem.media_metadata.mp3_duration_seconds
+            : (normalizedItem.duration_seconds || 0);
+        const isPlaying = this.currentAudio && this.currentAudio.id === normalizedItem.file_stem && this.isPlaying;
+
+        const channelName = normalizedItem.channel || 'Unknown Channel';
+        const safeChannel = this.escapeHtml(channelName);
+        const channelInitial = this.escapeHtml((channelName.trim().charAt(0) || '?').toUpperCase());
+
+        const cardClasses = ['summary-card', view === 'grid' ? 'summary-card--grid' : 'summary-card--list', 'cursor-pointer'];
+        if (view !== 'grid') cardClasses.push('list-layout');
+        if (isPlaying) cardClasses.push('is-playing');
+
+        const styleAttr = view === 'grid' ? '' : ' style="--thumbW: 240px;"';
+        const sourceBadge = this.renderSourceBadge(normalizedItem.content_source || 'youtube', normalizedItem.source_label || null);
+        const languageChip = this.renderLanguageChip(normalizedItem.analysis?.language);
+        const summaryTypeChip = this.renderSummaryTypeChip(normalizedItem.summary_type);
+        const nowPlayingPill = isPlaying ? '<span class="summary-pill summary-pill--playing">Now playing</span>' : '';
+        const identityMetaParts = [sourceBadge, languageChip, summaryTypeChip, nowPlayingPill].filter(Boolean);
+        const identityMeta = identityMetaParts.length ? `<div class="summary-card__meta">${identityMetaParts.join('')}</div>` : '';
+
+        const taxonomyMarkup = this.renderCategorySection(normalizedItem.file_stem, categories, subcatPairs);
+        const consumptionMarkup = this.renderConsumptionSummary(buttonDurations, hasAudio, source, hasWatchLink);
+        const thumbnail = normalizedItem.thumbnail_url
+            ? `<img src="${normalizedItem.thumbnail_url}" alt="" loading="lazy">`
+            : '';
+
+        const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
+        const menuMarkup = `
+                        <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <circle cx="5" cy="12" r="1.5"></circle>
+                                <circle cx="12" cy="12" r="1.5"></circle>
+                                <circle cx="19" cy="12" r="1.5"></circle>
+                            </svg>
+                        </button>
+                        <div class="summary-card__menu hidden" data-kebab-menu role="menu">
+                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                            <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
+                        </div>
+                        <div class="summary-card__popover hidden" data-delete-popover>
+                            <div class="summary-card__popover-panel">
+                                <p>Delete this summary?</p>
+                                <div class="summary-card__popover-actions">
+                                    <button type="button" data-action="cancel-delete">Cancel</button>
+                                    <button type="button" data-action="confirm-delete">Delete</button>
+                                </div>
+                            </div>
+                        </div>`;
+        const mediaMenuMarkup = view === 'grid' ? menuMarkup : '';
+        const outerMenuMarkup = view === 'grid' ? '' : menuMarkup;
+
         return `
-        <div data-card data-report-id="${normalizedItem.file_stem}" data-video-id="${normalizedItem.video_id || ''}" data-has-audio="${(normalizedItem.media && normalizedItem.media.has_audio) ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="group relative cursor-pointer bg-white/80 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700 hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
-            <div class="relative aspect-video bg-slate-100">
-                ${normalizedItem.thumbnail_url ? `<img src="${normalizedItem.thumbnail_url}" alt="thumbnail" loading="lazy" class="absolute inset-0 w-full h-full object-cover">` : ''}
-                <div class="absolute inset-0 flex items-center justify-center pointer-events-none" data-card-eq style="display: flex">
-                    <div class="flex items-end gap-1">
-                        <span class="w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar-outlined" style="--delay:0"></span>
-                        <span class="w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar-outlined" style="--delay:1"></span>
-                        <span class="w-0.5 sm:w-1 h-6 sm:h-8 waveform-bar-outlined" style="--delay:2"></span>
-                        <span class="w-0.5 sm:w-1 h-4 sm:h-6 waveform-bar-outlined" style="--delay:3"></span>
-                        <span class="w-0.5 sm:w-1 h-3 sm:h-4 waveform-bar-outlined" style="--delay:4"></span>
+            <div data-card data-decorated="true" data-report-id="${normalizedItem.file_stem}" data-video-id="${normalizedItem.video_id || ''}" data-source="${this.escapeHtml(source)}" data-canonical-url="${this.escapeHtml(normalizedItem.canonical_url || '')}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" title="Open summary" tabindex="0" class="${cardClasses.join(' ')}"${styleAttr}>
+                <div class="summary-card__inner">
+                    ${outerMenuMarkup}
+                    <div class="summary-card__media">
+                        ${thumbnail}
+                        <div class="summary-card__eq ${isPlaying ? '' : 'hidden'}" data-card-eq>
+                            <div class="summary-card__eq-bars">
+                                <span class="waveform-bar" style="--delay:0"></span>
+                                <span class="waveform-bar" style="--delay:1"></span>
+                                <span class="waveform-bar" style="--delay:2"></span>
+                                <span class="waveform-bar" style="--delay:3"></span>
+                                <span class="waveform-bar" style="--delay:4"></span>
+                            </div>
+                        </div>
+                        ${mediaMenuMarkup}
+                        <div class="summary-card__progress" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
+                            <div class="summary-card__progress-bar" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+                        </div>
+                    </div>
+                    <div class="summary-card__body">
+                        <div class="summary-card__identity">
+                            <span class="summary-card__avatar">${channelInitial}</span>
+                            <div class="summary-card__identity-text">
+                                <button class="summary-card__channel" data-filter-chip="channel" data-filter-value="${safeChannel}" title="Filter by ${safeChannel}">${safeChannel}</button>
+                                ${identityMeta}
+                            </div>
+                        </div>
+                        <h3 class="summary-card__title">${this.escapeHtml(normalizedItem.title)}</h3>
+                        ${taxonomyMarkup}
+                        ${consumptionMarkup}
+                        <div class="summary-card__footer">
+                            ${this.renderActionBar(normalizedItem, buttonDurations, hasAudio)}
+                        </div>
+                        <section role="region" aria-live="polite" hidden data-expand-region></section>
                     </div>
                 </div>
-                <div class="absolute inset-x-0 bottom-0 h-1.5 sm:h-2 bg-black/25 cursor-pointer" data-card-progress-container data-total-seconds="${totalSecs}">
-                    <div class="h-1.5 sm:h-2 bg-audio-500" style="width:0%" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+            </div>`;
+    }
+
+    renderConsumptionSummary(durations = {}, hasAudio = false, source = 'youtube', hasWatchLink = false) {
+        const segments = [];
+        if (durations.read) {
+            segments.push({ text: `Read ${durations.read}` });
+        }
+        if (hasAudio) {
+            segments.push({ text: durations.listen ? `Listen ${durations.listen}` : 'Listen ready' });
+        } else {
+            segments.push({ text: 'Listen N/A', muted: true });
+        }
+        const watchLabel = source === 'youtube' ? 'Watch' : 'Open';
+        if (durations.watch) {
+            segments.push({ text: `${watchLabel} ${durations.watch}` });
+        } else if (hasWatchLink) {
+            segments.push({ text: `${watchLabel} ready` });
+        } else {
+            segments.push({ text: `${watchLabel} N/A`, muted: true });
+        }
+
+        if (!segments.length) return '';
+
+        const items = segments.map((segment) => {
+            const classes = ['summary-card__consumption-item'];
+            if (segment.muted) classes.push('summary-card__consumption-item--muted');
+            return `<span class="${classes.join(' ')}">${this.escapeHtml(segment.text)}</span>`;
+        }).join('');
+
+        return `<div class="summary-card__consumption">${items}</div>`;
+    }
+
+    fmtFilterKey(key) {
+        const map = {
+            category: 'Category',
+            categories: 'Category',
+            channel: 'Channel',
+            channels: 'Channel',
+            content_type: 'Content',
+            content_type_filters: 'Content',
+            summary_type: 'Summary',
+            language: 'Language'
+        };
+        return map[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    updateHeroBadges() {
+        const heroBadges = this.heroBadges || document.getElementById('heroBadges');
+        if (!heroBadges) return;
+        this.heroBadges = heroBadges;
+        const sections = [];
+
+        // Always show search queries
+        if (this.searchQuery) {
+            sections.push({
+                type: 'search',
+                label: 'Search',
+                value: this.searchQuery
+            });
+        }
+
+        // Follow the same logic as filtering: only show chips when user is actively excluding categories
+        const categoryFilters = this.currentFilters?.category || [];
+        const allCategories = Array.from(document.querySelectorAll('input[data-filter="category"]')).map(el => el.value);
+
+        if (categoryFilters.length > 0 && categoryFilters.length < allCategories.length) {
+            categoryFilters.forEach(val =>
+                sections.push({
+                    type: 'category',
+                    label: 'Category',
+                    value: val
+                })
+            );
+        }
+
+        const sourceFilters = this.currentFilters?.source || [];
+        const allSources = Array.from(document.querySelectorAll('input[data-filter="source"]')).map(el => el.value);
+        if (sourceFilters.length > 0 && sourceFilters.length < allSources.length) {
+            sourceFilters.forEach(val => {
+                sections.push({
+                    type: 'source',
+                    label: 'Source',
+                    value: val,
+                    display: this.prettySourceLabel(val)
+                });
+            });
+        }
+
+        // Create horizontal scrolling container for chips
+        if (sections.length > 0) {
+            heroBadges.innerHTML = `
+                <div class="flex overflow-x-auto pb-2 space-x-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent"
+                     style="max-height: 80px; scrollbar-width: thin;">
+                    ${sections.map(({ type, label, value, display }) => `
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/40 dark:border-white/10 bg-white/70 dark:bg-white/5 text-slate-600 dark:text-slate-200 whitespace-nowrap flex-shrink-0">
+                            <span class="uppercase tracking-wide text-[10px] text-slate-400 dark:text-slate-500">${this.escapeHtml(String(label))}</span>
+                            <span class="text-[11px] font-medium">${this.escapeHtml(String(display ?? value))}</span>
+                            <button class="ml-1 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full p-0.5 transition-colors"
+                                    data-remove-filter="${this.escapeHtml(String(type))}"
+                                    data-filter-value="${this.escapeHtml(String(value))}"
+                                    title="Remove filter">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                            </button>
+                        </span>
+                    `).join('')}
                 </div>
-                <div class="absolute top-2 right-2 z-20">
-                  <button class="p-1.5 min-w-[36px] min-h-[36px] rounded-md bg-white/70 dark:bg-slate-900/60 hover:bg-white/90" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
-                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
-                  </button>
-                  <div class="absolute right-0 mt-2 w-40 bg-white/95 dark:bg-slate-800/95 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl hidden z-50" data-kebab-menu role="menu">
-                    <button class="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors" role="menuitem" data-action="copy-link">Copy link</button>
-                    <button class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors" role="menuitem" data-action="delete">Delete…</button>
-                  </div>
-                </div>
-                <div class="absolute top-12 right-2 hidden z-50" data-delete-popover>
-                  <div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg p-2 text-xs">
-                    <div class="mb-2 text-slate-700 dark:text-slate-200">Delete this summary?</div>
-                    <div class="flex items-center gap-2 justify-end">
-                      <button class="px-2 py-1 rounded border border-slate-200 dark:border-slate-700" data-action="cancel-delete">Cancel</button>
-                      <button class="px-2 py-1 rounded bg-red-600 text-white" data-action="confirm-delete">Delete</button>
-                    </div>
-                  </div>
-                </div>
-            </div>
-            <div class="p-3 pr-12">
-                <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100 group-hover:text-audio-700 line-clamp-2">${this.escapeHtml(normalizedItem.title)}</h3>
-                <div class="text-xs text-slate-500 dark:text-slate-300 mt-1 line-clamp-1 flex items-center gap-2">
-                    <span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-200 text-slate-700 text-[9px]">${channelInitial}</span>
-                    <button class="hover:text-audio-600 dark:hover:text-audio-400 transition-colors text-left" data-filter-chip="channel" data-filter-value="${this.escapeHtml(normalizedItem.channel || '')}" title="Filter by ${this.escapeHtml(normalizedItem.channel || '')}">${this.escapeHtml(normalizedItem.channel || '')}</button>
-                    ${this.renderLanguageChip(normalizedItem.analysis?.language)}
-                    ${isPlaying ? '<span class="ml-2 text-[10px] px-1 py-0.5 rounded bg-audio-100 text-audio-700">Now Playing</span>' : ''}
-                </div>
-                ${categories.length ? `<div class=\"mt-2 flex flex-wrap gap-1\">${categories.map(cat => this.renderChip(cat, 'category', true)).join('')}</div>` : ''}
-                ${Array.isArray(subcatPairs) && subcatPairs.length ? `<div class=\"mt-1 flex flex-wrap gap-1\">${subcatPairs.map(([p, sc]) => this.renderChip(sc, 'subcategory', true, p)).join('')}</div>` : ''}
-                <div class="mt-2 flex items-center gap-1.5 px-3 pb-2">
-                    <button class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors" data-action="read">
-                        <span>Read</span>
-                        <span class="text-[10px] opacity-70">${buttonDurations.read || '3m'}</span>
-                    </button>
-                    ${(normalizedItem.media && normalizedItem.media.has_audio) ? `
-                    <button class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors" data-action="listen">
-                        <span>Listen</span>
-                        <span class="text-[10px] opacity-70">${buttonDurations.listen || totalDur}</span>
-                    </button>` : `
-                    <button class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-slate-50/50 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60" disabled>
-                        <span>Listen</span>
-                        <span class="text-[10px] opacity-70">N/A</span>
-                    </button>`}
-                    <button class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-slate-100/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 transition-colors" data-action="watch">
-                        <span>Watch</span>
-                        <span class="text-[10px] opacity-70">${buttonDurations.watch || totalDur}</span>
-                    </button>
-                </div>
-                <section role="region" aria-live="polite" hidden data-expand-region></section>
-            </div>
-        </div>`;
+            `;
+        } else {
+            heroBadges.innerHTML = '';
+        }
+
+        // Add click handlers for remove buttons
+        heroBadges.querySelectorAll('[data-remove-filter]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const filterType = btn.dataset.removeFilter;
+                const filterValue = btn.dataset.filterValue;
+                this.removeFilterChip(filterType, filterValue);
+            });
+        });
+
+        heroBadges.classList.toggle('hidden', sections.length === 0);
+    }
+
+    removeFilterChip(filterType, filterValue) {
+        if (filterType === 'search') {
+            // Clear search
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                searchInput.value = '';
+                this.searchQuery = '';
+            }
+        } else if (filterType === 'category') {
+            const categoryInput = document.querySelector(`input[data-filter="category"][value="${filterValue}"]`);
+            if (categoryInput) categoryInput.checked = false;
+        } else if (filterType === 'source') {
+            const sourceInput = document.querySelector(`input[data-filter="source"][value="${filterValue}"]`);
+            if (sourceInput) sourceInput.checked = false;
+        } else if (filterType === 'subcategory') {
+            // Uncheck specific subcategory
+            const subcategoryInput = document.querySelector(`input[data-filter="subcategory"][value="${filterValue}"]`);
+            if (subcategoryInput) subcategoryInput.checked = false;
+        }
+
+        // Update filters and reload
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateHeroBadges();
+        this.loadContent();
     }
 
     renderPagination(pagination) {
@@ -1844,12 +3249,56 @@ class AudioDashboard {
     }
 
     updateResultsInfo(pagination) {
-        this.resultsTitle.textContent = this.searchQuery 
-            ? `Search Results for "${this.searchQuery}"` 
-            : 'Discover Audio Content';
-        
-        this.resultsCount.textContent = 
-            `${pagination.total} summaries found • Page ${pagination.page} of ${pagination.pages}`;
+        // Always keep SUMMARIZERNATOR as the main title
+        this.resultsTitle.textContent = 'SUMMARIZERNATOR';
+
+        // Update subtitle based on current state
+        if (this.searchQuery) {
+            if (this.resultsSubtitle) this.resultsSubtitle.textContent = `Search results for "${this.searchQuery}"`;
+        } else if (this.currentFilters && Object.keys(this.currentFilters).length) {
+            if (this.resultsSubtitle) this.resultsSubtitle.textContent = 'Refined by your current filters';
+        } else {
+            if (this.resultsSubtitle) this.resultsSubtitle.textContent = 'Your daily audio briefing';
+        }
+
+        // Create navigation arrows with the pagination text
+        const canGoBack = pagination.page > 1;
+        const canGoForward = pagination.page < pagination.pages;
+
+        const leftArrow = canGoBack
+            ? `<button class="inline-flex items-center text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100 transition-colors mr-2" data-nav="prev" title="Previous page">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+               </button>`
+            : `<span class="inline-block w-4 mr-2"></span>`;
+
+        const rightArrow = canGoForward
+            ? `<button class="inline-flex items-center text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100 transition-colors ml-2" data-nav="next" title="Next page">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+               </button>`
+            : `<span class="inline-block w-4 ml-2"></span>`;
+
+        this.resultsCount.innerHTML =
+            `${leftArrow}${pagination.total} summaries found • Page ${pagination.page} of ${pagination.pages}${rightArrow}`;
+
+        this.updateHeroBadges();
+
+        // Add click handlers for navigation arrows
+        this.resultsCount.querySelectorAll('[data-nav]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const direction = e.currentTarget.dataset.nav;
+                if (direction === 'prev' && pagination.page > 1) {
+                    this.currentPage = pagination.page - 1;
+                    this.loadContent();
+                } else if (direction === 'next' && pagination.page < pagination.pages) {
+                    this.currentPage = pagination.page + 1;
+                    this.loadContent();
+                }
+            });
+        });
     }
 
     async playAudio(reportId) {
@@ -1861,28 +3310,51 @@ class AudioDashboard {
             const reportCard = document.querySelector(`[data-report-id="${reportId}"]`);
             if (!reportCard) return;
 
+            if (reportCard.dataset.hasAudio !== 'true') {
+                this.showToast('Audio not available for this summary', 'warn');
+                return;
+            }
+
+            const item = (this.currentItems || []).find(x => x.file_stem === reportId);
+            const audioSrc = this.getAudioSourceForItem(item);
+            if (!audioSrc) {
+                this.showToast('Audio not available for this summary', 'warn');
+                return;
+            }
+
             // Extract report info from the card
-            const title = reportCard.querySelector('h3').textContent.trim();
-            const videoId = reportCard.dataset.videoId;
-            // Use server-side resolver to map videoId to latest audio file
-            const audioSrc = videoId ? `/exports/by_video/${videoId}.mp3` : `/exports/${reportId}.mp3`;
+            const title = item?.title || reportCard.querySelector('h3').textContent.trim();
             
             // Reset per-card progress bars
             try { document.querySelectorAll('[data-card-progress]').forEach(el => { el.style.width = '0%'; el.setAttribute('aria-valuenow', '0'); }); } catch(_) {}
-            // Update current track info
-            this.currentAudio = {
-                id: reportId,
-                title: title,
-                src: audioSrc
-            };
+
+            // Update current track info and mini player
+            if (item) {
+                this.setCurrentFromItem(item);
+            } else {
+                // Fallback: ensure audio metadata is set even if item missing
+                this.currentAudio = { id: reportId, title, src: audioSrc };
+                this.resetAudioElement();
+                if (this.audioElement) {
+                    this.audioElement.src = audioSrc;
+                    this.audioElement.load();
+                }
+                if (this.nowPlayingTitle) this.nowPlayingTitle.textContent = title;
+                if (this.nowPlayingMeta) this.nowPlayingMeta.textContent = 'Ready';
+                this.updateNowPlayingPreview();
+                this.updatePlayButton();
+            }
 
             // Queue management (Phase 3)
             if (this.flags.queueEnabled && Array.isArray(this.currentItems)) {
-                this.playlist = this.currentItems.map(i => i.file_stem);
+                this.rebuildPlaylist();
                 this.currentTrackIndex = this.playlist.indexOf(reportId);
                 if (this.currentTrackIndex < 0) this.currentTrackIndex = 0;
                 this.renderQueue();
                 this.saveQueue();
+            } else {
+                this.rebuildPlaylist();
+                this.currentTrackIndex = this.playlist.indexOf(reportId);
             }
 
             // Update player info
@@ -1917,6 +3389,7 @@ class AudioDashboard {
             const fallback = `/exports/${this.currentAudio.id}.mp3`;
             this.audioElement.src = fallback;
             this.audioElement.load();
+            this.refreshAudioVariantBlocks();
         }
     }
 
@@ -1931,6 +3404,7 @@ class AudioDashboard {
                 this.showError('Playback failed');
             });
         }
+        this.refreshAudioVariantBlocks();
     }
 
     handleCanPlay() {
@@ -1939,6 +3413,7 @@ class AudioDashboard {
                 this.isPlaying = true;
                 this.updatePlayButton();
                 this.updatePlayingCard();
+                this.refreshAudioVariantBlocks();
             }).catch(error => {
                 console.error('Auto-play failed:', error);
             }).finally(() => {
@@ -1955,6 +3430,25 @@ class AudioDashboard {
     }
 
     updatePlayButton() {
+        const hasTrack = !!this.currentAudio;
+        if (this.playPauseBtn) {
+            this.playPauseBtn.disabled = !hasTrack;
+            this.playPauseBtn.classList.toggle('opacity-60', !hasTrack);
+            this.playPauseBtn.classList.toggle('cursor-not-allowed', !hasTrack);
+        }
+        if (this.prevBtn) {
+            const enablePrev = hasTrack && Array.isArray(this.playlist) && this.playlist.length > 1;
+            this.prevBtn.disabled = !enablePrev;
+            this.prevBtn.classList.toggle('opacity-60', !enablePrev);
+            this.prevBtn.classList.toggle('cursor-not-allowed', !enablePrev);
+        }
+        if (this.nextBtn) {
+            const enableNext = hasTrack && Array.isArray(this.playlist) && this.playlist.length > 1;
+            this.nextBtn.disabled = !enableNext;
+            this.nextBtn.classList.toggle('opacity-60', !enableNext);
+            this.nextBtn.classList.toggle('cursor-not-allowed', !enableNext);
+        }
+
         if (this.isPlaying) {
             this.playIcon.classList.add('hidden');
             this.pauseIcon.classList.remove('hidden');
@@ -1986,6 +3480,8 @@ class AudioDashboard {
                 }, 300);
             }
         }
+
+        this.refreshAudioVariantBlocks();
     }
 
     setViewMode(mode) {
@@ -1997,80 +3493,104 @@ class AudioDashboard {
     }
 
     updateViewToggle() {
-        const active = 'bg-audio-500 text-white';
-        const inactive = 'bg-white text-slate-700';
-        if (this.listViewBtn && this.gridViewBtn) {
-            this.listViewBtn.className = this.listViewBtn.className
-                .replace(active, '').replace(inactive, '').trim() + ' ' + (this.viewMode === 'list' ? active : inactive);
-            this.gridViewBtn.className = this.gridViewBtn.className
-                .replace(active, '').replace(inactive, '').trim() + ' ' + (this.viewMode === 'grid' ? active : inactive);
-        }
+        if (!this.listViewBtn || !this.gridViewBtn) return;
+
+        const activeClasses = ['bg-audio-600', 'text-white', 'shadow-lg'];
+        const inactiveClasses = ['bg-white/80', 'dark:bg-slate-900/70', 'text-slate-600', 'dark:text-slate-200', 'border', 'border-white/60', 'dark:border-slate-700/70', 'shadow-sm'];
+
+        [this.listViewBtn, this.gridViewBtn].forEach(btn => {
+            btn.classList.remove(...activeClasses, ...inactiveClasses);
+            btn.classList.add(...inactiveClasses);
+        });
+
+        const activeBtn = this.viewMode === 'grid' ? this.gridViewBtn : this.listViewBtn;
+        activeBtn.classList.remove(...inactiveClasses);
+        activeBtn.classList.add(...activeClasses);
+
+        this.updateHeroBadges();
     }
 
     setCurrentFromItem(item) {
-        const reportId = item.file_stem;
-        const title = item.title;
-        const videoId = item.video_id;
-        const audioSrc = videoId ? `/exports/by_video/${videoId}.mp3` : `/exports/${reportId}.mp3`;
-        this.currentAudio = { id: reportId, title, src: audioSrc };
-        if (this.nowPlayingTitle) this.nowPlayingTitle.textContent = title;
-        if (this.nowPlayingMeta) this.nowPlayingMeta.textContent = 'Ready';
-        if (this.nowPlayingThumb && item.thumbnail_url) {
-            this.nowPlayingThumb.src = item.thumbnail_url;
-            this.nowPlayingThumb.classList.remove('hidden');
+        if (!item) {
+            this.showNowPlayingPlaceholder();
+            return;
         }
-        // Do not autoplay here; will load when user hits play
-        this.audioElement.src = audioSrc;
-        this.audioElement.load();
+
+        const audioSrc = this.getAudioSourceForItem(item);
+        if (!audioSrc) {
+            this.showNowPlayingPlaceholder(item);
+            return;
+        }
+
+        this.currentAudio = {
+            id: item.file_stem,
+            title: item.title,
+            src: audioSrc
+        };
+        this.isPlaying = false;
+
+        this.resetAudioElement();
+        if (this.audioElement) {
+            this.audioElement.src = audioSrc;
+            this.audioElement.load();
+        }
+
+        if (this.nowPlayingTitle) {
+            this.nowPlayingTitle.textContent = item.title || 'Audio summary';
+        }
+        if (this.nowPlayingMeta) {
+            this.nowPlayingMeta.textContent = 'Ready';
+        }
+
+        if (this.nowPlayingThumb) {
+            if (item.thumbnail_url) {
+                this.nowPlayingThumb.src = item.thumbnail_url;
+                this.nowPlayingThumb.classList.remove('hidden');
+            } else {
+                this.nowPlayingThumb.classList.add('hidden');
+            }
+        }
+
         this.updateNowPlayingPreview();
         this.updatePlayingCard();
+        this.updatePlayButton();
     }
 
     updatePlayingCard() {
         // Card highlight
         this.contentGrid.querySelectorAll('[data-card]').forEach(card => {
-            card.classList.remove('ring-2', 'ring-audio-400');
+            card.classList.remove('is-playing');
         });
         let active = null;
         if (this.currentAudio) {
             active = this.contentGrid.querySelector(`[data-report-id="${this.currentAudio.id}"]`);
-            if (active) active.classList.add('ring-2', 'ring-audio-400');
+            if (active) active.classList.add('is-playing');
         }
 
         // Update Listen buttons to reflect playing state
-        const eqIcon = `
-            <span class=\"flex items-end gap-0.5 mr-1\" aria-hidden=\"true\">
-              <span class=\"w-[1.5px] h-2 bg-current opacity-90 waveform-bar\" style=\"--delay:0\"></span>
-              <span class=\"w-[1.5px] h-1.5 bg-current opacity-90 waveform-bar\" style=\"--delay:1\"></span>
-              <span class=\"w-[1.5px] h-2.5 bg-current opacity-90 waveform-bar\" style=\"--delay:2\"></span>
-            </span>`;
-
-        this.contentGrid.querySelectorAll('[data-card] [data-action="listen"]').forEach(btn => {
-            // Ensure original label is stored once
-            if (!btn.dataset.label) {
-                try {
-                    const txt = btn.textContent.trim();
-                    btn.dataset.label = txt || 'Listen';
-                } catch(_) { btn.dataset.label = 'Listen'; }
-            }
-            btn.classList.remove('bg-audio-600','text-white');
-            btn.classList.add('border','border-slate-300/60','dark:border-slate-600/60');
-            // Default label
-            const defaultLabel = btn.dataset.label;
-            // If this is the active card, flip the label depending on play state
+        const listenButtons = this.contentGrid.querySelectorAll('[data-listen-button]');
+        listenButtons.forEach(btn => {
+            const defaultLabel = btn.dataset.defaultLabel || 'Listen';
+            const playingLabel = btn.dataset.playingLabel || 'Pause';
+            const labelEl = btn.querySelector('[data-label]');
+            const playIcon = btn.querySelector('[data-icon-play]');
+            const pauseIcon = btn.querySelector('[data-icon-pause]');
             const isActive = !!(active && active.contains(btn));
-            if (isActive) {
-                if (this.isPlaying) {
-                    btn.innerHTML = `${eqIcon}<span>Pause</span>`;
+            const isPlayingActive = isActive && this.isPlaying;
+
+            if (labelEl) labelEl.textContent = isPlayingActive ? playingLabel : defaultLabel;
+            btn.setAttribute('aria-pressed', String(isPlayingActive));
+            if (playIcon && pauseIcon) {
+                if (isPlayingActive) {
+                    playIcon.classList.add('hidden');
+                    pauseIcon.classList.remove('hidden');
                 } else {
-                    btn.innerHTML = `<span>Play</span>`;
+                    playIcon.classList.remove('hidden');
+                    pauseIcon.classList.add('hidden');
                 }
-                btn.classList.add('bg-audio-600','text-white');
-                btn.classList.remove('border','border-slate-300/60','dark:border-slate-600/60');
-            } else {
-                // Restore original
-                btn.innerHTML = `<span>${this.escapeHtml(defaultLabel)}</span><span aria-hidden=\"true\">›</span>`;
             }
+
+            btn.classList.toggle('variant-toggle--playing', isActive);
         });
 
         // Toggle thumbnail equalizer overlay on active playing card
@@ -2171,6 +3691,8 @@ class AudioDashboard {
         if (wasPlaying !== this.isPlaying) {
             this.updatePlayButton();
         }
+
+        this.refreshAudioVariantBlocks();
     }
 
     // UI helpers
@@ -2187,18 +3709,372 @@ class AudioDashboard {
     renderLanguageChip(lang) {
         if (!lang) return '';
         const flag = this.getLangFlag(lang);
-        const label = flag ? `${flag}` : this.escapeHtml(lang);
-        return `<span class="inline-flex items-center text-[11px] px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200">${label}</span>`;
+        const code = String(lang || '').toUpperCase();
+        const label = flag ? `${flag} ${code}` : code;
+        return `<span class="summary-pill summary-pill--lang">${this.escapeHtml(label)}</span>`;
     }
 
-    renderChip(text, type = 'category', small = false, parent = null) {
-        const base = small ? 'text-[10px] px-2 py-0.5' : 'text-xs px-2.5 py-0.5';
-        const color = type === 'subcategory'
-            ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300'
-            : 'bg-audio-100 dark:bg-slate-700 text-audio-800 dark:text-slate-300';
-        const t = this.escapeHtml(text || '');
-        const dataParent = parent ? ` data-parent-category="${this.escapeHtml(parent)}"` : '';
-        return `<button class="relative z-10 inline-flex items-center ${base} rounded-full font-medium ${color} hover:opacity-90 transition-all cursor-pointer" data-filter-chip="${type}" data-filter-value="${t}"${dataParent} title="Click to filter by ${t}">${t}</button>`;
+    inferSource(item = {}) {
+        const raw = (item.content_source ?? item.source ?? '').toString().trim();
+        const canonicalUrl = (item.canonical_url ?? item.url ?? '').toString().trim().toLowerCase();
+        const videoIdRaw = item.video_id ?? '';
+        const videoId = videoIdRaw != null ? videoIdRaw.toString().trim().toLowerCase() : '';
+        const recordId = (item.id ?? '').toString().trim().toLowerCase();
+
+        const normalized = raw.toLowerCase();
+        const known = new Set(['youtube', 'reddit', 'wikipedia', 'lds', 'web', 'other']);
+        let slug = normalized && known.has(normalized) ? normalized : '';
+
+        const hasCanonical = (needle) => canonicalUrl.includes(needle);
+
+        if (!slug) {
+            if (hasCanonical('wikipedia.org')) slug = 'wikipedia';
+            else if (hasCanonical('churchofjesuschrist.org') || hasCanonical('lds.org')) slug = 'lds';
+            else if (hasCanonical('reddit.com')) slug = 'reddit';
+            else if (hasCanonical('youtube.com') || hasCanonical('youtu.be')) slug = 'youtube';
+        }
+
+        if (!slug) {
+            if (videoId.startsWith('reddit:') || recordId.startsWith('reddit:')) slug = 'reddit';
+            else if (/^[a-z0-9_-]{11}$/i.test(videoId)) slug = 'youtube';
+        }
+
+        if (!slug && !canonicalUrl && !videoId) {
+            slug = normalized || 'other';
+        }
+
+        if (!slug) slug = 'web';
+
+        const label = raw || this.prettySourceLabel(slug);
+        return { slug, label };
+    }
+
+    renderSourceBadge(source, displayLabel = null) {
+        const slug = (source || 'youtube').toLowerCase();
+        const map = {
+            'youtube': { label: 'YouTube', icon: '▶️', value: 'youtube' },
+            'reddit': { label: 'Reddit', icon: '🧵', value: 'reddit' },
+            'wikipedia': { label: 'Wikipedia', icon: '📚', value: 'wikipedia' },
+            'lds': { label: 'Gospel Library', icon: '🙏', value: 'lds' },
+            'web': { label: 'Web', icon: '🌐', value: 'web' },
+            'other': { label: 'Other', icon: '🔗', value: 'other' }
+        };
+        const entry = map[slug] || { label: displayLabel || this.prettySourceLabel(source), icon: '🔗', value: slug || 'other' };
+        const label = `${entry.icon} ${entry.label}`;
+        return `<span class="summary-pill summary-pill--source" data-filter-chip="source" data-filter-value="${this.escapeHtml(entry.value)}" title="Filter by ${this.escapeHtml(entry.label)}">${this.escapeHtml(label)}</span>`;
+    }
+
+    prettySourceLabel(source) {
+        const slug = (source || '').toLowerCase();
+        if (slug === 'youtube') return 'YouTube';
+        if (slug === 'reddit') return 'Reddit';
+        if (slug === 'wikipedia') return 'Wikipedia';
+        if (slug === 'lds') return 'Gospel Library';
+        if (slug === 'web') return 'Web';
+        if (slug === 'other') return 'Other';
+        if (!slug) return 'Other';
+        return slug.charAt(0).toUpperCase() + slug.slice(1);
+    }
+
+    renderSummaryTypeChip(type) {
+        if (!type || type === 'unknown') return '';
+
+        const labels = {
+            'audio': 'Audio',
+            'audio-missing': 'Audio (missing)',
+            'bullet-points': 'Bullet Points',
+            'comprehensive': 'Comprehensive',
+            'unknown': 'Unknown'
+        };
+
+        const label = labels[type] || type;
+
+        const safeLabel = this.escapeHtml(label);
+        const safeType = this.escapeHtml(type);
+
+        return `<button class="summary-pill summary-pill--summary"
+                 data-filter-chip="summary_type"
+                 data-filter-value="${safeType}"
+                 title="Filter by ${safeLabel}">${safeLabel}</button>`;
+    }
+
+    renderChip(text, type = 'category', compact = false, parent = null) {
+        if (!text) return '';
+        const classes = ['summary-chip'];
+        if (type === 'subcategory') classes.push('summary-chip--subcategory');
+        else classes.push('summary-chip--category');
+        if (compact) classes.push('summary-chip--compact');
+        const safeText = this.escapeHtml(text);
+        const parentAttr = parent ? ` data-parent-category="${this.escapeHtml(parent)}"` : '';
+        return `<button class="${classes.join(' ')}" data-filter-chip="${type}" data-filter-value="${safeText}"${parentAttr} title="Filter by ${safeText}">${safeText}</button>`;
+    }
+
+    renderCategorySection(itemId, categories = [], subcatPairs = []) {
+        const uniqueCategories = Array.isArray(categories) ? categories.filter(Boolean) : [];
+        const structuredPairs = Array.isArray(subcatPairs) ? subcatPairs.filter(([p, s]) => p && s) : [];
+
+        const maxPrimary = 3;
+        const primary = [];
+        const hiddenCategories = [];
+
+        uniqueCategories.forEach((cat) => {
+            if (primary.length < maxPrimary) primary.push({ type: 'category', value: cat });
+            else hiddenCategories.push(cat);
+        });
+
+        const remainingSubcats = [];
+        structuredPairs.forEach(([parent, subcat]) => {
+            if (primary.length < maxPrimary) primary.push({ type: 'subcategory', value: subcat, parent });
+            else remainingSubcats.push([parent, subcat]);
+        });
+
+        const hiddenCount = hiddenCategories.length + remainingSubcats.length;
+        if (!primary.length && !hiddenCount) return '';
+
+        const extraId = `cat-extra-${itemId}`;
+        const primaryHtml = primary
+            .map(({ type, value, parent }) => this.renderChip(value, type, true, parent || null))
+            .join('');
+        const hiddenCategoryHtml = hiddenCategories.map(cat => this.renderChip(cat, 'category', true)).join('');
+        const hiddenSubcatHtml = remainingSubcats.map(([parent, sc]) => this.renderChip(sc, 'subcategory', true, parent)).join('');
+
+        const moreButton = hiddenCount > 0
+            ? `<button type="button" class="summary-chip summary-chip--more summary-chip--compact" data-category-toggle="${extraId}" data-more-label="+${hiddenCount} more" aria-expanded="false" aria-controls="${extraId}">+${hiddenCount} more</button>`
+            : '';
+
+        const extraMarkup = hiddenCount > 0
+            ? `<div class="summary-card__tags summary-card__tags--extra hidden" id="${extraId}" data-category-extra="${extraId}">${hiddenCategoryHtml}${hiddenSubcatHtml}</div>`
+            : '';
+
+        return `
+            <div class="summary-card__taxonomy">
+                <div class="summary-card__tags" data-category-group>
+                    ${primaryHtml}${moreButton}
+                </div>
+                ${extraMarkup}
+            </div>
+        `;
+    }
+
+    renderInlineAudioVariant(reportId, entry, audioSrc) {
+        const available = Boolean(audioSrc);
+        const isActive = this.currentAudio && this.currentAudio.id === reportId;
+        const isPlaying = isActive && this.isPlaying;
+        const statusText = !available
+            ? 'Audio summary is not available for this item.'
+            : isActive
+                ? (isPlaying ? 'Now playing via the global controls.' : 'Ready – press play to resume.')
+                : 'Ready to play. Use the button below to start playback.';
+        const buttonLabel = !available
+            ? 'Unavailable'
+            : isActive && isPlaying ? 'Pause audio' : 'Play audio';
+
+        const buttonState = available ? '' : 'disabled aria-disabled="true"';
+        const downloadLink = available
+            ? `<a class="inline-flex items-center gap-1 rounded-full border border-white/30 bg-white/20 px-3 py-1 text-xs font-semibold text-white/90 backdrop-blur hover:bg-white/30 dark:border-slate-600/50 dark:bg-slate-700/40"
+                   href="${audioSrc}" download
+                   data-variant-audio-download>
+                   Download
+               </a>`
+            : '';
+
+        return `
+            <div class="rounded-xl border border-slate-200/80 bg-slate-50/80 p-4 text-sm dark:border-slate-700/70 dark:bg-slate-800/60"
+                 data-audio-variant data-report-id="${reportId || ''}" data-audio-available="${available ? '1' : ''}">
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div class="space-y-1">
+                        <p class="font-semibold text-slate-800 dark:text-slate-100">${this.escapeHtml(entry.label || 'Audio summary')}</p>
+                        <p class="text-slate-600 dark:text-slate-300" data-audio-status>${statusText}</p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400">Use the primary player controls to scrub or adjust speed.</p>
+                    </div>
+                    <div class="flex items-center gap-2 self-start md:self-auto">
+                        ${downloadLink}
+                        <button type="button" ${buttonState}
+                                class="inline-flex items-center gap-2 rounded-full border border-white/40 bg-gradient-to-r from-audio-500 to-indigo-500 px-4 py-1.5 text-sm font-semibold text-white shadow-md disabled:cursor-not-allowed disabled:border-slate-400 disabled:bg-slate-300 disabled:text-slate-600 dark:disabled:border-slate-600 dark:disabled:bg-slate-700 dark:disabled:text-slate-300"
+                                data-variant-audio-btn>
+                            ${buttonLabel}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    attachInlineAudioVariantHandlers(container, reportId, audioSrc) {
+        const block = container.querySelector('[data-audio-variant]');
+        if (!block) return;
+
+        const playBtn = block.querySelector('[data-variant-audio-btn]');
+        if (playBtn) {
+            playBtn.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!audioSrc) return;
+                const isActive = this.currentAudio && this.currentAudio.id === reportId;
+                if (isActive && this.isPlaying) {
+                    this.togglePlayPause();
+                } else {
+                    this.playAudio(reportId);
+                }
+                this.refreshAudioVariantBlocks();
+            });
+        }
+
+        const downloadLink = block.querySelector('[data-variant-audio-download]');
+        if (downloadLink) {
+            downloadLink.addEventListener('click', (event) => {
+                event.stopPropagation();
+            });
+        }
+    }
+
+    refreshAudioVariantBlocks() {
+        const blocks = document.querySelectorAll('[data-audio-variant]');
+        if (!blocks.length) return;
+
+        blocks.forEach((block) => {
+            const reportId = block.getAttribute('data-report-id');
+            const available = block.getAttribute('data-audio-available') === '1';
+            const statusEl = block.querySelector('[data-audio-status]');
+            const button = block.querySelector('[data-variant-audio-btn]');
+
+            if (!available) {
+                if (statusEl) statusEl.textContent = 'Audio summary is not available for this item.';
+                if (button) {
+                    button.textContent = 'Unavailable';
+                    button.disabled = true;
+                }
+                return;
+            }
+
+            const isActive = this.currentAudio && this.currentAudio.id === reportId;
+            const isPlaying = isActive && this.isPlaying;
+
+            if (statusEl) {
+                statusEl.textContent = isActive
+                    ? (isPlaying ? 'Now playing via the global controls.' : 'Ready – press play to resume.')
+                    : 'Ready to play. Use the button below to start playback.';
+            }
+
+            if (button) {
+                button.disabled = false;
+                button.textContent = isActive && isPlaying ? 'Pause audio' : 'Play audio';
+            }
+        });
+    }
+
+    renderActionBar(item, durations = {}, hasAudio = false) {
+        const groupLabel = 'Summary actions';
+        const segments = [];
+        const source = (item.content_source || item.source || 'youtube').toString().toLowerCase();
+        const hasWatchLink = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
+
+        const readDuration = durations.read || '';
+        segments.push({
+            key: 'read',
+            label: 'Read',
+            title: readDuration ? `Read • ${readDuration}` : 'Read summary',
+            icon: '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 012-2h4a2 2 0 012 2v14a1 1 0 01-1.447.894L9 18.118l-2.553 1.776A1 1 0 015 19V5z"/><path d="M12 3h4a2 2 0 012 2v14a1 1 0 01-1.447.894L17 18.118l-2.553 1.776A1 1 0 0113 19V5a2 2 0 00-1-1.732"/></svg>',
+            duration: readDuration,
+            listen: false,
+            disabled: false
+        });
+
+        const listenDuration = durations.listen || '';
+        if (hasAudio) {
+            segments.push({
+                key: 'listen',
+                label: 'Listen',
+                title: listenDuration ? `Listen • ${listenDuration}` : 'Play audio summary',
+                icon: '<svg data-icon-play class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg><svg data-icon-pause class="w-3.5 h-3.5 hidden" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h3v14H6zm9 0h3v14h-3z"/></svg>',
+                duration: listenDuration,
+                listen: true,
+                disabled: false
+            });
+        } else {
+            segments.push({
+                key: 'listen',
+                label: 'Listen',
+                title: 'Audio not available',
+                icon: '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>',
+                duration: '',
+                listen: true,
+                disabled: true
+            });
+        }
+
+        const watchDuration = durations.watch || '';
+        const watchLabel = source === 'youtube' ? 'Watch' : 'Open';
+        const watchIcon = source === 'youtube'
+            ? '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 9l5 3-5 3V9z"/></svg>'
+            : '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l9-9"/><path d="M7 7h9v9"/></svg>';
+        const watchTitle = watchDuration
+            ? `${watchLabel} • ${watchDuration}`
+            : (source === 'youtube' ? 'Open on YouTube' : 'Open original source');
+        if (hasWatchLink) {
+            segments.push({
+                key: 'watch',
+                label: watchLabel,
+                title: watchTitle,
+                icon: watchIcon,
+                duration: watchDuration,
+                listen: false,
+                disabled: false
+            });
+        } else if (source === 'youtube') {
+            segments.push({
+                key: 'watch',
+                label: watchLabel,
+                title: 'Source link not available',
+                icon: watchIcon,
+                duration: watchDuration,
+                listen: false,
+                disabled: true
+            });
+        }
+
+        const buttonsHtml = segments.map((segment) => {
+            const classes = ['variant-toggle', 'summary-card__action', `summary-card__action--${segment.key}`];
+            if (segment.disabled) classes.push('variant-toggle--disabled');
+
+            const attrs = [`data-action="${segment.key}"`];
+            if (segment.disabled) {
+                attrs.push('disabled', 'aria-disabled="true"');
+            }
+            if (segment.listen && !segment.disabled) {
+                attrs.push('data-listen-button', 'data-default-label="Listen"', 'data-playing-label="Pause"');
+            }
+
+            const durationHtml = segment.duration
+                ? `<span class="variant-duration"${segment.listen && !segment.disabled ? ' data-duration' : ''}>${this.escapeHtml(segment.duration)}</span>`
+                : '';
+            const labelAttr = segment.listen ? ' data-label' : '';
+            const safeTitle = this.escapeHtml(segment.title);
+            const safeLabel = this.escapeHtml(segment.label);
+
+            return `
+                <button type="button" class="${classes.join(' ')}" ${attrs.join(' ')} title="${safeTitle}">
+                    <span class="variant-icon">${segment.icon}</span>
+                    <span class="variant-label" data-label-wrapper>
+                        <span class="variant-text"${labelAttr}>${safeLabel}</span>
+                        ${durationHtml}
+                    </span>
+                </button>
+            `;
+        }).join('');
+
+        return `<div class="summary-card__cta variant-toggle-group" role="group" aria-label="${groupLabel}">${buttonsHtml}</div>`;
+    }
+
+    normalizeCardItem(item) {
+        const title = item.title || 'Untitled';
+        const channel = item.channel ?? item.channel_name ?? 'Unknown Channel';
+        const analysis = item.analysis ?? item.analysis_json ?? {};
+        const fileStem = item.file_stem ?? item.video_id ?? '';
+        const summaryType = item.summary_variant || item.summary_type || 'unknown';
+        const canonicalUrl = item.canonical_url || item.url || '';
+        const { slug: contentSource, label: sourceLabel } = this.inferSource({ ...item, canonical_url: canonicalUrl });
+        return { ...item, title, channel, analysis, file_stem: fileStem, summary_type: summaryType, content_source: contentSource, source_label: sourceLabel, canonical_url: canonicalUrl };
     }
 
     // Normalize categories & subcategories (prefer new subcategories_json structure)
@@ -2222,8 +4098,7 @@ class AudioDashboard {
         if (subcategoriesStructure?.categories?.length) {
             const categories = subcategoriesStructure.categories
                 .map(c => c?.category)
-                .filter(Boolean)
-                .slice(0, 3);
+                .filter(Boolean);
 
             const subcatPairs = subcategoriesStructure.categories.flatMap(c => {
                 const parent = c?.category;
@@ -2232,14 +4107,6 @@ class AudioDashboard {
             });
 
             const subcats = Array.from(new Set(subcatPairs.map(([, s]) => s)));
-
-            // Debug logging for new structured data
-            console.log('New Structured Data:', {
-                title: item.title,
-                categories,
-                subcatPairs,
-                subcats
-            });
 
             return { categories, subcats, subcatPairs };
         }
@@ -2270,18 +4137,6 @@ class AudioDashboard {
                 .filter(Boolean);
         }
         
-        categories = categories.slice(0, 3);
-
-        // Debug logging for troubleshooting
-        if (categories.length > 1) {
-            console.log('Multi-category Debug:', {
-                title: item.title,
-                originalCategory: item?.analysis?.category,
-                originalCategories: item?.analysis?.categories,
-                processedCategories: categories
-            });
-        }
-
         // Build [parent, subcat] pairs from rich
         const pairsRich = rich.flatMap(c => {
             const parent = c?.category;
@@ -2323,27 +4178,17 @@ class AudioDashboard {
         });
         const subcats = Array.from(new Set(subcatPairs.map(([, s]) => s)));
         
-        // Debug logging for legacy fallback
-        if (categories.length > 1) {
-            console.log('Legacy Fallback Debug:', {
-                title: item.title,
-                categories,
-                legacySubs,
-                legacyPairs,
-                subcatPairs,
-                subcats
-            });
-        }
-        
         return { categories, subcats, subcatPairs };
     }
 
     updateNowPlayingPreview() {
-        if (this.currentAudio) {
-            this.nowPlayingPreview.classList.remove('hidden');
-            this.nowPlayingTitle.textContent = this.currentAudio.title;
-        } else {
-            this.nowPlayingPreview.classList.add('hidden');
+        if (!this.nowPlayingPreview) return;
+        this.nowPlayingPreview.classList.remove('hidden');
+        if (!this.currentAudio && this.nowPlayingTitle) {
+            const text = (this.nowPlayingTitle.textContent || '').trim();
+            if (!text) {
+                this.nowPlayingTitle.textContent = 'Select an audio summary';
+            }
         }
     }
 
@@ -2403,7 +4248,7 @@ class AudioDashboard {
             if (bar) bar.style.width = `${pct * 100}%`;
             
             // Check if this is the currently active card (dynamic check during drag)
-            const isCurrentlyActive = this.currentAudio && this.currentAudio.id === id && this.isPlaying;
+            const isCurrentlyActive = this.currentAudio && this.currentAudio.id === id;
             if (isCurrentlyActive && this.audioElement) {
                 const duration = this.audioElement.duration;
                 if (duration && !isNaN(duration)) {
@@ -2416,9 +4261,8 @@ class AudioDashboard {
         const moveTouch = (e) => onMove(e.touches[0].clientX);
         
         const up = () => {
-            // Check if this was a non-active card drag that needs to start playback
-            const wasActiveCard = this.currentAudio && this.currentAudio.id === id && this.isPlaying;
-            if (!wasActiveCard) {
+            const isActiveCard = this.currentAudio && this.currentAudio.id === id;
+            if (!isActiveCard) {
                 this._pendingSeek = finalSeekPct;
                 this.playAudio(id);
             }
@@ -2479,6 +4323,7 @@ class AudioDashboard {
     handleSearch() {
         this.searchQuery = this.searchInput.value.trim();
         this.currentPage = 1;
+        this.updateHeroBadges();
         this.loadContent();
     }
 
@@ -2645,8 +4490,11 @@ class AudioDashboard {
     }
 
     playAllResults() {
-        if (!this.currentItems || this.currentItems.length === 0) return;
-        this.playlist = this.currentItems.map(i => i.file_stem);
+        const playableItems = this.rebuildPlaylist();
+        if (!playableItems.length) {
+            this.showToast('No audio summaries available', 'warn');
+            return;
+        }
         this.currentTrackIndex = 0;
         this.playAudio(this.playlist[0]);
     }
@@ -2768,7 +4616,7 @@ class AudioDashboard {
                 const id = card.dataset.reportId;
                 if (event.code === 'KeyL') this.playAudio(id);
                 if (event.code === 'KeyR') this.handleRead(id);
-                if (event.code === 'KeyW') this.openYoutube(card.dataset.videoId);
+                if (event.code === 'KeyW') this.openSourceLink(card.dataset.source || 'youtube', card.dataset.videoId || '', card.dataset.canonicalUrl || '');
                 break;
             }
         }
@@ -2821,6 +4669,119 @@ class AudioDashboard {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    truncateText(value, max = 24) {
+        if (!value) return '';
+        const str = String(value);
+        if (str.length <= max) return str;
+        return `${str.slice(0, max - 1)}…`;
+    }
+
+    formatRelativeTime(value) {
+        if (!value) return '';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        const diffMs = Date.now() - date.getTime();
+        const absMs = Math.abs(diffMs);
+        if (absMs < 5000) return 'just now';
+        const units = [
+            { label: 'day', ms: 86400000 },
+            { label: 'hour', ms: 3600000 },
+            { label: 'minute', ms: 60000 },
+            { label: 'second', ms: 1000 }
+        ];
+        for (const { label, ms } of units) {
+            if (absMs >= ms || label === 'second') {
+                const valueRounded = Math.round(absMs / ms);
+                if (valueRounded === 0) return 'just now';
+                const plural = valueRounded === 1 ? label : `${label}s`;
+                return diffMs >= 0 ? `${valueRounded} ${plural} ago` : `in ${valueRounded} ${plural}`;
+            }
+        }
+        return '';
+    }
+
+    getReprocessToken(forcePrompt = false) {
+        if (!forcePrompt && this.reprocessToken) {
+            return this.reprocessToken;
+        }
+        try {
+            if (!forcePrompt && this.reprocessTokenSource !== 'prompt') {
+                const stored = localStorage.getItem('ytv2.reprocessToken');
+                if (stored) {
+                    this.reprocessToken = stored;
+                    this.reprocessTokenSource = 'storage';
+                    this.updateReprocessFootnote();
+                    return stored;
+                }
+            }
+        } catch (_) {
+            // ignore storage errors
+        }
+
+        if (!forcePrompt && this.reprocessTokenSource !== 'window' && typeof window !== 'undefined' && window.REPROCESS_TOKEN) {
+            this.reprocessToken = window.REPROCESS_TOKEN;
+            this.reprocessTokenSource = 'window';
+            this.updateReprocessFootnote();
+            return this.reprocessToken;
+        }
+
+        const entered = typeof window !== 'undefined' ? window.prompt('Enter reprocess token') : null;
+        if (entered) {
+            this.reprocessToken = entered.trim();
+            this.reprocessTokenSource = 'prompt';
+            try { localStorage.setItem('ytv2.reprocessToken', this.reprocessToken); this.reprocessTokenSource = 'storage'; } catch (_) {}
+            this.updateReprocessFootnote();
+            return this.reprocessToken;
+        }
+
+        this.updateReprocessFootnote();
+        return null;
+    }
+
+    resetStoredReprocessToken() {
+        try { localStorage.removeItem('ytv2.reprocessToken'); } catch (_) {}
+        if (typeof window !== 'undefined' && window.REPROCESS_TOKEN) {
+            this.reprocessToken = window.REPROCESS_TOKEN;
+            this.reprocessTokenSource = 'window';
+        } else {
+            this.reprocessToken = null;
+            this.reprocessTokenSource = null;
+        }
+        this.updateReprocessFootnote();
+        this.showToast('Reprocess token cleared. You will be prompted next time.', 'info');
+    }
+
+    updateReprocessFootnote() {
+        if (!this.reprocessFootnote) return;
+        let text = 'Provide the shared token when prompted.';
+        if (this.reprocessTokenSource === 'window') {
+            text = 'Token provided by backend configuration.';
+        } else if (this.reprocessTokenSource === 'storage') {
+            text = 'Using token saved locally. Change token to update.';
+        } else if (this.reprocessTokenSource === 'prompt') {
+            text = 'Token cached locally for quick access.';
+        }
+        this.reprocessFootnote.textContent = text;
+    }
+
+    encodeBase64(value) {
+        if (typeof btoa === 'function') {
+            try {
+                return btoa(value);
+            } catch (_) {
+                try {
+                    return btoa(unescape(encodeURIComponent(value)));
+                } catch (error) {
+                    console.warn('Base64 encoding failed', error);
+                }
+            }
+        }
+        if (typeof Buffer !== 'undefined') {
+            return Buffer.from(value, 'utf8').toString('base64');
+        }
+        return value;
     }
 
     /**
@@ -3135,11 +5096,22 @@ class AudioDashboard {
             if (!raw) return;
             const data = JSON.parse(raw);
             if (Array.isArray(data.playlist) && typeof data.index === 'number') {
-                this.playlist = data.playlist;
-                this.currentTrackIndex = Math.min(Math.max(0, data.index), this.playlist.length - 1);
-                const id = this.playlist[this.currentTrackIndex];
-                const item = (this.currentItems || []).find(x => x.file_stem === id) || this.currentItems[0];
-                if (item) this.setCurrentFromItem(item);
+                const playableItems = this.getPlayableItems();
+                const playableIds = new Set(playableItems.map(item => item.file_stem));
+                const filtered = data.playlist.filter(id => playableIds.has(id));
+                this.playlist = filtered.length ? filtered : playableItems.map(item => item.file_stem);
+
+                if (this.playlist.length) {
+                    this.currentTrackIndex = Math.min(Math.max(0, data.index), this.playlist.length - 1);
+                    const id = this.playlist[this.currentTrackIndex];
+                    const item = playableItems.find(x => x.file_stem === id) || playableItems[0];
+                    if (item) {
+                        this.setCurrentFromItem(item);
+                    }
+                } else {
+                    this.currentTrackIndex = -1;
+                    this.showNowPlayingPlaceholder();
+                }
                 this.renderQueue();
             }
         } catch (_) {}

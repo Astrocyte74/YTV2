@@ -242,7 +242,7 @@
 ### Delete Flow Updates
 - [ ] (T-Y017) **Update delete endpoint for PostgreSQL**
   - **Implementation**: Modify delete handler to use shared PostgreSQL
-  - **Location**: `/Users/markdarby/projects/YTV2-Dashboard/telegram_bot.py`
+  - **Location**: `/Users/markdarby/projects/YTV2-Dashboard/server.py` (renamed)
   - **Features**: Handle both id formats, cascade delete via FK constraints
   - **Safety**: Transactional deletes, proper error handling
   - **Testing**: Delete videos, verify removal from both components
