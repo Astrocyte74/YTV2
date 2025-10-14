@@ -47,3 +47,5 @@ Item fields (selected):
 ## Empty states and guard rails
 The UI may require at least one selection in certain groups (e.g., category, source, channel). When none are selected the client intentionally shows an empty state and does not call `/api/reports`.
 
+## GET /api/metrics
+When `NGROK_BASE_URL` (or `NGROK_URL`) is configured, the dashboard exposes `/api/metrics` as a same‑origin proxy to the NAS metrics endpoint. This avoids browser CORS restrictions when the NAS is exposed via ngrok. Returns 404 when NAS bridging is not configured.
