@@ -119,21 +119,22 @@ class PostgreSQLContentIndex:
         video_id = f"LOWER(COALESCE({alias}.video_id::text, ''))"
         record_id = f"LOWER(COALESCE({alias}.id::text, ''))"
 
+        # Double percent signs to avoid psycopg2 placeholder parsing
         clauses.append(
-            f"WHEN {canonical} LIKE '%wikipedia.org%' THEN 'wikipedia'"
+            f"WHEN {canonical} LIKE '%%wikipedia.org%%' THEN 'wikipedia'"
         )
         clauses.append(
-            f"WHEN {canonical} LIKE '%churchofjesuschrist.org%' "
-            f"OR {canonical} LIKE '%lds.org%' THEN 'lds'"
+            f"WHEN {canonical} LIKE '%%churchofjesuschrist.org%%' "
+            f"OR {canonical} LIKE '%%lds.org%%' THEN 'lds'"
         )
         clauses.append(
-            f"WHEN {canonical} LIKE '%reddit.com%' "
-            f"OR {video_id} LIKE 'reddit:%' "
-            f"OR {record_id} LIKE 'reddit:%' THEN 'reddit'"
+            f"WHEN {canonical} LIKE '%%reddit.com%%' "
+            f"OR {video_id} LIKE 'reddit:%%' "
+            f"OR {record_id} LIKE 'reddit:%%' THEN 'reddit'"
         )
         clauses.append(
-            f"WHEN {canonical} LIKE '%youtube.com%' "
-            f"OR {canonical} LIKE '%youtu.be%' "
+            f"WHEN {canonical} LIKE '%%youtube.com%%' "
+            f"OR {canonical} LIKE '%%youtu.be%%' "
             f"OR {video_id} ~ '^[a-z0-9_-]{{11}}$' THEN 'youtube'"
         )
         clauses.append("WHEN TRIM(COALESCE({0}.canonical_url::text, '')) = '' THEN 'other'".format(alias))
