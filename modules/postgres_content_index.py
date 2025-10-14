@@ -611,6 +611,13 @@ class PostgreSQLContentIndex:
             cursor = conn.cursor()
             count_params = list(params)
             try:
+                placeholder_count = count_query.count('%s')
+                logger.debug(
+                    "Count query placeholders=%s param_count=%s params=%s",
+                    placeholder_count,
+                    len(count_params),
+                    count_params
+                )
                 if count_params:
                     cursor.execute(count_query, count_params)
                 else:
@@ -644,6 +651,13 @@ class PostgreSQLContentIndex:
             final_query = query + where_clause + sort_clause + f" LIMIT {size} OFFSET {offset}"
 
             try:
+                placeholder_count = final_query.count('%s')
+                logger.debug(
+                    "Main query placeholders=%s param_count=%s params=%s",
+                    placeholder_count,
+                    len(params),
+                    params
+                )
                 if params:
                     cursor.execute(final_query, params)
                 else:
