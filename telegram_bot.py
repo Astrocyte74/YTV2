@@ -25,7 +25,6 @@ from urllib.parse import urlparse, parse_qs, unquote, quote
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 import socket
-import sqlite3
 import requests
 from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
@@ -383,77 +382,7 @@ def test_postgres_health():
         logger.error(f"PostgreSQL health check failed: {e}")
         return False
 
-def create_empty_ytv2_database(db_path: Path):
-    """Create empty YTV2 database with proper schema."""
-    logger.info(f"🗄️ Creating database schema at: {db_path}")
-    
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    
-    # Create content table with universal schema
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS content (
-            id TEXT PRIMARY KEY,
-            title TEXT,
-            canonical_url TEXT,
-            thumbnail_url TEXT,
-            published_at TEXT,
-            indexed_at TEXT,
-            duration_seconds INTEGER DEFAULT 0,
-            word_count INTEGER DEFAULT 0,
-            has_audio BOOLEAN DEFAULT 0,
-            audio_duration_seconds INTEGER DEFAULT 0,
-            has_transcript BOOLEAN DEFAULT 0,
-            transcript_chars INTEGER DEFAULT 0,
-            video_id TEXT,
-            channel_name TEXT,
-            channel_id TEXT,
-            view_count INTEGER DEFAULT 0,
-            like_count INTEGER DEFAULT 0,
-            comment_count INTEGER DEFAULT 0,
-            category TEXT,
-            content_type TEXT,
-            complexity_level TEXT,
-            language TEXT DEFAULT 'en',
-            key_topics TEXT,
-            named_entities TEXT,
-            format_source TEXT DEFAULT 'api',
-            processing_status TEXT DEFAULT 'completed',
-            created_at TEXT,
-            updated_at TEXT
-        )
-    ''')
-    
-    # Create summaries table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS content_summaries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content_id TEXT UNIQUE,
-            summary_text TEXT,
-            summary_type TEXT DEFAULT 'comprehensive',
-            created_at TEXT,
-            FOREIGN KEY (content_id) REFERENCES content (id)
-        )
-    ''')
-    
-    # Add subcategory column if it doesn't exist (migration for hierarchical categories)
-    try:
-        cursor.execute('ALTER TABLE content ADD COLUMN subcategory TEXT')
-        logger.info("✅ Added subcategory column to content table")
-    except sqlite3.OperationalError as e:
-        if "duplicate column name" in str(e).lower():
-            logger.info("ℹ️ Subcategory column already exists")
-        else:
-            logger.warning(f"Could not add subcategory column: {e}")
-    
-    # Create indexes for performance
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_content_video_id ON content (video_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_content_indexed_at ON content (indexed_at)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_summaries_content_id ON content_summaries (content_id)')
-    
-    conn.commit()
-    conn.close()
-    logger.info(f"✅ Empty database created with YTV2 schema")
+## Removed: SQLite bootstrap utilities (Postgres-only)
 
 logger.info("🔍 Backend: PostgreSQL")
 try:
@@ -1138,10 +1067,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.serve_health_backend()
         elif path == '/health/ingest':
             self.serve_health_ingest()
-        elif path == '/api/db-status':
-            self.serve_db_status()
-        elif path == '/api/db-reset':
-            self.serve_db_reset()
+        elif path in ('/api/db-status', '/api/db-reset'):
+            self.send_error(410, "Endpoint removed (SQLite diagnostics)")
         elif path == '/api/migrate-audio':
             self.serve_audio_migration()
         elif path.startswith('/api/'):
@@ -1179,10 +1106,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         elif self.path in ('/api/upload-report', '/api/upload-database', '/api/download-database', '/api/upload-audio'):
             # Legacy endpoints removed in Postgres-only mode
             self.send_error(410, "Endpoint removed")
-        elif self.path == '/api/content':
-            self.handle_content_api()
-        elif self.path.startswith('/api/content/'):
-            self.handle_content_update_api()
+        elif self.path == '/api/content' or self.path.startswith('/api/content/'):
+            # Legacy SQLite content endpoints removed
+            self.send_error(410, "Endpoint removed (use /ingest/* with PostgreSQL)")
         elif self.path.startswith('/api/delete'):
             self.handle_delete_request()
         # New ingest endpoints for NAS sync (T-Y020C)
@@ -2180,129 +2106,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(error_response, indent=2).encode())
 
-    def serve_db_status(self):
-        """Serve database status endpoint for diagnostics"""
-        try:
-            # Check all possible database locations
-            db_paths = [
-                Path('/app/data/ytv2_content.db'),      # Render persistent disk mount
-                Path('./data/ytv2_content.db'),         # Data subdirectory
-                Path('/app/ytv2_content.db'),           # Root app directory
-                Path('./ytv2_content.db')               # Current directory
-            ]
-            
-            db_info = {
-                "database_backend": "PostgreSQL",
-                "current_database": str(getattr(content_index, 'db_path', 'unknown')) if 'content_index' in globals() else None,
-                "searched_paths": [],
-                "found_databases": [],
-                "persistent_disk_mount": "/opt/render/project/src/data",
-                "environment": {
-                    "PWD": os.getcwd(),
-                    "RENDER_INSTANCE_ID": os.getenv('RENDER_INSTANCE_ID', 'not-set'),
-                    "RENDER_SERVICE_ID": os.getenv('RENDER_SERVICE_ID', 'not-set')
-                }
-            }
-            
-            # Check each path
-            for db_path in db_paths:
-                path_info = {
-                    "path": str(db_path),
-                    "exists": db_path.exists(),
-                    "size_bytes": db_path.stat().st_size if db_path.exists() else 0,
-                    "readable": False,
-                    "record_count": 0
-                }
-                
-                if db_path.exists():
-                    try:
-                        # Try to connect and get record count
-                        import sqlite3
-                        conn = sqlite3.connect(str(db_path))
-                        cursor = conn.execute("SELECT COUNT(*) FROM content")
-                        path_info["record_count"] = cursor.fetchone()[0]
-                        cursor = conn.execute("SELECT COUNT(*) FROM content_summaries") 
-                        path_info["summary_count"] = cursor.fetchone()[0]
-                        conn.close()
-                        path_info["readable"] = True
-                        db_info["found_databases"].append(path_info)
-                    except Exception as e:
-                        path_info["error"] = str(e)
-                        
-                db_info["searched_paths"].append(path_info)
-            
-            # Get current index status
-            if 'content_index' in globals():
-                try:
-                    if hasattr(content_index, 'get_report_count'):
-                        db_info["active_index_count"] = content_index.get_report_count()
-                except Exception as e:
-                    db_info["active_index_error"] = str(e)
-            
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.send_header('Cache-Control', 'no-cache')
-            self.end_headers()
-            self.wfile.write(json.dumps(db_info, indent=2).encode())
-            
-        except Exception as e:
-            logger.error(f"Error serving database status: {e}")
-            error_data = {"error": "Database status check failed", "message": str(e)}
-            self.send_response(500)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps(error_data).encode())
-    
-    def serve_db_reset(self):
-        """Reset database with correct schema (emergency recovery)"""
-        try:
-            # Find database paths
-            db_paths = [
-                Path('/app/data/ytv2_content.db'), # Render persistent disk mount
-                Path('./data/ytv2_content.db'),    # Local data subdirectory
-                Path('/app/ytv2_content.db'),      # Root app directory
-                Path('./ytv2_content.db')          # Current directory
-            ]
-            
-            db_path = None
-            for path in db_paths:
-                if path.parent.exists():
-                    db_path = path
-                    break
-                    
-            if not db_path:
-                self.send_error(500, "Cannot find suitable database location")
-                return
-                
-            # Backup existing database if it exists
-            if db_path.exists():
-                backup_path = Path(str(db_path) + '.backup.' + str(int(time.time())))
-                db_path.rename(backup_path)
-                logger.info(f"🔄 Backed up existing database to: {backup_path}")
-                
-            # Create new database with correct schema
-            create_empty_ytv2_database(db_path)
-            logger.info(f"✅ Database reset with correct schema: {db_path}")
-            
-            response = {
-                "status": "success",
-                "message": "Database reset with correct schema",
-                "database_path": str(db_path),
-                "backup_created": str(backup_path) if 'backup_path' in locals() else None
-            }
-            
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps(response, indent=2).encode())
-            
-        except Exception as e:
-            logger.error(f"Database reset error: {e}")
-            error_data = {"error": "Database reset failed", "message": str(e)}
-            self.send_response(500)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps(error_data).encode())
+    # Removed SQLite diagnostics endpoints (db-status, db-reset) in Postgres-only mode
     
     def serve_audio_migration(self):
         """Migrate audio files from ephemeral to persistent storage"""
@@ -2887,7 +2691,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": str(e)}).encode())
     
     def handle_upload_report(self):
-        """Handle POST request to upload report from NAS to Render with transactional validation"""
+        """Removed: legacy JSON upload (use /ingest/*)."""
+        self.send_error(410, "Endpoint removed (legacy JSON upload)")
+        return
         try:
             # Check sync secret for authentication
             sync_secret = os.getenv('SYNC_SECRET')
@@ -3275,7 +3081,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         }
     
     def handle_upload_database(self):
-        """Handle POST request to upload SQLite database from NAS"""
+        """Removed: legacy SQLite upload."""
+        self.send_error(410, "Endpoint removed (legacy SQLite upload)")
+        return
         try:
             # Check sync secret for authentication
             sync_secret = os.getenv('SYNC_SECRET')
@@ -3393,7 +3201,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(500, f"Database upload failed: {str(e)}")
 
     def handle_download_database(self):
-        """Handle GET request to download SQLite database"""
+        """Removed: legacy SQLite download."""
+        self.send_error(410, "Endpoint removed (legacy SQLite download)")
+        return
         try:
             # Check sync secret for authentication
             sync_secret = os.getenv('SYNC_SECRET')
@@ -3449,7 +3259,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(500, f"Database download failed: {str(e)}")
     
     def handle_upload_audio(self):
-        """Handle POST request to upload audio files from NAS"""
+        """Removed: legacy audio upload (use /ingest/audio)."""
+        self.send_error(410, "Endpoint removed (legacy audio upload)")
+        return
         try:
             # Check sync secret for authentication
             sync_secret = os.getenv('SYNC_SECRET')
@@ -3525,7 +3337,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(500, f"Audio upload failed: {str(e)}")
     
     def handle_content_api(self):
-        """Handle POST /api/content - Create or update content with UPSERT logic"""
+        """Removed: legacy SQLite content API (use /ingest/report)."""
+        self.send_error(410, "Endpoint removed (legacy content API)")
+        return
         try:
             # Check sync secret for authentication
             sync_secret = os.getenv('SYNC_SECRET')
@@ -3720,7 +3534,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(500, f"Content API failed: {str(e)}")
     
     def handle_content_update_api(self):
-        """Handle PUT /api/content/{id} - Update specific content fields"""
+        """Removed: legacy SQLite content update API."""
+        self.send_error(410, "Endpoint removed (legacy content update)")
+        return
         try:
             # Check authentication
             sync_secret = os.getenv('SYNC_SECRET')
