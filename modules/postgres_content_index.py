@@ -444,6 +444,21 @@ class PostgreSQLContentIndex:
 
         content_dict['summary_variants'] = cleaned_variants
 
+        # Hint has_audio=true when an audio variant exists even if c.has_audio is false.
+        # This enables the Listen button without requiring a separate backfill.
+        try:
+            media_dict = content_dict.get('media') or {}
+            if not bool(media_dict.get('has_audio')):
+                if any(
+                    isinstance(v, dict) and (
+                        v.get('kind') == 'audio' or str(v.get('variant', '')).startswith('audio')
+                    ) for v in cleaned_variants
+                ):
+                    media_dict['has_audio'] = True
+                    content_dict['media'] = media_dict
+        except Exception:
+            pass
+
         return content_dict
 
     def get_reports(self, filters: Dict[str, Any] = None, sort: str = "newest",
