@@ -43,4 +43,4 @@ services:
       sizeGB: 1
     
     # Start command for dashboard server
-    startCommand: python telegram_bot.py
+    startCommand: python server.py

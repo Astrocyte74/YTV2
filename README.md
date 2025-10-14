@@ -31,12 +31,12 @@ PORT=10000
 ## Run locally
 ```
 pip install -r requirements.txt
-python telegram_bot.py
+python server.py
 # open http://localhost:10000
 ```
 
 ## Deploy on Render
-Use Docker runtime with Start Command `python telegram_bot.py` and set `DATABASE_URL_POSTGRES_NEW`.
+Use Docker runtime with Start Command `python server.py` and set `DATABASE_URL_POSTGRES_NEW`.
 
 Step‑by‑step guide: `docs/DEPLOY_RENDER.md`.
 
@@ -48,7 +48,7 @@ Step‑by‑step guide: `docs/DEPLOY_RENDER.md`.
 ## Project structure (selected)
 ```
 YTV2-Dashboard/
-├─ telegram_bot.py                  # HTTP server (dashboard + API)
+├─ server.py                        # HTTP server (dashboard + API)
 ├─ modules/
 │  ├─ postgres_content_index.py     # Postgres queries and mapping
 ├─ static/

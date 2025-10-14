@@ -4,7 +4,7 @@ This service runs the dashboard UI + API using PostgreSQL.
 
 ## Service settings
 - Environment: Docker
-- Start Command: `python telegram_bot.py`
+- Start Command: `python server.py`
 
 ## Environment variables
 Set these on the Render service:
