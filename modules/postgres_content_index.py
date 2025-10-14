@@ -609,7 +609,10 @@ class PostgreSQLContentIndex:
             cursor = conn.cursor()
             count_params = list(params)
             try:
-                cursor.execute(count_query, count_params)
+                if count_params:
+                    cursor.execute(count_query, count_params)
+                else:
+                    cursor.execute(count_query)
             except Exception:
                 logger.exception(
                     "Count query failed for get_reports",
@@ -639,7 +642,10 @@ class PostgreSQLContentIndex:
             final_query = query + where_clause + sort_clause + f" LIMIT {size} OFFSET {offset}"
 
             try:
-                cursor.execute(final_query, params)
+                if params:
+                    cursor.execute(final_query, params)
+                else:
+                    cursor.execute(final_query)
             except Exception:
                 logger.error(
                     "Main query failed for get_reports: params=%s count=%s placeholders=%s sql=%s",
@@ -941,7 +947,10 @@ class PostgreSQLContentIndex:
             cursor = conn.cursor()
             count_params = list(params)
             try:
-                cursor.execute(count_query, count_params)
+                if count_params:
+                    cursor.execute(count_query, count_params)
+                else:
+                    cursor.execute(count_query)
             except Exception:
                 logger.exception(
                     "Count query failed for search",
@@ -968,12 +977,16 @@ class PostgreSQLContentIndex:
             """
 
             try:
-                cursor.execute(query, params + [search_term])
+                combined_params = params + [search_term]
+                if combined_params:
+                    cursor.execute(query, combined_params)
+                else:
+                    cursor.execute(query)
             except Exception:
                 logger.error(
                     "Main query failed for search: params=%s count=%s placeholders=%s sql=%s",
-                    params + [search_term],
-                    len(params) + 1,
+                    combined_params,
+                    len(combined_params),
                     query.count('%s'),
                     query,
                     exc_info=True
