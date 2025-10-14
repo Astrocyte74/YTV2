@@ -627,7 +627,18 @@ class PostgreSQLContentIndex:
 
             cursor = conn.cursor()
             count_params = list(params)
-            cursor.execute(count_query, count_params)
+            try:
+                cursor.execute(count_query, count_params)
+            except Exception:
+                logger.exception(
+                    "Count query failed for get_reports",
+                    extra={
+                        "sql": count_query,
+                        "param_length": len(count_params),
+                        "params_snapshot": list(count_params)[:10]
+                    }
+                )
+                raise
             total_count = cursor.fetchone()['total']
 
             # Add pagination
@@ -637,7 +648,18 @@ class PostgreSQLContentIndex:
             query_params.extend([size, offset])
 
             # Execute main query
-            cursor.execute(query, query_params)
+            try:
+                cursor.execute(query, query_params)
+            except Exception:
+                logger.exception(
+                    "Main query failed for get_reports",
+                    extra={
+                        "sql": query,
+                        "param_length": len(query_params),
+                        "params_snapshot": list(query_params)[:10]
+                    }
+                )
+                raise
             rows = cursor.fetchall()
 
             formatted_reports = [self._format_report_for_api(dict(row)) for row in rows]
@@ -928,7 +950,18 @@ class PostgreSQLContentIndex:
 
             cursor = conn.cursor()
             count_params = list(params)
-            cursor.execute(count_query, count_params)
+            try:
+                cursor.execute(count_query, count_params)
+            except Exception:
+                logger.exception(
+                    "Count query failed for search",
+                    extra={
+                        "sql": count_query,
+                        "param_length": len(count_params),
+                        "params_snapshot": list(count_params)[:10]
+                    }
+                )
+                raise
             total_count = cursor.fetchone()['total']
 
             # Add sorting and pagination
@@ -943,7 +976,18 @@ class PostgreSQLContentIndex:
             query_params = list(params)
             query_params.extend([search_term, size, offset])
 
-            cursor.execute(query, query_params)
+            try:
+                cursor.execute(query, query_params)
+            except Exception:
+                logger.exception(
+                    "Main query failed for search",
+                    extra={
+                        "sql": query,
+                        "param_length": len(query_params),
+                        "params_snapshot": list(query_params)[:10]
+                    }
+                )
+                raise
             rows = cursor.fetchall()
 
             reports = [self._format_report_for_api(dict(row)) for row in rows]
