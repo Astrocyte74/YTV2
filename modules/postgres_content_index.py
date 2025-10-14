@@ -651,13 +651,12 @@ class PostgreSQLContentIndex:
             try:
                 cursor.execute(query, query_params)
             except Exception:
-                logger.exception(
-                    "Main query failed for get_reports",
-                    extra={
-                        "sql": query,
-                        "param_length": len(query_params),
-                        "params_snapshot": list(query_params)[:10]
-                    }
+                logger.error(
+                    "Main query failed for get_reports: params=%s count=%s sql=%s",
+                    query_params,
+                    len(query_params),
+                    query,
+                    exc_info=True
                 )
                 raise
             rows = cursor.fetchall()
@@ -979,13 +978,12 @@ class PostgreSQLContentIndex:
             try:
                 cursor.execute(query, query_params)
             except Exception:
-                logger.exception(
-                    "Main query failed for search",
-                    extra={
-                        "sql": query,
-                        "param_length": len(query_params),
-                        "params_snapshot": list(query_params)[:10]
-                    }
+                logger.error(
+                    "Main query failed for search: params=%s count=%s sql=%s",
+                    query_params,
+                    len(query_params),
+                    query,
+                    exc_info=True
                 )
                 raise
             rows = cursor.fetchall()
