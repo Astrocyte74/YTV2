@@ -582,7 +582,7 @@ class PostgreSQLContentIndex:
             if where_conditions:
                 where_clause = " AND " + " AND ".join(where_conditions)
 
-            count_query = f"""
+            base_count_query = """
                 SELECT COUNT(*) as total
                 FROM content c
                 LEFT JOIN LATERAL (
@@ -603,8 +603,8 @@ class PostgreSQLContentIndex:
                     LIMIT 1
                 ) ls ON true
                 WHERE ls.html IS NOT NULL
-                {where_clause}
-            """.format(where_clause=where_clause)
+            """
+            count_query = base_count_query + where_clause
 
             cursor = conn.cursor()
             count_params = list(params)
