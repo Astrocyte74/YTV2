@@ -652,9 +652,10 @@ class PostgreSQLContentIndex:
                 cursor.execute(query, query_params)
             except Exception:
                 logger.error(
-                    "Main query failed for get_reports: params=%s count=%s sql=%s",
+                    "Main query failed for get_reports: params=%s count=%s placeholders=%s sql=%s",
                     query_params,
                     len(query_params),
+                    query.count('%s'),
                     query,
                     exc_info=True
                 )
@@ -979,9 +980,10 @@ class PostgreSQLContentIndex:
                 cursor.execute(query, query_params)
             except Exception:
                 logger.error(
-                    "Main query failed for search: params=%s count=%s sql=%s",
+                    "Main query failed for search: params=%s count=%s placeholders=%s sql=%s",
                     query_params,
                     len(query_params),
+                    query.count('%s'),
                     query,
                     exc_info=True
                 )
