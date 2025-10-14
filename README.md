@@ -45,7 +45,6 @@ YTV2-Dashboard/
 ├─ telegram_bot.py                  # HTTP server (dashboard + API)
 ├─ modules/
 │  ├─ postgres_content_index.py     # Postgres queries and mapping
-│  └─ report_generator.py           # JSON helpers (legacy)
 ├─ static/
 │  ├─ dashboard_v3.js               # UI logic
 │  └─ dashboard.css                 # Styles
@@ -61,4 +60,3 @@ YTV2-Dashboard/
 ## Notes
 - The backend normalizes a `content_source` slug per item (e.g., `youtube`, `reddit`) and returns a user‑friendly `source_label`.
 - If you see 500s, check `docs/TROUBLESHOOTING.md` for placeholder/percent issues and the logging guidance.
-

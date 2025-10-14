@@ -68,7 +68,7 @@ except ImportError as e:
     logger.warning(f"V2 dependencies not available: {e}")
 
 # Import dashboard components only
-from modules.report_generator import JSONReportGenerator
+# Legacy JSON report generator no longer used
 
 # Use PostgreSQL backend
 from modules.postgres_content_index import PostgreSQLContentIndex as ContentIndex
@@ -1176,14 +1176,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             return
         elif self.path == '/delete-reports':
             self.handle_delete_reports()
-        elif self.path == '/api/upload-report':
-            self.handle_upload_report()
-        elif self.path == '/api/upload-database':
-            self.handle_upload_database()
-        elif self.path == '/api/download-database':
-            self.handle_download_database()
-        elif self.path == '/api/upload-audio':
-            self.handle_upload_audio()
+        elif self.path in ('/api/upload-report', '/api/upload-database', '/api/download-database', '/api/upload-audio'):
+            # Legacy endpoints removed in Postgres-only mode
+            self.send_error(410, "Endpoint removed")
         elif self.path == '/api/content':
             self.handle_content_api()
         elif self.path.startswith('/api/content/'):
@@ -1268,11 +1263,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         }
                         reports_data.append(report_data)
 
-    backend_type = "PostgreSQL"
+                    backend_type = "PostgreSQL"
                     logger.info(f"✅ Dashboard using {backend_type} data: {len(reports_data)} reports")
 
                 except Exception as e:
-    backend_type = "PostgreSQL"
+                    backend_type = "PostgreSQL"
                     logger.error(f"❌ {backend_type} dashboard data failed: {e}")
                     # Fall back to file-based approach
                     reports_data = []
@@ -1282,7 +1277,6 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 logger.info("🔄 Dashboard falling back to file-based data (no database available)")
                 # Get report files from multiple directories (JSON preferred, HTML legacy)
                 report_dirs = [
-                    Path('./data/reports'),  # JSON reports (primary)
                     Path('./exports'),       # HTML reports (legacy)
                     Path('.')               # Current directory (legacy)
                 ]
@@ -1480,14 +1474,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 if report_data:
                     return self.serve_sqlite_report(report_data, qs)
             
-            # Fallback to JSON file (legacy)
-            json_path = Path('data/reports') / filename.name
-            if json_path.suffix == '.json' and json_path.exists():
-                return self.serve_json_report(json_path, qs)
-            
-            # (optional) support .html wrapper if you have an HTML variant
-            if json_path.with_suffix('.json').exists():
-                return self.serve_json_report(json_path.with_suffix('.json'), qs)
+            # Legacy JSON file fallback removed (Postgres-only mode)
                 
             self.send_error(404, "Report not found")
         except Exception as e:
@@ -1987,16 +1974,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             telegram_configured = bool(os.getenv('TELEGRAM_BOT_TOKEN'))
             users_configured = bool(os.getenv('TELEGRAM_ALLOWED_USERS'))
             
-            # Count reports
-            report_generator = JSONReportGenerator()
-            json_reports = len(report_generator.list_reports())
-            
-            html_reports = 0
-            for report_dir in [Path('./exports'), Path('.')]:
-                if report_dir.exists():
-                    html_reports += len([f for f in report_dir.glob('*.html') 
-                                       if f.name not in ['dashboard_template.html', 'report_template.html']
-                                       and not f.name.startswith('._')])
+            # Count reports from PostgreSQL
+            try:
+                total_reports = content_index.get_report_count() if content_index else 0
+            except Exception:
+                total_reports = 0
             
             status_data = {
                 "status": "healthy",
@@ -2006,9 +1988,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "telegram_bot": "configured" if telegram_configured and users_configured else "not_configured"
                 },
                 "reports": {
-                    "json_reports": json_reports,
-                    "html_reports": html_reports,
-                    "total_reports": json_reports + html_reports
+                    "total_reports": total_reports
                 },
                 "configuration": {
                     "telegram_configured": telegram_configured,
@@ -2060,7 +2040,6 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # Get backend information
             backend_info = {
                 "backend": type(content_index).__name__ if content_index else "None",
-                "read_from_postgres": READ_FROM_POSTGRES,
                 "using_sqlite": USING_SQLITE,
                 "dsn_set": bool(os.getenv("DATABASE_URL_POSTGRES_NEW")),
                 "psycopg2_available": PSYCOPG2_AVAILABLE,
@@ -2408,13 +2387,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             elif path == '/api/refresh':
                 self.serve_api_refresh()
             elif path == '/api/backup':
-                self.serve_api_backup()
+                self.send_error(410, "Endpoint removed")
             elif path == '/api/report-events':
                 self.serve_api_report_events()
             elif path.startswith('/api/backup/'):
-                self.serve_backup_file()
+                self.send_error(410, "Endpoint removed")
             elif path == '/api/download-database':
-                self.handle_download_database()
+                self.send_error(410, "Endpoint removed")
             elif path == '/api/list-quizzes':
                 self.handle_list_quizzes()
             elif path.startswith('/api/quiz/'):
@@ -2526,8 +2505,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         """Serve Phase 2 reports API endpoint with filtering, search, and pagination"""
         try:
             if not content_index:
-                # Fallback to legacy method
-                return self.serve_api_reports()
+                # Backend not available
+                self.send_error(503, "Content index not available")
+                return
 
             latest_only = query_params.get('latest', ['false'])[0].lower() == 'true'
             if latest_only:
@@ -2693,72 +2673,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def serve_api_reports(self):
         """Serve reports list API endpoint"""
         try:
-            # Get all reports (JSON preferred, HTML legacy)
-            report_generator = JSONReportGenerator()
-            json_reports = report_generator.list_reports()
-            
-            # Convert to API format
-            api_reports = []
-            for report in json_reports:
-                api_reports.append({
-                    "id": report.get('filename', '').replace('.json', ''),
-                    "filename": report['filename'],
-                    "title": report['title'],
-                    "channel": report['channel'],
-                    "duration": report.get('duration', 0),
-                    "created_date": report.get('created_date', ''),
-                    "created_time": report.get('created_time', ''),
-                    "timestamp": report.get('timestamp', ''),
-                    "type": "json",
-                    "url": report.get('url', ''),
-                    "video_id": report.get('video_id', ''),
-                    "thumbnail_url": report.get('thumbnail', ''),
-                    "model": report.get('model', 'Unknown'),
-                    "summary_preview": report.get('summary_preview', '')
-                })
-            
-            # Add HTML reports for legacy support
-            html_dirs = [Path('./exports'), Path('.')]
-            for report_dir in html_dirs:
-                if report_dir.exists():
-                    html_files = [f for f in report_dir.glob('*.html') 
-                                if f.name not in ['dashboard_template.html', 'report_template.html']
-                                and not f.name.startswith('._')]
-                    
-                    for html_file in html_files:
-                        try:
-                            metadata = extract_html_report_metadata(html_file)
-                            api_reports.append({
-                                "id": html_file.stem,
-                                "filename": metadata['filename'],
-                                "title": metadata['title'],
-                                "channel": metadata['channel'],
-                                "duration": 0,
-                                "created_date": metadata['created_date'],
-                                "created_time": metadata['created_time'],
-                                "timestamp": metadata['timestamp'],
-                                "type": "html",
-                                "url": "",
-                                "video_id": ""
-                            })
-                        except Exception:
-                            continue
-            
-            # Sort by timestamp (newest first)
-            api_reports.sort(key=lambda x: x['timestamp'], reverse=True)
-            
-            response_data = {
-                "reports": api_reports,
-                "total": len(api_reports),
-                "json_count": len(json_reports),
-                "html_count": len(api_reports) - len(json_reports)
-            }
-            
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.send_header('Cache-Control', 'no-cache')
-            self.end_headers()
-            self.wfile.write(json.dumps(response_data, ensure_ascii=False, indent=2).encode())
+            # Legacy endpoint removed in Postgres-only mode
+            self.send_error(410, "Endpoint removed")
             
         except Exception as e:
             logger.error(f"Error serving reports API: {e}")
@@ -2784,15 +2700,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     self.wfile.write(json.dumps(report_data, ensure_ascii=False, indent=2).encode())
                     return
             
-            # Look for JSON report (legacy fallback)
-            json_file = Path('./data/reports') / f"{report_id}.json"
-            if json_file.exists():
-                report_data = json.loads(json_file.read_text())
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps(report_data, ensure_ascii=False, indent=2).encode())
-                return
+            # Legacy JSON file fallback removed in Postgres-only mode
             
             # Look for HTML report (legacy)
             html_dirs = [Path('./exports'), Path('.')]
@@ -2836,8 +2744,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "ngrok_url": os.getenv('NGROK_URL', '')
                 },
                 "directories": {
-                    "json_reports": str(Path('./data/reports').absolute()),
-                    "html_reports": str(Path('./exports').absolute())
+                    "exports": str((Path('/app/data/exports') if Path('/app/data').exists() else Path('./exports')).absolute())
                 },
                 "version": "1.0.0"
             }
@@ -2872,91 +2779,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         self.wfile.write(json.dumps(result, indent=2).encode())
     
     def serve_api_backup(self):
-        """Create and serve database backup"""
-        try:
-            # Import the backup functionality
-            import importlib.util
-            spec = importlib.util.spec_from_file_location("backup_database", "backup_database.py")
-            backup_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(backup_module)
-            
-            # Create backup
-            result = backup_module.create_database_backup()
-            
-            if result['success']:
-                # Return backup info with download links
-                backup_path = Path(result['backup_path'])
-                info_path = Path(result['info_path'])
-                
-                response_data = {
-                    "status": "success",
-                    "message": "Database backup created successfully",
-                    "backup_info": result['statistics'],
-                    "downloads": {
-                        "database": f"/api/backup/{backup_path.name}",
-                        "metadata": f"/api/backup/{info_path.name}"
-                    },
-                    "timestamp": datetime.now().isoformat()
-                }
-            else:
-                response_data = {
-                    "status": "error",
-                    "message": "Backup creation failed",
-                    "error": result.get('error', 'Unknown error'),
-                    "timestamp": datetime.now().isoformat()
-                }
-            
-            self.send_response(200 if result['success'] else 500)
-            self.send_header('Content-type', 'application/json')
-            self.send_header('Cache-Control', 'no-cache')
-            self.end_headers()
-            self.wfile.write(json.dumps(response_data, indent=2).encode())
-            
-        except Exception as e:
-            logger.error(f"Error creating backup: {e}")
-            error_data = {"error": "Failed to create backup", "message": str(e)}
-            self.send_response(500)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps(error_data).encode())
+        self.send_error(410, "Endpoint removed")
     
     def serve_backup_file(self):
-        """Serve backup files for download"""
-        try:
-            # Extract filename from path
-            path_parts = self.path.split('/')
-            if len(path_parts) < 4:
-                self.send_error(404, "Invalid backup file path")
-                return
-                
-            filename = path_parts[-1]
-            file_path = Path("data") / filename
-            
-            # Security check - only allow backup files
-            if not (filename.startswith(('ytv2_backup_', 'backup_info_')) and 
-                   filename.endswith(('.db', '.json'))):
-                self.send_error(403, "Access denied")
-                return
-            
-            if not file_path.exists():
-                self.send_error(404, "Backup file not found")
-                return
-            
-            # Serve the file
-            content_type = 'application/octet-stream' if filename.endswith('.db') else 'application/json'
-            
-            self.send_response(200)
-            self.send_header('Content-Type', content_type)
-            self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
-            self.send_header('Content-Length', str(file_path.stat().st_size))
-            self.end_headers()
-            
-            with open(file_path, 'rb') as f:
-                self.wfile.write(f.read())
-                
-        except Exception as e:
-            logger.error(f"Error serving backup file: {e}")
-            self.send_error(500, "Failed to serve backup file")
+        self.send_error(410, "Endpoint removed")
     
     def handle_delete_reports(self):
         """Handle POST request to delete selected reports"""
@@ -2991,9 +2817,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             deleted_count = 0
             errors = []
             
-            # Delete files from all possible locations
+            # Delete files from possible locations (HTML legacy only)
             search_dirs = [
-                Path('./data/reports'),  # JSON reports
                 Path('./exports'),       # HTML reports
                 Path('.')               # Legacy location
             ]
@@ -3003,18 +2828,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 video_id_for_audio = None
                 for search_dir in search_dirs:
                     if search_dir.exists():
-                        # Try different extensions
-                        for ext in ['.json', '.html', '']:
+                        # Try different extensions (JSON removed)
+                        for ext in ['.html', '']:
                             file_path = search_dir / (filename + ext if not filename.endswith(ext) else filename)
                             if file_path.exists():
                                 try:
-                                    # If JSON, try to extract video_id for audio cleanup
-                                    if file_path.suffix == '.json':
-                                        try:
-                                            data = json.loads(file_path.read_text(encoding='utf-8'))
-                                            video_id_for_audio = (data.get('video') or {}).get('video_id', None)
-                                        except Exception:
-                                            video_id_for_audio = None
                                     file_path.unlink()
                                     deleted = True
                                     deleted_count += 1
@@ -3342,7 +3160,6 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         
         # Search for report files in multiple directories
         search_dirs = [
-            Path('./data/reports'),  # JSON reports (primary)
             Path('./exports'),       # HTML reports (legacy)
             Path('.')               # Current directory (legacy)
         ]
@@ -3354,27 +3171,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             if not search_dir.exists():
                 continue
                 
-            for ext in ['.json', '.html']:
+            for ext in ['.html']:
                 file_path = search_dir / f"{report_id}{ext}"
                 if file_path.exists():
                     try:
-                        # Extract video_id from JSON files for audio cleanup
-                        if ext == '.json':
-                            try:
-                                with open(file_path, 'r', encoding='utf-8') as f:
-                                    data = json.load(f)
-                                # Look in multiple possible locations for video_id
-                                video_info = data.get('video', {})
-                                youtube_meta = (data.get('source_metadata', {}) or {}).get('youtube', {})
-                                video_id_for_audio = (
-                                    video_info.get('video_id') or 
-                                    youtube_meta.get('video_id') or
-                                    None
-                                )
-                            except Exception as e:
-                                logger.warning(f"Could not extract video_id from {file_path}: {e}")
-                                video_id_for_audio = None
-                        
+                        # JSON-based deletion removed (Postgres-only mode)
                         file_path.unlink()
                         deleted_files.append(str(file_path))
                         logger.info(f"Deleted report: {file_path}")
