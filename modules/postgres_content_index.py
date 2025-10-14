@@ -642,19 +642,18 @@ class PostgreSQLContentIndex:
             total_count = cursor.fetchone()['total']
 
             # Add pagination
+            size = int(size or 20)
             offset = (page - 1) * size
-            query += f" LIMIT %s OFFSET %s"
-            query_params = list(params)
-            query_params.extend([size, offset])
+            query += f" LIMIT {size} OFFSET {offset}"
 
             # Execute main query
             try:
-                cursor.execute(query, query_params)
+                cursor.execute(query, params)
             except Exception:
                 logger.error(
                     "Main query failed for get_reports: params=%s count=%s placeholders=%s sql=%s",
-                    query_params,
-                    len(query_params),
+                    params,
+                    len(params),
                     query.count('%s'),
                     query,
                     exc_info=True
@@ -969,20 +968,21 @@ class PostgreSQLContentIndex:
                 ORDER BY
                     CASE WHEN c.title ILIKE %s THEN 1 ELSE 2 END,
                     c.indexed_at DESC
-                LIMIT %s OFFSET %s
             """
 
+            size = int(size or 20)
             offset = (page - 1) * size
-            query_params = list(params)
-            query_params.extend([search_term, size, offset])
+            query += f"""
+                LIMIT {size} OFFSET {offset}
+            """
 
             try:
-                cursor.execute(query, query_params)
+                cursor.execute(query, params + [search_term])
             except Exception:
                 logger.error(
                     "Main query failed for search: params=%s count=%s placeholders=%s sql=%s",
-                    query_params,
-                    len(query_params),
+                    params + [search_term],
+                    len(params) + 1,
                     query.count('%s'),
                     query,
                     exc_info=True
