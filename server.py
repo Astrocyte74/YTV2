@@ -3073,14 +3073,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # Check sync secret for authentication
             sync_secret = os.getenv('SYNC_SECRET')
             if not sync_secret:
-                self.send_error(500, "Sync not configured")
-                return
-            
-            auth_header = self.headers.get('Authorization', '')
-            if not auth_header.startswith('Bearer ') or auth_header[7:] != sync_secret:
-                logger.warning(f"Audio upload rejected: Invalid auth from {self.client_address[0]}")
-                self.send_error(401, "Unauthorized")
-                return
+                logger.warning("Audio upload without SYNC_SECRET; permitting for backwards compatibility")
+            else:
+                auth_header = self.headers.get('Authorization', '')
+                if not auth_header.startswith('Bearer ') or auth_header[7:] != sync_secret:
+                    logger.warning(f"Audio upload rejected: Invalid auth from {self.client_address[0]}")
+                    self.send_error(401, "Unauthorized")
+                    return
             
             # Parse multipart form data
             content_type = self.headers.get('Content-Type', '')
