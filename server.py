@@ -1856,6 +1856,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
             # Search for candidate files in common locations
             search_dirs = [Path('/app/data/exports')]
+            audio_subdir = Path('/app/data/exports/audio')
+            if audio_subdir.exists():
+                search_dirs.append(audio_subdir)
             patterns = [
                 f'audio_{video_id}_*.mp3',   # standard new pattern
                 f'{video_id}_*.mp3',         # legacy pattern
