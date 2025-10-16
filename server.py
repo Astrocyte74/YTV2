@@ -1102,7 +1102,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             return
         elif self.path == '/delete-reports':
             self.handle_delete_reports()
-        elif self.path in ('/api/upload-report', '/api/upload-database', '/api/download-database', '/api/upload-audio'):
+        elif self.path == '/api/upload-audio':
+            self.handle_upload_audio()
+        elif self.path in ('/api/upload-report', '/api/upload-database', '/api/download-database'):
             # Legacy endpoints removed in Postgres-only mode
             self.send_error(410, "Endpoint removed")
         elif self.path == '/api/content' or self.path.startswith('/api/content/'):
@@ -3066,9 +3068,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(500, f"Database download failed: {str(e)}")
     
     def handle_upload_audio(self):
-        """Removed: legacy audio upload (use /ingest/audio)."""
-        self.send_error(410, "Endpoint removed (legacy audio upload)")
-        return
+        """Upload audio files from NAS (legacy compatibility)."""
         try:
             # Check sync secret for authentication
             sync_secret = os.getenv('SYNC_SECRET')
@@ -3118,10 +3118,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 return
             
             # Save audio file to persistent storage
-            exports_dir = Path('/app/data/exports') if Path('/app/data').exists() else Path('./exports')
-            exports_dir.mkdir(parents=True, exist_ok=True)
-            
-            audio_path = exports_dir / audio_field.filename
+            exports_root = Path('/app/data/exports') if Path('/app/data').exists() else Path('./exports')
+            audio_dir = exports_root / 'audio'
+            audio_dir.mkdir(parents=True, exist_ok=True)
+
+            audio_path = audio_dir / audio_field.filename
             with open(audio_path, 'wb') as f:
                 audio_field.file.seek(0)
                 f.write(audio_field.file.read())
