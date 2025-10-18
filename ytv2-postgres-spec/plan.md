@@ -354,14 +354,14 @@ class DataMigrator:
 ```
 
 ### Phase 2: Dual-Write + Shadow-Read (Days 3-4)
-**Goal**: Validate PostgreSQL implementation before cutover
+**Goal**: Validate PostgreSQL implementation before cutover (historical)
 
-#### NAS: Dual-Write Implementation
+#### NAS: Dual-Write Implementation (Historical)
 ```python
 # modules/database_manager.py
 class DatabaseManager:
     def __init__(self):
-        self.postgres_url = os.getenv('DATABASE_URL')
+        self.postgres_url = os.getenv('DATABASE_URL_POSTGRES_NEW')
         self.sqlite_path = 'data/ytv2_content.db'
         self.dual_write = os.getenv('DUAL_WRITE_MODE', 'true').lower() == 'true'
 
@@ -410,63 +410,74 @@ class DatabaseManager:
                 conn.commit()
 ```
 
-#### Dashboard: Shadow-Read Implementation
+Post-cutover this dual-write scaffold was removed; NAS now writes exclusively to PostgreSQL using the same helper functions.
+
+#### Dashboard: Final PostgreSQL Implementation
 ```python
-# modules/sqlite_content_index.py
-class ContentIndex:
-    def __init__(self):
-        self.use_postgres = os.getenv('READ_FROM_POSTGRES', 'false').lower() == 'true'
-        self.postgres_url = os.getenv('DATABASE_URL') if self.use_postgres else None
+# modules/postgres_content_index.py (excerpt)
+class PostgreSQLContentIndex:
+    def __init__(self, postgres_url: str | None = None):
+        self.postgres_url = postgres_url or os.getenv("DATABASE_URL_POSTGRES_NEW")
+        if not self.postgres_url:
+            raise ValueError("PostgreSQL URL not provided and DATABASE_URL_POSTGRES_NEW not set")
 
-    def get_reports(self, filters: Dict, page: int, size: int) -> List[Dict]:
-        """Read from active database"""
-        if self.use_postgres:
-            return self._get_reports_postgres(filters, page, size)
-        else:
-            return self._get_reports_sqlite(filters, page, size)
-
-    def _get_reports_postgres(self, filters: Dict, page: int, size: int) -> List[Dict]:
-        """PostgreSQL implementation using lateral join pattern"""
-        with psycopg2.connect(self.postgres_url) as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                query = """
-                    SELECT
-                        c.id, c.video_id, c.title, c.channel_name,
-                        c.canonical_url, c.thumbnail_url, c.indexed_at,
-                        c.analysis_json, c.topics_json, c.language,
-                        c.content_type, c.complexity_level, c.has_audio,
-                        cs.html as summary_html, cs.variant, cs.revision
-                    FROM content c
-                    LEFT JOIN LATERAL (
-                        SELECT html, variant, revision
-                        FROM content_summaries s
-                        WHERE s.video_id = c.video_id AND s.variant = 'comprehensive'
-                        ORDER BY s.revision DESC
-                        LIMIT 1
-                    ) cs ON TRUE
-                    WHERE 1=1
-                """
-
-                params = []
-                # Apply filter logic (adapted for PostgreSQL JSON operations)
-                if filters.get('category'):
-                    query += " AND c.analysis_json->'categories' @> %s"
-                    params.append(json.dumps(filters['category']))
-
-                query += " ORDER BY c.indexed_at DESC LIMIT %s OFFSET %s"
-                params.extend([size, page * size])
-
-                cur.execute(query, params)
-                return [dict(row) for row in cur.fetchall()]
+    def get_reports(self,
+                    filters: Dict[str, Any] | None = None,
+                    sort: str = "newest",
+                    page: int = 0,
+                    size: int = 12) -> Dict[str, Any]:
+        with self._get_connection() as conn, conn.cursor() as cur:
+            query = """
+                SELECT
+                    c.id, c.video_id, c.title, c.channel_name,
+                    c.canonical_url, c.thumbnail_url, c.indexed_at,
+                    c.analysis_json, c.topics_json, c.language,
+                    c.has_audio,
+                    ls.html        AS summary_html,
+                    ls.variant     AS summary_variant,
+                    variants.summary_variants
+                FROM content c
+                LEFT JOIN v_latest_summaries ls
+                  ON ls.video_id = c.video_id AND ls.variant = 'comprehensive'
+                LEFT JOIN LATERAL (
+                    SELECT json_agg(
+                        json_build_object(
+                            'variant', lower(trim(vs.variant)),
+                            'summary_type', lower(trim(vs.variant)),
+                            'text', vs.text,
+                            'html', vs.html,
+                            'generated_at', vs.created_at,
+                            'kind', CASE WHEN vs.variant LIKE 'audio%%' THEN 'audio' ELSE 'text' END,
+                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END
+                        )
+                        ORDER BY CASE
+                            WHEN vs.variant = 'key-insights' THEN 0
+                            WHEN vs.variant = 'bullet-points' THEN 1
+                            WHEN vs.variant = 'comprehensive' THEN 2
+                            WHEN vs.variant = 'key-points' THEN 3
+                            WHEN vs.variant = 'executive' THEN 4
+                            WHEN vs.variant LIKE 'audio%%' THEN 5
+                            ELSE 99
+                        END,
+                        vs.created_at DESC
+                    ) AS summary_variants
+                    FROM v_latest_summaries vs
+                    WHERE vs.video_id = c.video_id
+                      AND (vs.text IS NOT NULL OR vs.html IS NOT NULL)
+                ) variants ON TRUE
+            """
+            # …append WHERE clauses and pagination based on filters…
 ```
+
+The SQLite-only content index has been removed from the dashboard runtime. The service now fails fast if `DATABASE_URL_POSTGRES_NEW` is missing, ensuring PostgreSQL remains the single source of truth.
 
 ### Phase 3: Cutover (Days 5-6)
 **Goal**: Switch to PostgreSQL as primary database
 
-#### Dashboard Cutover
+#### Dashboard Cutover (Historical)
 ```bash
-# Set environment variable in Render
-READ_FROM_POSTGRES=true
+# Configure Render service with PostgreSQL DSN
+DATABASE_URL_POSTGRES_NEW=postgresql://user:pass@host:port/dbname
 
 # Verify identical rendering
 curl "https://ytv2-vy9k.onrender.com/api/reports?size=1" | jq '.reports[0]'
@@ -479,7 +490,7 @@ curl "https://ytv2-vy9k.onrender.com/api/reports?size=1" | jq '.reports[0]'
 
 - Enable pooled connections (Render) via **pgbouncer** if available.
 - Add `/health/db` endpoint in Dashboard and NAS that performs `SELECT 1`.
-- Store `DATABASE_URL` and flags (`READ_FROM_POSTGRES`, `DUAL_WRITE_MODE`) in Render Secrets.
+- Store `DATABASE_URL_POSTGRES_NEW` (primary DSN) plus related secrets in Render.
 - Add retry/backoff on connection failures (`psycopg connect_timeout=5`, exponential backoff on first 3 attempts).
 
 #### Sync Code Elimination
@@ -488,8 +499,7 @@ curl "https://ytv2-vy9k.onrender.com/api/reports?size=1" | jq '.reports[0]'
 # DELETE these lines that cause "nuclear overwrites":
 # subprocess.run(['python', 'sync_sqlite_db.py'])
 
-# Disable dual-write in NAS
-DUAL_WRITE_MODE=false
+# Dual-write mode was temporary; ensure any legacy flag defaults to False/removed
 ```
 
 #### Delete Flow Fix
@@ -500,7 +510,7 @@ def handle_delete_request(identifier: str):
     if identifier.startswith('yt:'):
         video_id = identifier.split(':', 1)[1]
 
-    with psycopg2.connect(DATABASE_URL) as conn:
+    with psycopg2.connect(DATABASE_URL_POSTGRES_NEW) as conn:
         with conn.cursor() as cur:
             # Try delete by id first, fallback to video_id
             cur.execute("DELETE FROM content WHERE id = %s", (identifier,))
@@ -557,14 +567,14 @@ rm sync_sqlite_db.py nas_sync.py
 
 ### Rollback Procedures
 
-> Note: Because we keep dual-write during Phase 2, rollback simply flips the `READ_FROM_POSTGRES` flag off and continues operating from the SQLite snapshot taken in Phase 0. No data will be lost if cutover validation fails.
+> Historical note: During cutover we could flip `READ_FROM_POSTGRES` off and fall back to SQLite snapshots. In the current PostgreSQL-only world, recovery restores a verified PostgreSQL dump and keeps legacy SQLite archives for forensic comparison.
 
 ```bash
-# Emergency rollback to SQLite
-# 1. Set READ_FROM_POSTGRES=false in Dashboard
-# 2. Restore SQLite files from backup
-# 3. Re-enable dual-write in NAS if needed
-# 4. Document issues for retry planning
+# Emergency recovery (current process)
+# 1. Pause NAS ingest / disable write jobs
+# 2. Restore PostgreSQL from latest known-good dump (or point-in-time snapshot)
+# 3. Validate critical records (including all 67 curated categorizations)
+# 4. Re-enable ingest and monitor /health and API parity
 ```
 
 ### Data Integrity Validation

@@ -2,6 +2,8 @@
 
 *Generated from YTV2 PostgreSQL Migration specification for systematic implementation*
 
+> **Status Update (PostgreSQL Live):** All T-Y### tasks were executed during the migration. The checklist is preserved for audit history and future reference. Current deployments run PostgreSQL by default via `DATABASE_URL_POSTGRES_NEW`; references to legacy flags such as `READ_FROM_POSTGRES` or `DUAL_WRITE_MODE` indicate historical cutover steps and are no longer required in production.
+
 
 ## Phase 0: Freeze & Snapshot - Day 1
 
@@ -45,8 +47,8 @@
     - **Service name**: `ytv2-dashboard-postgres`
     - **Repository**: Same repo, branch `postgres-migration-phase0`
     - **Environment variables**:
-      - `READ_FROM_POSTGRES=true`
-      - `DATABASE_URL=postgresql://...` (new PostgreSQL instance)
+      - `READ_FROM_POSTGRES=true` *(legacy cutover flag – not required post-migration)*
+      - `DATABASE_URL_POSTGRES_NEW=postgresql://...` (shared PostgreSQL instance)
       - All other vars identical to production (except sync-related)
     - **Health endpoints**: Add `/health` and `/health/db` (SELECT 1)
   - **DNS Preparation**: Set DNS TTL to 60s on custom domain ahead of cutover (for snappy rollback/cutover)
@@ -54,7 +56,7 @@
   - **PostgreSQL Extensions**: Enable pgcrypto, pg_trgm, uuid-ossp, pg_stat_statements (monitoring), and (optional/future) vector
   - **Backups**: Enable Render automatic daily backups + create on-demand snapshot immediately after import
   - **Verification**:
-    - `psql $DATABASE_URL -c "SELECT version();"`
+    - `psql "$DATABASE_URL_POSTGRES_NEW" -c "SELECT version();"`
     - Both health endpoints return 200 on new service
     - New service completely isolated from production
   - **Testing**: Confirm new service deploys successfully; PostgreSQL connectivity verified
@@ -152,7 +154,7 @@
 - [ ] (T-Y009) **Deploy new system on postgres-migration-phase0 branch**
   - **Implementation**: Deploy new web service with PostgreSQL backend
   - **Service**: `ytv2-dashboard-postgres` pointing to migration branch
-  - **Environment**: `READ_FROM_POSTGRES=true`, new DATABASE_URL
+  - **Environment**: `READ_FROM_POSTGRES=true` *(historical toggle for validation)*, new PostgreSQL `DATABASE_URL_POSTGRES_NEW`
   - **Health checks**: Explicitly assert `/health` and `/health/db` both return 200 and log connect latency
   - **Performance monitoring**: Log database connection latency to spot pooling issues early
   - **Testing**: Confirm new service loads with migrated data
@@ -412,7 +414,7 @@ Migration is complete ONLY when:
 ## Emergency Procedures
 
 ### Immediate Rollback (if critical issues detected)
-1. **Dashboard**: Set `READ_FROM_POSTGRES=false`
+1. **Dashboard**: Set `READ_FROM_POSTGRES=false` *(legacy rollback step during cutover)*
 2. **NAS**: Set `DUAL_WRITE_MODE=true`
 3. **Files**: Restore SQLite files from backup if corrupted
 4. **Verification**: Confirm rollback successful via testing

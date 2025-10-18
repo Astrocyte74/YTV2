@@ -29,7 +29,7 @@ DELETED VIDEOS "RESTORED" + CATEGORIZATION LOST
 ### 1. Unified Database Architecture
 **What**: Single PostgreSQL instance on Render serving both NAS and Dashboard components, providing a single source of truth for all video metadata, categorization, and summary information.
 **Why**: Eliminates dual-database synchronization complexity entirely
-**How**: Both NAS ingestion and Dashboard frontend connect to the same PostgreSQL instance via shared ORM/SQLAlchemy layer with consistent schema contracts
+**How**: Both NAS ingestion and Dashboard frontend connect to the same PostgreSQL instance via shared psycopg-based data access helpers with consistent schema contracts
 **For**: Both components access same data in real-time without sync delays
 
 ### 2. Preserved Data Integrity

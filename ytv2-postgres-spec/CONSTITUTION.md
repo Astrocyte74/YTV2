@@ -9,9 +9,9 @@ This specification outlines the detailed requirements and implementation guideli
   - **67 sophisticated categorization records** with all hierarchical and relational integrity preserved.
   - All video metadata fields: title, channel, thumbnails, audio files, and associated attributes.
   - Summary content stored both as formatted HTML and JSON structures, mapped appropriately to Postgres tables and JSONB columns.
-- Categorization and subcategorization data must be normalized into dedicated tables with foreign key constraints enforcing data integrity and cascade deletes.
+- Categorization and subcategorization data must remain fully represented. The current implementation stores them in JSONB columns with strict validation, which is acceptable provided filter performance and integrity checks stay in place.
 - Summary content should leverage PostgreSQL's JSONB capabilities for efficient querying and indexing.
-- The schema must explicitly support cascade deletion to ensure that deleting a video or category propagates correctly without residual data or restoration after sync issues.
+- The schema must explicitly support cascade deletion to ensure that deleting a video or category propagates correctly without residual data or restoration after sync issues. JSONB storage must be pruned along with parent records.
 
 ## Migration Phases and Validation
 
