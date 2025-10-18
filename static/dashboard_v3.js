@@ -334,6 +334,26 @@ class AudioDashboard {
         // Show more categories toggle - bind after content loads
         this.bindShowMoreToggles();
         
+        // Select All / Clear All buttons for Sources
+        const selectAllSources = document.getElementById('selectAllSources');
+        const clearAllSources = document.getElementById('clearAllSources');
+        if (selectAllSources) {
+            selectAllSources.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="source"]').forEach(cb => { cb.checked = true; });
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
+                this.loadContent();
+            });
+        }
+        if (clearAllSources) {
+            clearAllSources.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="source"]').forEach(cb => { cb.checked = false; });
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
+                this.loadContent();
+            });
+        }
+
         // Select All / Clear All buttons for Categories
         const selectAllCategories = document.getElementById('selectAllCategories');
         const clearAllCategories = document.getElementById('clearAllCategories');
