@@ -1,227 +1,125 @@
 # YTV2 PostgreSQL Migration - Welcome
 
-## 🚨 CRITICAL: Active Database Migration Project
+## 🚨 STATUS: Migration Complete
 
-**Current State**: Dual SQLite architecture causing sync disasters
-**Target State**: Single PostgreSQL eliminating all sync issues
-**Status**: GitHub project set up, ready for Phase 0 implementation
+**Current State**: NAS and Dashboard now run on a shared PostgreSQL database.  
+**Legacy State**: Dual SQLite architecture that caused repeated “nuclear overwrite” incidents.  
+**Purpose of this Kit**: Preserve the migration playbook, safety notes, and context for future enhancements.
 
-## The Problem We're Solving
-
-YTV2 currently runs a **dual SQLite architecture** that causes catastrophic data loss:
+## Legacy Problem (Why This Exists)
 
 ```
-NAS Component (Processing)     Dashboard Component (Web UI)
-├── ytv2_content.db           ├── ytv2_content.db
-└── Auto-sync after          └── Gets overwritten
-    video processing              ("Nuclear Overwrite")
+NAS Component (SQLite)      Dashboard Component (SQLite)
+├── Auto-sync after ingest  ├── Local deletions and edits
+└── sync_sqlite_db.py  ---> └── Entire database overwritten, curated data lost
 ```
 
-**Sync Disaster Pattern**:
-1. User deletes videos via Dashboard → Removes from Dashboard SQLite
-2. User processes new video on NAS → Triggers auto-sync
-3. **AUTO-SYNC OVERWRITES** entire Dashboard SQLite with NAS version
-4. **Deleted videos "restored"** + 67 sophisticated categorization records lost
+- 67 hand-curated categorization records were repeatedly wiped out.
+- Deletions reappeared minutes later, eroding trust in the dashboard.
+- Race conditions between deletes and ingest ran daily.
 
-## The Solution
+## Delivered Solution
 
-**Parallel deployment strategy** - Build new PostgreSQL system alongside current production:
-- ✅ **Zero downtime** - current system stays live during migration
-- ✅ **Zero risk** - new system built and tested separately
-- ✅ **Safe cutover** - DNS switch with instant rollback capability
-- ✅ **Complete validation** - thorough testing before any changes to production
+Parallel deployment delivered a zero-downtime cutover to PostgreSQL:
 
-## Project Structure
+- ✅ Built a new Render service + PostgreSQL instance in isolation.
+- ✅ Migrated data, validated parity, and rehearsed rollback.
+- ✅ Cut over via DNS flip with dual-write window for safety.
+- ✅ Archived SQLite databases and removed sync scripts.
 
-### Essential Files (Read These First)
-| File | Purpose |
-|------|---------|
-| **spec.md** | What we're building and why (start here) |
-| **plan.md** | Technical implementation details |
-| **tasks.md** | 32 implementation tasks (T-Y000 through T-Y026) |
-| **CONSTITUTION.md** | Non-negotiable migration safety principles |
-| **GLOSSARY.md** | All terminology explained (excellent reference) |
+The production dashboard (`ytv2-vy9k.onrender.com`) now connects directly to PostgreSQL using `DATABASE_URL_POSTGRES_NEW`. The NAS ingest stack uses the same DSN, so both sides operate on one source of truth.
 
-### GitHub Project
-- **Repository**: [Astrocyte74/YTV2](https://github.com/Astrocyte74/YTV2)
-- **Issues**: 32 tasks created with proper milestones and labels
-- **Automation**: Add `ai-run` label to any issue for AI implementation
-- **Milestones**: 5 phases (Phase 0-4) with clear progression
+## Project Folder Overview
 
-## System Architecture
+| File | Role today |
+|------|------------|
+| **spec.md** | Historical requirements + success criteria |
+| **plan.md** | Implementation blueprint with notes on final architecture |
+| **tasks.md** | Completed checklist (T-Y000…T-Y026) for audit trail |
+| **CONSTITUTION.md** | Safety principles (updated to reflect JSONB decision) |
+| **GLOSSARY.md** | Terminology with legacy vs current references |
 
-### Current Components
+GitHub issues referencing these tasks have been closed; keep them for traceability but open new issues for fresh work.
+
+## Architecture Snapshot
+
 ```
-NAS Component (Docker)
-├── Location: /Volumes/Docker/YTV2/
-├── Purpose: YouTube processing, AI summarization
-├── Database: SQLite (ytv2_content.db)
-└── Problem: Source of "nuclear overwrites"
+Current Production (PostgreSQL)
+├── NAS (Docker) ingest jobs
+│   └── Uses shared PG via DATABASE_URL_POSTGRES_NEW
+├── Render dashboard service
+│   └── Uses modules/postgres_content_index.py
+└── PostgreSQL (Render managed instance)
 
-Dashboard Component (Render)
-├── Location: /Users/markdarby/projects/YTV2-Dashboard/
-├── Purpose: Web interface, audio streaming
-├── Database: SQLite (synced from NAS)
-└── Problem: Victim of overwrites, loses deletions
+Legacy Assets (Archival Only)
+├── SQLite backups in /archive
+└── Retired Render staging service (ytv2-dashboard-postgres)
 ```
 
-### Target Architecture (Parallel Deployment)
-```
-Current Production (Keep Running)
-├── ytv2-vy9k.onrender.com (existing)
-├── SQLite database (current)
-└── Users continue uninterrupted
+## Historical Phases (All Completed)
 
-New Parallel System (Build & Test)
-├── ytv2-dashboard-postgres (new Render service)
-├── PostgreSQL database (new)
-├── postgres-migration-phase0 branch
-└── Complete validation environment
+1. **Phase 0 – Backups & Staging**: Created verified snapshots, provisioned PostgreSQL + staging service.
+2. **Phase 1 – Schema & Migration**: Brought up JSONB-centric schema, executed migration scripts, verified counts.
+3. **Phase 2 – Validation**: Compared API responses, UI renders, and performance metrics.
+4. **Phase 3 – Cutover**: Ran dual-write window, flipped DNS, monitored closely.
+5. **Phase 4 – Cleanup**: Removed sync scripts, archived SQLite, confirmed audits.
 
-Final State (Post-Cutover)
-├── PostgreSQL on Render (Single Source of Truth)
-├── DNS switched to new service
-├── Real-time consistency, no sync needed
-└── Old system decommissioned safely
-```
+Use these phases as a model for future infrastructure changes.
 
-## Migration Phases
+## Environment Variables (Current)
 
-### Phase 0: Parallel System Setup (Day 1)
-- **T-Y000**: Bootstrap GitHub project structure ✅
-- **T-Y001**: Create comprehensive backups ✅
-- **T-Y002**: Provision PostgreSQL + **new Render web service** (`ytv2-dashboard-postgres`)
-- **T-Y003**: Document baseline data integrity (67 categorization records)
-
-### Phase 1: Build New System (Days 1-2)
-- **T-Y004**: Create PostgreSQL schema with triggers
-- **T-Y005**: Build idempotent migration script
-- **T-Y006-008**: One-time data snapshot from production SQLite to new PostgreSQL
-
-### Phase 2: Parallel Testing & Validation (Days 3-4)
-- **T-Y009-012**: Deploy new system on `postgres-migration-phase0` branch
-- **T-Y013-014**: Comprehensive testing and stakeholder validation
-- **Health checks**: `/health` and `/health/db` endpoints on new service
-
-### Phase 3: Safe Cutover (Days 5-6)
-- **T-Y015**: Brief freeze window + dual-write synchronization
-- **T-Y016**: DNS/domain switch to new service
-- **T-Y017-018**: Monitor stability, validate end-to-end workflows
-
-### Phase 4: Decommission Old System (Day 7)
-- **T-Y019-026**: Archive old SQLite, cleanup sync scripts, final validation
-
-## Critical Data
-
-### 67 Sophisticated Categorization Records
-- **What**: Enhanced subcategory classifications applied to videos
-- **Why Critical**: Manual curation requiring preservation
-- **Risk**: Primary target of sync disasters - MUST be preserved
-- **Verification**: Every migration step must verify these records intact
-
-### Service Locations
-- **Current Production**: `ytv2-vy9k.onrender.com` (SQLite, keep running)
-- **New Parallel System**: `ytv2-dashboard-postgres` (PostgreSQL, to be created)
-- **Database Files**:
-  - Current SQLite: `/Users/markdarby/projects/YTV2-Dashboard/ytv2_content.db`
-  - Backup: `dashboard_pre_postgres_20250917_162149.db` ✅
-  - Target PostgreSQL: To be provisioned on Render
-
-## Emergency Procedures (Parallel Deployment)
-
-### 🔴 Instant Rollback (Zero Risk)
-1. **DNS Switch Back**: Point domain back to original service (`ytv2-vy9k`)
-2. **Current System**: Continues running unmodified throughout migration
-3. **No Data Loss**: Original SQLite system never touched during parallel build
-4. **Immediate Recovery**: Original service always available for instant rollback
-
-### 🔴 Data Disaster Recovery
-1. **Stop All Processing**: `docker-compose down` on NAS
-2. **Assess Damage**: Compare current vs backup databases
-3. **Restore from Backup**: Use most recent pre-migration backup
-4. **Verify 67 Records**: Ensure categorization data intact
-5. **Resume Safely**: Only restart after confirming data integrity
-
-## Environment Variables
-
-### Required Configuration
 ```bash
-# PostgreSQL (to be set after T-Y002)
-DATABASE_URL=postgresql://user:pass@host:port/db
+# Shared PostgreSQL DSN for both NAS and Dashboard
+DATABASE_URL_POSTGRES_NEW=postgresql://user:pass@host:port/dbname
 
-# Feature Flags (migration control)
-READ_FROM_POSTGRES=false          # Dashboard database source
-DUAL_WRITE_MODE=false             # NAS dual-write behavior
+# Security
+SYNC_SECRET=shared_secret
 
-# Security (existing)
-SYNC_SECRET=your_secure_secret    # API authentication
+# Optional metrics bridge
+NGROK_BASE_URL=https://<your-subdomain>.ngrok-free.app
+NGROK_BASIC_USER=optional
+NGROK_BASIC_PASS=optional
+
+# Render supplies PORT; override only for local runs
+PORT=10000
 ```
 
-### Component-Specific Paths
-```bash
-# NAS Component
-/Volumes/Docker/YTV2/
-├── data/ytv2_content.db          # Current SQLite
-├── modules/database_manager.py   # New abstraction layer
-└── modules/telegram_handler.py   # Remove sync calls
+> ℹ️ Legacy flags such as `READ_FROM_POSTGRES` and `DUAL_WRITE_MODE` were temporary cutover switches and have been removed from the running code.
 
-# Dashboard Component
-/Users/markdarby/projects/YTV2-Dashboard/
-├── ytv2_content.db               # Current SQLite (synced)
-├── modules/sqlite_content_index.py  # Add PostgreSQL support
-└── migrations/                   # New migration scripts
-```
+## Safety & Recovery (Still Relevant)
 
-## Success Criteria
+1. **Snapshot first**: Before major changes, capture a PostgreSQL dump plus existing SQLite archives.
+2. **Pause ingest**: Disable NAS processing during risky operations.
+3. **Validate curated records**: The 67 enhanced categorization entries remain the canary.
+4. **Rollback playbook**: Reload a known-good snapshot into PostgreSQL and repoint the dashboard if ever required.
 
-Migration is complete ONLY when:
-1. ✅ All 67 sophisticated categorization records verified intact
-2. ✅ Dashboard renders identically from PostgreSQL
-3. ✅ Delete workflow works without sync restoration
-4. ✅ No SQLite sync code paths remain active
-5. ✅ Performance meets or exceeds SQLite baseline
-6. ✅ End-to-end workflows function correctly
-7. ✅ Comprehensive rollback procedures validated
+## Working With This Codebase
 
-## Quick Start for New Contributors
+### New Contributors
+- Read `spec.md` and `CONSTITUTION.md` to understand non-negotiables.
+- Review `modules/postgres_content_index.py` to see how filters, variants, and JSONB payloads are served.
+- Use the archived SQLite backups only for audits—do not reintroduce dual-database flows.
 
-### If You're New to This Project
-1. **Read spec.md** - Understand the problem and solution
-2. **Review GLOSSARY.md** - Learn all terminology
-3. **Check GitHub Issues** - See current task status
-4. **Understand Architecture** - Study current vs target state
-5. **Follow CONSTITUTION.md** - Non-negotiable safety principles
+### Extending the System
+- Preserve PostgreSQL integrity: migrations go through `migrations/` with reversible scripts.
+- Maintain JSONB filter structures (analysis, topics, summary_variants) so the UI stays in sync.
+- Keep API responses backward compatible unless bumping the dashboard together.
 
-### If You're Implementing Tasks
-1. **Check current phase** in GitHub milestones
-2. **Read task details** in issues and tasks.md
-3. **Follow safety procedures** - always backup first
-4. **Test thoroughly** - verify acceptance criteria
-5. **Maintain rollback capability** at every step
+### Automation & AI Assistants
+- Reference this spec-kit for context, but operate on the current PostgreSQL-first architecture.
+- Open new issues instead of reusing T-Y### IDs; those denote completed historical work.
 
-### If You're Using AI Automation
-1. **Add `ai-run` label** to any GitHub issue
-2. **Monitor PR creation** - AI will create implementation PR
-3. **Review changes** - ensure they meet acceptance criteria
-4. **Test before merge** - validate functionality
-5. **Follow git workflow** - proper commit messages with task IDs
+## Contacts & References
 
-## Contact & Resources
-
-### Documentation
-- **This Folder**: `/Users/markdarby/projects/YTV2-Dashboard/ytv2-postgres-spec/`
-- **GitHub Project**: https://github.com/Astrocyte74/YTV2
-- **Tasks Reference**: All T-Y### tasks in GitHub Issues
-
-### Key Architectural Insights
-- **Natural Key**: video_id (YouTube ID) is the true unique identifier
-- **Conflict Resolution**: Use `ON CONFLICT (video_id)` not `ON CONFLICT (id)`
-- **Latest-Pointer Pattern**: Efficient revision tracking without materialized views
-- **Lateral Joins**: PostgreSQL query pattern for summary retrieval
-- **Dual-Write Phase**: Safe migration period with validation
+- Repo: `/Users/markdarby/projects/YTV2-Dashboard/`
+- Context archive: `/Users/markdarby/projects/YTV2-Dashboard/archive/`
+- Live dashboard: `ytv2-vy9k.onrender.com`
+- Migration spec folder (this directory) for historical details.
 
 ---
 
-**⚠️ Remember**: This migration eliminates a critical architectural flaw. Take time to understand the problem before implementing solutions. The 67 categorization records represent significant manual work that MUST be preserved.
-
-**🎯 Goal**: Zero data loss, zero user impact, zero sync disasters in the new architecture.
+**Key Takeaways**
+- PostgreSQL is the single source of truth (`DATABASE_URL_POSTGRES_NEW`).
+- JSONB fields in `content` + lateral joins supply dashboard data—no normalization layer for categories is required today.
+- Keep those 67 curated categorization records intact.
+- Treat this kit as both an operations manual and a cautionary tale.

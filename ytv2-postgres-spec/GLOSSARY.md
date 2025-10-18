@@ -16,12 +16,12 @@ Enhanced metadata applied to 67 YTV2 videos with detailed subcategory classifica
 - **Manual Curation**: Human-applied categorization requiring preservation
 - **Loss Prevention**: Primary goal of migration to prevent categorization disasters
 
-### Dual SQLite Architecture (Current/Legacy)
-The problematic current architecture causing sync disasters:
+### Dual SQLite Architecture (Legacy)
+The deprecated architecture that caused sync disasters:
 - **NAS SQLite**: Database in `/Volumes/Docker/YTV2/data/ytv2_content.db`
 - **Dashboard SQLite**: Database in `/Users/markdarby/projects/YTV2-Dashboard/ytv2_content.db`
 - **Sync Scripts**: `sync_sqlite_db.py` and `nas_sync.py` causing overwrites
-- **Auto-Sync**: Automatic synchronization after video processing
+- **Auto-Sync**: Automatic synchronization after video processing (now removed)
 
 ## YTV2 Components
 
@@ -29,15 +29,15 @@ The problematic current architecture causing sync disasters:
 Docker-based processing component handling video analysis:
 - **Location**: `/Volumes/Docker/YTV2/`
 - **Functions**: YouTube video processing, AI summarization, content generation
-- **Database**: Currently SQLite, migrating to PostgreSQL
-- **Sync Role**: Source of "nuclear overwrites" via auto-sync
+- **Database**: Now reads and writes directly to PostgreSQL
+- **Legacy Sync Role**: Previously triggered "nuclear overwrites" via auto-sync (removed)
 
 ### Dashboard Component
 Render-hosted web interface for content viewing:
 - **Location**: `/Users/markdarby/projects/YTV2-Dashboard/`
 - **Functions**: Web interface, audio streaming, content display
-- **Database**: Currently SQLite (synced from NAS), migrating to PostgreSQL
-- **Sync Role**: Victim of overwrites, loses user deletions
+- **Database**: PostgreSQL (single source of truth shared with NAS)
+- **Legacy Sync Role**: Former victim of overwrites when SQLite was primary
 
 ### Telegram Bot
 Interface component within NAS for user interaction:
@@ -57,12 +57,12 @@ The true unique identifier for content in YTV2:
 
 ### Content Table
 Main database table storing video metadata:
-- **Current Structure**: SQLite table with JSON fields
-- **Target Structure**: PostgreSQL table with JSONB fields
+- **Legacy Structure**: SQLite table with JSON fields
+- **Current Structure**: PostgreSQL table with JSONB fields
 - **Key Fields**: video_id, title, channel_name, analysis (JSON), summary
 - **Preservation Requirement**: All existing data must migrate without loss
 
-### Content Summaries Table (New)
+### Content Summaries Table
 PostgreSQL table storing renderable summary content:
 - **Purpose**: Separate pre-rendered HTML from metadata
 - **Structure**: video_id, variant, revision, html, raw_json
@@ -79,26 +79,26 @@ Complex JSON field containing categorization and metadata:
 
 ### Latest-Pointer Pattern
 Efficient PostgreSQL technique to track latest summary revisions:
-- **Purpose**: Store a direct pointer to the latest revision per variant
-- **Structure**: Separate column or table referencing latest content_summaries record
-- **Benefit**: Simplifies queries by avoiding repeated lateral joins
-- **Use Case**: Improves performance for frequent latest summary retrievals
+- **Purpose**: Surface the current revision per `(video_id, variant)`
+- **Structure**: `content_summaries.is_latest` flag maintained by triggers + `v_latest_summaries` view
+- **Benefit**: Simplifies queries via joins to pre-filtered latest rows
+- **Use Case**: Improves performance for frequent latest summary retrievals without materialized views
 
 ## Migration-Specific Terms
 
-### Dual-Write Phase
-Safe migration period where both databases receive writes:
-- **NAS Behavior**: Writes to both SQLite and PostgreSQL
-- **Dashboard Behavior**: Reads from SQLite (with PostgreSQL shadow reads)
-- **Validation**: Ensures PostgreSQL implementation works correctly
-- **Duration**: 1-2 days for thorough validation
+### Dual-Write Phase (Historical)
+Safe migration period where both databases received writes:
+- **NAS Behavior**: Wrote to both SQLite and PostgreSQL
+- **Dashboard Behavior**: Read from SQLite (with PostgreSQL shadow reads)
+- **Validation**: Ensured PostgreSQL implementation worked correctly
+- **Duration**: 1-2 days for thorough validation during cutover
 
-### Shadow Reads
-Testing PostgreSQL reads while SQLite remains primary:
-- **Feature Flag**: `READ_FROM_POSTGRES` environment variable
+### Shadow Reads (Historical)
+Testing PostgreSQL reads while SQLite remained primary during migration:
+- **Feature Flag**: `READ_FROM_POSTGRES` environment variable (retired)
 - **Admin Testing**: PostgreSQL reads for admin users only
-- **Comparison**: Validate identical results between databases
-- **Safety**: Immediate rollback to SQLite if issues detected
+- **Comparison**: Validated identical results between databases
+- **Safety**: Allowed immediate rollback to SQLite snapshots if issues detected
 
 ### Nuclear Overwrite
 The specific destructive operation causing sync disasters:
@@ -137,12 +137,12 @@ Scripts that can be safely run multiple times:
 - **Error Recovery**: Graceful handling of partial migration states
 - **Testing**: Validate scripts work correctly when run repeatedly
 
-### Feature Flag Cutover
+### Feature Flag Cutover (Historical)
 Using environment variables for safe migration phases:
-- **READ_FROM_POSTGRES**: Dashboard database source selection
-- **DUAL_WRITE_MODE**: NAS dual-write behavior control
-- **Immediate Rollback**: Toggle flags for instant reversion
-- **Validation**: Test each phase thoroughly before advancing
+- **READ_FROM_POSTGRES**: Dashboard database source selection (retired after cutover)
+- **DUAL_WRITE_MODE**: NAS dual-write behavior control (retired)
+- **Immediate Rollback**: Toggle flags allowed instant reversion during migration
+- **Validation**: Each phase was tested thoroughly before advancing
 
 ### Cascade Delete
 PostgreSQL foreign key behavior for data consistency:
@@ -151,21 +151,21 @@ PostgreSQL foreign key behavior for data consistency:
 - **Safety**: Prevents orphaned summary records
 - **Testing**: Verify delete operations clean up all related data
 
-### SQLite Write Guard
-Safety mechanism to prevent unsafe SQLite writes during migration:
+### SQLite Write Guard (Historical)
+Safety mechanism that prevented unsafe SQLite writes during migration:
 - **Purpose**: Block writes to SQLite when in PostgreSQL-only mode
 - **Implementation**: Environment variable or code checks to disable writes
-- **Benefit**: Prevents data corruption or loss by accidental writes
-- **Use Case**: Ensures safe cutover and rollback scenarios
+- **Benefit**: Prevented data corruption or loss by accidental writes
+- **Use Case**: Ensured safe cutover and rollback scenarios; no longer active
 
 ## Performance Terms
 
 ### Query Baseline
-Current SQLite performance metrics to maintain:
+Current PostgreSQL performance metrics to maintain:
 - **Dashboard Loading**: Sub-second page load times
 - **API Response**: <500ms for report endpoints
 - **Card Rendering**: Efficient display of video cards
-- **Filter Operations**: Real-time filter updates
+- **Filter Operations**: Real-time filter updates powered by JSONB indexes
 
 ### JSON GIN Index
 PostgreSQL index type for efficient JSON queries:
@@ -198,11 +198,11 @@ Specific, measurable requirements for task completion:
 - **Traceability**: Link to task IDs (T-YXXX format)
 
 ### Rollback Capability
-Ability to safely revert to previous state:
-- **SQLite Restoration**: Return to dual SQLite architecture
-- **Feature Flags**: Immediate environment variable changes
-- **Backup Recovery**: Restore from comprehensive backups
-- **Testing**: Validate rollback procedures work correctly
+Ability to safely recover from issues:
+- **PostgreSQL Restoration**: Reload from verified dumps or snapshots
+- **Legacy SQLite Snapshots**: Retained for forensic recovery only
+- **Backup Recovery**: Restore from comprehensive backups before re-enabling ingest
+- **Testing**: Validate rollback procedures work correctly after restoration
 
 ### DB Health Endpoint
 Diagnostic API endpoint exposing database health metrics:
@@ -216,16 +216,15 @@ Diagnostic API endpoint exposing database health metrics:
 ### Database Manager
 New abstraction layer for database operations:
 - **Location**: `/Volumes/Docker/YTV2/modules/database_manager.py`
-- **Purpose**: Support both SQLite and PostgreSQL during migration
-- **Features**: Transactional writes, dual-write mode, error handling
+- **Purpose**: Provide PostgreSQL access patterns (legacy SQLite hooks retained only for archival scripts)
+- **Features**: Transactional writes, robust error handling, optional snapshot helpers
 - **Safety**: Atomic operations preventing partial data corruption
 
 ### Environment Variables
-Configuration settings controlling migration behavior:
-- **DATABASE_URL**: PostgreSQL connection string
-- **READ_FROM_POSTGRES**: Dashboard database source control
-- **DUAL_WRITE_MODE**: NAS dual-write behavior flag
-- **Security**: No plaintext credentials in code
+Configuration settings controlling runtime behavior:
+- **DATABASE_URL_POSTGRES_NEW**: Primary PostgreSQL connection string used by NAS and Dashboard
+- **Legacy Flags**: `READ_FROM_POSTGRES` and `DUAL_WRITE_MODE` existed only during cutover and are now retired
+- **Security**: No plaintext credentials in code; secrets managed via environment or Render dashboard
 
 ### Task IDs
 Systematic numbering for implementation traceability:
