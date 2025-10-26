@@ -12,6 +12,9 @@ Set these on the Render service:
 ```
 DATABASE_URL_POSTGRES_NEW=postgres://user:pass@host:5432/db
 
+# Required for NAS ingest (private endpoints)
+INGEST_TOKEN=shared_ingest_token
+
 # Optional (upload protection)
 SYNC_SECRET=shared_secret
 
@@ -29,3 +32,5 @@ PORT=10000
 - Cold builds can take a while (container build + extract).
 - Auto-deploy from Git works; use “Deploy latest commit” if Render misses a push.
 - Check Logs → look for `Using PostgreSQL database` and `/health` OK.
+
+See `docs/NAS_INTEGRATION.md` for NAS sync details and examples.

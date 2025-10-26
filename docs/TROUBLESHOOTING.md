@@ -12,3 +12,15 @@ Ensure `/api/filters` is returning real counts and the UI isn’t overwriting th
 ## Nothing shows when clearing filters
 By design, the UI requires at least one selection for some groups (e.g., category/source/channel). Clearing all shows a helpful empty-state card.
 
+## 401 on /ingest/* endpoints
+The ingest endpoints require `X-INGEST-TOKEN` and are separate from legacy Bearer auth. Verify:
+- Render has `INGEST_TOKEN` set on the dashboard service
+- NAS calls include header `X-INGEST-TOKEN: $INGEST_TOKEN`
+- Check `/health/ingest` for `token_set: true`
+
+## Verify PostgreSQL connectivity
+Quick check from your workstation:
+```
+psql "$DATABASE_URL_POSTGRES_NEW" -c "SELECT 1;"
+```
+If this fails, verify network egress and credentials (user, host, db, password). Add `connect_timeout=5` to DSN and retry with exponential backoff.
