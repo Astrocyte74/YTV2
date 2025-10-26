@@ -94,6 +94,7 @@ curl -sS -X POST "$RENDER_DASHBOARD_URL/ingest/audio" \
 Storage and URLs:
 - Files are stored under `/app/data/exports/audio/`
 - Public path: `/exports/audio/<video_id>.mp3`
+- Note: the saved filename is a sanitized form (e.g., removing `yt:`/`:`). The database update uses the original `video_id` key.
 
 ## Health Checks
 - `GET /health/ingest` → reports `{ status: "ok", token_set: true, pg_dsn_set: true }`
@@ -113,4 +114,3 @@ Storage and URLs:
 ---
 
 This NAS integration replaces legacy SQLite sync. Use the ingest endpoints with `X-INGEST-TOKEN` for all new content and audio.
-
