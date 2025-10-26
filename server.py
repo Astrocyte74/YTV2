@@ -1853,6 +1853,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 return
             video_id_with_ext = parts[-1]
             video_id = video_id_with_ext.replace('.mp3', '')
+            # Sanitized form used by /ingest/audio file naming
+            clean_id = video_id.replace('yt:', '').replace(':', '')
 
             # Search for candidate files in common locations
             search_dirs = [Path('/app/data/exports')]
@@ -1860,9 +1862,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             if audio_subdir.exists():
                 search_dirs.append(audio_subdir)
             patterns = [
+                f'{clean_id}.mp3',           # exact sanitized filename saved by /ingest/audio
                 f'audio_{video_id}_*.mp3',   # standard new pattern
                 f'{video_id}_*.mp3',         # legacy pattern
-                f'*{video_id}*.mp3',         # fallback
+                f'*{video_id}*.mp3',         # fallback containing original id
+                f'*{clean_id}*.mp3',         # fallback containing sanitized id
             ]
 
             best_match = None

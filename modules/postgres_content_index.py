@@ -382,6 +382,16 @@ class PostgreSQLContentIndex:
             'word_count': analysis_json.get('word_count', 0)
         }
 
+        # If backend stored an explicit audio_url in analysis_json, surface it in media
+        try:
+            audio_url_in_analysis = analysis_json.get('audio_url')
+            if isinstance(audio_url_in_analysis, str) and audio_url_in_analysis.strip():
+                content_dict['media']['audio_url'] = audio_url_in_analysis.strip()
+                # Ensure has_audio reflects presence of a concrete URL
+                content_dict['media']['has_audio'] = True
+        except Exception:
+            pass
+
         # Attach summary payload for downstream consumers when available
         if summary_text or summary_html:
             content_dict['summary_text'] = summary_text or ''
