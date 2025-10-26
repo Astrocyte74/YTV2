@@ -15,6 +15,9 @@ Full API reference: `docs/API.md`.
 # Required
 DATABASE_URL_POSTGRES_NEW=postgres://user:pass@host:5432/dbname
 
+# Required for NAS ingest (private endpoints)
+INGEST_TOKEN=shared_ingest_token
+
 # Optional (protect upload endpoints if used)
 SYNC_SECRET=shared_secret
 
@@ -39,6 +42,7 @@ python server.py
 Use Docker runtime with Start Command `python server.py` and set `DATABASE_URL_POSTGRES_NEW`.
 
 Step‑by‑step guide: `docs/DEPLOY_RENDER.md`.
+NAS integration guide: `docs/NAS_INTEGRATION.md`.
 
 ## Filter model (UI summary)
 - Source, Category and Channel all participate in narrowing results.

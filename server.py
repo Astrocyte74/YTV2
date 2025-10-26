@@ -3811,8 +3811,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "video_id and audio required"}).encode())
                 return
 
-            # Sanitize video_id for filename (remove yt: prefix and other problematic characters)
-            clean_video_id = video_id.replace("yt:", "").replace(":", "").strip()
+            # Keep the original video_id for database updates, but sanitize only for filename
+            original_video_id = video_id.strip()
+            clean_video_id = original_video_id.replace("yt:", "").replace(":", "")
 
             # Ensure audio directory exists
             from pathlib import Path
@@ -3824,12 +3825,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             with open(dest, 'wb') as f:
                 f.write(audio_file.file.read())
 
-            # Update content.media.audio_url in PostgreSQL
+            # Update content.media.audio_url in PostgreSQL using the original video_id
             audio_url = f"/exports/audio/{clean_video_id}.mp3"
             if content_index and hasattr(content_index, 'update_media_audio_url'):
-                logger.info(f"🔄 Updating has_audio flag for {clean_video_id}")
-                content_index.update_media_audio_url(clean_video_id, audio_url)
-                logger.info(f"✅ Updated has_audio flag for {clean_video_id}")
+                logger.info(f"🔄 Updating has_audio flag for {original_video_id}")
+                content_index.update_media_audio_url(original_video_id, audio_url)
+                logger.info(f"✅ Updated has_audio flag for {original_video_id}")
             else:
                 logger.error(f"❌ No content_index or no update_media_audio_url method available")
 
