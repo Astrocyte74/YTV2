@@ -1,4 +1,25 @@
-# (Legacy) Quiz Backend API Documentation
+# Quiz Backend API Documentation
+
+Note: Multi‑User Auth (Phase 1) is now implemented. In addition to the public quiz routes documented below, the backend exposes user‑scoped endpoints protected by Google OIDC ID tokens:
+
+- `POST /api/my/save-quiz` — save under `data/quiz/<user_id>/...` (409 unless `{ overwrite: true }`)
+- `GET /api/my/list-quizzes` — list caller’s quizzes (ISO 8601 `created`)
+- `GET /api/my/quiz/:filename` — load caller’s quiz
+- `DELETE /api/my/quiz/:filename` — delete caller’s quiz
+
+Authentication
+- Frontend obtains an ID token via Google Identity Services (GIS) and sends `Authorization: Bearer <id_token>` on `/api/my/*`.
+- Backend verifies `aud` against `GOOGLE_CLIENT_IDS` (CSV) and `iss` in `{accounts.google.com, https://accounts.google.com}`.
+
+CORS and config
+- Allowed frontend origins come from `ALLOWED_ORIGINS` (CSV, no trailing slash).
+- Rate limits: per‑IP on public `generate-quiz`/`categorize-quiz`; per‑user on my‑scoped save, with per‑day cap. Tuned via `RL_IP_PER_MIN`, `RL_USER_PER_MIN`, `RL_USER_PER_DAY`.
+- Payload limit: `MAX_QUIZ_KB` (default 128) enforced on saves.
+
+More details
+- Backend checklist: `docs/multi-user-auth-checklist.md`
+- Google Sign‑In setup: `docs/GOOGLE_SIGN_IN_SETUP_GUIDE.md`
+- Frontend plan and flows: see `quizzernator/docs/auth-multitenancy-plan.md` in the frontend repo.
 
 ## API Endpoints Overview
 
