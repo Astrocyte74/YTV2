@@ -141,6 +141,9 @@ def _parse_csv_env(value: str) -> list[str]:
     items = []
     for part in (value or '').split(','):
         v = part.strip()
+        # Strip wrapping quotes if provided in env (Render UI sometimes encourages quotes)
+        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+            v = v[1:-1].strip()
         if v:
             # Normalize origin: drop trailing slash
             if v.endswith('/') and v.startswith('http'):
