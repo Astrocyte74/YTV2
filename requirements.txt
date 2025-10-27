@@ -30,3 +30,6 @@ bleach>=6.1
 
 # PostgreSQL support for migration
 psycopg2-binary>=2.9.0
+
+# Google OIDC verification for multi-user auth
+google-auth>=2.16.0
