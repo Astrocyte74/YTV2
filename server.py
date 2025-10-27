@@ -28,6 +28,12 @@ import socket
 import requests
 from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
+try:
+    from google.oauth2 import id_token as google_id_token
+    from google.auth.transport import requests as google_requests
+    GOOGLE_AUTH_AVAILABLE = True
+except Exception:
+    GOOGLE_AUTH_AVAILABLE = False
 
 # PostgreSQL support for migration
 try:
@@ -123,6 +129,113 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# --------------------------
+# Auth and Rate Limiting
+# --------------------------
+
+ALLOWED_ORIGINS_ENV = os.getenv('ALLOWED_ORIGINS', '')
+GOOGLE_CLIENT_IDS_ENV = os.getenv('GOOGLE_CLIENT_IDS', '')
+
+def _parse_csv_env(value: str) -> list[str]:
+    items = []
+    for part in (value or '').split(','):
+        v = part.strip()
+        # Strip wrapping quotes if provided in env (Render UI sometimes encourages quotes)
+        if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+            v = v[1:-1].strip()
+        if v:
+            # Normalize origin: drop trailing slash
+            if v.endswith('/') and v.startswith('http'):
+                v = v.rstrip('/')
+            items.append(v)
+    return items
+
+ALLOWED_ORIGINS_CFG = _parse_csv_env(ALLOWED_ORIGINS_ENV)
+GOOGLE_CLIENT_IDS = _parse_csv_env(GOOGLE_CLIENT_IDS_ENV)
+
+RL_USER_PER_MIN = int(os.getenv('RL_USER_PER_MIN', '5'))
+RL_IP_PER_MIN = int(os.getenv('RL_IP_PER_MIN', '10'))
+RL_USER_PER_DAY = int(os.getenv('RL_USER_PER_DAY', '50'))
+MAX_QUIZ_KB = int(os.getenv('MAX_QUIZ_KB', '128'))
+
+_TOKEN_CACHE: dict[str, dict] = {}
+_RL_IP_MIN: dict[str, list[float]] = {}
+_RL_USER_MIN: dict[str, list[float]] = {}
+_RL_USER_DAY: dict[str, list[float]] = {}
+
+def _now() -> float:
+    return time.time()
+
+def _client_ip(handler: SimpleHTTPRequestHandler) -> str:
+    xfwd = handler.headers.get('X-Forwarded-For', '')
+    if xfwd:
+        return xfwd.split(',')[0].strip()
+    try:
+        return handler.client_address[0]
+    except Exception:
+        return 'unknown'
+
+def _prune(series: list[float], window_s: int) -> None:
+    cutoff = _now() - window_s
+    while series and series[0] < cutoff:
+        series.pop(0)
+
+def _rate_limit(series_map: dict[str, list[float]], key: str, limit: int, window_s: int) -> bool:
+    arr = series_map.setdefault(key, [])
+    _prune(arr, window_s)
+    if len(arr) >= limit:
+        return False
+    arr.append(_now())
+    return True
+
+def check_ip_minute(handler: SimpleHTTPRequestHandler) -> bool:
+    key = _client_ip(handler)
+    return _rate_limit(_RL_IP_MIN, key, RL_IP_PER_MIN, 60)
+
+def check_user_minute(user_id: str) -> bool:
+    return _rate_limit(_RL_USER_MIN, user_id, RL_USER_PER_MIN, 60)
+
+def check_user_daily(user_id: str) -> bool:
+    return _rate_limit(_RL_USER_DAY, user_id, RL_USER_PER_DAY, 24 * 3600)
+
+ALLOWED_ISS = {'https://accounts.google.com', 'accounts.google.com'}
+
+def verify_google_bearer(auth_header: str) -> dict:
+    if not GOOGLE_AUTH_AVAILABLE:
+        raise PermissionError('Google auth library not available')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        raise PermissionError('Missing bearer token')
+    token = auth_header.split(' ', 1)[1].strip()
+
+    cached = _TOKEN_CACHE.get(token)
+    if cached and cached.get('exp', 0) > _now():
+        return cached
+
+    last_err = None
+    for aud in GOOGLE_CLIENT_IDS or [None]:
+        try:
+            info = google_id_token.verify_oauth2_token(token, google_requests.Request(), audience=aud)
+            iss = info.get('iss')
+            if iss not in ALLOWED_ISS:
+                raise PermissionError('Invalid issuer')
+            # Compute cache expiry from token 'exp' or default short TTL
+            exp_ts = float(info.get('exp', 0))
+            user = {
+                'user_id': info.get('sub'),
+                'email': info.get('email'),
+                'aud': info.get('aud'),
+                'iss': iss,
+                'exp': exp_ts or (_now() + 300)
+            }
+            if not user['user_id']:
+                raise PermissionError('Invalid token payload')
+            _TOKEN_CACHE[token] = user
+            return user
+        except Exception as e:
+            last_err = e
+            continue
+    raise PermissionError('Invalid token')
 
 class SSEClient:
     """Lightweight holder for per-connection event queues."""
@@ -1122,11 +1235,28 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         elif self.path == '/api/fetch-article':
             self.handle_fetch_article()
         elif self.path == '/api/generate-quiz':
+            # Per-IP rate limit for public generation
+            if not check_ip_minute(self):
+                self.send_response(429)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "error": "Rate limit exceeded"}).encode())
+                return
             self.handle_generate_quiz()
         elif self.path == '/api/save-quiz':
             self.handle_save_quiz()
         elif self.path == '/api/categorize-quiz':
+            if not check_ip_minute(self):
+                self.send_response(429)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "error": "Rate limit exceeded"}).encode())
+                return
             self.handle_categorize_quiz()
+        elif self.path == '/api/my/save-quiz':
+            self.handle_my_save_quiz()
         else:
             self.send_error(404, "Endpoint not found")
     
@@ -1136,6 +1266,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_delete_request()
         elif self.path.startswith('/api/quiz/'):
             self.handle_delete_quiz()
+        elif self.path.startswith('/api/my/quiz/'):
+            self.handle_my_delete_quiz()
         else:
             self.send_error(404, "DELETE endpoint not found")
     
@@ -2193,6 +2325,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_reports_v2(query_params)
             elif path.startswith('/api/reports/'):
                 self.serve_api_report_detail()
+            elif path == '/api/health':
+                self.serve_api_health()
+            elif path == '/api/health/auth':
+                self.serve_api_health_auth()
             elif path == '/api/config':
                 self.serve_api_config()
             elif path == '/api/refresh':
@@ -2211,6 +2347,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.handle_list_quizzes()
             elif path.startswith('/api/quiz/'):
                 self.handle_get_quiz()
+            elif path == '/api/my/list-quizzes':
+                self.handle_my_list_quizzes()
+            elif path.startswith('/api/my/quiz/'):
+                self.handle_my_get_quiz()
             else:
                 self.send_error(404, "API endpoint not found")
         except Exception as e:
@@ -3857,31 +3997,35 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
     def set_cors_headers(self, allow_all_origins=False):
         """Set CORS headers for cross-origin requests"""
-        # Get the origin from the request
         origin = self.headers.get('Origin', '')
 
-        # List of allowed origins
-        allowed_origins = [
-            'https://quizzernator.onrender.com',
-            'http://localhost:3000',  # For local testing
-            'http://localhost:8080',  # Alternative local port
-            'http://127.0.0.1:3000',  # Alternative localhost
-            'http://127.0.0.1:8080'   # Alternative localhost port
-        ]
+        # Start with env-configured allowlist
+        origins = set(ALLOWED_ORIGINS_CFG)
+        # Also include self render url if provided
+        render_url = os.getenv('RENDER_DASHBOARD_URL', '').rstrip('/')
+        if render_url:
+            origins.add(render_url)
+        # If none configured, fall back to defaults
+        if not origins:
+            origins = {
+                'https://quizzernator.onrender.com',
+                'http://localhost:3000',
+                'http://localhost:8080',
+                'http://127.0.0.1:3000',
+                'http://127.0.0.1:8080',
+            }
 
-        # Allow specific origin if it's in our allowed list, or all if explicitly requested
         if allow_all_origins:
             self.send_header('Access-Control-Allow-Origin', '*')
-        elif origin in allowed_origins:
+        elif origin in origins:
             self.send_header('Access-Control-Allow-Origin', origin)
         else:
-            # Fallback to wildcard for backwards compatibility
             self.send_header('Access-Control-Allow-Origin', '*')
 
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         self.send_header('Access-Control-Max-Age', '86400')
-        self.send_header('Vary', 'Origin')  # Important for caching
+        self.send_header('Vary', 'Origin')
 
     def do_OPTIONS(self):
         """Handle preflight CORS requests"""
@@ -3891,6 +4035,52 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.set_cors_headers()
         self.end_headers()
+
+    def serve_api_health(self):
+        """GET /api/health - public JSON health endpoint"""
+        try:
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                'status': 'ok',
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            }).encode())
+        except Exception as e:
+            logger.error(f"Error serving /api/health: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'status': 'error'}).encode())
+
+    def serve_api_health_auth(self):
+        """GET /api/health/auth - requires valid Google bearer token"""
+        try:
+            user = verify_google_bearer(self.headers.get('Authorization', ''))
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                'status': 'ok',
+                'user_id': user.get('user_id'),
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            }).encode())
+        except PermissionError:
+            self.send_response(401)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'success': False, 'error': 'Unauthorized'}).encode())
+        except Exception as e:
+            logger.error(f"Error serving /api/health/auth: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'success': False, 'error': 'Internal error'}).encode())
 
     def handle_fetch_article(self):
         """Handle POST /api/fetch-article - Fetch external article content"""
@@ -4266,6 +4456,16 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         quiz_dir.mkdir(parents=True, exist_ok=True)
         return quiz_dir
 
+    def _get_user_quiz_storage_path(self, user_id: str) -> Path:
+        """Get per-user quiz storage directory path"""
+        safe_user = re.sub(r'[^A-Za-z0-9_.\-]', '_', user_id or '')
+        if not safe_user:
+            safe_user = 'unknown'
+        base = self._get_quiz_storage_path()
+        user_dir = base / safe_user
+        user_dir.mkdir(parents=True, exist_ok=True)
+        return user_dir
+
     def _sanitize_filename(self, filename):
         """Sanitize filename to prevent path traversal and invalid characters"""
         import re
@@ -4282,6 +4482,181 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             filename += '.json'
 
         return filename
+
+    def _json_body(self) -> Optional[dict]:
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            if length <= 0:
+                return None
+            raw = self.rfile.read(length)
+            try:
+                return json.loads(raw.decode('utf-8'))
+            except Exception:
+                return None
+        except Exception:
+            return None
+
+    def _enforce_quiz_size(self, payload: dict) -> bool:
+        try:
+            b = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+            kb = len(b) / 1024.0
+            return kb <= MAX_QUIZ_KB
+        except Exception:
+            return False
+
+    def _respond_json(self, code: int, obj: dict) -> None:
+        self.send_response(code)
+        self.set_cors_headers()
+        self.send_header('Content-type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps(obj).encode())
+
+    # ------------------
+    # My-scoped handlers
+    # ------------------
+
+    def handle_my_list_quizzes(self):
+        try:
+            user = verify_google_bearer(self.headers.get('Authorization', ''))
+            user_dir = self._get_user_quiz_storage_path(user.get('user_id'))
+            quizzes = []
+            for quiz_file in user_dir.glob('*.json'):
+                try:
+                    with open(quiz_file, 'r', encoding='utf-8') as f:
+                        quiz_data = json.load(f)
+                    meta = quiz_data.get('meta', {})
+                    metadata = quiz_data.get('metadata', {})
+                    created = metadata.get('created')
+                    if not created:
+                        ts = quiz_file.stat().st_mtime
+                        created = datetime.utcfromtimestamp(ts).isoformat() + 'Z'
+                    quizzes.append({
+                        'filename': quiz_file.name,
+                        'topic': meta.get('topic', 'Unknown'),
+                        'count': quiz_data.get('count', len(quiz_data.get('items', []))),
+                        'difficulty': meta.get('difficulty', 'Unknown'),
+                        'created': created
+                    })
+                except Exception:
+                    continue
+            quizzes.sort(key=lambda x: x['created'], reverse=True)
+            self._respond_json(200, { 'success': True, 'quizzes': quizzes })
+        except PermissionError:
+            self._respond_json(401, { 'success': False, 'error': 'Unauthorized' })
+        except Exception as e:
+            logger.error(f"List my quizzes error: {e}")
+            self._respond_json(500, { 'success': False, 'error': 'Failed to list quizzes' })
+
+    def handle_my_get_quiz(self):
+        try:
+            user = verify_google_bearer(self.headers.get('Authorization', ''))
+            filename = self.path.split('/api/my/quiz/')[-1]
+            filename = self._sanitize_filename(filename)
+            if not filename:
+                self._respond_json(400, { 'success': False, 'error': 'Invalid filename' })
+                return
+            quiz_path = self._get_user_quiz_storage_path(user.get('user_id')) / filename
+            if not quiz_path.exists():
+                self._respond_json(404, { 'success': False, 'error': 'Not found' })
+                return
+            with open(quiz_path, 'r', encoding='utf-8') as f:
+                quiz_data = json.load(f)
+            self._respond_json(200, { 'success': True, 'quiz': quiz_data })
+        except PermissionError:
+            self._respond_json(401, { 'success': False, 'error': 'Unauthorized' })
+        except Exception as e:
+            logger.error(f"Get my quiz error: {e}")
+            self._respond_json(500, { 'success': False, 'error': 'Failed to load quiz' })
+
+    def handle_my_save_quiz(self):
+        try:
+            # Per-IP RL (fallback) and auth
+            if not check_ip_minute(self):
+                self._respond_json(429, { 'success': False, 'error': 'Rate limit exceeded' })
+                return
+            user = verify_google_bearer(self.headers.get('Authorization', ''))
+            uid = user.get('user_id')
+            if not check_user_minute(uid) or not check_user_daily(uid):
+                self._respond_json(429, { 'success': False, 'error': 'Rate limit exceeded' })
+                return
+
+            data = self._json_body()
+            if not data or 'quiz' not in data:
+                self._respond_json(400, { 'success': False, 'error': 'Quiz data is required' })
+                return
+            quiz_data = data['quiz']
+            overwrite = bool(data.get('overwrite'))
+            if not self._enforce_quiz_size(quiz_data):
+                self._respond_json(413, { 'success': False, 'error': 'Payload too large' })
+                return
+
+            filename = data.get('filename')
+            if filename:
+                filename = self._sanitize_filename(filename)
+            else:
+                meta = quiz_data.get('meta', {})
+                topic = meta.get('topic', 'quiz')
+                ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = self._sanitize_filename(f"{topic.lower().replace(' ', '_')}_{ts}.json")
+            if not filename:
+                self._respond_json(400, { 'success': False, 'error': 'Invalid filename' })
+                return
+
+            user_dir = self._get_user_quiz_storage_path(uid)
+            quiz_path = user_dir / filename
+            if quiz_path.exists() and not overwrite:
+                self._respond_json(409, { 'success': False, 'error': 'Duplicate filename', 'code': 'DUPLICATE', 'filename': filename })
+                return
+
+            # Add metadata
+            quiz_data.setdefault('metadata', {})
+            quiz_data['metadata'].update({
+                'created': datetime.utcnow().isoformat() + 'Z',
+                'filename': filename,
+                'owner': uid
+            })
+            with open(quiz_path, 'w', encoding='utf-8') as f:
+                json.dump(quiz_data, f, indent=2, ensure_ascii=False)
+
+            meta = quiz_data.get('meta', {})
+            result = {
+                'success': True,
+                'filename': filename,
+                'topic': meta.get('topic', 'Unknown'),
+                'count': quiz_data.get('count', len(quiz_data.get('items', []))),
+                'difficulty': meta.get('difficulty', 'Unknown'),
+                'created': quiz_data['metadata']['created']
+            }
+            self._respond_json(200, result)
+        except PermissionError:
+            self._respond_json(401, { 'success': False, 'error': 'Unauthorized' })
+        except Exception as e:
+            logger.error(f"Save my quiz error: {e}")
+            self._respond_json(500, { 'success': False, 'error': 'Failed to save quiz' })
+
+    def handle_my_delete_quiz(self):
+        try:
+            user = verify_google_bearer(self.headers.get('Authorization', ''))
+            filename = self.path.split('/api/my/quiz/')[-1]
+            filename = self._sanitize_filename(filename)
+            if not filename:
+                self._respond_json(400, { 'success': False, 'error': 'Invalid filename' })
+                return
+            quiz_path = self._get_user_quiz_storage_path(user.get('user_id')) / filename
+            if not quiz_path.exists():
+                self._respond_json(404, { 'success': False, 'error': 'Not found' })
+                return
+            try:
+                quiz_path.unlink()
+            except Exception:
+                self._respond_json(500, { 'success': False, 'error': 'Failed to delete quiz' })
+                return
+            self._respond_json(200, { 'success': True, 'deleted': True })
+        except PermissionError:
+            self._respond_json(401, { 'success': False, 'error': 'Unauthorized' })
+        except Exception as e:
+            logger.error(f"Delete my quiz error: {e}")
+            self._respond_json(500, { 'success': False, 'error': 'Failed to delete quiz' })
 
     def handle_save_quiz(self):
         """Handle POST /api/save-quiz - Save generated quiz to storage"""

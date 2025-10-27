@@ -35,6 +35,12 @@ services:
       # Leave Telegram token empty for dashboard-only mode
       - key: TELEGRAM_BOT_TOKEN
         value: ""
+      
+      # Multi-user auth configuration (set in Render dashboard)
+      - key: GOOGLE_CLIENT_IDS
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
     
     # Persistent disk for synced reports and audio files
     disk:
