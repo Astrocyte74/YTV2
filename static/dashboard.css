@@ -522,6 +522,15 @@ body {
 }
 
 /* V4 Stream/Mosaic Cards (flagged via UI_FLAGS.cardV4) */
+.stream-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+@media (min-width: 1180px) {
+    .stream-grid { grid-template-columns: 1fr 1fr; }
+}
+
 .stream-card {
     position: relative;
     display: flex;
