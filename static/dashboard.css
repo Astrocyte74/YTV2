@@ -521,6 +521,65 @@ body {
     z-index: 45;
 }
 
+/* V4 Stream/Mosaic Cards (flagged via UI_FLAGS.cardV4) */
+.stream-card {
+    position: relative;
+    display: flex;
+    gap: 1rem;
+    padding: 1rem;
+    border-radius: 1rem;
+    background: var(--card-surface);
+    border: 1px solid var(--card-border);
+    box-shadow: var(--card-shadow);
+    transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+.stream-card:focus-visible,
+.stream-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--card-shadow-strong);
+    border-color: rgba(14, 165, 233, 0.35);
+}
+.stream-card__media {
+    position: relative;
+    width: 10rem; /* 160px */
+    height: 6rem; /* 96px */
+    border-radius: 0.75rem;
+    overflow: hidden;
+    background: rgba(15, 23, 42, 0.08);
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.12);
+    flex: 0 0 auto;
+}
+.stream-card__thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+.stream-card__progress { position: absolute; inset-inline: 0; bottom: 0; height: 6px; background: rgba(255,255,255,0.4); }
+.dark .stream-card__progress { background: rgba(2,6,23,0.38); }
+.stream-card__progress-bar { height: 100%; background: rgba(14,165,233,0.85); }
+.dark .stream-card__progress-bar { background: rgba(56,189,248,0.9); }
+.stream-card__eq { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.stream-card__body { flex: 1 1 auto; min-width: 0; }
+.stream-card__avatar { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: 999px; background: rgba(226,232,240,0.8); color: #334155; font-weight: 600; }
+.dark .stream-card__avatar { background: rgba(30,41,59,0.8); color: #e2e8f0; }
+.stream-card__meta { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.15rem; }
+.stream-card__title { margin-top: 0.25rem; font-weight: 600; color: #0f172a; }
+.dark .stream-card__title { color: #e5e7eb; }
+
+/* Multi-line clamp utility used in V4 titles */
+.line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.mosaic-card {
+    position: relative; border: 1px solid var(--card-border); border-radius: 1rem; overflow: hidden;
+    background: var(--card-surface); box-shadow: var(--card-shadow); transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+.mosaic-card:hover, .mosaic-card:focus-visible { transform: translateY(-2px); box-shadow: var(--card-shadow-strong); border-color: rgba(14,165,233,0.35); }
+.mosaic-card__media { position: relative; width: 100%; height: 10rem; background: rgba(15,23,42,0.08); }
+.mosaic-card__thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mosaic-card__progress { position: absolute; inset-inline: 0; bottom: 0; height: 6px; background: rgba(255,255,255,0.4); }
+.dark .mosaic-card__progress { background: rgba(2,6,23,0.38); }
+.mosaic-card__progress-bar { height: 100%; background: rgba(14,165,233,0.85); }
+.dark .mosaic-card__progress-bar { background: rgba(56,189,248,0.9); }
+.mosaic-card__body { padding: 0.75rem; }
+.mosaic-card__title { font-weight: 600; font-size: 0.95rem; }
+.dark .mosaic-card__title { color: #e5e7eb; }
+
 .summary-card__popover-panel {
     background: var(--card-surface);
     border: 1px solid var(--card-border);

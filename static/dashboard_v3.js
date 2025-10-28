@@ -3119,15 +3119,14 @@ class AudioDashboard {
             : `<div class="w-40 h-24 rounded-lg bg-slate-200 dark:bg-slate-700"></div>`;
 
         return `
-            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-source="${this.escapeHtml(source)}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
-                     class="relative flex gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-800/60">
-                <div class="relative flex-shrink-0">
+            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-source="${this.escapeHtml(source)}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0" class="stream-card">
+                <div class="stream-card__media">
                     ${nowPlayingPill}
-                    ${thumb}
-                    <div class="absolute inset-x-0 bottom-0 h-1.5 bg-white/40 dark:bg-slate-900/30 rounded-b-lg overflow-hidden" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
-                        <div class="h-full bg-audio-500/80 dark:bg-audio-400/90" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+                    ${thumb.replace('w-40 h-24 rounded-lg object-cover', 'stream-card__thumb')}
+                    <div class="stream-card__progress" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
+                        <div class="stream-card__progress-bar" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
                     </div>
-                    <div class="absolute inset-0 hidden items-center justify-center" data-card-eq>
+                    <div class="stream-card__eq hidden" data-card-eq>
                         <div class="summary-card__eq-bars">
                             <span class="waveform-bar" style="--delay:0"></span>
                             <span class="waveform-bar" style="--delay:1"></span>
@@ -3137,13 +3136,13 @@ class AudioDashboard {
                         </div>
                     </div>
                 </div>
-                <div class="flex-1 min-w-0">
+                <div class="stream-card__body">
                     <div class="flex items-start gap-3">
-                        <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold">${channelInitial}</span>
+                        <span class="stream-card__avatar">${channelInitial}</span>
                         <div class="min-w-0 flex-1">
                             <button class="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-audio-600" data-filter-chip="channel" data-filter-value="${safeChannel}" title="Filter by ${safeChannel}">${safeChannel}</button>
-                            ${identityMeta}
-                            <h3 class="mt-1 text-base md:text-lg font-semibold text-slate-900 dark:text-slate-100 line-clamp-2">${this.escapeHtml(item.title)}</h3>
+                            <div class="stream-card__meta">${identityMeta}</div>
+                            <h3 class="stream-card__title line-clamp-2">${this.escapeHtml(item.title)}</h3>
                         </div>
                     </div>
                     <div class="mt-3 space-y-2">
@@ -3169,21 +3168,20 @@ class AudioDashboard {
 
         const title = this.escapeHtml(item.title);
         const thumb = item.thumbnail_url
-            ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="w-full h-40 object-cover">`
-            : `<div class="w-full h-40 bg-slate-200 dark:bg-slate-700"></div>`;
+            ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="mosaic-card__thumb">`
+            : `<div class="mosaic-card__thumb" style="background: rgba(226,232,240,0.6)"></div>`;
 
         const actions = this.renderActionBar(item, buttonDurations, hasAudio);
         return `
-            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
-                     class="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-800/60 shadow-sm">
-                <div class="relative">
+            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0" class="mosaic-card">
+                <div class="mosaic-card__media">
                     ${thumb}
-                    <div class="absolute inset-x-0 bottom-0 h-1.5 bg-white/40 dark:bg-slate-900/30" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
-                        <div class="h-full bg-audio-500/80 dark:bg-audio-400/90" data-card-progress></div>
+                    <div class="mosaic-card__progress" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
+                        <div class="mosaic-card__progress-bar" data-card-progress></div>
                     </div>
                 </div>
-                <div class="p-3 space-y-2">
-                    <h3 class="text-sm font-semibold line-clamp-2">${title}</h3>
+                <div class="mosaic-card__body space-y-2">
+                    <h3 class="mosaic-card__title line-clamp-2">${title}</h3>
                     ${actions}
                 </div>
                 <section role="region" aria-live="polite" hidden data-expand-region></section>
