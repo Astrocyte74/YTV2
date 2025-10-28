@@ -185,6 +185,7 @@ class AudioDashboard {
         // Search and filters
         this.searchInput = document.getElementById('searchInput');
         this.sortToolbar = document.getElementById('sortToolbar');
+        this.sortSelect = document.getElementById('sortSelect');
         this.sourceFilters = document.getElementById('sourceFilters');
         this.categoryFilters = document.getElementById('categoryFilters');
         this.channelFilters = document.getElementById('channelFilters');
@@ -298,6 +299,12 @@ class AudioDashboard {
             });
         }
         
+        // Compact sort select in header
+        if (this.sortSelect) {
+            this.sortSelect.value = this.currentSort;
+            this.sortSelect.addEventListener('change', () => this.setSortMode(this.sortSelect.value));
+        }
+
         // Radio button sort controls in sidebar - use delegation for dynamic content
         document.addEventListener('click', (e) => {
             const label = e.target.closest('label');
@@ -1658,6 +1665,30 @@ class AudioDashboard {
     }
 
     async loadContent() {
+        // Show skeletons while fetching (only when we expect results)
+        const showSkeletons = () => {
+            if (!this.contentGrid) return;
+            const skeleton = [];
+            for (let i = 0; i < 12; i++) {
+                skeleton.push(`
+                <div class="animate-pulse rounded-xl border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/60 p-4">
+                  <div class="flex gap-4">
+                    <div class="w-40 h-24 bg-slate-200 dark:bg-slate-700 rounded-lg"></div>
+                    <div class="flex-1 space-y-3">
+                      <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4"></div>
+                      <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
+                      <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded w-2/3"></div>
+                      <div class="flex gap-2 mt-2">
+                        <div class="h-6 w-20 bg-slate-200 dark:bg-slate-700 rounded-full"></div>
+                        <div class="h-6 w-16 bg-slate-200 dark:bg-slate-700 rounded-full"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>`);
+            }
+            this.contentGrid.innerHTML = skeleton.join('');
+        };
+
         const params = new URLSearchParams();
         
         // Add search query
@@ -1827,6 +1858,8 @@ class AudioDashboard {
         dedupeParam('parentCategory');
         
         console.debug('Final URL params:', params.toString());
+        // Render loading placeholders before fetching
+        showSkeletons();
         
         // Add pagination and sorting
         params.append('page', this.currentPage.toString());
@@ -4377,19 +4410,21 @@ class AudioDashboard {
     }
 
     updateSortToggle() {
-        if (!this.sortToolbar) return;
-        this.sortToolbar.querySelectorAll('[data-sort]').forEach(btn => {
-            const active = btn.dataset.sort === this.currentSort;
-            if (active) {
-                // Apply selected state
-                btn.classList.add('bg-audio-500', 'text-white', 'dark:bg-audio-600');
-                btn.classList.remove('bg-white', 'dark:bg-slate-700', 'text-slate-700', 'dark:text-slate-200');
-            } else {
-                // Apply unselected state
-                btn.classList.remove('bg-audio-500', 'text-white', 'dark:bg-audio-600');
-                btn.classList.add('bg-white', 'dark:bg-slate-700', 'text-slate-700', 'dark:text-slate-200');
-            }
-        });
+        if (this.sortToolbar) {
+            this.sortToolbar.querySelectorAll('[data-sort]').forEach(btn => {
+                const active = btn.dataset.sort === this.currentSort;
+                if (active) {
+                    btn.classList.add('bg-audio-500', 'text-white', 'dark:bg-audio-600');
+                    btn.classList.remove('bg-white', 'dark:bg-slate-700', 'text-slate-700', 'dark:text-slate-200');
+                } else {
+                    btn.classList.remove('bg-audio-500', 'text-white', 'dark:bg-audio-600');
+                    btn.classList.add('bg-white', 'dark:bg-slate-700', 'text-slate-700', 'dark:text-slate-200');
+                }
+            });
+        }
+        if (this.sortSelect) {
+            this.sortSelect.value = this.currentSort;
+        }
     }
 
     updateRadioSortUI() {
