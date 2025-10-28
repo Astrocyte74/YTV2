@@ -559,7 +559,7 @@ body {
 .stream-card__avatar { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: 999px; background: rgba(226,232,240,0.8); color: #334155; font-weight: 600; }
 .dark .stream-card__avatar { background: rgba(30,41,59,0.8); color: #e2e8f0; }
 .stream-card__meta { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.15rem; }
-.stream-card__title { margin-top: 0.25rem; font-weight: 600; color: #0f172a; }
+.stream-card__title { margin-top: 0.25rem; font-weight: 600; color: #0f172a; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .dark .stream-card__title { color: #e5e7eb; }
 
 /* Multi-line clamp utility used in V4 titles */
@@ -600,6 +600,18 @@ body {
 .mosaic-card .variant-duration {
     font-size: 0.68rem;
 }
+
+/* Make meta/source chips and category chips more compact on Stream cards */
+.stream-card .summary-chip { font-size: 0.68rem; padding: 0.2rem 0.45rem; border-radius: 0.6rem; }
+.stream-card .summary-chip.summary-chip--more { padding: 0.2rem 0.5rem; }
+
+/* Reduce visual weight of Read button (icon-only in list) */
+.stream-card .summary-card__action--read .variant-text,
+.stream-card .summary-card__action--read .variant-duration { display: none; }
+.stream-card .summary-card__action--read .variant-icon { width: 1.15rem; height: 1.15rem; }
+
+/* Slightly tighten the gap under title */
+.stream-card__body .summary-card__footer { margin-top: 0.6rem; }
 
 .summary-card__popover-panel {
     background: var(--card-surface);
