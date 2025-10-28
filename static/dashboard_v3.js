@@ -2048,9 +2048,7 @@ class AudioDashboard {
         
         const html = this.viewMode === 'grid'
             ? `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(i => this.createGridCard(i)).join('')}</div>`
-            : (this.flags && this.flags.cardV4
-                ? `<div class="stream-grid">${items.map(i => this.createContentCard(i)).join('')}</div>`
-                : items.map(i => this.createContentCard(i)).join(''));
+            : items.map(i => this.createContentCard(i)).join('');
         this.contentGrid.innerHTML = html;
         this.decorateCards(items);
 
