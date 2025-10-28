@@ -580,6 +580,27 @@ body {
 .mosaic-card__title { font-weight: 600; font-size: 0.95rem; }
 .dark .mosaic-card__title { color: #e5e7eb; }
 
+/* Compact action buttons for V4 cards */
+.stream-card .variant-toggle,
+.mosaic-card .variant-toggle {
+    padding: 0.4rem 0.7rem;
+    gap: 0.45rem;
+}
+.stream-card .variant-icon,
+.mosaic-card .variant-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 0.5rem;
+}
+.stream-card .variant-label,
+.mosaic-card .variant-label {
+    font-size: 0.74rem;
+}
+.stream-card .variant-duration,
+.mosaic-card .variant-duration {
+    font-size: 0.68rem;
+}
+
 .summary-card__popover-panel {
     background: var(--card-surface);
     border: 1px solid var(--card-border);
