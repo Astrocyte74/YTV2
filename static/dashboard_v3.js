@@ -433,6 +433,46 @@ class AudioDashboard {
             });
         }
 
+        // Select All / Clear All buttons for Complexity
+        const selectAllComplexities = document.getElementById('selectAllComplexities');
+        const clearAllComplexities = document.getElementById('clearAllComplexities');
+        if (selectAllComplexities) {
+            selectAllComplexities.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="complexity"]').forEach(cb => { cb.checked = true; });
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
+                this.loadContent();
+            });
+        }
+        if (clearAllComplexities) {
+            clearAllComplexities.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="complexity"]').forEach(cb => { cb.checked = false; });
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
+                this.loadContent();
+            });
+        }
+
+        // Select All / Clear All buttons for Languages
+        const selectAllLanguages = document.getElementById('selectAllLanguages');
+        const clearAllLanguages = document.getElementById('clearAllLanguages');
+        if (selectAllLanguages) {
+            selectAllLanguages.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="language"]').forEach(cb => { cb.checked = true; });
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
+                this.loadContent();
+            });
+        }
+        if (clearAllLanguages) {
+            clearAllLanguages.addEventListener('click', () => {
+                document.querySelectorAll('input[data-filter="language"]').forEach(cb => { cb.checked = false; });
+                this.currentFilters = this.computeFiltersFromDOM();
+                this.updateHeroBadges();
+                this.loadContent();
+            });
+        }
+
         // Select All / Clear All buttons for Summary Types
         const selectAllSummaryTypes = document.getElementById('selectAllSummaryTypes');
         const clearAllSummaryTypes = document.getElementById('clearAllSummaryTypes');
