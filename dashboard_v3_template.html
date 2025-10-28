@@ -148,8 +148,8 @@
             outline-offset: 4px;
             border-radius: 0.5rem;
         }
-        .chevron { width: 14px; height: 14px; opacity: 0.75; transition: transform 200ms ease; }
-        details[open] summary .chevron { transform: rotate(90deg); }
+        .chevron { width: 14px; height: 14px; opacity: 0.75; transform: translateY(1px); transition: transform 200ms ease; }
+        details[open] summary .chevron { transform: translateY(1px) rotate(90deg); }
 
         [data-card].is-playing {
             border-color: rgba(14, 165, 233, 0.55);
@@ -300,9 +300,14 @@
                         <!-- Sort select moved above results header (mobile-only) -->
                     </div>
 
-                    <!-- Sort By Section -->
-                    <div class="filter-shell space-y-3">
-                        <h3>Sort by</h3>
+                    <!-- Sort By Section (collapsible) -->
+                    <details class="filter-shell space-y-3" open>
+                        <summary class="flex items-center justify-between cursor-pointer select-none">
+                            <div class="flex items-center gap-2">
+                                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 5l8 7-8 7"/></svg>
+                                <h3>Sort by</h3>
+                            </div>
+                        </summary>
                         <div class="space-y-1" id="sortOptions">
                             <label class="flex items-center cursor-pointer">
                                 <input type="radio" name="sortBy" value="added_desc" class="sr-only" checked>
@@ -359,7 +364,7 @@
                                 Show more
                             </button>
                         </div>
-                    </div>
+                    </details>
 
                     <details class="filter-shell space-y-3" open>
                         <summary class="flex items-center justify-between cursor-pointer select-none">
@@ -660,7 +665,7 @@
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
     <script src="ui_flags.js"></script>
-    <script src="dashboard_v3.js?v=pg4"></script>
+    <script src="dashboard_v3.js?v=pg5"></script>
 
 </body>
 </html>
