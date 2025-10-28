@@ -358,29 +358,29 @@
                         </div>
                     </div>
 
-                    <div class="filter-shell space-y-3">
-                        <div class="flex items-center justify-between">
+                    <details class="filter-shell space-y-3" open>
+                        <summary class="flex items-center justify-between cursor-pointer select-none">
                             <h3>Source</h3>
                             <div class="space-x-2 section-meta">
                                 <button id="selectAllSources" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
                                 <button id="clearAllSources" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
                             </div>
-                        </div>
-                        <div class="space-y-1" id="sourceFilters">
+                        </summary>
+                        <div class="space-y-1 mt-2" id="sourceFilters">
                             <!-- Source filters will be inserted here -->
                         </div>
-                    </div>
+                    </details>
 
                     <!-- Quick Filters -->
-                    <div class="filter-shell space-y-3">
-                        <div class="flex items-center justify-between">
+                    <details class="filter-shell space-y-3">
+                        <summary class="flex items-center justify-between cursor-pointer select-none">
                             <h3>Categories</h3>
                             <div class="space-x-2 section-meta">
                                 <button id="selectAllCategories" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
                                 <button id="clearAllCategories" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
                             </div>
-                        </div>
-                        <div class="space-y-1" id="categoryFilters">
+                        </summary>
+                        <div class="space-y-1 mt-2" id="categoryFilters">
                             <!-- Dynamic category filters will be inserted here -->
                             <div id="showMoreCategories" class="hidden">
                                 <!-- Additional categories will be shown here -->
@@ -389,17 +389,17 @@
                                 Show more
                             </button>
                         </div>
-                    </div>
+                    </details>
 
-                    <div class="filter-shell space-y-3">
-                        <div class="flex items-center justify-between">
+                    <details class="filter-shell space-y-3">
+                        <summary class="flex items-center justify-between cursor-pointer select-none">
                             <h3>Channels</h3>
                             <div class="space-x-2 section-meta">
                                 <button id="selectAllChannels" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
                                 <button id="clearAllChannels" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
                             </div>
-                        </div>
-                        <div class="space-y-1" id="channelFilters">
+                        </summary>
+                        <div class="space-y-1 mt-2" id="channelFilters">
                             <!-- Dynamic channel filters will be inserted here -->
                             <div id="showMoreChannels" class="hidden">
                                 <!-- Additional channels will be shown here -->
@@ -408,17 +408,17 @@
                                 Show more
                             </button>
                         </div>
-                    </div>
+                    </details>
 
-                    <div class="filter-shell space-y-3">
-                        <div class="flex items-center justify-between">
+                    <details class="filter-shell space-y-3">
+                        <summary class="flex items-center justify-between cursor-pointer select-none">
                             <h3>Content Type</h3>
                             <div class="space-x-2 section-meta">
                                 <button id="selectAllContentTypes" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
                                 <button id="clearAllContentTypes" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
                             </div>
-                        </div>
-                        <div class="space-y-1" id="contentTypeFilters">
+                        </summary>
+                        <div class="space-y-1 mt-2" id="contentTypeFilters">
                             <!-- Dynamic content type filters will be inserted here -->
                             <div id="showMoreContentTypes" class="hidden">
                                 <!-- Additional content types will be shown here -->
@@ -427,19 +427,23 @@
                                 Show more
                             </button>
                         </div>
-                    </div>
+                    </details>
 
-                    <div class="filter-shell space-y-3">
-                        <h3>Complexity</h3>
-                        <div class="space-y-1" id="complexityFilters">
+                    <details class="filter-shell space-y-3" open>
+                        <summary class="flex items-center justify-between cursor-pointer select-none">
+                            <h3>Complexity</h3>
+                        </summary>
+                        <div class="space-y-1 mt-2" id="complexityFilters">
                             <!-- Dynamic complexity filters will be inserted here -->
                         </div>
-                    </div>
+                    </details>
 
                     <!-- Language Filter Section -->
-                    <div class="filter-shell space-y-3">
-                        <h3>Language</h3>
-                        <div class="space-y-1" id="languageFilters">
+                    <details class="filter-shell space-y-3">
+                        <summary class="flex items-center justify-between cursor-pointer select-none">
+                            <h3>Language</h3>
+                        </summary>
+                        <div class="space-y-1 mt-2" id="languageFilters">
                             <!-- Dynamic language filters will be inserted here -->
                             <div id="showMoreLanguages" class="hidden">
                                 <!-- Additional languages will be shown here -->
@@ -448,21 +452,21 @@
                                 Show more
                             </button>
                         </div>
-                    </div>
+                    </details>
 
                     <!-- Summary Type Filter Section -->
-                    <div class="filter-shell space-y-3">
-                        <div class="flex items-center justify-between">
+                    <details class="filter-shell space-y-3" open>
+                        <summary class="flex items-center justify-between cursor-pointer select-none">
                             <h3>Summary Type</h3>
                             <div class="space-x-2 section-meta">
                                 <button id="selectAllSummaryTypes" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
                                 <button id="clearAllSummaryTypes" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
                             </div>
-                        </div>
-                        <div class="space-y-1" id="summaryTypeFilters">
+                        </summary>
+                        <div class="space-y-1 mt-2" id="summaryTypeFilters">
                             <!-- Dynamic summary type filters will be inserted here -->
                         </div>
-                    </div>
+                    </details>
 
                 </div>
             </aside>
