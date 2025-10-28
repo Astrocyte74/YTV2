@@ -293,7 +293,11 @@
                                    class="w-full pl-10 pr-4 py-3 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-audio-500 focus:border-audio-500 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm text-slate-800 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400">
                         </div>
 
-                        <!-- Sort select moved above results header -->
+                        <div class="flex justify-end">
+                            <button id="clearAllFilters" class="text-xs font-medium text-audio-600 dark:text-audio-300 hover:text-audio-700 dark:hover:text-audio-200 transition-colors">Clear all filters</button>
+                        </div>
+
+                        <!-- Sort select moved above results header (mobile-only) -->
                     </div>
 
                     <!-- Sort By Section -->
@@ -515,7 +519,7 @@
                                 </div>
                             </div>
                             <div class="flex flex-col gap-3 items-start md:items-end">
-                                <div class="w-full md:w-auto">
+                                <div class="w-full md:w-auto lg:hidden">
                                     <label class="sr-only" for="sortSelect">Sort</label>
                                     <select id="sortSelect" class="min-w-[12rem] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white/80 dark:bg-slate-700/80 text-sm text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-audio-500">
                                         <option value="added_desc">Recently Added</option>
