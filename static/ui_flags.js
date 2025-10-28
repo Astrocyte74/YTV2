@@ -5,8 +5,10 @@
 const UI_FLAGS = {
   compactCardActions: true,
   cardExpandInline: true,   // Enabled in Phase 2
-  queueEnabled: false,       // drop queue UI per feedback
-  showWaveformPreview: true  // ← enable for test
+  queueEnabled: false,      // drop queue UI per feedback
+  showWaveformPreview: true, // ← enable for test
+  // New card system (List: Stream, Grid: Mosaic)
+  cardV4: true
 };
 
 // Provide global access without import (keeps old scripts working)
