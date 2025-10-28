@@ -140,6 +140,19 @@
             box-shadow: inset 0 1px 0 rgba(148,163,184,0.12);
         }
 
+        /* Collapsible filter UX: chevron + focus */
+        details > summary::-webkit-details-marker { display: none; }
+        details > summary { list-style: none; }
+        /* Remove heading bottom margin inside summaries to center-align with chevron */
+        #sidebar details > summary h3 { margin: 0; line-height: 1; }
+        .filter-shell summary:focus-visible {
+            outline: 2px solid rgba(14,165,233,0.6);
+            outline-offset: 4px;
+            border-radius: 0.5rem;
+        }
+        .chevron { position: relative; top: -1px; width: 14px; height: 14px; opacity: 0.75; transition: transform 200ms ease; }
+        details[open] summary .chevron { transform: rotate(90deg); }
+
         [data-card].is-playing {
             border-color: rgba(14, 165, 233, 0.55);
             box-shadow: 0 24px 60px -30px rgba(14, 165, 233, 0.65), 0 0 0 1px rgba(14, 165, 233, 0.4);
@@ -282,24 +295,21 @@
                                    class="w-full pl-10 pr-4 py-3 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-audio-500 focus:border-audio-500 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm text-slate-800 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400">
                         </div>
 
-                        <!-- Compact sort select (mirrors sidebar radios) -->
-                        <div>
-                          <label class="sr-only" for="sortSelect">Sort</label>
-                          <select id="sortSelect" class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white/80 dark:bg-slate-700/80 text-sm text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-audio-500">
-                              <option value="added_desc">Recently Added</option>
-                              <option value="video_newest">Video Newest</option>
-                              <option value="video_oldest">Video Oldest</option>
-                              <option value="title_az">Title A→Z</option>
-                              <option value="title_za">Title Z→A</option>
-                              <option value="duration_desc">Longest First</option>
-                              <option value="duration_asc">Shortest First</option>
-                          </select>
+                        <div class="flex justify-end">
+                            <button id="clearAllFilters" class="text-xs font-medium text-audio-600 dark:text-audio-300 hover:text-audio-700 dark:hover:text-audio-200 transition-colors">Clear all filters</button>
                         </div>
+
+                        <!-- Sort select moved above results header (mobile-only) -->
                     </div>
 
-                    <!-- Sort By Section -->
-                    <div class="filter-shell space-y-3">
-                        <h3>Sort by</h3>
+                    <!-- Sort By Section (collapsible) -->
+                    <details class="filter-shell space-y-3" open>
+                        <summary class="flex items-center justify-between cursor-pointer select-none">
+                            <div class="flex items-center gap-2">
+                                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 5l8 7-8 7"/></svg>
+                                <h3>Sort by</h3>
+                            </div>
+                        </summary>
                         <div class="space-y-1" id="sortOptions">
                             <label class="flex items-center cursor-pointer">
                                 <input type="radio" name="sortBy" value="added_desc" class="sr-only" checked>
@@ -356,11 +366,14 @@
                                 Show more
                             </button>
                         </div>
-                    </div>
+                    </details>
 
                     <details class="filter-shell space-y-3" open>
                         <summary class="flex items-center justify-between cursor-pointer select-none">
-                            <h3>Source</h3>
+                            <div class="flex items-center gap-2">
+                                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 5l8 7-8 7"/></svg>
+                                <h3>Source</h3>
+                            </div>
                             <div class="space-x-2 section-meta">
                                 <button id="selectAllSources" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
                                 <button id="clearAllSources" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
@@ -374,7 +387,10 @@
                     <!-- Quick Filters -->
                     <details class="filter-shell space-y-3" open>
                         <summary class="flex items-center justify-between cursor-pointer select-none">
-                            <h3>Categories</h3>
+                            <div class="flex items-center gap-2">
+                                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 5l8 7-8 7"/></svg>
+                                <h3>Categories</h3>
+                            </div>
                             <div class="space-x-2 section-meta">
                                 <button id="selectAllCategories" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
                                 <button id="clearAllCategories" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
@@ -393,7 +409,10 @@
 
                     <details class="filter-shell space-y-3">
                         <summary class="flex items-center justify-between cursor-pointer select-none">
-                            <h3>Channels</h3>
+                            <div class="flex items-center gap-2">
+                                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 5l8 7-8 7"/></svg>
+                                <h3>Channels</h3>
+                            </div>
                             <div class="space-x-2 section-meta">
                                 <button id="selectAllChannels" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
                                 <button id="clearAllChannels" class="hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
@@ -412,7 +431,10 @@
 
                     <details class="filter-shell space-y-3">
                         <summary class="flex items-center justify-between cursor-pointer select-none">
-                            <h3>Content Type</h3>
+                            <div class="flex items-center gap-2">
+                                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 5l8 7-8 7"/></svg>
+                                <h3>Content Type</h3>
+                            </div>
                             <div class="space-x-2 section-meta">
                                 <button id="selectAllContentTypes" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
                                 <button id="clearAllContentTypes" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
@@ -431,7 +453,14 @@
 
                     <details class="filter-shell space-y-3">
                         <summary class="flex items-center justify-between cursor-pointer select-none">
-                            <h3>Complexity</h3>
+                            <div class="flex items-center gap-2">
+                                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 5l8 7-8 7"/></svg>
+                                <h3>Complexity</h3>
+                            </div>
+                            <div class="space-x-2 section-meta">
+                                <button id="selectAllComplexities" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
+                                <button id="clearAllComplexities" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
+                            </div>
                         </summary>
                         <div class="space-y-1 mt-2" id="complexityFilters">
                             <!-- Dynamic complexity filters will be inserted here -->
@@ -441,7 +470,14 @@
                     <!-- Language Filter Section -->
                     <details class="filter-shell space-y-3">
                         <summary class="flex items-center justify-between cursor-pointer select-none">
-                            <h3>Language</h3>
+                            <div class="flex items-center gap-2">
+                                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 5l8 7-8 7"/></svg>
+                                <h3>Language</h3>
+                            </div>
+                            <div class="space-x-2 section-meta">
+                                <button id="selectAllLanguages" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
+                                <button id="clearAllLanguages" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
+                            </div>
                         </summary>
                         <div class="space-y-1 mt-2" id="languageFilters">
                             <!-- Dynamic language filters will be inserted here -->
@@ -457,7 +493,10 @@
                     <!-- Summary Type Filter Section -->
                     <details class="filter-shell space-y-3">
                         <summary class="flex items-center justify-between cursor-pointer select-none">
-                            <h3>Summary Type</h3>
+                            <div class="flex items-center gap-2">
+                                <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 5l8 7-8 7"/></svg>
+                                <h3>Summary Type</h3>
+                            </div>
                             <div class="space-x-2 section-meta">
                                 <button id="selectAllSummaryTypes" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">All</button>
                                 <button id="clearAllSummaryTypes" class="text-xs text-audio-600 dark:text-audio-400 hover:text-audio-700 dark:hover:text-audio-300 transition-colors">Clear</button>
@@ -495,6 +534,18 @@
                                 </div>
                             </div>
                             <div class="flex flex-col gap-3 items-start md:items-end">
+                                <div class="w-full md:w-auto lg:hidden">
+                                    <label class="sr-only" for="sortSelect">Sort</label>
+                                    <select id="sortSelect" class="min-w-[12rem] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white/80 dark:bg-slate-700/80 text-sm text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-audio-500">
+                                        <option value="added_desc">Recently Added</option>
+                                        <option value="video_newest">Video Newest</option>
+                                        <option value="video_oldest">Video Oldest</option>
+                                        <option value="title_az">Title A→Z</option>
+                                        <option value="title_za">Title Z→A</option>
+                                        <option value="duration_desc">Longest First</option>
+                                        <option value="duration_asc">Shortest First</option>
+                                    </select>
+                                </div>
                                 <span class="text-xs font-semibold tracking-wide uppercase text-slate-500 dark:text-slate-400">View</span>
                                 <div class="inline-flex items-center gap-1 p-1 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/85 dark:bg-slate-950/60 backdrop-blur shadow-inner">
                                     <button id="listViewBtn" class="view-toggle px-4 py-2 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">List</button>
@@ -624,7 +675,7 @@
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
     <script src="ui_flags.js"></script>
-    <script src="dashboard_v3.js?v=pg4"></script>
+    <script src="dashboard_v3.js?v=pg5"></script>
 
 </body>
 </html>
