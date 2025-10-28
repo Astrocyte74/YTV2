@@ -326,6 +326,12 @@ class AudioDashboard {
                 toggleMoreSorts.textContent = isHidden ? 'Show less' : 'Show more';
             });
         }
+
+        // Global: Clear all filters button
+        const clearAllFiltersBtn = document.getElementById('clearAllFilters');
+        if (clearAllFiltersBtn) {
+            clearAllFiltersBtn.addEventListener('click', () => this.clearAllFilters());
+        }
         
         // Show more languages toggle
         const toggleMoreLanguages = document.getElementById('toggleMoreLanguages');
@@ -571,6 +577,24 @@ class AudioDashboard {
 
         window.addEventListener('beforeunload', () => this.shutdownRealtime());
         window.addEventListener('pagehide', () => this.shutdownRealtime());
+    }
+
+    clearAllFilters() {
+        try {
+            // Uncheck all filter checkboxes
+            document.querySelectorAll('input[type="checkbox"][data-filter]').forEach(cb => { cb.checked = false; });
+            // Reset search
+            const search = document.getElementById('searchInput');
+            if (search) search.value = '';
+            this.searchQuery = '';
+            // Recompute and reload
+            this.currentFilters = this.computeFiltersFromDOM();
+            this.currentPage = 1;
+            this.updateHeroBadges();
+            this.loadContent();
+        } catch (e) {
+            console.warn('Failed to clear filters', e);
+        }
     }
 
     async loadInitialData() {
@@ -886,6 +910,11 @@ class AudioDashboard {
                 if (this.metricsPanel) this.metricsPanel.classList.add('hidden');
                 return;
             }
+            // Quiet expected 403 when metrics bridge is not available
+            if (response.status === 403) {
+                if (this.metricsPanel) this.metricsPanel.classList.add('hidden');
+                return;
+            }
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
@@ -894,6 +923,11 @@ class AudioDashboard {
             this.updateMetricsUI(data);
             if (this.metricsPanel) this.metricsPanel.classList.remove('hidden');
         } catch (error) {
+            // Avoid noisy logs for expected 403s
+            if (String(error?.message || '').includes('HTTP 403')) {
+                if (this.metricsPanel) this.metricsPanel.classList.add('hidden');
+                return;
+            }
             console.warn('Failed to load metrics snapshot', error);
         }
     }
@@ -3212,6 +3246,13 @@ class AudioDashboard {
                             </button>
                         </span>
                     `).join('')}
+                    <button class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/40 dark:border-white/10 bg-white/70 dark:bg-white/5 text-slate-600 dark:text-slate-200 whitespace-nowrap flex-shrink-0"
+                            data-clear-all="1" title="Clear all filters">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                        <span class="text-[11px] font-medium">Clear all</span>
+                    </button>
                 </div>
             `;
         } else {
@@ -3227,6 +3268,14 @@ class AudioDashboard {
                 this.removeFilterChip(filterType, filterValue);
             });
         });
+
+        const clearAllBtn = heroBadges.querySelector('[data-clear-all]');
+        if (clearAllBtn) {
+            clearAllBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.clearAllFilters();
+            });
+        }
 
         heroBadges.classList.toggle('hidden', sections.length === 0);
     }
