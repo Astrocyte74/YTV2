@@ -3071,12 +3071,123 @@ class AudioDashboard {
 
     createContentCard(item) {
         const normalizedItem = this.normalizeCardItem(item);
+        if (this.flags && this.flags.cardV4) {
+            return this.renderStreamCardV4(normalizedItem);
+        }
         return this.renderSummaryCard(normalizedItem, { view: 'list' });
     }
 
     createGridCard(item) {
         const normalizedItem = this.normalizeCardItem(item);
+        if (this.flags && this.flags.cardV4) {
+            return this.renderGridCardV4(normalizedItem);
+        }
         return this.renderSummaryCard(normalizedItem, { view: 'grid' });
+    }
+
+    // V4 List card: audio-first stream card (no autoplay)
+    renderStreamCardV4(item) {
+        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const rawSource = item.content_source || 'youtube';
+        const source = rawSource.toLowerCase();
+        const hasWatchLink = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
+        const href = `/${item.file_stem}.json?v=2`;
+        const buttonDurations = this.getButtonDurations(item);
+        const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
+        const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
+            ? item.media_metadata.mp3_duration_seconds
+            : (item.duration_seconds || 0);
+        const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
+
+        const channelName = item.channel || 'Unknown Channel';
+        const safeChannel = this.escapeHtml(channelName);
+        const channelInitial = this.escapeHtml((channelName.trim().charAt(0) || '?').toUpperCase());
+
+        const sourceBadge = this.renderSourceBadge(source, item.source_label || null);
+        const languageChip = this.renderLanguageChip(item.analysis?.language);
+        const summaryTypeChip = this.renderSummaryTypeChip(item.summary_type);
+        const nowPlayingPill = isPlaying ? '<div class="summary-card__badge"><span class="summary-pill summary-pill--playing">Now playing</span></div>' : '';
+        const identityMetaParts = [sourceBadge, languageChip, summaryTypeChip, nowPlayingPill].filter(Boolean);
+        const identityMeta = identityMetaParts.length ? `<div class="flex flex-wrap gap-1">${identityMetaParts.join('')}</div>` : '';
+
+        const taxonomyMarkup = this.renderCategorySection(item.file_stem, categories, subcatPairs);
+        const actionMarkup = this.renderActionBar(item, buttonDurations, hasAudio);
+        const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
+
+        const thumb = item.thumbnail_url
+            ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="w-40 h-24 rounded-lg object-cover">`
+            : `<div class="w-40 h-24 rounded-lg bg-slate-200 dark:bg-slate-700"></div>`;
+
+        return `
+            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-source="${this.escapeHtml(source)}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
+                     class="relative flex gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-800/60">
+                <div class="relative flex-shrink-0">
+                    ${nowPlayingPill}
+                    ${thumb}
+                    <div class="absolute inset-x-0 bottom-0 h-1.5 bg-white/40 dark:bg-slate-900/30 rounded-b-lg overflow-hidden" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
+                        <div class="h-full bg-audio-500/80 dark:bg-audio-400/90" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+                    </div>
+                    <div class="absolute inset-0 hidden items-center justify-center" data-card-eq>
+                        <div class="summary-card__eq-bars">
+                            <span class="waveform-bar" style="--delay:0"></span>
+                            <span class="waveform-bar" style="--delay:1"></span>
+                            <span class="waveform-bar" style="--delay:2"></span>
+                            <span class="waveform-bar" style="--delay:3"></span>
+                            <span class="waveform-bar" style="--delay:4"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-start gap-3">
+                        <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold">${channelInitial}</span>
+                        <div class="min-w-0 flex-1">
+                            <button class="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-audio-600" data-filter-chip="channel" data-filter-value="${safeChannel}" title="Filter by ${safeChannel}">${safeChannel}</button>
+                            ${identityMeta}
+                            <h3 class="mt-1 text-base md:text-lg font-semibold text-slate-900 dark:text-slate-100 line-clamp-2">${this.escapeHtml(item.title)}</h3>
+                        </div>
+                    </div>
+                    <div class="mt-3 space-y-2">
+                        ${taxonomyMarkup}
+                        ${actionMarkup}
+                    </div>
+                    <section role="region" aria-live="polite" hidden data-expand-region></section>
+                </div>
+            </article>`;
+    }
+
+    // V4 Grid card: mosaic tile
+    renderGridCardV4(item) {
+        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const rawSource = item.content_source || 'youtube';
+        const source = rawSource.toLowerCase();
+        const href = `/${item.file_stem}.json?v=2`;
+        const buttonDurations = this.getButtonDurations(item);
+        const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
+            ? item.media_metadata.mp3_duration_seconds
+            : (item.duration_seconds || 0);
+        const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
+
+        const title = this.escapeHtml(item.title);
+        const thumb = item.thumbnail_url
+            ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="w-full h-40 object-cover">`
+            : `<div class="w-full h-40 bg-slate-200 dark:bg-slate-700"></div>`;
+
+        const actions = this.renderActionBar(item, buttonDurations, hasAudio);
+        return `
+            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
+                     class="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-800/60 shadow-sm">
+                <div class="relative">
+                    ${thumb}
+                    <div class="absolute inset-x-0 bottom-0 h-1.5 bg-white/40 dark:bg-slate-900/30" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
+                        <div class="h-full bg-audio-500/80 dark:bg-audio-400/90" data-card-progress></div>
+                    </div>
+                </div>
+                <div class="p-3 space-y-2">
+                    <h3 class="text-sm font-semibold line-clamp-2">${title}</h3>
+                    ${actions}
+                </div>
+                <section role="region" aria-live="polite" hidden data-expand-region></section>
+            </article>`;
     }
 
     renderSummaryCard(normalizedItem, { view = 'list' } = {}) {
