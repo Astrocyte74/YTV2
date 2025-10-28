@@ -150,8 +150,8 @@
             outline-offset: 4px;
             border-radius: 0.5rem;
         }
-        .chevron { width: 14px; height: 14px; opacity: 0.75; transform: translateY(-1px); transition: transform 200ms ease; }
-        details[open] summary .chevron { transform: translateY(-1px) rotate(90deg); }
+        .chevron { position: relative; top: -1px; width: 14px; height: 14px; opacity: 0.75; transition: transform 200ms ease; }
+        details[open] summary .chevron { transform: rotate(90deg); }
 
         [data-card].is-playing {
             border-color: rgba(14, 165, 233, 0.55);
