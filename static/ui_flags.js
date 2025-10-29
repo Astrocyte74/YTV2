@@ -23,6 +23,7 @@ try {
       twChipsMode: 'textlist',         // 'textlist' | 'chips'
       twChipsVisible: 3,               // how many items before +N more
       twChipBarPosition: 'belowTitle', // 'belowTitle' | 'underMedia' | 'top'
+      metricsEnabled: false,
     });
   }
 } catch (_) {}
