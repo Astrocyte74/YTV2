@@ -3302,6 +3302,7 @@ class AudioDashboard {
 
         const visibleLimit = (this.flags && this.flags.twChipsVisible) || 6;
         const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, visibleLimit);
+        const chipPos = (this.flags && this.flags.twChipBarPosition) || 'belowTitle';
         const actionMarkup = this.renderActionBar(item, buttonDurations, hasAudio);
         const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
         const snippet = this.getSummarySnippet(item, 260);
@@ -3329,9 +3330,10 @@ class AudioDashboard {
                             <h3 class="stream-card__title line-clamp-2">${this.escapeHtml(item.title)}</h3>
                         </div>
                         ${identityMeta ? `<div class=\"ml-auto hidden md:block\">${identityMeta}</div>` : ''}
+                        ${chipBar && chipPos === 'topRight' ? `<div class=\"ml-3 hidden md:block\">${chipBar}</div>` : ''}
                     </div>
                     <div class="mt-3 space-y-2">
-                        ${chipBar}
+                        ${chipBar && chipPos === 'belowTitle' ? chipBar : ''}
                         ${snippet ? `<p class="text-sm text-slate-700 dark:text-slate-300 line-clamp-3" data-summary-snippet>${this.escapeHtml(snippet)}</p>` : ''}
                         <div class="flex items-center gap-4">
                             <button class="text-sm font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
