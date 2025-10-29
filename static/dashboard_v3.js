@@ -3102,6 +3102,7 @@ class AudioDashboard {
         const href = `/${item.file_stem}.json?v=2`;
         const buttonDurations = this.getButtonDurations(item);
         const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
+        const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
         const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
             ? item.media_metadata.mp3_duration_seconds
             : (item.duration_seconds || 0);
@@ -3116,7 +3117,17 @@ class AudioDashboard {
         const summaryTypeChip = this.renderSummaryTypeChip(item.summary_type);
         const nowPlayingPill = isPlaying ? '<div class="summary-card__badge"><span class="summary-pill summary-pill--playing">Now playing</span></div>' : '';
         const identityMetaParts = [sourceBadge, languageChip, summaryTypeChip, nowPlayingPill].filter(Boolean);
-        const identityMeta = identityMetaParts.length ? `<div class="flex flex-wrap gap-1">${identityMetaParts.join('')}</div>` : '';
+        const identityMetaClassic = identityMetaParts.length ? `<div class="flex flex-wrap gap-1">${identityMetaParts.join('')}</div>` : '';
+        const identityMetaMinimal = (() => {
+            const bits = [];
+            if (item.source_label || source) bits.push(this.escapeHtml(item.source_label || source));
+            if (item.analysis?.language) bits.push(this.escapeHtml(item.analysis.language));
+            if (item.summary_type) bits.push(this.escapeHtml(String(item.summary_type).replace(/[-_]/g, ' ')));
+            if (!bits.length) return '';
+            return `<div class="text-xs text-slate-400">${bits.map((b, i) => i ? `· ${b}` : b).join(' ')}</div>`;
+        })();
+        const useMinimalMeta = this.flags && this.flags.twMetaMinimal;
+        const identityMeta = useMinimalMeta ? identityMetaMinimal : identityMetaClassic;
 
         const taxonomyMarkup = this.renderCategorySection(item.file_stem, categories, subcatPairs);
         const actionMarkup = this.renderActionBar(item, buttonDurations, hasAudio);
@@ -3214,23 +3225,35 @@ class AudioDashboard {
         structuredPairs.forEach(([parent, subcat]) => chips.push({ type: 'subcategory', value: subcat, parent }));
         const visible = chips.slice(0, limit);
         const hiddenCount = Math.max(0, chips.length - visible.length);
+        const mode = (this.flags && this.flags.twChipsMode) || 'chips';
+        if (mode === 'textlist') {
+            const textButtons = visible.map(({ type, value, parent }, idx) => {
+                const safeValue = this.escapeHtml(value);
+                const parentAttr = parent ? ` data-parent-category="${this.escapeHtml(parent)}"` : '';
+                const sep = idx > 0 ? '<span class="mx-1 text-slate-500">·</span>' : '';
+                return `${sep}<button class="text-xs text-slate-400 hover:text-slate-300 underline-offset-2 hover:underline" data-filter-chip="${type}" data-filter-value="${safeValue}"${parentAttr} title="Filter by ${safeValue}">${safeValue}</button>`;
+            }).join('');
+            const more = hiddenCount > 0 ? `<span class="mx-1 text-xs text-slate-500">·</span><span class="text-xs text-slate-500">+${hiddenCount} more</span>` : '';
+            return `<div class="chip-list-inline flex flex-wrap items-center">${textButtons}${more}</div>`;
+        }
         const chipHtml = visible.map(({ type, value, parent }) => {
             const safeValue = this.escapeHtml(value);
             const parentAttr = parent ? ` data-parent-category="${this.escapeHtml(parent)}"` : '';
-            return `<button class="px-2 py-1 text-[11px] font-medium border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-800/70 text-slate-700 dark:text-slate-200 -ml-px first:ml-0"
+            return `<button class="px-2 py-1 text-[11px] font-medium border border-slate-300/60 dark:border-slate-700/60 bg-white/70 dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 -ml-px first:ml-0 first:rounded-l-md last:rounded-r-md rounded-none"
                             data-filter-chip="${type}" data-filter-value="${safeValue}"${parentAttr} title="Filter by ${safeValue}">${safeValue}</button>`;
         }).join('');
         const moreHtml = hiddenCount > 0
-            ? `<span class="px-2 py-1 text-[11px] font-medium border border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 -ml-px">+${hiddenCount} more</span>`
+            ? `<span class="px-2 py-1 text-[11px] font-medium border border-slate-300/60 dark:border-slate-700/60 bg-white/60 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 -ml-px rounded-r-md">+${hiddenCount} more</span>`
             : '';
-        return `<div class="flex flex-wrap gap-y-1 gap-x-0">${chipHtml}${moreHtml}</div>`;
+        return `<div class="inline-flex flex-wrap gap-y-1">${chipHtml}${moreHtml}</div>`;
     }
 
     // Utility: plain-text snippet of summary (for preview)
     getSummarySnippet(item, maxChars = 280) {
         try {
             const html = this.computeFallbackSummaryHtml(item) || '';
-            const text = this.stripHtml(html).replace(/\s+/g, ' ').trim();
+            let text = this.stripHtml(html).replace(/\s+/g, ' ').trim();
+            text = text.replace(/•/g, '·');
             if (!text) return '';
             if (text.length <= maxChars) return text;
             return text.slice(0, maxChars).replace(/[,;:\-\s]+\S*$/, '') + '…';
@@ -3273,7 +3296,8 @@ class AudioDashboard {
         const identityMetaParts = [sourceBadge, languageChip, summaryTypeChip, nowPlayingPill].filter(Boolean);
         const identityMeta = identityMetaParts.length ? `<div class="flex flex-wrap gap-1">${identityMetaParts.join('')}</div>` : '';
 
-        const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 6);
+        const visibleLimit = (this.flags && this.flags.twChipsVisible) || 6;
+        const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, visibleLimit);
         const actionMarkup = this.renderActionBar(item, buttonDurations, hasAudio);
         const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
         const snippet = this.getSummarySnippet(item, 260);
@@ -3332,7 +3356,8 @@ class AudioDashboard {
             ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl">`
             : `<div class="w-full h-full rounded-xl" style="background: rgba(226,232,240,0.6)"></div>`;
 
-        const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 4);
+        const visibleLimitG = (this.flags && this.flags.twChipsVisible) || 4;
+        const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, visibleLimitG);
         const actions = this.renderActionBar(item, buttonDurations, hasAudio);
         const snippet = this.getSummarySnippet(item, 180);
         return `
