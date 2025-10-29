@@ -3071,6 +3071,10 @@ class AudioDashboard {
 
     createContentCard(item) {
         const normalizedItem = this.normalizeCardItem(item);
+        // Experimental Tailwind-first card revamp (v5)
+        if (this.flags && this.flags.twRevamp) {
+            return this.renderStreamCardTW(normalizedItem);
+        }
         if (this.flags && this.flags.cardV4) {
             return this.renderStreamCardV4(normalizedItem);
         }
@@ -3079,6 +3083,10 @@ class AudioDashboard {
 
     createGridCard(item) {
         const normalizedItem = this.normalizeCardItem(item);
+        // Experimental Tailwind-first card revamp (v5)
+        if (this.flags && this.flags.twRevamp) {
+            return this.renderGridCardTW(normalizedItem);
+        }
         if (this.flags && this.flags.cardV4) {
             return this.renderGridCardV4(normalizedItem);
         }
@@ -3185,6 +3193,108 @@ class AudioDashboard {
                     ${actions}
                 </div>
                 <section role="region" aria-live="polite" hidden data-expand-region></section>
+            </article>`;
+    }
+
+    // ---------------------------------------------------------------------
+    // V5 (Experimental): Tailwind-first Stream/Mosaic cards
+    // These variants keep the same data-* hooks and reuse helpers so behavior
+    // matches existing cards while letting us iterate on layout/visuals.
+    // Guarded behind UI_FLAGS.twRevamp.
+    // ---------------------------------------------------------------------
+
+    // V5 List card (Stream): Tailwind-first layout
+    renderStreamCardTW(item) {
+        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const rawSource = item.content_source || 'youtube';
+        const source = rawSource.toLowerCase();
+        const href = `/${item.file_stem}.json?v=2`;
+        const buttonDurations = this.getButtonDurations(item);
+        const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
+        const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
+            ? item.media_metadata.mp3_duration_seconds
+            : (item.duration_seconds || 0);
+        const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
+
+        const channelName = item.channel || 'Unknown Channel';
+        const safeChannel = this.escapeHtml(channelName);
+        const channelInitial = this.escapeHtml((channelName.trim().charAt(0) || '?').toUpperCase());
+
+        const sourceBadge = this.renderSourceBadge(source, item.source_label || null);
+        const languageChip = this.renderLanguageChip(item.analysis?.language);
+        const summaryTypeChip = this.renderSummaryTypeChip(item.summary_type);
+        const nowPlayingPill = isPlaying ? '<div class="summary-card__badge"><span class="summary-pill summary-pill--playing">Now playing</span></div>' : '';
+        const identityMetaParts = [sourceBadge, languageChip, summaryTypeChip, nowPlayingPill].filter(Boolean);
+        const identityMeta = identityMetaParts.length ? `<div class="flex flex-wrap gap-1">${identityMetaParts.join('')}</div>` : '';
+
+        const taxonomyMarkup = this.renderCategorySection(item.file_stem, categories, subcatPairs);
+        const actionMarkup = this.renderActionBar(item, buttonDurations, hasAudio);
+        const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
+
+        const thumb = item.thumbnail_url
+            ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl">`
+            : `<div class="w-full h-full rounded-xl bg-slate-200 dark:bg-slate-700"></div>`;
+
+        // Keep .stream-card classes for compatibility with existing CSS targeting
+        return `
+            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-source="${this.escapeHtml(source)}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
+                     class="stream-card group relative flex gap-4 rounded-2xl border border-slate-200/70 dark:border-slate-800/60 bg-white/80 dark:bg-slate-900/70 backdrop-blur hover:shadow-xl transition-all p-3">
+                <div class="relative shrink-0 w-44 h-28 rounded-xl overflow-hidden">
+                    ${nowPlayingPill}
+                    ${thumb}
+                    <div class="stream-card__progress absolute inset-x-0 bottom-0 h-1.5 bg-white/40 dark:bg-slate-900/40" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
+                        <div class="stream-card__progress-bar h-full bg-sky-500/90 dark:bg-sky-400/90" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+                    </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-start gap-3">
+                        <span class="stream-card__avatar">${channelInitial}</span>
+                        <div class="min-w-0 flex-1">
+                            <button class="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-audio-600" data-filter-chip="channel" data-filter-value="${safeChannel}" title="Filter by ${safeChannel}">${safeChannel}</button>
+                            <div class="stream-card__meta">${identityMeta}</div>
+                            <h3 class="stream-card__title line-clamp-2">${this.escapeHtml(item.title)}</h3>
+                        </div>
+                    </div>
+                    <div class="mt-3 space-y-2">
+                        ${taxonomyMarkup}
+                        ${actionMarkup}
+                    </div>
+                    <section role="region" aria-live="polite" hidden data-expand-region></section>
+                </div>
+            </article>`;
+    }
+
+    // V5 Grid card (Mosaic): Tailwind-first tile
+    renderGridCardTW(item) {
+        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const rawSource = item.content_source || 'youtube';
+        const source = rawSource.toLowerCase();
+        const href = `/${item.file_stem}.json?v=2`;
+        const buttonDurations = this.getButtonDurations(item);
+        const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
+            ? item.media_metadata.mp3_duration_seconds
+            : (item.duration_seconds || 0);
+        const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
+
+        const title = this.escapeHtml(item.title);
+        const thumb = item.thumbnail_url
+            ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl">`
+            : `<div class="w-full h-full rounded-xl" style="background: rgba(226,232,240,0.6)"></div>`;
+
+        const actions = this.renderActionBar(item, buttonDurations, hasAudio);
+        return `
+            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
+                     class="mosaic-card group rounded-2xl border border-slate-200/70 dark:border-slate-800/60 bg-white/80 dark:bg-slate-900/70 backdrop-blur hover:shadow-xl transition-all overflow-hidden">
+                <div class="relative w-full h-40">
+                    ${thumb}
+                    <div class="mosaic-card__progress absolute inset-x-0 bottom-0 h-1.5 bg-white/40 dark:bg-slate-900/40" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
+                        <div class="mosaic-card__progress-bar h-full bg-sky-500/90 dark:bg-sky-400/90" data-card-progress></div>
+                    </div>
+                </div>
+                <div class="p-3">
+                    <h3 class="mosaic-card__title line-clamp-2 text-slate-900 dark:text-slate-100">${title}</h3>
+                    <div class="mt-2">${actions}</div>
+                </div>
             </article>`;
     }
 
