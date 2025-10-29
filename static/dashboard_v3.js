@@ -140,7 +140,12 @@ class AudioDashboard {
         this.showNowPlayingPlaceholder();
         this.bindEvents();
         this.initRealtimeUpdates();
-        this.startMetricsPolling();
+        // Only poll metrics when a NAS bridge is configured or flag enabled
+        if (this.hasNasBridge || (this.flags && this.flags.metricsEnabled)) {
+            this.startMetricsPolling();
+        } else if (this.metricsPanel) {
+            this.metricsPanel.classList.add('hidden');
+        }
         this.loadInitialData();
     }
 
@@ -3321,9 +3326,9 @@ class AudioDashboard {
                         <span class="stream-card__avatar">${channelInitial}</span>
                         <div class="min-w-0 flex-1">
                             <button class="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-audio-600" data-filter-chip="channel" data-filter-value="${safeChannel}" title="Filter by ${safeChannel}">${safeChannel}</button>
-                            <div class="stream-card__meta">${identityMeta}</div>
                             <h3 class="stream-card__title line-clamp-2">${this.escapeHtml(item.title)}</h3>
                         </div>
+                        ${identityMeta ? `<div class=\"ml-auto hidden md:block\">${identityMeta}</div>` : ''}
                     </div>
                     <div class="mt-3 space-y-2">
                         ${chipBar}
