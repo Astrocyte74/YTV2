@@ -3169,6 +3169,7 @@ class AudioDashboard {
         const source = rawSource.toLowerCase();
         const href = `/${item.file_stem}.json?v=2`;
         const buttonDurations = this.getButtonDurations(item);
+        const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
         const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
             ? item.media_metadata.mp3_duration_seconds
             : (item.duration_seconds || 0);
@@ -3203,6 +3204,51 @@ class AudioDashboard {
     // Guarded behind UI_FLAGS.twRevamp.
     // ---------------------------------------------------------------------
 
+    // Utility: contiguous rectangular chip bar for V5
+    renderChipBarV5(itemId, categories = [], subcatPairs = [], limit = 6) {
+        const uniqueCategories = Array.isArray(categories) ? categories.filter(Boolean) : [];
+        const structuredPairs = Array.isArray(subcatPairs) ? subcatPairs.filter(([p, s]) => p && s) : [];
+        const chips = [];
+        // Fill with categories first, then subcategories
+        uniqueCategories.forEach((cat) => chips.push({ type: 'category', value: cat }));
+        structuredPairs.forEach(([parent, subcat]) => chips.push({ type: 'subcategory', value: subcat, parent }));
+        const visible = chips.slice(0, limit);
+        const hiddenCount = Math.max(0, chips.length - visible.length);
+        const chipHtml = visible.map(({ type, value, parent }) => {
+            const safeValue = this.escapeHtml(value);
+            const parentAttr = parent ? ` data-parent-category="${this.escapeHtml(parent)}"` : '';
+            return `<button class="px-2 py-1 text-[11px] font-medium border border-slate-300 dark:border-slate-700 bg-white/80 dark:bg-slate-800/70 text-slate-700 dark:text-slate-200 -ml-px first:ml-0"
+                            data-filter-chip="${type}" data-filter-value="${safeValue}"${parentAttr} title="Filter by ${safeValue}">${safeValue}</button>`;
+        }).join('');
+        const moreHtml = hiddenCount > 0
+            ? `<span class="px-2 py-1 text-[11px] font-medium border border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 -ml-px">+${hiddenCount} more</span>`
+            : '';
+        return `<div class="flex flex-wrap gap-y-1 gap-x-0">${chipHtml}${moreHtml}</div>`;
+    }
+
+    // Utility: plain-text snippet of summary (for preview)
+    getSummarySnippet(item, maxChars = 280) {
+        try {
+            const html = this.computeFallbackSummaryHtml(item) || '';
+            const text = this.stripHtml(html).replace(/\s+/g, ' ').trim();
+            if (!text) return '';
+            if (text.length <= maxChars) return text;
+            return text.slice(0, maxChars).replace(/[,;:\-\s]+\S*$/, '') + '…';
+        } catch (_) {
+            return '';
+        }
+    }
+
+    // Utility: strip HTML tags while preserving basic bullets/newlines
+    stripHtml(html) {
+        let s = String(html || '');
+        s = s.replace(/<\s*br\s*\/?>/gi, '\n');
+        s = s.replace(/<\s*li[^>]*>/gi, '• ');
+        s = s.replace(/<\s*\/li\s*>/gi, '\n');
+        s = s.replace(/<[^>]+>/g, ' ');
+        return s;
+    }
+
     // V5 List card (Stream): Tailwind-first layout
     renderStreamCardTW(item) {
         const hasAudio = Boolean(item.media && item.media.has_audio);
@@ -3227,9 +3273,10 @@ class AudioDashboard {
         const identityMetaParts = [sourceBadge, languageChip, summaryTypeChip, nowPlayingPill].filter(Boolean);
         const identityMeta = identityMetaParts.length ? `<div class="flex flex-wrap gap-1">${identityMetaParts.join('')}</div>` : '';
 
-        const taxonomyMarkup = this.renderCategorySection(item.file_stem, categories, subcatPairs);
+        const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 6);
         const actionMarkup = this.renderActionBar(item, buttonDurations, hasAudio);
         const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
+        const snippet = this.getSummarySnippet(item, 260);
 
         const thumb = item.thumbnail_url
             ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl">`
@@ -3256,7 +3303,11 @@ class AudioDashboard {
                         </div>
                     </div>
                     <div class="mt-3 space-y-2">
-                        ${taxonomyMarkup}
+                        ${chipBar}
+                        ${snippet ? `<p class="text-sm text-slate-700 dark:text-slate-300 line-clamp-3" data-summary-snippet>${this.escapeHtml(snippet)}</p>` : ''}
+                        <div class="flex items-center gap-4">
+                            <button class="text-sm font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
+                        </div>
                         ${actionMarkup}
                     </div>
                     <section role="region" aria-live="polite" hidden data-expand-region></section>
@@ -3281,7 +3332,9 @@ class AudioDashboard {
             ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl">`
             : `<div class="w-full h-full rounded-xl" style="background: rgba(226,232,240,0.6)"></div>`;
 
+        const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 4);
         const actions = this.renderActionBar(item, buttonDurations, hasAudio);
+        const snippet = this.getSummarySnippet(item, 180);
         return `
             <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
                      class="mosaic-card group rounded-2xl border border-slate-200/70 dark:border-slate-800/60 bg-white/80 dark:bg-slate-900/70 backdrop-blur hover:shadow-xl transition-all overflow-hidden">
@@ -3292,7 +3345,10 @@ class AudioDashboard {
                     </div>
                 </div>
                 <div class="p-3">
+                    ${chipBar}
                     <h3 class="mosaic-card__title line-clamp-2 text-slate-900 dark:text-slate-100">${title}</h3>
+                    ${snippet ? `<p class="mt-1 text-[13px] text-slate-700 dark:text-slate-300 line-clamp-3">${this.escapeHtml(snippet)}</p>` : ''}
+                    <button class="mt-1 text-[13px] font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
                     <div class="mt-2">${actions}</div>
                 </div>
             </article>`;
