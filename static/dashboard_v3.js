@@ -3102,7 +3102,6 @@ class AudioDashboard {
         const href = `/${item.file_stem}.json?v=2`;
         const buttonDurations = this.getButtonDurations(item);
         const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
-        const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
         const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
             ? item.media_metadata.mp3_duration_seconds
             : (item.duration_seconds || 0);
