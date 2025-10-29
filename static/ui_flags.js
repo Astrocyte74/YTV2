@@ -22,7 +22,7 @@ try {
       twMetaMinimal: true,             // replace pills with dot-separated text
       twChipsMode: 'textlist',         // 'textlist' | 'chips'
       twChipsVisible: 3,               // how many items before +N more
-      twChipBarPosition: 'belowTitle', // 'belowTitle' | 'underMedia' | 'top'
+      twChipBarPosition: 'topRight',   // 'belowTitle' | 'underMedia' | 'top' | 'topRight'
       metricsEnabled: false,
     });
   }
