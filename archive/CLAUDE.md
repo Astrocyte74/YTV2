@@ -232,8 +232,13 @@ sqlite3 ytv2_content.db
 - **⚠️ CRITICAL**: Keep card styling inside `dashboard.css`; do not reintroduce additional dashboard style sheets or inline overrides—conflicts were the root cause of earlier layout regressions.
 
 ### Card Layout & Variant Interactions (New)
-- `renderSummaryCard()` in `static/dashboard_v3.js` emits the markup for both list and grid cards. Update this method when structural changes are needed.
-- Action button styling, category chips, and the “summary-card” shell live in `static/dashboard.css`. When tweaking the layout, update the CSS and bump the version suffix in `dashboard_v3_template.html` to bust caches.
+- V4 renderers (flag: `cardV4` in `ui_flags.js`):
+  - List: `renderStreamCardV4()` in `static/dashboard_v3.js`
+  - Grid: `renderGridCardV4()` in `static/dashboard_v3.js`
+  - Styling: `static/dashboard.css` (`.stream-card*` and `.mosaic-card*`)
+  - For structural changes, update the V4 renderers; for look/feel, update CSS only.
+- Legacy renderer: `renderSummaryCard()` remains for non‑V4 paths.
+- Action button styling, category chips, and the V4 shells live in `static/dashboard.css`. When tweaking the layout, update the CSS and bump the version suffix in `dashboard_v3_template.html`.
 - Inline summary variants (insights vs. audio) are managed via `bindExpandedVariantControls()` in `dashboard_v3.js`. Audio variants rely on the global player; the helper `refreshAudioVariantBlocks()` keeps inline buttons in sync with playback.
 - Individual report pages reuse the same variant data via `static/v2/report_v2.js`. Both dashboards and report pages expect text variants plus optional audio variants—keep IDs consistent across back end and front end.
 - Scrub bars (main player + card mini-bars) are handled by `beginProgressDrag()` and `beginCardScrubDrag()` in `dashboard_v3.js`. If you restructure the DOM, retain the `data-card-progress*` hooks so dragging and tooltips continue to work.
@@ -243,8 +248,8 @@ sqlite3 ytv2_content.db
 # Check which template is being used
 grep -r "dashboard_v3_template\|dashboard_template" telegram_bot.py
 
-# Check what JavaScript is loaded
-grep "dashboard.*js" dashboard_v3_template.html
+# Check what JavaScript and flags are loaded
+grep "dashboard.*js\|ui_flags.js" dashboard_v3_template.html
 
 # Verify data format being sent to dashboard
 curl "https://ytv2-vy9k.onrender.com/api/reports?size=1" | jq '.reports[0].analysis'

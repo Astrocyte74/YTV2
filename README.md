@@ -58,6 +58,8 @@ YTV2-Dashboard/
 ├─ static/
 │  ├─ dashboard_v3.js               # UI logic
 │  └─ dashboard.css                 # Styles
+│  
+├─ ui_flags.js                      # Feature flags loaded by the template (authoritative)
 ├─ docs/
 │  ├─ API.md                        # API reference
 │  ├─ DEPLOY_RENDER.md              # Render deployment
@@ -70,3 +72,19 @@ YTV2-Dashboard/
 ## Notes
 - The backend normalizes a `content_source` slug per item (e.g., `youtube`, `reddit`) and returns a user‑friendly `source_label`.
 - If you see 500s, check `docs/TROUBLESHOOTING.md` for placeholder/percent issues and the logging guidance.
+
+## UI Feature Flags
+- File: `ui_flags.js` (root). This is loaded by the HTML template and is the authoritative source for runtime flags.
+- Common flags:
+  - `cardV4`: enable Stream (List) and Mosaic (Grid) card renderers.
+  - `compactCardActions`, `cardExpandInline`: additional UI toggles used by the cards.
+- After changing flags, if you don’t see the effect, bump the script cache in `dashboard_v3_template.html` (e.g., `ui_flags.js?v=2`).
+
+## Card Styling and Cache Busting
+- Structure/HTML: `static/dashboard_v3.js` (renderers)
+  - V4: `renderStreamCardV4()` and `renderGridCardV4()`
+- Styling: `static/dashboard.css`
+  - V4 classes: `.stream-card*` and `.mosaic-card*`
+- Cache bust:
+  - CSS: change `dashboard.css?v=...` in `dashboard_v3_template.html`
+  - JS: change `dashboard_v3.js?v=...` in `dashboard_v3_template.html`
