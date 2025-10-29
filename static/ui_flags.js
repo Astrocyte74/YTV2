@@ -17,6 +17,12 @@ try {
       cardV4: true,
       // Experimental Tailwind-first cards (V5)
       twRevamp: true,
+      // Minimal visual pass options for TW variant
+      twStyle: 'minimal',              // 'minimal' | 'classic'
+      twMetaMinimal: true,             // replace pills with dot-separated text
+      twChipsMode: 'textlist',         // 'textlist' | 'chips'
+      twChipsVisible: 3,               // how many items before +N more
+      twChipBarPosition: 'belowTitle', // 'belowTitle' | 'underMedia' | 'top'
     });
   }
 } catch (_) {}
