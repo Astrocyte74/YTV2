@@ -88,3 +88,29 @@ YTV2-Dashboard/
 - Cache bust:
   - CSS: change `dashboard.css?v=...` in `dashboard_v3_template.html`
   - JS: change `dashboard_v3.js?v=...` in `dashboard_v3_template.html`
+ - Detailed tips: see `docs/CARD_STYLING_GUIDE.md`
+
+## New Contributor Quick Start
+- Branch
+  - Create a topic branch from `main` and point Render to it for preview.
+- Turn on features (optional)
+  - Edit `ui_flags.js` and set flags (e.g., `cardV4: true`). If flags don’t apply after deploy, bump the query param in the template (e.g., `ui_flags.js?v=2`).
+- Change cards
+  - List view: edit `static/dashboard_v3.js` → `renderStreamCardV4()`
+  - Grid view: edit `static/dashboard_v3.js` → `renderGridCardV4()`
+  - Keep structure/HTML in JS; keep visual styles in `static/dashboard.css` (`.stream-card*`, `.mosaic-card*`).
+- Style
+  - Add/adjust CSS in `static/dashboard.css`. Prefer extending the existing V4 classes rather than inline styles.
+- Cache‑bust
+  - Update `dashboard_v3_template.html` to bump `dashboard.css?v=...` and/or `dashboard_v3.js?v=...` so browsers pick up changes.
+- Deploy and verify
+  - Commit + push; wait for Render to deploy.
+  - Hard‑refresh in the browser. If needed, open DevTools → Network → “Disable cache” and refresh once.
+- Sanity checklist
+  - Filters list and cards render; pagination and sort work.
+  - List (Stream) and Grid (Mosaic) views switch correctly.
+  - Play/Pause, progress scrub, and expand/collapse work.
+  - Keyboard basics: `L` (listen), `R` (read), `W` (watch) if present; arrow/tab navigation.
+- Troubleshooting
+  - Still seeing old UI? Confirm the `?v=` query params changed in `dashboard_v3_template.html` and the Render deploy completed.
+  - Feature flags not applying? Confirm you edited root `ui_flags.js` (not `static/ui_flags.js`).
