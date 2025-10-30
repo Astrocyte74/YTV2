@@ -878,6 +878,8 @@ body {
 .mosaic-card__body { padding: 0.75rem; }
 .mosaic-card__title { font-weight: 600; font-size: 0.95rem; }
 .dark .mosaic-card__title { color: #e5e7eb; }
+.mosaic-card__actions { margin-top: 0.75rem; display: flex; justify-content: flex-start; }
+.mosaic-card__actions .stream-card__media-actions { margin: 0; }
 
 /* Compact action buttons for V4 cards */
 .stream-card .variant-toggle,
