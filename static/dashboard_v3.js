@@ -3306,6 +3306,7 @@ class AudioDashboard {
         const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
             ? item.media_metadata.mp3_duration_seconds
             : (item.duration_seconds || 0);
+        const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
         const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
 
         const channelName = item.channel || 'Unknown Channel';
@@ -3313,8 +3314,13 @@ class AudioDashboard {
         const channelInitial = this.escapeHtml((channelName.trim().charAt(0) || '?').toUpperCase());
 
         const sourceBadge = this.renderSourceBadge(source, item.source_label || null);
+        const visibleLimit = (this.flags && this.flags.twChipsVisible) || 6;
+        const categoriesInline = this.renderCategoryInlineListV5(item.file_stem, categories, subcatPairs, visibleLimit);
+        const watchLinkAvailable = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
+        const actionMarkup = this.renderActionSegmentsV5(item, buttonDurations, hasAudio, watchLinkAvailable, source);
+        const snippet = this.getSummarySnippet(item, 260);
         const nowPlayingPill = isPlaying ? '<div class="summary-card__badge"><span class="summary-pill summary-pill--playing">Now playing</span></div>' : '';
-        const identityMeta = nowPlayingPill || '';
+
         const menuMarkup = `
             <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -3338,53 +3344,43 @@ class AudioDashboard {
                 </div>
             </div>`;
 
-        const visibleLimit = (this.flags && this.flags.twChipsVisible) || 6;
-        const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, visibleLimit);
-        const catsInline = this.renderCategoryInlineListV5(item.file_stem, categories, subcatPairs, visibleLimit);
-        const chipPos = (this.flags && this.flags.twChipBarPosition) || 'belowTitle';
-        const actionMarkup = this.renderActionBar(item, buttonDurations, hasAudio);
-        const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
-        const snippet = this.getSummarySnippet(item, 260);
-
         const thumb = item.thumbnail_url
-            ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl">`
-            : `<div class="w-full h-full rounded-xl bg-slate-200 dark:bg-slate-700"></div>`;
+            ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="stream-card__thumb">`
+            : `<div class="stream-card__thumb stream-card__thumb--fallback"></div>`;
 
-        // Keep .stream-card classes for compatibility with existing CSS targeting
         return `
             <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-source="${this.escapeHtml(source)}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
-                     class="stream-card group relative flex gap-4 rounded-2xl border border-slate-200/70 dark:border-slate-800/60 bg-white/80 dark:bg-slate-900/70 backdrop-blur hover:shadow-xl transition-all p-3">
-                <div class="relative shrink-0 w-64 h-40 rounded-xl overflow-hidden">
+                     class="stream-card group">
+                <div class="stream-card__media">
                     ${nowPlayingPill}
                     ${thumb}
-                    <div class="stream-card__progress absolute inset-x-0 bottom-0 h-1.5 bg-white/40 dark:bg-slate-900/40" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
-                        <div class="stream-card__progress-bar h-full bg-sky-500/90 dark:bg-sky-400/90" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+                    <div class="stream-card__progress" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
+                        <div class="stream-card__progress-bar" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
                     </div>
                 </div>
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-start gap-3">
-                        <span class="stream-card__avatar">${channelInitial}</span>
-                        <div class="min-w-0 flex-1">
-                            <div class="hidden lg:flex items-center justify-end gap-2 mb-1">${sourceBadge || ''}${catsInline || ''}${menuMarkup}</div>
-                            <button class="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-audio-600" data-filter-chip="channel" data-filter-value="${safeChannel}" title="Filter by ${safeChannel}">${safeChannel}</button>
-                            <h3 class="stream-card__title line-clamp-2">${this.escapeHtml(item.title)}</h3>
-                            <div class="lg:hidden mt-1 flex flex-wrap items-center gap-2">${sourceBadge || ''}${catsInline || ''}${menuMarkup}</div>
+                <div class="stream-card__body">
+                    <div class="stream-card__header">
+                        <div class="stream-card__channel">
+                            <span class="stream-card__avatar">${channelInitial}</span>
+                            <button class="stream-card__channel-name" data-filter-chip="channel" data-filter-value="${safeChannel}" title="Filter by ${safeChannel}">${safeChannel}</button>
                         </div>
-                        ${identityMeta ? `<div class=\"hidden lg:block ml-auto\">${identityMeta}</div>` : ''}
-                    </div>
-                    <div class="mt-2 space-y-2">
-                        ${snippet ? `<p class="text-sm text-slate-700 dark:text-slate-300 line-clamp-3" data-summary-snippet>${this.escapeHtml(snippet)}</p>` : ''}
-                        <div class="flex items-center gap-4">
-                            <button class="text-sm font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
+                        <div class="stream-card__header-meta">
+                            <div class="stream-card__source-line">
+                                ${sourceBadge || ''}
+                                ${categoriesInline || ''}
+                            </div>
+                            ${menuMarkup}
                         </div>
-                        ${actionMarkup}
                     </div>
+                    ${nowPlayingPill ? `<div class="stream-card__now-playing">${nowPlayingPill}</div>` : ''}
+                    <h3 class="stream-card__title line-clamp-2">${this.escapeHtml(item.title)}</h3>
+                    ${snippet ? `<p class="stream-card__snippet line-clamp-3" data-summary-snippet>${this.escapeHtml(snippet)} <button class="stream-card__readmore" data-action="read">Read more</button></p>` : ''}
+                    ${actionMarkup}
                     <section role="region" aria-live="polite" hidden data-expand-region></section>
                 </div>
             </article>`;
     }
-
-    // V5 Grid card (Mosaic): Tailwind-first tile
+// V5 Grid card (Mosaic): Tailwind-first tile
     renderGridCardTW(item) {
         const hasAudio = Boolean(item.media && item.media.has_audio);
         const rawSource = item.content_source || 'youtube';
@@ -4560,6 +4556,58 @@ class AudioDashboard {
         }).join('');
 
         return `<div class="summary-card__cta variant-toggle-group" role="group" aria-label="${groupLabel}">${buttonsHtml}</div>`;
+    }
+
+    renderActionSegmentsV5(item, durations = {}, hasAudio = false, hasWatchLink = false, sourceSlug = 'web') {
+        const segments = [];
+        segments.push({
+            key: 'read',
+            label: 'Read',
+            duration: durations.read || null,
+            title: durations.read ? `Read • ${durations.read}` : 'Read summary',
+            disabled: false
+        });
+
+        if (hasAudio) {
+            segments.push({
+                key: 'listen',
+                label: 'Listen',
+                duration: durations.listen || null,
+                title: durations.listen ? `Listen • ${durations.listen}` : 'Play audio summary',
+                disabled: false,
+                listen: true
+            });
+        }
+
+        if (hasWatchLink) {
+            const watchLabel = sourceSlug === 'youtube' ? 'Watch' : 'Open';
+            segments.push({
+                key: 'watch',
+                label: watchLabel,
+                duration: durations.watch || null,
+                title: durations.watch ? `${watchLabel} • ${durations.watch}` : (sourceSlug === 'youtube' ? 'Open on YouTube' : 'Open original source'),
+                disabled: false
+            });
+        }
+
+        if (!segments.length) return '';
+
+        const buttons = segments.map((segment) => {
+            const disabledAttr = segment.disabled ? 'disabled aria-disabled="true"' : '';
+            const parts = [];
+            if (segment.listen) {
+                parts.push(`data-listen-button`);
+                parts.push(`data-default-label="Listen"`);
+                parts.push(`data-playing-label="Pause"`);
+            }
+            const durationHtml = segment.duration ? `<span class="stream-card__segment-duration">• ${this.escapeHtml(segment.duration)}</span>` : '';
+            const labelHtml = segment.listen
+                ? `<span class="stream-card__segment-label" data-label>${this.escapeHtml(segment.label)}</span>`
+                : `<span class="stream-card__segment-label">${this.escapeHtml(segment.label)}</span>`;
+            return `<button class="stream-card__segment" data-action="${segment.key}" title="${this.escapeHtml(segment.title)}" ${disabledAttr} ${parts.join(' ')}>${labelHtml}${durationHtml}</button>`;
+        }).join('');
+
+        return `<div class="stream-card__segments" role="group" aria-label="Summary actions">${buttons}</div>`;
     }
 
     normalizeCardItem(item) {
