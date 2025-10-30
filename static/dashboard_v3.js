@@ -3252,6 +3252,25 @@ class AudioDashboard {
         return `<div class="inline-flex flex-wrap gap-y-1">${chipHtml}${moreHtml}</div>`;
     }
 
+    // Inline text list for categories/subcategories (no pills), used in header row
+    renderCategoryInlineListV5(itemId, categories = [], subcatPairs = [], limit = 6) {
+        const uniqueCategories = Array.isArray(categories) ? categories.filter(Boolean) : [];
+        const structuredPairs = Array.isArray(subcatPairs) ? subcatPairs.filter(([p, s]) => p && s) : [];
+        const chips = [];
+        uniqueCategories.forEach((cat) => chips.push({ type: 'category', value: cat }));
+        structuredPairs.forEach(([parent, subcat]) => chips.push({ type: 'subcategory', value: subcat, parent }));
+        const visible = chips.slice(0, limit);
+        const hiddenCount = Math.max(0, chips.length - visible.length);
+        const textButtons = visible.map(({ type, value, parent }, idx) => {
+            const safeValue = this.escapeHtml(value);
+            const parentAttr = parent ? ` data-parent-category=\"${this.escapeHtml(parent)}\"` : '';
+            const sep = idx > 0 ? '<span class=\"mx-1 text-slate-500\">·</span>' : '';
+            return `${sep}<button class=\"text-xs text-slate-400 hover:text-slate-300 underline-offset-2 hover:underline\" data-filter-chip=\"${type}\" data-filter-value=\"${safeValue}\"${parentAttr} title=\"Filter by ${safeValue}\">${safeValue}</button>`;
+        }).join('');
+        const more = hiddenCount > 0 ? `<span class=\"mx-1 text-xs text-slate-500\">·</span><span class=\"text-xs text-slate-500\">+${hiddenCount} more</span>` : '';
+        return `<span class=\"chip-list-inline flex flex-wrap items-center\">${textButtons}${more}</span>`;
+    }
+
     // Utility: plain-text snippet of summary (for preview)
     getSummarySnippet(item, maxChars = 280) {
         try {
@@ -3294,14 +3313,12 @@ class AudioDashboard {
         const channelInitial = this.escapeHtml((channelName.trim().charAt(0) || '?').toUpperCase());
 
         const sourceBadge = this.renderSourceBadge(source, item.source_label || null);
-        const languageChip = this.renderLanguageChip(item.analysis?.language);
-        const summaryTypeChip = this.renderSummaryTypeChip(item.summary_type);
         const nowPlayingPill = isPlaying ? '<div class="summary-card__badge"><span class="summary-pill summary-pill--playing">Now playing</span></div>' : '';
-        const identityMetaParts = [sourceBadge, languageChip, summaryTypeChip, nowPlayingPill].filter(Boolean);
-        const identityMeta = identityMetaParts.length ? `<div class="flex flex-wrap gap-1">${identityMetaParts.join('')}</div>` : '';
+        const identityMeta = nowPlayingPill || '';
 
         const visibleLimit = (this.flags && this.flags.twChipsVisible) || 6;
         const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, visibleLimit);
+        const catsInline = this.renderCategoryInlineListV5(item.file_stem, categories, subcatPairs, visibleLimit);
         const chipPos = (this.flags && this.flags.twChipBarPosition) || 'belowTitle';
         const actionMarkup = this.renderActionBar(item, buttonDurations, hasAudio);
         const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
@@ -3323,19 +3340,16 @@ class AudioDashboard {
                     </div>
                 </div>
                 <div class="flex-1 min-w-0">
-                    <div class="grid grid-cols-[auto,1fr,auto] items-start gap-3">
+                    <div class="flex items-start gap-3">
                         <span class="stream-card__avatar">${channelInitial}</span>
-                        <div class="min-w-0">
+                        <div class="min-w-0 flex-1">
                             <button class="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-audio-600" data-filter-chip="channel" data-filter-value="${safeChannel}" title="Filter by ${safeChannel}">${safeChannel}</button>
                             <h3 class="stream-card__title line-clamp-2">${this.escapeHtml(item.title)}</h3>
                         </div>
-                        <div class="hidden lg:flex flex-col items-end gap-1 max-w-[40ch] shrink-0">
-                            ${identityMeta ? `<div>${identityMeta}</div>` : ''}
-                            ${chipBar && chipPos === 'topRight' ? `<div>${chipBar}</div>` : ''}
-                        </div>
+                        ${identityMeta ? `<div class=\"hidden lg:block ml-auto\">${identityMeta}</div>` : ''}
                     </div>
-                    <div class="mt-3 space-y-2">
-                        ${chipBar && chipPos === 'belowTitle' ? chipBar : (chipBar && chipPos === 'topRight' ? `<div class=\"lg:hidden\">${chipBar}</div>` : '')}
+                    <div class="mt-2 space-y-2">
+                        <div class="flex flex-wrap items-center justify-end gap-2">${sourceBadge || ''}${catsInline || ''}</div>
                         ${snippet ? `<p class="text-sm text-slate-700 dark:text-slate-300 line-clamp-3" data-summary-snippet>${this.escapeHtml(snippet)}</p>` : ''}
                         <div class="flex items-center gap-4">
                             <button class="text-sm font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
