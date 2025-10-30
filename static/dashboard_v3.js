@@ -3383,7 +3383,8 @@ class AudioDashboard {
                         </div>
                     </div>
                     <h3 class="stream-card__title line-clamp-2">${this.escapeHtml(item.title)}</h3>
-                    ${snippet ? `<p class="stream-card__snippet line-clamp-3" data-summary-snippet>${this.escapeHtml(snippet)} <button class="stream-card__readmore" data-action="read">Read more</button></p>` : ''}
+                    ${snippet ? `<p class="stream-card__snippet line-clamp-3" data-summary-snippet>${this.escapeHtml(snippet)}</p>
+                    <button type="button" class="stream-card__readmore" data-action="read">Read more</button>` : ''}
                     <section role="region" aria-live="polite" hidden data-expand-region></section>
                 </div>
             </article>`;
@@ -3395,6 +3396,7 @@ class AudioDashboard {
         const source = rawSource.toLowerCase();
         const href = `/${item.file_stem}.json?v=2`;
         const buttonDurations = this.getButtonDurations(item);
+        const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
         const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
             ? item.media_metadata.mp3_duration_seconds
             : (item.duration_seconds || 0);
@@ -4630,7 +4632,7 @@ class AudioDashboard {
             const listenIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0116 0"></path><path d="M4 12v6a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H4z"></path><path d="M20 12v6a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3z"></path></svg>';
             const title = duration ? `Listen • ${duration}` : 'Play audio summary';
             const safeTitle = this.escapeHtml(title);
-            buttons.push(`<button type="button" class="stream-card__media-btn" data-action="listen" data-listen-button data-default-label="Listen" data-playing-label="Pause" title="${safeTitle}">${listenIcon}<span class="sr-only" data-label>Listen</span></button>`);
+            buttons.push(`<button type="button" class="stream-card__media-btn" data-action="listen" data-listen-button data-default-label="Listen" data-playing-label="Pause" title="${safeTitle}" aria-pressed="false">${listenIcon}<span class="sr-only" data-label>Listen</span></button>`);
         }
 
         if (hasWatchLink) {
