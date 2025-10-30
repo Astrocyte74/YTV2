@@ -3323,17 +3323,19 @@ class AudioDashboard {
                     </div>
                 </div>
                 <div class="flex-1 min-w-0">
-                    <div class="flex items-start gap-3">
+                    <div class="grid grid-cols-[auto,1fr,auto] items-start gap-3">
                         <span class="stream-card__avatar">${channelInitial}</span>
-                        <div class="min-w-0 flex-1">
+                        <div class="min-w-0">
                             <button class="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-audio-600" data-filter-chip="channel" data-filter-value="${safeChannel}" title="Filter by ${safeChannel}">${safeChannel}</button>
                             <h3 class="stream-card__title line-clamp-2">${this.escapeHtml(item.title)}</h3>
                         </div>
-                        ${identityMeta ? `<div class=\"ml-auto hidden md:block\">${identityMeta}</div>` : ''}
-                        ${chipBar && chipPos === 'topRight' ? `<div class=\"ml-3 hidden md:block\">${chipBar}</div>` : ''}
+                        <div class="hidden lg:flex flex-col items-end gap-1 max-w-[40ch] shrink-0">
+                            ${identityMeta ? `<div>${identityMeta}</div>` : ''}
+                            ${chipBar && chipPos === 'topRight' ? `<div>${chipBar}</div>` : ''}
+                        </div>
                     </div>
                     <div class="mt-3 space-y-2">
-                        ${chipBar && chipPos === 'belowTitle' ? chipBar : ''}
+                        ${chipBar && chipPos === 'belowTitle' ? chipBar : (chipBar && chipPos === 'topRight' ? `<div class=\"lg:hidden\">${chipBar}</div>` : '')}
                         ${snippet ? `<p class="text-sm text-slate-700 dark:text-slate-300 line-clamp-3" data-summary-snippet>${this.escapeHtml(snippet)}</p>` : ''}
                         <div class="flex items-center gap-4">
                             <button class="text-sm font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
