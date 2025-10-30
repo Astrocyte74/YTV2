@@ -5,17 +5,25 @@
 // Note: The template loads root `ui_flags.js` (not this file). This file is kept
 // for reference only. Make changes in `/ui_flags.js` and bump the script query
 // param in `dashboard_v3_template.html` if needed.
-const UI_FLAGS = {
-  compactCardActions: true,
-  cardExpandInline: true,
-  queueEnabled: false,
-  showWaveformPreview: true,
-  cardV4: true,
-};
-
-// Provide global access without import (keeps old scripts working)
+// Note: On this server, requests to "/ui_flags.js" resolve to this file
+// (static/ui_flags.js). Merge onto any existing flags for safety.
 try {
   if (typeof window !== 'undefined') {
-    window.UI_FLAGS = UI_FLAGS;
+    window.UI_FLAGS = Object.assign({}, window.UI_FLAGS || {}, {
+      compactCardActions: true,
+      cardExpandInline: true,
+      queueEnabled: false,
+      showWaveformPreview: true,
+      cardV4: true,
+      // Experimental Tailwind-first cards (V5)
+      twRevamp: true,
+      // Minimal visual pass options for TW variant
+      twStyle: 'minimal',              // 'minimal' | 'classic'
+      twMetaMinimal: true,             // replace pills with dot-separated text
+      twChipsMode: 'textlist',         // 'textlist' | 'chips'
+      twChipsVisible: 3,               // how many items before +N more
+      twChipBarPosition: 'topRight',   // 'belowTitle' | 'underMedia' | 'top' | 'topRight'
+      metricsEnabled: false,
+    });
   }
 } catch (_) {}

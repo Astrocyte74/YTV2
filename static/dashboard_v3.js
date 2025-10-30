@@ -140,7 +140,12 @@ class AudioDashboard {
         this.showNowPlayingPlaceholder();
         this.bindEvents();
         this.initRealtimeUpdates();
-        this.startMetricsPolling();
+        // Only poll metrics when a NAS bridge is configured or flag enabled
+        if (this.hasNasBridge || (this.flags && this.flags.metricsEnabled)) {
+            this.startMetricsPolling();
+        } else if (this.metricsPanel) {
+            this.metricsPanel.classList.add('hidden');
+        }
         this.loadInitialData();
     }
 
@@ -3071,6 +3076,10 @@ class AudioDashboard {
 
     createContentCard(item) {
         const normalizedItem = this.normalizeCardItem(item);
+        // Experimental Tailwind-first card revamp (v5)
+        if (this.flags && this.flags.twRevamp) {
+            return this.renderStreamCardTW(normalizedItem);
+        }
         if (this.flags && this.flags.cardV4) {
             return this.renderStreamCardV4(normalizedItem);
         }
@@ -3079,6 +3088,10 @@ class AudioDashboard {
 
     createGridCard(item) {
         const normalizedItem = this.normalizeCardItem(item);
+        // Experimental Tailwind-first card revamp (v5)
+        if (this.flags && this.flags.twRevamp) {
+            return this.renderGridCardTW(normalizedItem);
+        }
         if (this.flags && this.flags.cardV4) {
             return this.renderGridCardV4(normalizedItem);
         }
@@ -3108,7 +3121,17 @@ class AudioDashboard {
         const summaryTypeChip = this.renderSummaryTypeChip(item.summary_type);
         const nowPlayingPill = isPlaying ? '<div class="summary-card__badge"><span class="summary-pill summary-pill--playing">Now playing</span></div>' : '';
         const identityMetaParts = [sourceBadge, languageChip, summaryTypeChip, nowPlayingPill].filter(Boolean);
-        const identityMeta = identityMetaParts.length ? `<div class="flex flex-wrap gap-1">${identityMetaParts.join('')}</div>` : '';
+        const identityMetaClassic = identityMetaParts.length ? `<div class="flex flex-wrap gap-1">${identityMetaParts.join('')}</div>` : '';
+        const identityMetaMinimal = (() => {
+            const bits = [];
+            if (item.source_label || source) bits.push(this.escapeHtml(item.source_label || source));
+            if (item.analysis?.language) bits.push(this.escapeHtml(item.analysis.language));
+            if (item.summary_type) bits.push(this.escapeHtml(String(item.summary_type).replace(/[-_]/g, ' ')));
+            if (!bits.length) return '';
+            return `<div class="text-xs text-slate-400">${bits.map((b, i) => i ? `· ${b}` : b).join(' ')}</div>`;
+        })();
+        const useMinimalMeta = this.flags && this.flags.twMetaMinimal;
+        const identityMeta = useMinimalMeta ? identityMetaMinimal : identityMetaClassic;
 
         const taxonomyMarkup = this.renderCategorySection(item.file_stem, categories, subcatPairs);
         const actionMarkup = this.renderActionBar(item, buttonDurations, hasAudio);
@@ -3147,7 +3170,7 @@ class AudioDashboard {
                     </div>
                     <div class="mt-3 space-y-2">
                         ${taxonomyMarkup}
-                        ${actionMarkup}
+                        ${mediaActions}
                     </div>
                     <section role="region" aria-live="polite" hidden data-expand-region></section>
                 </div>
@@ -3161,6 +3184,7 @@ class AudioDashboard {
         const source = rawSource.toLowerCase();
         const href = `/${item.file_stem}.json?v=2`;
         const buttonDurations = this.getButtonDurations(item);
+        const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
         const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
             ? item.media_metadata.mp3_duration_seconds
             : (item.duration_seconds || 0);
@@ -3185,6 +3209,225 @@ class AudioDashboard {
                     ${actions}
                 </div>
                 <section role="region" aria-live="polite" hidden data-expand-region></section>
+            </article>`;
+    }
+
+    // ---------------------------------------------------------------------
+    // V5 (Experimental): Tailwind-first Stream/Mosaic cards
+    // These variants keep the same data-* hooks and reuse helpers so behavior
+    // matches existing cards while letting us iterate on layout/visuals.
+    // Guarded behind UI_FLAGS.twRevamp.
+    // ---------------------------------------------------------------------
+
+    // Utility: contiguous rectangular chip bar for V5
+    renderChipBarV5(itemId, categories = [], subcatPairs = [], limit = 6) {
+        const uniqueCategories = Array.isArray(categories) ? categories.filter(Boolean) : [];
+        const structuredPairs = Array.isArray(subcatPairs) ? subcatPairs.filter(([p, s]) => p && s) : [];
+        const chips = [];
+        // Fill with categories first, then subcategories
+        uniqueCategories.forEach((cat) => chips.push({ type: 'category', value: cat }));
+        structuredPairs.forEach(([parent, subcat]) => chips.push({ type: 'subcategory', value: subcat, parent }));
+        const visible = chips.slice(0, limit);
+        const hiddenCount = Math.max(0, chips.length - visible.length);
+        const mode = (this.flags && this.flags.twChipsMode) || 'chips';
+        if (mode === 'textlist') {
+            const textButtons = visible.map(({ type, value, parent }, idx) => {
+                const safeValue = this.escapeHtml(value);
+                const parentAttr = parent ? ` data-parent-category="${this.escapeHtml(parent)}"` : '';
+                const sep = idx > 0 ? '<span class="mx-1 text-slate-500">·</span>' : '';
+                return `${sep}<button class="text-xs text-slate-400 hover:text-slate-300 underline-offset-2 hover:underline" data-filter-chip="${type}" data-filter-value="${safeValue}"${parentAttr} title="Filter by ${safeValue}">${safeValue}</button>`;
+            }).join('');
+            const more = hiddenCount > 0 ? `<span class="mx-1 text-xs text-slate-500">·</span><span class="text-xs text-slate-500">+${hiddenCount} more</span>` : '';
+            return `<div class="chip-list-inline flex flex-wrap items-center">${textButtons}${more}</div>`;
+        }
+        const chipHtml = visible.map(({ type, value, parent }) => {
+            const safeValue = this.escapeHtml(value);
+            const parentAttr = parent ? ` data-parent-category="${this.escapeHtml(parent)}"` : '';
+            return `<button class="px-2 py-1 text-[11px] font-medium border border-slate-300/60 dark:border-slate-700/60 bg-white/70 dark:bg-slate-800/60 text-slate-700 dark:text-slate-200 -ml-px first:ml-0 first:rounded-l-md last:rounded-r-md rounded-none"
+                            data-filter-chip="${type}" data-filter-value="${safeValue}"${parentAttr} title="Filter by ${safeValue}">${safeValue}</button>`;
+        }).join('');
+        const moreHtml = hiddenCount > 0
+            ? `<span class="px-2 py-1 text-[11px] font-medium border border-slate-300/60 dark:border-slate-700/60 bg-white/60 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 -ml-px rounded-r-md">+${hiddenCount} more</span>`
+            : '';
+        return `<div class="inline-flex flex-wrap gap-y-1">${chipHtml}${moreHtml}</div>`;
+    }
+
+    // Inline text list for categories/subcategories (no pills), used in header row
+    renderCategoryInlineListV5(itemId, categories = [], subcatPairs = [], limit = 6) {
+        const uniqueCategories = Array.isArray(categories) ? categories.filter(Boolean) : [];
+        const structuredPairs = Array.isArray(subcatPairs) ? subcatPairs.filter(([p, s]) => p && s) : [];
+        const chips = [];
+        uniqueCategories.forEach((cat) => chips.push({ type: 'category', value: cat }));
+        structuredPairs.forEach(([parent, subcat]) => chips.push({ type: 'subcategory', value: subcat, parent }));
+        const visible = chips.slice(0, limit);
+        const hiddenCount = Math.max(0, chips.length - visible.length);
+        const textButtons = visible.map(({ type, value, parent }, idx) => {
+            const safeValue = this.escapeHtml(value);
+            const parentAttr = parent ? ` data-parent-category=\"${this.escapeHtml(parent)}\"` : '';
+            const sep = idx > 0 ? '<span class=\"mx-1 text-slate-500\">·</span>' : '';
+            return `${sep}<button class=\"text-xs text-slate-400 hover:text-slate-300 underline-offset-2 hover:underline\" data-filter-chip=\"${type}\" data-filter-value=\"${safeValue}\"${parentAttr} title=\"Filter by ${safeValue}\">${safeValue}</button>`;
+        }).join('');
+        const more = hiddenCount > 0 ? `<span class=\"mx-1 text-xs text-slate-500\">·</span><span class=\"text-xs text-slate-500\">+${hiddenCount} more</span>` : '';
+        return `<span class=\"chip-list-inline flex flex-wrap items-center\">${textButtons}${more}</span>`;
+    }
+
+    // Utility: plain-text snippet of summary (for preview)
+    getSummarySnippet(item, maxChars = 280) {
+        try {
+            const html = this.computeFallbackSummaryHtml(item) || '';
+            let text = this.stripHtml(html).replace(/\s+/g, ' ').trim();
+            text = text.replace(/•/g, '·');
+            text = text.replace(/^[\-–•·]\s*/, '');
+            if (!text) return '';
+            if (text.length <= maxChars) return text;
+            return text.slice(0, maxChars).replace(/[,;:\-\s]+\S*$/, '') + '…';
+        } catch (_) {
+            return '';
+        }
+    }
+
+    // Utility: strip HTML tags while preserving basic bullets/newlines
+    stripHtml(html) {
+        let s = String(html || '');
+        s = s.replace(/<\s*br\s*\/?>/gi, '\n');
+        s = s.replace(/<\s*li[^>]*>/gi, '• ');
+        s = s.replace(/<\s*\/li\s*>/gi, '\n');
+        s = s.replace(/<[^>]+>/g, ' ');
+        return s;
+    }
+
+    // V5 List card (Stream): Tailwind-first layout
+    renderStreamCardTW(item) {
+        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const rawSource = item.content_source || 'youtube';
+        const source = rawSource.toLowerCase();
+        const href = `/${item.file_stem}.json?v=2`;
+        const buttonDurations = this.getButtonDurations(item);
+        const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
+        const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
+            ? item.media_metadata.mp3_duration_seconds
+            : (item.duration_seconds || 0);
+        const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
+        const isPlaying = this.currentAudio && this.currentAudio.id === item.file_stem && this.isPlaying;
+
+        const channelName = item.channel || 'Unknown Channel';
+        const safeChannel = this.escapeHtml(channelName);
+        const channelInitial = this.escapeHtml((channelName.trim().charAt(0) || '?').toUpperCase());
+
+        const sourceBadge = this.renderSourceBadge(source, item.source_label || null);
+        const visibleLimit = (this.flags && this.flags.twChipsVisible) || 6;
+        const categoriesInline = this.renderCategoryInlineListV5(item.file_stem, categories, subcatPairs, visibleLimit);
+        const watchLinkAvailable = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
+        const mediaActions = this.renderMediaActionsV5(item, buttonDurations, hasAudio, watchLinkAvailable, source);
+        const snippet = this.getSummarySnippet(item, 260);
+        const nowPlayingBadge = '<span class="summary-pill summary-pill--playing">Now playing</span>';
+        const nowPlayingOverlay = isPlaying ? `<div class="summary-card__badge summary-card__badge--media">${nowPlayingBadge}</div>` : '';
+        const nowPlayingInline = isPlaying ? `<span class="stream-card__nowplaying-badge">${nowPlayingBadge}</span>` : '';
+        const menuMarkup = `
+            <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <circle cx="5" cy="12" r="1.5"></circle>
+                    <circle cx="12" cy="12" r="1.5"></circle>
+                    <circle cx="19" cy="12" r="1.5"></circle>
+                </svg>
+            </button>
+            <div class="summary-card__menu hidden" data-kebab-menu role="menu">
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
+            </div>
+            <div class="summary-card__popover hidden" data-delete-popover>
+                <div class="summary-card__popover-panel">
+                    <p>Delete this summary?</p>
+                    <div class="summary-card__popover-actions">
+                        <button type="button" data-action="cancel-delete">Cancel</button>
+                        <button type="button" data-action="confirm-delete">Delete</button>
+                    </div>
+                </div>
+            </div>`;
+
+        const thumb = item.thumbnail_url
+            ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="stream-card__thumb">`
+            : `<div class="stream-card__thumb stream-card__thumb--fallback"></div>`;
+
+        const categoriesMarkup = categoriesInline ? `<div class="stream-card__categories">${categoriesInline}</div>` : '';
+
+        return `
+            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-source="${this.escapeHtml(source)}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
+                     class="stream-card group">
+                <div class="stream-card__media-block">
+                    <div class="stream-card__media">
+                        ${nowPlayingOverlay}
+                        ${thumb}
+                        <div class="stream-card__progress" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
+                            <div class="stream-card__progress-bar" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+                        </div>
+                    </div>
+                    ${mediaActions}
+                </div>
+                <div class="stream-card__body">
+                    <div class="stream-card__header">
+                        <div class="stream-card__channel-block">
+                            <span class="stream-card__avatar">${channelInitial}</span>
+                            <div class="stream-card__channel-stack">
+                                <div class="stream-card__channel-line">
+                                    <button class="stream-card__channel-name" data-filter-chip="channel" data-filter-value="${safeChannel}" title="Filter by ${safeChannel}">${safeChannel}</button>
+                                    ${sourceBadge || ''}
+                                    ${nowPlayingInline}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="stream-card__header-meta">
+                            ${categoriesMarkup}
+                            <div class="stream-card__menu">${menuMarkup}</div>
+                        </div>
+                    </div>
+                    <h3 class="stream-card__title line-clamp-2">${this.escapeHtml(item.title)}</h3>
+                    ${snippet ? `<p class="stream-card__snippet line-clamp-3" data-summary-snippet>${this.escapeHtml(snippet)}</p>
+                    <button type="button" class="stream-card__readmore" data-action="read">Read more</button>` : ''}
+                    <section role="region" aria-live="polite" hidden data-expand-region></section>
+                </div>
+            </article>`;
+    }
+// V5 Grid card (Mosaic): Tailwind-first tile
+    renderGridCardTW(item) {
+        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const rawSource = item.content_source || 'youtube';
+        const source = rawSource.toLowerCase();
+        const href = `/${item.file_stem}.json?v=2`;
+        const buttonDurations = this.getButtonDurations(item);
+        const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
+        const totalSecs = (item.media_metadata && item.media_metadata.mp3_duration_seconds)
+            ? item.media_metadata.mp3_duration_seconds
+            : (item.duration_seconds || 0);
+        const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
+        const watchLinkAvailable = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
+        const mediaActions = this.renderMediaActionsV5(item, buttonDurations, hasAudio, watchLinkAvailable, source);
+
+        const title = this.escapeHtml(item.title);
+        const thumb = item.thumbnail_url
+            ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl">`
+            : `<div class="w-full h-full rounded-xl" style="background: rgba(226,232,240,0.6)"></div>`;
+
+        const visibleLimitG = (this.flags && this.flags.twChipsVisible) || 4;
+        const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, visibleLimitG);
+        const snippet = this.getSummarySnippet(item, 180);
+        return `
+            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
+                     class="mosaic-card group rounded-2xl border border-slate-200/70 dark:border-slate-800/60 bg-white/80 dark:bg-slate-900/70 backdrop-blur hover:shadow-xl transition-all overflow-hidden">
+                <div class="relative w-full h-40">
+                    ${thumb}
+                    <div class="mosaic-card__progress absolute inset-x-0 bottom-0 h-1.5 bg-white/40 dark:bg-slate-900/40" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
+                        <div class="mosaic-card__progress-bar h-full bg-sky-500/90 dark:bg-sky-400/90" data-card-progress></div>
+                    </div>
+                </div>
+                <div class="p-3">
+                    ${chipBar}
+                    <h3 class="mosaic-card__title line-clamp-2 text-slate-900 dark:text-slate-100">${title}</h3>
+                    ${snippet ? `<p class="mt-1 text-[13px] text-slate-700 dark:text-slate-300 line-clamp-3">${this.escapeHtml(snippet)}</p>` : ''}
+                    <button type="button" class="mt-1 text-[13px] font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
+                    ${mediaActions ? `<div class="mosaic-card__actions">${mediaActions}</div>` : ''}
+                </div>
             </article>`;
     }
 
@@ -3848,6 +4091,9 @@ class AudioDashboard {
 
             if (labelEl) labelEl.textContent = isPlayingActive ? playingLabel : defaultLabel;
             btn.setAttribute('aria-pressed', String(isPlayingActive));
+            if (typeof btn.classList?.toggle === 'function') {
+                btn.classList.toggle('is-active', isPlayingActive);
+            }
             if (playIcon && pauseIcon) {
                 if (isPlayingActive) {
                     playIcon.classList.add('hidden');
@@ -4324,6 +4570,86 @@ class AudioDashboard {
         }).join('');
 
         return `<div class="summary-card__cta variant-toggle-group" role="group" aria-label="${groupLabel}">${buttonsHtml}</div>`;
+    }
+
+    renderActionSegmentsV5(item, durations = {}, hasAudio = false, hasWatchLink = false, sourceSlug = 'web') {
+        const segments = [];
+        segments.push({
+            key: 'read',
+            label: 'Read',
+            duration: durations.read || null,
+            title: durations.read ? `Read • ${durations.read}` : 'Read summary',
+            disabled: false
+        });
+
+        if (hasAudio) {
+            segments.push({
+                key: 'listen',
+                label: 'Listen',
+                duration: durations.listen || null,
+                title: durations.listen ? `Listen • ${durations.listen}` : 'Play audio summary',
+                disabled: false,
+                listen: true
+            });
+        }
+
+        if (hasWatchLink) {
+            const watchLabel = sourceSlug === 'youtube' ? 'Watch' : 'Open';
+            segments.push({
+                key: 'watch',
+                label: watchLabel,
+                duration: durations.watch || null,
+                title: durations.watch ? `${watchLabel} • ${durations.watch}` : (sourceSlug === 'youtube' ? 'Open on YouTube' : 'Open original source'),
+                disabled: false
+            });
+        }
+
+        if (!segments.length) return '';
+
+        const buttons = segments.map((segment) => {
+            const disabledAttr = segment.disabled ? 'disabled aria-disabled="true"' : '';
+            const parts = [];
+            if (segment.listen) {
+                parts.push(`data-listen-button`);
+                parts.push(`data-default-label="Listen"`);
+                parts.push(`data-playing-label="Pause"`);
+            }
+            const durationHtml = segment.duration ? `<span class="stream-card__segment-duration">• ${this.escapeHtml(segment.duration)}</span>` : '';
+            const labelHtml = segment.listen
+                ? `<span class="stream-card__segment-label" data-label>${this.escapeHtml(segment.label)}</span>`
+                : `<span class="stream-card__segment-label">${this.escapeHtml(segment.label)}</span>`;
+            return `<button class="stream-card__segment" data-action="${segment.key}" title="${this.escapeHtml(segment.title)}" ${disabledAttr} ${parts.join(' ')}>${labelHtml}${durationHtml}</button>`;
+        }).join('');
+
+        return `<div class="stream-card__segments" role="group" aria-label="Summary actions">${buttons}</div>`;
+    }
+
+
+    renderMediaActionsV5(item, durations = {}, hasAudio = false, hasWatchLink = false, sourceSlug = 'web') {
+        const buttons = [];
+
+        if (hasAudio) {
+            const duration = durations.listen || null;
+            const listenIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0116 0"></path><path d="M4 12v6a2 2 0 002 2h1a2 2 0 002-2v-3a2 2 0 00-2-2H4z"></path><path d="M20 12v6a2 2 0 01-2 2h-1a2 2 0 01-2-2v-3a2 2 0 012-2h3z"></path></svg>';
+            const title = duration ? `Listen • ${duration}` : 'Play audio summary';
+            const safeTitle = this.escapeHtml(title);
+            buttons.push(`<button type="button" class="stream-card__media-btn" data-action="listen" data-listen-button data-default-label="Listen" data-playing-label="Pause" title="${safeTitle}" aria-pressed="false">${listenIcon}<span class="sr-only" data-label>Listen</span></button>`);
+        }
+
+        if (hasWatchLink) {
+            const duration = durations.watch || null;
+            const isYoutube = sourceSlug === 'youtube';
+            const title = duration ? `${isYoutube ? 'Watch' : 'Open'} • ${duration}` : (isYoutube ? 'Open on YouTube' : 'Open original source');
+            const icon = isYoutube
+                ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M10 9l6 3-6 3V9z"></path></svg>'
+                : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17l9-9"></path><path d="M7 7h9v9"></path></svg>';
+            const label = isYoutube ? 'Watch' : 'Open';
+            const safeTitle = this.escapeHtml(title);
+            buttons.push(`<button type="button" class="stream-card__media-btn" data-action="watch" title="${safeTitle}">${icon}<span class="sr-only">${label}</span></button>`);
+        }
+
+        if (!buttons.length) return '';
+        return `<div class="stream-card__media-actions">${buttons.join('')}</div>`;
     }
 
     normalizeCardItem(item) {
