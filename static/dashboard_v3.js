@@ -3421,11 +3421,14 @@ class AudioDashboard {
                         <div class="mosaic-card__progress-bar h-full bg-sky-500/90 dark:bg-sky-400/90" data-card-progress></div>
                     </div>
                 </div>
-                <div class="p-3">
-                    ${chipBar}
-                    <h3 class="mosaic-card__title line-clamp-2 text-slate-900 dark:text-slate-100">${title}</h3>
-                    ${snippet ? `<p class="mt-1 text-[13px] text-slate-700 dark:text-slate-300 line-clamp-3">${this.escapeHtml(snippet)}</p>` : ''}
-                    <button type="button" class="mt-1 text-[13px] font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
+                <div class="mosaic-card__content">
+                    <div class="mosaic-card__main">
+                        ${chipBar}
+                        <h3 class="mosaic-card__title line-clamp-2 text-slate-900 dark:text-slate-100">${title}</h3>
+                        <div class="mosaic-card__divider" role="presentation"></div>
+                        ${snippet ? `<p class="mt-1 text-[13px] text-slate-700 dark:text-slate-300 line-clamp-3">${this.escapeHtml(snippet)}</p>` : ''}
+                        <button type="button" class="mt-1 text-[13px] font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
+                    </div>
                     ${mediaActions ? `<div class="mosaic-card__actions">${mediaActions}</div>` : ''}
                 </div>
             </article>`;
