@@ -3315,6 +3315,28 @@ class AudioDashboard {
         const sourceBadge = this.renderSourceBadge(source, item.source_label || null);
         const nowPlayingPill = isPlaying ? '<div class="summary-card__badge"><span class="summary-pill summary-pill--playing">Now playing</span></div>' : '';
         const identityMeta = nowPlayingPill || '';
+        const menuMarkup = `
+            <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <circle cx="5" cy="12" r="1.5"></circle>
+                    <circle cx="12" cy="12" r="1.5"></circle>
+                    <circle cx="19" cy="12" r="1.5"></circle>
+                </svg>
+            </button>
+            <div class="summary-card__menu hidden" data-kebab-menu role="menu">
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
+            </div>
+            <div class="summary-card__popover hidden" data-delete-popover>
+                <div class="summary-card__popover-panel">
+                    <p>Delete this summary?</p>
+                    <div class="summary-card__popover-actions">
+                        <button type="button" data-action="cancel-delete">Cancel</button>
+                        <button type="button" data-action="confirm-delete">Delete</button>
+                    </div>
+                </div>
+            </div>`;
 
         const visibleLimit = (this.flags && this.flags.twChipsVisible) || 6;
         const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, visibleLimit);
@@ -3343,10 +3365,10 @@ class AudioDashboard {
                     <div class="flex items-start gap-3">
                         <span class="stream-card__avatar">${channelInitial}</span>
                         <div class="min-w-0 flex-1">
-                            <div class="hidden lg:flex items-center justify-end gap-2 mb-1">${sourceBadge || ''}${catsInline || ''}</div>
+                            <div class="hidden lg:flex items-center justify-end gap-2 mb-1">${sourceBadge || ''}${catsInline || ''}${menuMarkup}</div>
                             <button class="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-audio-600" data-filter-chip="channel" data-filter-value="${safeChannel}" title="Filter by ${safeChannel}">${safeChannel}</button>
                             <h3 class="stream-card__title line-clamp-2">${this.escapeHtml(item.title)}</h3>
-                            <div class="lg:hidden mt-1 flex flex-wrap items-center gap-2">${sourceBadge || ''}${catsInline || ''}</div>
+                            <div class="lg:hidden mt-1 flex flex-wrap items-center gap-2">${sourceBadge || ''}${catsInline || ''}${menuMarkup}</div>
                         </div>
                         ${identityMeta ? `<div class=\"hidden lg:block ml-auto\">${identityMeta}</div>` : ''}
                     </div>
