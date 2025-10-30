@@ -3332,7 +3332,7 @@ class AudioDashboard {
         return `
             <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-source="${this.escapeHtml(source)}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
                      class="stream-card group relative flex gap-4 rounded-2xl border border-slate-200/70 dark:border-slate-800/60 bg-white/80 dark:bg-slate-900/70 backdrop-blur hover:shadow-xl transition-all p-3">
-                <div class="relative shrink-0 w-44 h-28 rounded-xl overflow-hidden">
+                <div class="relative shrink-0 w-64 h-40 rounded-xl overflow-hidden">
                     ${nowPlayingPill}
                     ${thumb}
                     <div class="stream-card__progress absolute inset-x-0 bottom-0 h-1.5 bg-white/40 dark:bg-slate-900/40" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
@@ -3343,13 +3343,14 @@ class AudioDashboard {
                     <div class="flex items-start gap-3">
                         <span class="stream-card__avatar">${channelInitial}</span>
                         <div class="min-w-0 flex-1">
+                            <div class="hidden lg:flex items-center justify-end gap-2 mb-1">${sourceBadge || ''}${catsInline || ''}</div>
                             <button class="text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-audio-600" data-filter-chip="channel" data-filter-value="${safeChannel}" title="Filter by ${safeChannel}">${safeChannel}</button>
                             <h3 class="stream-card__title line-clamp-2">${this.escapeHtml(item.title)}</h3>
+                            <div class="lg:hidden mt-1 flex flex-wrap items-center gap-2">${sourceBadge || ''}${catsInline || ''}</div>
                         </div>
                         ${identityMeta ? `<div class=\"hidden lg:block ml-auto\">${identityMeta}</div>` : ''}
                     </div>
                     <div class="mt-2 space-y-2">
-                        <div class="flex flex-wrap items-center justify-end gap-2">${sourceBadge || ''}${catsInline || ''}</div>
                         ${snippet ? `<p class="text-sm text-slate-700 dark:text-slate-300 line-clamp-3" data-summary-snippet>${this.escapeHtml(snippet)}</p>` : ''}
                         <div class="flex items-center gap-4">
                             <button class="text-sm font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
