@@ -77,7 +77,8 @@ YTV2-Dashboard/
 - File: `ui_flags.js` (root). This is loaded by the HTML template and is the authoritative source for runtime flags.
 - Common flags:
   - `cardV4`: enable Stream (List) and Mosaic (Grid) card renderers.
-  - `compactCardActions`, `cardExpandInline`: additional UI toggles used by the cards.
+  - `cardExpandInline`: inline expand for card summaries.
+  - `twRevamp`: experimental Tailwind‑first cards (V5) for List/Grid.
 - After changing flags, if you don’t see the effect, bump the script cache in `dashboard_v3_template.html` (e.g., `ui_flags.js?v=2`).
 
 ## Card Styling and Cache Busting
