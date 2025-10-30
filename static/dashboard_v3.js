@@ -3401,6 +3401,8 @@ class AudioDashboard {
             ? item.media_metadata.mp3_duration_seconds
             : (item.duration_seconds || 0);
         const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
+        const watchLinkAvailable = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
+        const mediaActions = this.renderMediaActionsV5(item, buttonDurations, hasAudio, watchLinkAvailable, source);
 
         const title = this.escapeHtml(item.title);
         const thumb = item.thumbnail_url
@@ -3409,10 +3411,9 @@ class AudioDashboard {
 
         const visibleLimitG = (this.flags && this.flags.twChipsVisible) || 4;
         const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, visibleLimitG);
-        const actions = this.renderActionBar(item, buttonDurations, hasAudio);
         const snippet = this.getSummarySnippet(item, 180);
         return `
-            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
+            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
                      class="mosaic-card group rounded-2xl border border-slate-200/70 dark:border-slate-800/60 bg-white/80 dark:bg-slate-900/70 backdrop-blur hover:shadow-xl transition-all overflow-hidden">
                 <div class="relative w-full h-40">
                     ${thumb}
@@ -3424,8 +3425,8 @@ class AudioDashboard {
                     ${chipBar}
                     <h3 class="mosaic-card__title line-clamp-2 text-slate-900 dark:text-slate-100">${title}</h3>
                     ${snippet ? `<p class="mt-1 text-[13px] text-slate-700 dark:text-slate-300 line-clamp-3">${this.escapeHtml(snippet)}</p>` : ''}
-                    <button class="mt-1 text-[13px] font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
-                    <div class="mt-2">${actions}</div>
+                    <button type="button" class="mt-1 text-[13px] font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
+                    ${mediaActions ? `<div class="mosaic-card__actions">${mediaActions}</div>` : ''}
                 </div>
             </article>`;
     }
