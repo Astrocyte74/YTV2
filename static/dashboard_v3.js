@@ -3426,8 +3426,8 @@ class AudioDashboard {
                         ${chipBar}
                         <h3 class="mosaic-card__title line-clamp-2 text-slate-900 dark:text-slate-100">${title}</h3>
                         <div class="mosaic-card__divider" role="presentation"></div>
-                        ${snippet ? `<p class="mt-1 text-[13px] text-slate-700 dark:text-slate-300 line-clamp-3">${this.escapeHtml(snippet)}</p>` : ''}
-                        <button type="button" class="mt-1 text-[13px] font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
+                        ${snippet ? `<p class="mosaic-card__snippet text-[13px] text-slate-700 dark:text-slate-300 line-clamp-3">${this.escapeHtml(snippet)}</p>` : '<div class="mosaic-card__snippet mosaic-card__snippet--empty"></div>'}
+                        <button type="button" class="mosaic-card__readmore text-[13px] font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
                     </div>
                     ${mediaActions ? `<div class="mosaic-card__actions">${mediaActions}</div>` : ''}
                 </div>
