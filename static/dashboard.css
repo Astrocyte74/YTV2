@@ -453,6 +453,31 @@ body {
     backdrop-filter: blur(8px);
 }
 
+/* Toggle between thumbnail and AI summary image */
+.summary-card__toggle {
+    position: absolute;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 3;
+    width: 2.25rem;
+    height: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    color: #fff;
+    transition: background 160ms ease, transform 160ms ease;
+    backdrop-filter: blur(8px);
+}
+.summary-card__toggle:hover,
+.summary-card__toggle[aria-pressed="true"],
+.summary-card__toggle:focus-visible {
+    transform: translateY(-1px);
+    background: rgba(15, 23, 42, 0.6);
+}
+
 .summary-card__menu-btn:hover,
 .summary-card__menu-btn:focus-visible {
     transform: translateY(-1px);
