@@ -1218,6 +1218,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_delete_reports()
         elif self.path == '/api/upload-audio':
             self.handle_upload_audio()
+        elif self.path == '/api/upload-image':
+            self.handle_upload_image()
         elif self.path in ('/api/upload-report', '/api/upload-database', '/api/download-database'):
             # Legacy endpoints removed in Postgres-only mode
             self.send_error(410, "Endpoint removed")
@@ -3298,6 +3300,91 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Audio upload error: {e}")
             self.send_error(500, f"Audio upload failed: {str(e)}")
+
+    def handle_upload_image(self):
+        """Upload summary images from NAS with the same auth as audio uploads.
+
+        Expects multipart/form-data with field name 'image'. Saves to
+        /app/data/exports/images/<filename> (or ./exports/images in local dev) and
+        returns JSON with a public_url under /exports/images/...
+        """
+        try:
+            # Check sync secret for authentication (same as audio)
+            sync_secret = os.getenv('SYNC_SECRET')
+            if not sync_secret:
+                self.send_error(500, "Sync not configured")
+                return
+
+            auth_header = self.headers.get('Authorization', '')
+            if not auth_header.startswith('Bearer ') or auth_header[7:] != sync_secret:
+                logger.warning(f"Image upload rejected: Invalid auth from {self.client_address[0]}")
+                self.send_error(401, "Unauthorized")
+                return
+
+            # Parse multipart form data
+            content_type = self.headers.get('Content-Type', '')
+            if not content_type.startswith('multipart/form-data'):
+                self.send_error(400, "Expected multipart/form-data")
+                return
+
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_error(400, "No data received")
+                return
+            if content_length > 10 * 1024 * 1024:  # 10MB limit for images
+                self.send_error(413, "Image file too large")
+                return
+
+            post_data = self.rfile.read(content_length)
+
+            # Parse form data
+            import cgi
+            import io
+            from os.path import basename
+
+            form_data = cgi.FieldStorage(
+                fp=io.BytesIO(post_data),
+                headers=self.headers,
+                environ={'REQUEST_METHOD': 'POST'}
+            )
+
+            if 'image' not in form_data:
+                self.send_error(400, "No image file provided")
+                return
+
+            img_field = form_data['image']
+            if not getattr(img_field, 'filename', None):
+                self.send_error(400, "No image filename provided")
+                return
+
+            # Save image file
+            exports_root = Path('/app/data/exports') if Path('/app/data').exists() else Path('./exports')
+            images_dir = exports_root / 'images'
+            images_dir.mkdir(parents=True, exist_ok=True)
+
+            filename = basename(img_field.filename)
+            img_path = images_dir / filename
+            with open(img_path, 'wb') as f:
+                img_field.file.seek(0)
+                f.write(img_field.file.read())
+
+            public_url = f"/exports/images/{filename}"
+            logger.info(f"🖼️ Image file uploaded: {filename} -> {public_url}")
+
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                'success': True,
+                'message': 'Image uploaded successfully',
+                'filename': filename,
+                'size': img_path.stat().st_size,
+                'public_url': public_url
+            }).encode())
+
+        except Exception as e:
+            logger.error(f"Image upload error: {e}")
+            self.send_error(500, f"Image upload failed: {str(e)}")
     
     def handle_content_api(self):
         """Removed: legacy SQLite content API (use /ingest/report)."""
