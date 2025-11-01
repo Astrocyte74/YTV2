@@ -3309,15 +3309,24 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         returns JSON with a public_url under /exports/images/...
         """
         try:
-            # Check sync secret for authentication (same as audio)
+            # Auth: accept either Bearer SYNC_SECRET (legacy /api/*) or X-INGEST-TOKEN (ingest-style)
             sync_secret = os.getenv('SYNC_SECRET')
-            if not sync_secret:
-                self.send_error(500, "Sync not configured")
-                return
+            ingest_token = os.getenv('INGEST_TOKEN')
 
+            auth_ok = False
             auth_header = self.headers.get('Authorization', '')
-            if not auth_header.startswith('Bearer ') or auth_header[7:] != sync_secret:
-                logger.warning(f"Image upload rejected: Invalid auth from {self.client_address[0]}")
+            if sync_secret and auth_header.startswith('Bearer ') and auth_header[7:] == sync_secret:
+                auth_ok = True
+            elif ingest_token and self.headers.get('X-INGEST-TOKEN') == ingest_token:
+                auth_ok = True
+
+            if not auth_ok:
+                logger.warning(
+                    "Image upload rejected: Unauthorized (from %s). Provided headers: Authorization=%s, X-INGEST-TOKEN=%s",
+                    self.client_address[0],
+                    'present' if auth_header else 'absent',
+                    'present' if self.headers.get('X-INGEST-TOKEN') else 'absent'
+                )
                 self.send_error(401, "Unauthorized")
                 return
 
