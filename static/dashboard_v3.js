@@ -212,6 +212,8 @@ class AudioDashboard {
         this.listViewBtnMobile = document.getElementById('listViewBtnMobile');
         this.gridViewBtnMobile = document.getElementById('gridViewBtnMobile');
         this.wallViewBtnMobile = document.getElementById('wallViewBtnMobile');
+        this.desktopSidebarToggle = document.getElementById('desktopSidebarToggle');
+        this.sidebarElement = document.getElementById('sidebar');
         this.resultsHero = document.getElementById('resultsHero');
         
         // Queue
@@ -236,6 +238,8 @@ class AudioDashboard {
         this.settingsMenu = document.getElementById('settingsMenu');
         this.themeButtons = this.settingsMenu ? this.settingsMenu.querySelectorAll('[data-theme]') : [];
         this.themeMode = localStorage.getItem('ytv2.theme') || 'system';
+        this.sidebarCollapsed = localStorage.getItem('ytv2.sidebarCollapsed') === '1';
+        this._collapsedForMobile = null;
 
         // Realtime banner
         this.realtimeBanner = document.getElementById('realtimeBanner');
@@ -511,12 +515,11 @@ class AudioDashboard {
         this.queueToggle.addEventListener('click', () => this.toggleQueue());
         if (this.queueClearBtn) this.queueClearBtn.addEventListener('click', () => this.clearQueue());
         // Play All button removed - auto-playlist handles this
-        if (this.listViewBtn) this.listViewBtn.addEventListener('click', () => this.setViewMode('list'));
         
         // Mobile sidebar controls
         const mobileFiltersToggle = document.getElementById('mobileFiltersToggle');
         const closeSidebar = document.getElementById('closeSidebar');
-        const sidebar = document.getElementById('sidebar');
+        const sidebar = this.sidebarElement;
         
         if (mobileFiltersToggle) {
             mobileFiltersToggle.addEventListener('click', () => this.openMobileSidebar());
@@ -530,6 +533,13 @@ class AudioDashboard {
                 if (e.target === sidebar) this.closeMobileSidebar();
             });
         }
+        this.desktopMediaQuery = window.matchMedia('(min-width: 1024px)');
+        if (this.desktopMediaQuery?.addEventListener) {
+            this.desktopMediaQuery.addEventListener('change', () => this.applySidebarCollapsedState());
+        } else if (this.desktopMediaQuery?.addListener) {
+            this.desktopMediaQuery.addListener(() => this.applySidebarCollapsedState());
+        }
+
         const viewBindings = [
             { btn: this.listViewBtn, mode: 'list' },
             { btn: this.gridViewBtn, mode: 'grid' },
@@ -542,6 +552,14 @@ class AudioDashboard {
             if (!btn) return;
             btn.addEventListener('click', () => this.setViewMode(mode));
         });
+        if (this.desktopSidebarToggle) {
+            this.desktopSidebarToggle.addEventListener('click', () => {
+                this.sidebarCollapsed = !this.sidebarCollapsed;
+                localStorage.setItem('ytv2.sidebarCollapsed', this.sidebarCollapsed ? '1' : '0');
+                this.applySidebarCollapsedState();
+            });
+        }
+        this.applySidebarCollapsedState();
         this.updateViewToggle();
         
         // Keyboard shortcuts
@@ -4092,11 +4110,25 @@ class AudioDashboard {
             btn.classList.add(...activeClasses);
         });
 
+        document.body.classList.toggle('wall-mode', this.viewMode === 'wall');
         if (this.resultsHero) {
             this.resultsHero.classList.toggle('hidden', this.viewMode === 'wall');
         }
 
         this.updateHeroBadges();
+    }
+
+    applySidebarCollapsedState() {
+        const isDesktop = this.desktopMediaQuery ? this.desktopMediaQuery.matches : window.innerWidth >= 1024;
+        const shouldCollapse = Boolean(this.sidebarCollapsed && isDesktop);
+        document.body.classList.toggle('sidebar-collapsed', shouldCollapse);
+        if (this.sidebarElement) {
+            this.sidebarElement.setAttribute('aria-hidden', shouldCollapse ? 'true' : 'false');
+        }
+        if (this.desktopSidebarToggle) {
+            this.desktopSidebarToggle.setAttribute('aria-pressed', shouldCollapse ? 'true' : 'false');
+            this.desktopSidebarToggle.setAttribute('aria-label', shouldCollapse ? 'Expand filters' : 'Collapse filters');
+        }
     }
 
     setCurrentFromItem(item) {
@@ -5808,8 +5840,13 @@ class AudioDashboard {
 
     // Mobile sidebar methods
     openMobileSidebar() {
-        const sidebar = document.getElementById('sidebar');
+        const sidebar = this.sidebarElement || document.getElementById('sidebar');
         if (sidebar) {
+            this._collapsedForMobile = this.sidebarCollapsed;
+            if (this.sidebarCollapsed) {
+                this.sidebarCollapsed = false;
+                this.applySidebarCollapsedState();
+            }
             // Force display the sidebar on mobile by overriding responsive classes
             sidebar.classList.remove('hidden');
             sidebar.classList.add('flex');
@@ -5821,7 +5858,7 @@ class AudioDashboard {
     }
 
     closeMobileSidebar() {
-        const sidebar = document.getElementById('sidebar');
+        const sidebar = this.sidebarElement || document.getElementById('sidebar');
         if (sidebar) {
             // Hide the sidebar properly
             sidebar.classList.remove('flex');
@@ -5829,6 +5866,11 @@ class AudioDashboard {
             sidebar.style.display = '';
             // Restore body scroll
             document.body.style.overflow = '';
+            if (typeof this._collapsedForMobile === 'boolean') {
+                this.sidebarCollapsed = this._collapsedForMobile;
+                this._collapsedForMobile = null;
+                this.applySidebarCollapsedState();
+            }
         }
     }
 

@@ -127,6 +127,9 @@
             color: rgba(14, 165, 233, 1);
         }
 
+        #sidebar { transition: width 220ms ease, padding 220ms ease; }
+        #sidebar .sidebar-inner { transition: opacity 180ms ease; }
+
         #sidebar .filter-shell {
             padding: 0.65rem 0.75rem;
             border-radius: 0.9rem;
@@ -138,6 +141,34 @@
         .dark #sidebar .filter-shell {
             background: rgba(15, 23, 42, 0.4);
             box-shadow: inset 0 1px 0 rgba(148,163,184,0.12);
+        }
+
+        body.sidebar-collapsed #sidebar {
+            width: 0 !important;
+            min-width: 0 !important;
+            flex: 0 0 0 !important;
+            border: none;
+            padding: 0;
+            overflow: hidden;
+        }
+        body.sidebar-collapsed #sidebar .sidebar-inner {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transform: translateX(-12px);
+        }
+        #desktopSidebarToggle {
+            transition: background 160ms ease, color 160ms ease;
+        }
+        #desktopSidebarToggle svg { transition: transform 200ms ease; }
+        #desktopSidebarToggle[aria-pressed="true"] {
+            background: rgba(14, 165, 233, 0.12);
+            color: #0f172a;
+        }
+        #desktopSidebarToggle[aria-pressed="true"] svg { transform: rotate(180deg); }
+
+        body.sidebar-collapsed main {
+            margin-left: 0;
         }
 
         /* Collapsible filter UX: chevron + focus */
@@ -159,6 +190,23 @@
         }
 
         .view-toggle { transition: all 200ms ease; }
+        #contentShell { transition: max-width 220ms ease, padding 220ms ease, margin 220ms ease; }
+        body.sidebar-collapsed:not(.wall-mode) #contentShell {
+            max-width: min(100%, 70rem) !important;
+        }
+        body.wall-mode #contentShell {
+            max-width: none !important;
+            width: 100%;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            padding-left: clamp(1rem, 5vw, 3rem);
+            padding-right: clamp(1rem, 5vw, 3rem);
+        }
+        body.wall-mode .wall-grid {
+            grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
+            gap: clamp(0.75rem, 1vw, 1.25rem);
+            padding-bottom: clamp(2rem, 6vw, 3.5rem);
+        }
         
         /* Key Points styles now in /static/shared.css */
     </style>
@@ -189,10 +237,16 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                             </svg>
                         </button>
+                        <button id="desktopSidebarToggle" class="hidden lg:inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" aria-pressed="false" aria-label="Collapse filters">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 6l-6 6 6 6"></path>
+                            </svg>
+                            <span class="text-xs uppercase tracking-wide text-slate-500">Filters</span>
+                        </button>
                         <div class="hidden lg:flex items-center gap-2 p-1 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/85 dark:bg-slate-950/60 backdrop-blur shadow-inner">
-                            <button id="listViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium">List</button>
-                            <button id="gridViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium">Grid</button>
-                            <button id="wallViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium">Wall</button>
+                            <button id="listViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">List</button>
+                            <button id="gridViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">Grid</button>
+                            <button id="wallViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">Wall</button>
                         </div>
                         <button id="queueToggle" class="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -235,7 +289,7 @@
             <!-- Search & Filters Sidebar -->
             <aside id="sidebar" class="hidden lg:block lg:w-80 lg:bg-white/40 lg:dark:bg-slate-900/40 lg:backdrop-blur lg:border-r lg:border-white/30 lg:dark:border-slate-800/60 lg:overflow-y-auto lg:sticky lg:top-16 lg:self-start
                                      fixed inset-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur lg:relative lg:inset-auto lg:z-auto overflow-y-auto" style="height: calc(100vh - 4rem)">
-                <div class="p-6 space-y-6 bg-gradient-to-b from-white/30 via-white/10 to-transparent dark:from-white/5 dark:via-white/5 dark:to-transparent rounded-3xl border border-white/30 dark:border-white/10 shadow-lg shadow-slate-900/10">
+                <div class="sidebar-inner p-6 space-y-6 bg-gradient-to-b from-white/30 via-white/10 to-transparent dark:from-white/5 dark:via-white/5 dark:to-transparent rounded-3xl border border-white/30 dark:border-white/10 shadow-lg shadow-slate-900/10">
                     <!-- Mobile close button -->
                     <div class="lg:hidden flex justify-between items-center -mt-2 mb-4">
                         <h2 class="text-lg font-semibold">Filters & Audio Player</h2>
@@ -518,12 +572,12 @@
                 <div class="absolute inset-x-0 top-0 h-64 pointer-events-none select-none">
                     <div class="h-full w-full bg-gradient-to-br from-audio-500/25 via-indigo-500/20 to-transparent blur-3xl opacity-80 dark:opacity-60"></div>
                 </div>
-                <div class="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+                <div id="contentShell" class="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
                     
                     <!-- Results Header -->
                     <div id="resultsHero" class="relative overflow-hidden rounded-3xl border border-white/70 dark:border-slate-800/70 bg-white/85 dark:bg-slate-900/70 backdrop-blur-xl shadow-2xl shadow-slate-200/40 dark:shadow-black/40">
                         <div class="absolute inset-0 bg-gradient-to-br from-audio-500/20 via-transparent to-indigo-500/25 opacity-80 dark:opacity-60"></div>
-                        <div class="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between p-6 sm:p-8">
+                <div class="relative flex flex-col gap-6 md:flex-row md:items-center md:justify-between p-6 sm:p-8">
                             <div class="flex-1 min-w-0">
                                 <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">introducing . . .</p>
                                 <h2 class="mt-3 text-2xl sm:text-3xl font-semibold text-slate-800 dark:text-white" id="resultsTitle">SUMMARIZERNATOR</h2>
@@ -550,9 +604,9 @@
                                     </select>
                                 </div>
                                 <div class="inline-flex items-center gap-2 p-1 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/85 dark:bg-slate-950/60 backdrop-blur shadow-inner lg:hidden">
-                                    <button id="listViewBtnMobile" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium">List</button>
-                                    <button id="gridViewBtnMobile" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium">Grid</button>
-                                    <button id="wallViewBtnMobile" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium">Wall</button>
+                                    <button id="listViewBtnMobile" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">List</button>
+                                    <button id="gridViewBtnMobile" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">Grid</button>
+                                    <button id="wallViewBtnMobile" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">Wall</button>
                                 </div>
                             </div>
                         </div>
