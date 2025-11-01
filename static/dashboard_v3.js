@@ -2277,8 +2277,9 @@ class AudioDashboard {
                 });
             });
 
-            // Apply global image mode to this card if both images are present
+            // Apply global image mode and wire error handlers
             this.applyImageModeToCard(card, index);
+            this.wireImageErrorHandlers(card);
             card.dataset.decorated = 'true';
         });
     }
@@ -4964,6 +4965,97 @@ class AudioDashboard {
         // Ensure leading slash for dashboard static serving
         if (trimmed.startsWith('/')) return trimmed;
         return `/${trimmed}`;
+    }
+
+    // --- Global image mode controls ---
+    updateImageModeUI() {
+        const map = {
+            'thumbnail': this.imgModeThumbBtn,
+            'ai': this.imgModeAiBtn,
+            'rotate': this.imgModeRotateBtn
+        };
+        Object.values(map).forEach(btn => { if (btn) btn.classList.remove('bg-slate-200', 'dark:bg-slate-700'); });
+        const active = map[this.imageMode] || null;
+        if (active) active.classList.add('bg-slate-200', 'dark:bg-slate-700');
+    }
+
+    applyImageModeToAllCards() {
+        if (!this.contentGrid) return;
+        const cards = this.contentGrid.querySelectorAll('[data-card]');
+        let idx = 0;
+        cards.forEach(card => this.applyImageModeToCard(card, idx++));
+    }
+
+    shouldShowSummaryByRotate(id) {
+        try {
+            let h = 0;
+            for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xffffffff;
+            return (h & 1) === 1; // ~50% probability
+        } catch (_) { return false; }
+    }
+
+    applyImageModeToCard(card, index = 0) {
+        if (!card) return;
+        const media = card.querySelector('.summary-card__media, .stream-card__media, .mosaic-card__media, .wall-card__media, .relative.w-full.h-40');
+        if (!media) return;
+        const imgDefault = media.querySelector('[data-role="thumb-default"]');
+        const imgSummary = media.querySelector('[data-role="thumb-summary"]');
+        const toggleBtn = media.querySelector('[data-action="toggle-image"]');
+
+        // If only one image exists, show it and hide the toggle
+        if (imgSummary && !imgDefault) {
+            imgSummary.classList.remove('hidden');
+            if (toggleBtn) toggleBtn.classList.add('hidden');
+            return;
+        }
+        if (imgDefault && !imgSummary) {
+            imgDefault.classList.remove('hidden');
+            if (toggleBtn) toggleBtn.classList.add('hidden');
+            return;
+        }
+        if (!imgDefault || !imgSummary) return;
+        if (toggleBtn) toggleBtn.classList.remove('hidden');
+
+        let showSummary = false;
+        if (this.imageMode === 'ai') showSummary = true;
+        else if (this.imageMode === 'thumbnail') showSummary = false;
+        else if (this.imageMode === 'rotate') {
+            const id = card.getAttribute('data-report-id') || String(index);
+            showSummary = this.shouldShowSummaryByRotate(id);
+        }
+
+        if (showSummary) {
+            imgDefault.classList.add('hidden');
+            imgSummary.classList.remove('hidden');
+        } else {
+            imgSummary.classList.add('hidden');
+            imgDefault.classList.remove('hidden');
+        }
+    }
+
+    wireImageErrorHandlers(card) {
+        if (!card) return;
+        const media = card.querySelector('.summary-card__media, .stream-card__media, .mosaic-card__media, .wall-card__media, .relative.w-full.h-40');
+        if (!media) return;
+        const imgDefault = media.querySelector('[data-role="thumb-default"]');
+        const imgSummary = media.querySelector('[data-role="thumb-summary"]');
+        const toggleBtn = media.querySelector('[data-action="toggle-image"]');
+        if (imgSummary) {
+            imgSummary.addEventListener('error', () => {
+                imgSummary.classList.add('hidden');
+                if (imgDefault) imgDefault.classList.remove('hidden');
+                if (toggleBtn) toggleBtn.classList.add('hidden');
+            }, { once: true });
+        }
+        if (imgDefault && imgDefault.tagName === 'IMG') {
+            imgDefault.addEventListener('error', () => {
+                if (imgSummary) {
+                    imgDefault.classList.add('hidden');
+                    imgSummary.classList.remove('hidden');
+                    if (toggleBtn) toggleBtn.classList.add('hidden');
+                }
+            }, { once: true });
+        }
     }
 
     // Normalize categories & subcategories (prefer new subcategories_json structure)
