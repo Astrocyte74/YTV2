@@ -4073,6 +4073,20 @@ class AudioDashboard {
     setViewMode(mode) {
         this.viewMode = mode;
         localStorage.setItem('ytv2.viewMode', mode);
+        if (mode === 'wall') {
+            this._previousSidebarCollapsed = this.sidebarCollapsed;
+            if (!this.sidebarCollapsed && this.desktopMediaQuery?.matches) {
+                this.sidebarCollapsed = true;
+                localStorage.setItem('ytv2.sidebarCollapsed', '1');
+                this.applySidebarCollapsedState();
+            }
+        } else if (typeof this._previousSidebarCollapsed === 'boolean') {
+            const shouldRestore = this._previousSidebarCollapsed;
+            this._previousSidebarCollapsed = undefined;
+            this.sidebarCollapsed = shouldRestore;
+            localStorage.setItem('ytv2.sidebarCollapsed', shouldRestore ? '1' : '0');
+            this.applySidebarCollapsedState();
+        }
         // Re-render current items
         this.updateViewToggle();
         if (this.currentItems) this.renderContent(this.currentItems);
