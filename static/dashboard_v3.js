@@ -263,6 +263,15 @@ class AudioDashboard {
         this.reprocessTokenReset = document.getElementById('reprocessTokenReset');
         this.confirmReprocessBtn = document.getElementById('confirmReprocessBtn');
         this.cancelReprocessBtn = document.getElementById('cancelReprocessBtn');
+
+        // Image controls in header
+        this.imgModeThumbBtn = document.getElementById('imgModeThumbBtn');
+        this.imgModeAiBtn = document.getElementById('imgModeAiBtn');
+        this.imgModeRotateBtn = document.getElementById('imgModeRotateBtn');
+
+        // Image mode and hover-switch state
+        this.imageMode = localStorage.getItem('ytv2.imageMode') || 'thumbnail';
+        this.hoverSwitchEnabled = localStorage.getItem('ytv2.hoverSwitch') === '1';
     }
 
     bindEvents() {
@@ -304,6 +313,18 @@ class AudioDashboard {
         if (this.themeButtons) this.themeButtons.forEach(btn => btn.addEventListener('click', () => this.setTheme(btn.dataset.theme)));
         if (this.cancelDeleteBtn) this.cancelDeleteBtn.addEventListener('click', () => this.closeConfirm());
         if (this.confirmDeleteBtn) this.confirmDeleteBtn.addEventListener('click', () => this.confirmDelete());
+
+        // Image mode controls
+        const setMode = (mode) => {
+            this.imageMode = mode;
+            localStorage.setItem('ytv2.imageMode', mode);
+            this.updateImageModeUI();
+            this.applyImageModeToAllCards();
+        };
+        if (this.imgModeThumbBtn) this.imgModeThumbBtn.addEventListener('click', () => setMode('thumbnail'));
+        if (this.imgModeAiBtn) this.imgModeAiBtn.addEventListener('click', () => setMode('ai'));
+        if (this.imgModeRotateBtn) this.imgModeRotateBtn.addEventListener('click', () => setMode('rotate'));
+        this.updateImageModeUI();
         
         // Search and filters
         this.searchInput.addEventListener('input', 
@@ -2256,6 +2277,8 @@ class AudioDashboard {
                 });
             });
 
+            // Apply global image mode to this card if both images are present
+            this.applyImageModeToCard(card, index);
             card.dataset.decorated = 'true';
         });
     }
@@ -2313,6 +2336,18 @@ class AudioDashboard {
         if (action === 'menu') { this.toggleKebabMenu(card, true, btn); }
         if (action === 'menu-close') { this.toggleKebabMenu(card, false); }
         if (action === 'copy-link') { this.copyLink(card, id); this.toggleKebabMenu(card, false); }
+        if (action === 'toggle-image') {
+            const media = card.querySelector('.summary-card__media, .stream-card__media, .relative.w-full.h-40');
+            if (!media) return;
+            const a = media.querySelector('[data-role="thumb-default"]');
+            const b = media.querySelector('[data-role="thumb-summary"]');
+            if (!a || !b) return;
+            const aHidden = a.classList.contains('hidden');
+            if (aHidden) { a.classList.remove('hidden'); b.classList.add('hidden'); }
+            else { a.classList.add('hidden'); b.classList.remove('hidden'); }
+            btn.setAttribute('aria-pressed', String(!aHidden));
+            this.sendTelemetry('cta_toggle_image', { id });
+        }
         if (action === 'reprocess') {
             this.toggleKebabMenu(card, false);
             this.openReprocessModal(id, card);
@@ -3475,8 +3510,12 @@ class AudioDashboard {
             </div>`;
 
         const thumb = item.thumbnail_url
-            ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="stream-card__thumb">`
+            ? `<img data-role="thumb-default" src="${item.thumbnail_url}" alt="" loading="lazy" class="stream-card__thumb">`
             : `<div class="stream-card__thumb stream-card__thumb--fallback"></div>`;
+        const summaryImageUrl = item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
+        const hasSummaryArt = Boolean(summaryImageUrl);
+        const summaryEl = hasSummaryArt ? `<img data-role="thumb-summary" src="${summaryImageUrl}" alt="" loading="lazy" class="stream-card__thumb hidden">` : '';
+        const toggleBtn = hasSummaryArt ? `<button class="summary-card__toggle" data-action="toggle-image" title="Toggle image" aria-pressed="false" aria-label="Toggle image">🖼️</button>` : '';
 
         const categoriesMarkup = categoriesInline ? `<div class="stream-card__categories">${categoriesInline}</div>` : '';
 
@@ -3486,7 +3525,8 @@ class AudioDashboard {
                 <div class="stream-card__media-block">
                     <div class="stream-card__media">
                         ${nowPlayingOverlay}
-                        ${thumb}
+                        ${toggleBtn}
+                        ${thumb}${summaryEl}
                         <div class="stream-card__progress" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
                             <div class="stream-card__progress-bar" data-card-progress role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
                         </div>
@@ -3534,8 +3574,12 @@ class AudioDashboard {
 
         const title = this.escapeHtml(item.title);
         const thumb = item.thumbnail_url
-            ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl">`
+            ? `<img data-role="thumb-default" src="${item.thumbnail_url}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl">`
             : `<div class="w-full h-full rounded-xl" style="background: rgba(226,232,240,0.6)"></div>`;
+        const summaryImageUrl = item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
+        const hasSummaryArt = Boolean(summaryImageUrl);
+        const summaryEl = hasSummaryArt ? `<img data-role="thumb-summary" src="${summaryImageUrl}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl hidden">` : '';
+        const toggleBtn = hasSummaryArt ? `<button class="summary-card__toggle" data-action="toggle-image" title="Toggle image" aria-pressed="false" aria-label="Toggle image">🖼️</button>` : '';
 
         const visibleLimitG = (this.flags && this.flags.twChipsVisible) || 4;
         const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, visibleLimitG);
@@ -3544,7 +3588,8 @@ class AudioDashboard {
             <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
                      class="mosaic-card group rounded-2xl border border-slate-200/70 dark:border-slate-800/60 bg-white/80 dark:bg-slate-900/70 backdrop-blur hover:shadow-xl transition-all overflow-hidden">
                 <div class="relative w-full h-40">
-                    ${thumb}
+                    ${toggleBtn}
+                    ${thumb}${summaryEl}
                     <div class="mosaic-card__progress absolute inset-x-0 bottom-0 h-1.5 bg-white/40 dark:bg-slate-900/40" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
                         <div class="mosaic-card__progress-bar h-full bg-sky-500/90 dark:bg-sky-400/90" data-card-progress></div>
                     </div>
@@ -3574,11 +3619,15 @@ class AudioDashboard {
         const chipRail = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 3);
         const title = this.escapeHtml(item.title);
         const thumb = item.thumbnail_url
-            ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="wall-card__thumb">`
+            ? `<img data-role="thumb-default" src="${item.thumbnail_url}" alt="" loading="lazy" class="wall-card__thumb">`
             : `<div class="wall-card__thumb wall-card__thumb--fallback"></div>`;
+        const summaryImageUrl = item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
+        const hasSummaryArt = Boolean(summaryImageUrl);
+        const summaryEl = hasSummaryArt ? `<img data-role="thumb-summary" src="${summaryImageUrl}" alt="" loading="lazy" class="wall-card__thumb hidden">` : '';
+        const toggleBtn = hasSummaryArt ? `<button class="summary-card__toggle" data-action="toggle-image" title="Toggle image" aria-pressed="false" aria-label="Toggle image">🖼️</button>` : '';
         return `
             <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0" class="wall-card">
-                <div class="wall-card__media">${thumb}</div>
+                <div class="wall-card__media">${toggleBtn}${thumb}${summaryEl}</div>
                 <div class="wall-card__overlay">
                     <div class="wall-card__meta">${chipRail || ''}</div>
                     <h3 class="wall-card__title">${title}</h3>
