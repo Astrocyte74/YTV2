@@ -157,15 +157,38 @@
             pointer-events: none;
             transform: translateX(-12px);
         }
-        #desktopSidebarToggle {
+        #sidebarCollapseToggle {
             transition: background 160ms ease, color 160ms ease;
         }
-        #desktopSidebarToggle svg { transition: transform 200ms ease; }
-        #desktopSidebarToggle[aria-pressed="true"] {
-            background: rgba(14, 165, 233, 0.12);
-            color: #0f172a;
+        #sidebarCollapseToggle svg { transition: transform 200ms ease; }
+        #sidebarCollapseToggle[aria-pressed="true"] svg { transform: rotate(180deg); }
+        body.sidebar-collapsed #sidebarCollapseToggle { pointer-events: none; opacity: 0; }
+        #sidebarExpandToggle {
+            position: fixed;
+            top: 5.5rem;
+            left: 0;
+            transform: translateX(-70%);
+            z-index: 30;
+            border-top-right-radius: 9999px;
+            border-bottom-right-radius: 9999px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 200ms ease, transform 200ms ease;
+            display: none;
+            align-items: center;
         }
-        #desktopSidebarToggle[aria-pressed="true"] svg { transform: rotate(180deg); }
+        body.sidebar-collapsed #sidebarExpandToggle {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateX(0);
+            display: flex;
+        }
+        @media (max-width: 1023px) {
+            #sidebarExpandToggle { display: none !important; }
+        }
+        body.sidebar-collapsed #sidebarExpandToggle:hover {
+            background: rgba(14,165,233,0.9);
+        }
 
         body.sidebar-collapsed main {
             margin-left: 0;
@@ -237,12 +260,6 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                             </svg>
                         </button>
-                        <button id="desktopSidebarToggle" class="hidden lg:inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" aria-pressed="false" aria-label="Collapse filters">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 6l-6 6 6 6"></path>
-                            </svg>
-                            <span class="text-xs uppercase tracking-wide text-slate-500">Filters</span>
-                        </button>
                         <div class="hidden lg:flex items-center gap-2 p-1 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/85 dark:bg-slate-950/60 backdrop-blur shadow-inner">
                             <button id="listViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">List</button>
                             <button id="gridViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">Grid</button>
@@ -297,6 +314,15 @@
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                             </svg>
+                        </button>
+                    </div>
+                    <div class="hidden lg:flex items-center justify-between -mt-2 mb-4">
+                        <span class="text-xs font-semibold tracking-wide uppercase text-slate-500 dark:text-slate-400">Filters</span>
+                        <button id="sidebarCollapseToggle" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" aria-pressed="false" aria-label="Collapse filters">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 6l-6 6 6 6"></path>
+                            </svg>
+                            Hide
                         </button>
                     </div>
                     
@@ -566,6 +592,12 @@
 
                 </div>
             </aside>
+            <button id="sidebarExpandToggle" class="sidebar-expand-btn items-center gap-2 px-3 py-1.5 rounded-r-full text-xs font-semibold text-white bg-audio-600 shadow-lg" aria-label="Expand filters">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 6l6 6-6 6"></path>
+                </svg>
+                Filters
+            </button>
 
             <!-- Main Content -->
             <main class="relative flex-1 overflow-y-auto">

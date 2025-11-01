@@ -212,7 +212,8 @@ class AudioDashboard {
         this.listViewBtnMobile = document.getElementById('listViewBtnMobile');
         this.gridViewBtnMobile = document.getElementById('gridViewBtnMobile');
         this.wallViewBtnMobile = document.getElementById('wallViewBtnMobile');
-        this.desktopSidebarToggle = document.getElementById('desktopSidebarToggle');
+        this.sidebarCollapseToggle = document.getElementById('sidebarCollapseToggle');
+        this.sidebarExpandToggle = document.getElementById('sidebarExpandToggle');
         this.sidebarElement = document.getElementById('sidebar');
         this.resultsHero = document.getElementById('resultsHero');
         
@@ -552,10 +553,17 @@ class AudioDashboard {
             if (!btn) return;
             btn.addEventListener('click', () => this.setViewMode(mode));
         });
-        if (this.desktopSidebarToggle) {
-            this.desktopSidebarToggle.addEventListener('click', () => {
-                this.sidebarCollapsed = !this.sidebarCollapsed;
-                localStorage.setItem('ytv2.sidebarCollapsed', this.sidebarCollapsed ? '1' : '0');
+        if (this.sidebarCollapseToggle) {
+            this.sidebarCollapseToggle.addEventListener('click', () => {
+                this.sidebarCollapsed = true;
+                localStorage.setItem('ytv2.sidebarCollapsed', '1');
+                this.applySidebarCollapsedState();
+            });
+        }
+        if (this.sidebarExpandToggle) {
+            this.sidebarExpandToggle.addEventListener('click', () => {
+                this.sidebarCollapsed = false;
+                localStorage.setItem('ytv2.sidebarCollapsed', '0');
                 this.applySidebarCollapsedState();
             });
         }
@@ -1974,13 +1982,17 @@ class AudioDashboard {
         // Render loading placeholders before fetching
         showSkeletons();
         
-        // Add pagination and sorting
-        params.append('page', this.currentPage.toString());
-        params.append('size', '12'); // Show 12 items per page
-        params.append('sort', this.currentSort);
+        const isWallMode = this.viewMode === 'wall';
+        const requestedPage = isWallMode ? 1 : this.currentPage;
+        const pageSize = isWallMode ? 500 : 12;
+
+        const requestParams = new URLSearchParams(params);
+        requestParams.append('page', requestedPage.toString());
+        requestParams.append('size', pageSize.toString());
+        requestParams.append('sort', this.currentSort);
 
         try {
-            const requestUrl = `/api/reports?${params}`;
+            const requestUrl = `/api/reports?${requestParams}`;
             console.log('[YTV2] Request URL:', requestUrl); // Debug logging per OpenAI
             const response = await fetch(requestUrl);
             const data = await response.json();
@@ -1994,6 +2006,32 @@ class AudioDashboard {
             
             let items = data.reports || data.data || [];
             console.log(`[YTV2] Items from server: ${items.length}`);
+
+            if (isWallMode) {
+                const totalPagesFromServer = data.pagination?.pages ?? data.pagination?.total_pages ?? 1;
+                if (totalPagesFromServer > 1 && items.length < (data.pagination?.total ?? data.pagination?.total_count ?? Infinity)) {
+                    console.log(`[YTV2] Wall mode: fetching additional ${totalPagesFromServer - 1} pages`);
+                    for (let page = 2; page <= totalPagesFromServer; page++) {
+                        try {
+                            const extraParams = new URLSearchParams(requestParams);
+                            extraParams.set('page', page.toString());
+                            const extraUrl = `/api/reports?${extraParams}`;
+                            const extraResponse = await fetch(extraUrl);
+                            const extraData = await extraResponse.json();
+                            if (!extraResponse.ok) {
+                                console.warn(`Wall mode extra page ${page} failed`, extraData);
+                                break;
+                            }
+                            const extraItems = extraData.reports || extraData.data || [];
+                            console.log(`[YTV2] Extra page ${page} returned ${extraItems.length} items`);
+                            items = items.concat(extraItems);
+                        } catch (extraErr) {
+                            console.warn(`Wall mode extra page ${page} fetch threw`, extraErr);
+                            break;
+                        }
+                    }
+                }
+            }
 
             // 🚫 Skip client-side narrowing if server already filtered by subcategory
             if (hasServerSubcatFilter) {
@@ -2036,9 +2074,34 @@ class AudioDashboard {
             this.currentItems = items;
             this.augmentSourceFiltersFromItems(items);
             this.updateLatestIndexFromItems(items);
+
+            const paginationMeta = data.pagination || {
+                page: requestedPage,
+                size: pageSize,
+                total_count: items.length,
+                total: items.length,
+                total_pages: 1,
+                pages: 1,
+                has_next: false,
+                has_prev: false
+            };
+            if (isWallMode) {
+                paginationMeta.page = 1;
+                paginationMeta.size = items.length;
+                paginationMeta.total_pages = 1;
+                paginationMeta.pages = 1;
+                paginationMeta.has_next = false;
+                paginationMeta.has_prev = false;
+                if (typeof paginationMeta.total_count === 'number') {
+                    paginationMeta.total = paginationMeta.total_count;
+                } else {
+                    paginationMeta.total = items.length;
+                }
+            }
+
             this.renderContent(this.currentItems);
-            this.renderPagination(data.pagination);
-            this.updateResultsInfo(data.pagination);
+            this.renderPagination(paginationMeta);
+            this.updateResultsInfo(paginationMeta);
             const playableItems = this.rebuildPlaylist(this.currentItems);
             if (playableItems.length > 0) {
                 this.currentTrackIndex = 0;
@@ -3774,13 +3837,18 @@ class AudioDashboard {
     }
 
     renderPagination(pagination) {
-        if (pagination.pages <= 1) {
+        if (this.viewMode === 'wall') {
+            this.pagination.innerHTML = '';
+            return;
+        }
+        const totalPages = pagination.pages ?? pagination.total_pages ?? 1;
+        const currentPage = pagination.page ?? 1;
+
+        if (totalPages <= 1) {
             this.pagination.innerHTML = '';
             return;
         }
 
-        const currentPage = pagination.page;
-        const totalPages = pagination.pages;
         const showPages = 5;
         
         let startPage = Math.max(1, currentPage - Math.floor(showPages / 2));
@@ -3847,9 +3915,14 @@ class AudioDashboard {
             if (this.resultsSubtitle) this.resultsSubtitle.textContent = 'Your daily audio briefing';
         }
 
+        const wallMode = this.viewMode === 'wall';
+        const currentPage = pagination.page ?? 1;
+        const totalPages = pagination.pages ?? pagination.total_pages ?? 1;
+        const totalCountForDisplay = pagination.total ?? pagination.total_count ?? this.currentItems.length;
+
         // Create navigation arrows with the pagination text
-        const canGoBack = pagination.page > 1;
-        const canGoForward = pagination.page < pagination.pages;
+        const canGoBack = !wallMode && currentPage > 1;
+        const canGoForward = !wallMode && currentPage < totalPages;
 
         const leftArrow = canGoBack
             ? `<button class="inline-flex items-center text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100 transition-colors mr-2" data-nav="prev" title="Previous page">
@@ -3867,24 +3940,28 @@ class AudioDashboard {
                </button>`
             : `<span class="inline-block w-4 ml-2"></span>`;
 
-        this.resultsCount.innerHTML =
-            `${leftArrow}${pagination.total} summaries found • Page ${pagination.page} of ${pagination.pages}${rightArrow}`;
+        if (wallMode) {
+            this.resultsCount.textContent = `${totalCountForDisplay} summaries available`;
+        } else {
+            this.resultsCount.innerHTML =
+                `${leftArrow}${totalCountForDisplay} summaries found • Page ${currentPage} of ${totalPages}${rightArrow}`;
+
+            // Add click handlers for navigation arrows
+            this.resultsCount.querySelectorAll('[data-nav]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const direction = e.currentTarget.dataset.nav;
+                    if (direction === 'prev' && currentPage > 1) {
+                        this.currentPage = currentPage - 1;
+                        this.loadContent();
+                    } else if (direction === 'next' && currentPage < totalPages) {
+                        this.currentPage = currentPage + 1;
+                        this.loadContent();
+                    }
+                });
+            });
+        }
 
         this.updateHeroBadges();
-
-        // Add click handlers for navigation arrows
-        this.resultsCount.querySelectorAll('[data-nav]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const direction = e.currentTarget.dataset.nav;
-                if (direction === 'prev' && pagination.page > 1) {
-                    this.currentPage = pagination.page - 1;
-                    this.loadContent();
-                } else if (direction === 'next' && pagination.page < pagination.pages) {
-                    this.currentPage = pagination.page + 1;
-                    this.loadContent();
-                }
-            });
-        });
     }
 
     async playAudio(reportId) {
@@ -4071,25 +4148,37 @@ class AudioDashboard {
     }
 
     setViewMode(mode) {
+        const previousMode = this.viewMode;
         this.viewMode = mode;
         localStorage.setItem('ytv2.viewMode', mode);
         if (mode === 'wall') {
             this._previousSidebarCollapsed = this.sidebarCollapsed;
+            this._previousPageBeforeWall = this.currentPage;
+            this.currentPage = 1;
             if (!this.sidebarCollapsed && this.desktopMediaQuery?.matches) {
                 this.sidebarCollapsed = true;
                 localStorage.setItem('ytv2.sidebarCollapsed', '1');
                 this.applySidebarCollapsedState();
             }
-        } else if (typeof this._previousSidebarCollapsed === 'boolean') {
-            const shouldRestore = this._previousSidebarCollapsed;
-            this._previousSidebarCollapsed = undefined;
-            this.sidebarCollapsed = shouldRestore;
-            localStorage.setItem('ytv2.sidebarCollapsed', shouldRestore ? '1' : '0');
-            this.applySidebarCollapsedState();
+        } else {
+            if (previousMode === 'wall' && typeof this._previousPageBeforeWall === 'number') {
+                this.currentPage = this._previousPageBeforeWall;
+                this._previousPageBeforeWall = undefined;
+            }
+            if (typeof this._previousSidebarCollapsed === 'boolean') {
+                const shouldRestore = this._previousSidebarCollapsed;
+                this._previousSidebarCollapsed = undefined;
+                this.sidebarCollapsed = shouldRestore;
+                localStorage.setItem('ytv2.sidebarCollapsed', shouldRestore ? '1' : '0');
+                this.applySidebarCollapsedState();
+            }
         }
         // Re-render current items
         this.updateViewToggle();
-        if (this.currentItems) this.renderContent(this.currentItems);
+        if (this.currentItems && this.currentItems.length) {
+            this.renderContent(this.currentItems);
+        }
+        this.loadContent();
     }
 
     updateViewToggle() {
@@ -4139,9 +4228,11 @@ class AudioDashboard {
         if (this.sidebarElement) {
             this.sidebarElement.setAttribute('aria-hidden', shouldCollapse ? 'true' : 'false');
         }
-        if (this.desktopSidebarToggle) {
-            this.desktopSidebarToggle.setAttribute('aria-pressed', shouldCollapse ? 'true' : 'false');
-            this.desktopSidebarToggle.setAttribute('aria-label', shouldCollapse ? 'Expand filters' : 'Collapse filters');
+        if (this.sidebarCollapseToggle) {
+            this.sidebarCollapseToggle.setAttribute('aria-pressed', shouldCollapse ? 'true' : 'false');
+        }
+        if (this.sidebarExpandToggle) {
+            this.sidebarExpandToggle.setAttribute('aria-hidden', shouldCollapse ? 'false' : 'true');
         }
     }
 
