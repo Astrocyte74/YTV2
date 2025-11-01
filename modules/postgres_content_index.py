@@ -342,6 +342,8 @@ class PostgreSQLContentIndex:
             'id': row.get('id') or row.get('video_id') or '',
             'title': row.get('title') or 'Untitled',
             'thumbnail_url': row.get('thumbnail_url') or '',
+            # New: secondary, model-generated illustration URL if present
+            'summary_image_url': row.get('summary_image_url') or None,
             'canonical_url': row.get('canonical_url') or '',
             'channel': row.get('channel_name') or '',
             'channel_name': row.get('channel_name') or '',
@@ -366,7 +368,9 @@ class PostgreSQLContentIndex:
                 'has_audio': bool(row.get('has_audio', False)),  # Explicit default to False
                 'audio_duration_seconds': analysis_json.get('audio_duration_seconds', 0),
                 'has_transcript': analysis_json.get('has_transcript', False),
-                'transcript_chars': analysis_json.get('transcript_chars', 0)
+                'transcript_chars': analysis_json.get('transcript_chars', 0),
+                # Mirror image URL inside media for convenience (optional consumer)
+                'summary_image_url': row.get('summary_image_url') or None
             },
             'media_metadata': {
                 'video_duration_seconds': row.get('duration_seconds') or 0,
