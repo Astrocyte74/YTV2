@@ -208,6 +208,7 @@ class AudioDashboard {
         this.pagination = document.getElementById('pagination');
         this.listViewBtn = document.getElementById('listViewBtn');
         this.gridViewBtn = document.getElementById('gridViewBtn');
+        this.wallViewBtn = document.getElementById('wallViewBtn');
         
         // Queue
         this.queueSidebar = document.getElementById('queueSidebar');
@@ -526,6 +527,7 @@ class AudioDashboard {
             });
         }
         if (this.gridViewBtn) this.gridViewBtn.addEventListener('click', () => this.setViewMode('grid'));
+        if (this.wallViewBtn) this.wallViewBtn.addEventListener('click', () => this.setViewMode('wall'));
         this.updateViewToggle();
         
         // Keyboard shortcuts
@@ -2051,9 +2053,14 @@ class AudioDashboard {
             return;
         }
         
-        const html = this.viewMode === 'grid'
-            ? `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(i => this.createGridCard(i)).join('')}</div>`
-            : items.map(i => this.createContentCard(i)).join('');
+        let html = '';
+        if (this.viewMode === 'grid') {
+            html = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(i => this.createGridCard(i)).join('')}</div>`;
+        } else if (this.viewMode === 'wall') {
+            html = `<div class="wall-grid">${items.map(i => this.createWallCard(i)).join('')}</div>`;
+        } else {
+            html = items.map(i => this.createContentCard(i)).join('');
+        }
         this.contentGrid.innerHTML = html;
         this.decorateCards(items);
 
@@ -3098,6 +3105,14 @@ class AudioDashboard {
         return this.renderSummaryCard(normalizedItem, { view: 'grid' });
     }
 
+    createWallCard(item) {
+        const normalizedItem = this.normalizeCardItem(item);
+        if (this.flags && this.flags.twRevamp) {
+            return this.renderWallCardTW(normalizedItem);
+        }
+        return this.renderGridCardTW(normalizedItem);
+    }
+
     // V4 List card: audio-first stream card (no autoplay)
     renderStreamCardV4(item) {
         const hasAudio = Boolean(item.media && item.media.has_audio);
@@ -3430,6 +3445,31 @@ class AudioDashboard {
                         <button type="button" class="mosaic-card__readmore text-[13px] font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
                     </div>
                     ${mediaActions ? `<div class="mosaic-card__actions">${mediaActions}</div>` : ''}
+                </div>
+            </article>`;
+    }
+
+    renderWallCardTW(item) {
+        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const rawSource = item.content_source || 'youtube';
+        const source = rawSource.toLowerCase();
+        const href = `/${item.file_stem}.json?v=2`;
+        const buttonDurations = this.getButtonDurations(item);
+        const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
+        const watchLinkAvailable = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
+        const mediaActions = this.renderMediaActionsV5(item, buttonDurations, hasAudio, watchLinkAvailable, source);
+        const chipRail = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 3);
+        const title = this.escapeHtml(item.title);
+        const thumb = item.thumbnail_url
+            ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="wall-card__thumb">`
+            : `<div class="wall-card__thumb wall-card__thumb--fallback"></div>`;
+        return `
+            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0" class="wall-card">
+                <div class="wall-card__media">${thumb}</div>
+                <div class="wall-card__overlay">
+                    <div class="wall-card__meta">${chipRail || ''}</div>
+                    <h3 class="wall-card__title">${title}</h3>
+                    <div class="wall-card__actions">${mediaActions || ''}</div>
                 </div>
             </article>`;
     }
@@ -4007,19 +4047,23 @@ class AudioDashboard {
     }
 
     updateViewToggle() {
-        if (!this.listViewBtn || !this.gridViewBtn) return;
+        const buttons = [this.listViewBtn, this.gridViewBtn, this.wallViewBtn].filter(Boolean);
+        if (!buttons.length) return;
 
         const activeClasses = ['bg-audio-600', 'text-white', 'shadow-lg'];
         const inactiveClasses = ['bg-white/80', 'dark:bg-slate-900/70', 'text-slate-600', 'dark:text-slate-200', 'border', 'border-white/60', 'dark:border-slate-700/70', 'shadow-sm'];
 
-        [this.listViewBtn, this.gridViewBtn].forEach(btn => {
+        buttons.forEach(btn => {
             btn.classList.remove(...activeClasses, ...inactiveClasses);
             btn.classList.add(...inactiveClasses);
         });
 
-        const activeBtn = this.viewMode === 'grid' ? this.gridViewBtn : this.listViewBtn;
-        activeBtn.classList.remove(...inactiveClasses);
-        activeBtn.classList.add(...activeClasses);
+        const map = { list: this.listViewBtn, grid: this.gridViewBtn, wall: this.wallViewBtn };
+        const activeBtn = map[this.viewMode] || this.listViewBtn || buttons[0];
+        if (activeBtn) {
+            activeBtn.classList.remove(...inactiveClasses);
+            activeBtn.classList.add(...activeClasses);
+        }
 
         this.updateHeroBadges();
     }
