@@ -2291,6 +2291,24 @@ class AudioDashboard {
             this.openSourceLink(source, videoId, canonicalUrl);
             this.sendTelemetry('cta_watch', { id, source, video_id: videoId || null });
         }
+        if (action === 'toggle-image') {
+            const media = card.querySelector('.summary-card__media');
+            if (!media) return;
+            const a = media.querySelector('[data-role="thumb-default"]');
+            const b = media.querySelector('[data-role="thumb-summary"]');
+            if (!a || !b) return;
+            const aHidden = a.classList.contains('hidden');
+            if (aHidden) {
+                a.classList.remove('hidden');
+                b.classList.add('hidden');
+                btn.setAttribute('aria-pressed', 'false');
+            } else {
+                a.classList.add('hidden');
+                b.classList.remove('hidden');
+                btn.setAttribute('aria-pressed', 'true');
+            }
+            this.sendTelemetry('cta_toggle_image', { id });
+        }
         if (action === 'delete') { this._lastDeleteTrigger = btn; this.toggleDeletePopover(card, true); }
         if (action === 'menu') { this.toggleKebabMenu(card, true, btn); }
         if (action === 'menu-close') { this.toggleKebabMenu(card, false); }
@@ -3600,8 +3618,17 @@ class AudioDashboard {
 
         const taxonomyMarkup = this.renderCategorySection(normalizedItem.file_stem, categories, subcatPairs);
         const consumptionMarkup = this.renderConsumptionSummary(buttonDurations, hasAudio, source, hasWatchLink);
-        const thumbnail = normalizedItem.thumbnail_url
-            ? `<img src="${normalizedItem.thumbnail_url}" alt="" loading="lazy">`
+        // Media: default thumbnail plus optional AI summary image
+        const summaryImageUrl = normalizedItem.summary_image_url ? this.normalizeAssetUrl(normalizedItem.summary_image_url) : '';
+        const hasSummaryArt = Boolean(summaryImageUrl);
+        const thumbnailEl = normalizedItem.thumbnail_url
+            ? `<img data-role="thumb-default" src="${normalizedItem.thumbnail_url}" alt="" loading="lazy">`
+            : '';
+        const summaryEl = hasSummaryArt
+            ? `<img data-role="thumb-summary" src="${summaryImageUrl}" alt="" loading="lazy" class="hidden">`
+            : '';
+        const toggleBtn = hasSummaryArt
+            ? `<button class="summary-card__toggle" data-action="toggle-image" title="Toggle image" aria-pressed="false" aria-label="Toggle image">🖼️</button>`
             : '';
 
         const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
@@ -3636,7 +3663,8 @@ class AudioDashboard {
                     ${outerMenuMarkup}
                     <div class="summary-card__media">
                         ${nowPlayingPill}
-                        ${thumbnail}
+                        ${toggleBtn}
+                        ${thumbnailEl}${summaryEl}
                         <div class="summary-card__eq ${isPlaying ? '' : 'hidden'}" data-card-eq>
                             <div class="summary-card__eq-bars">
                                 <span class="waveform-bar" style="--delay:0"></span>
@@ -4876,6 +4904,17 @@ class AudioDashboard {
         const canonicalUrl = item.canonical_url || item.url || '';
         const { slug: contentSource, label: sourceLabel } = this.inferSource({ ...item, canonical_url: canonicalUrl });
         return { ...item, title, channel, analysis, file_stem: fileStem, summary_type: summaryType, content_source: contentSource, source_label: sourceLabel, canonical_url: canonicalUrl };
+    }
+
+    // Normalize NAS-relative asset URLs (e.g., "exports/...") to absolute path "/exports/..."
+    normalizeAssetUrl(u) {
+        if (!u || typeof u !== 'string') return u;
+        const trimmed = u.trim();
+        if (!trimmed) return trimmed;
+        if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+        // Ensure leading slash for dashboard static serving
+        if (trimmed.startsWith('/')) return trimmed;
+        return `/${trimmed}`;
     }
 
     // Normalize categories & subcategories (prefer new subcategories_json structure)

@@ -25,6 +25,7 @@ from urllib.parse import urlparse, parse_qs, unquote, quote
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 import socket
+import mimetypes
 import requests
 from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
@@ -1917,7 +1918,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         return html_content
     
     def serve_audio_file(self):
-        """Serve audio files from /exports/ route - supports nested paths like /exports/audio/"""
+        """Serve files from /exports/ route (audio/images/etc.).
+
+        Backed by /app/data/exports. Supports nested paths like /exports/audio/ and
+        direct files under /exports/*. Sets Content-Type via mimetypes.
+        """
         try:
             from pathlib import Path
 
@@ -1938,7 +1943,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(403, "Forbidden")
                 return
 
-            # If the direct path is missing, try the persistent audio/ subdir
+            # If the direct path is missing, try the persistent audio/ subdir for legacy mp3 paths
             if not fs_path.is_file():
                 rel_norm = rel.replace("\\", "/").lstrip("/")
                 # Legacy flat path: /exports/<id>.mp3 → /app/data/exports/audio/<id>.mp3
@@ -1956,21 +1961,24 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         logger.info(f"🎧 Legacy yt: fallback found: {fs_path}")
 
             if fs_path.is_file():
-                logger.info(f"🎧 Serving export: {fs_path}")
+                # Guess Content-Type (default octet-stream)
+                ctype, _ = mimetypes.guess_type(str(fs_path))
+                ctype = ctype or 'application/octet-stream'
+                logger.info(f"📦 Serving export: {fs_path} ({ctype})")
                 self.send_response(200)
-                self.send_header('Content-type', 'audio/mpeg')
+                self.send_header('Content-type', ctype)
                 self.send_header('Content-Length', str(fs_path.stat().st_size))
                 self.send_header('Cache-Control', 'public, max-age=3600')  # Cache for 1 hour
                 self.end_headers()
                 with open(fs_path, 'rb') as f:
                     self.wfile.write(f.read())
             else:
-                logger.info(f"🎧 MISS export: {rel} (full path: {fs_path})")
-                self.send_error(404, f"Audio file not found: {rel}")
+                logger.info(f"📦 MISS export: {rel} (full path: {fs_path})")
+                self.send_error(404, f"Export not found: {rel}")
 
         except Exception as e:
-            logger.error(f"Error serving audio file {self.path}: {e}")
-            self.send_error(500, "Error serving audio file")
+            logger.error(f"Error serving export {self.path}: {e}")
+            self.send_error(500, "Error serving export")
 
     def serve_audio_by_video(self):
         """Resolve and stream the most recent audio file for a given video_id.
