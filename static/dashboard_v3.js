@@ -209,6 +209,10 @@ class AudioDashboard {
         this.listViewBtn = document.getElementById('listViewBtn');
         this.gridViewBtn = document.getElementById('gridViewBtn');
         this.wallViewBtn = document.getElementById('wallViewBtn');
+        this.listViewBtnMobile = document.getElementById('listViewBtnMobile');
+        this.gridViewBtnMobile = document.getElementById('gridViewBtnMobile');
+        this.wallViewBtnMobile = document.getElementById('wallViewBtnMobile');
+        this.resultsHero = document.getElementById('resultsHero');
         
         // Queue
         this.queueSidebar = document.getElementById('queueSidebar');
@@ -526,8 +530,18 @@ class AudioDashboard {
                 if (e.target === sidebar) this.closeMobileSidebar();
             });
         }
-        if (this.gridViewBtn) this.gridViewBtn.addEventListener('click', () => this.setViewMode('grid'));
-        if (this.wallViewBtn) this.wallViewBtn.addEventListener('click', () => this.setViewMode('wall'));
+        const viewBindings = [
+            { btn: this.listViewBtn, mode: 'list' },
+            { btn: this.gridViewBtn, mode: 'grid' },
+            { btn: this.wallViewBtn, mode: 'wall' },
+            { btn: this.listViewBtnMobile, mode: 'list' },
+            { btn: this.gridViewBtnMobile, mode: 'grid' },
+            { btn: this.wallViewBtnMobile, mode: 'wall' }
+        ];
+        viewBindings.forEach(({ btn, mode }) => {
+            if (!btn) return;
+            btn.addEventListener('click', () => this.setViewMode(mode));
+        });
         this.updateViewToggle();
         
         // Keyboard shortcuts
@@ -4047,7 +4061,14 @@ class AudioDashboard {
     }
 
     updateViewToggle() {
-        const buttons = [this.listViewBtn, this.gridViewBtn, this.wallViewBtn].filter(Boolean);
+        const buttons = [
+            this.listViewBtn,
+            this.gridViewBtn,
+            this.wallViewBtn,
+            this.listViewBtnMobile,
+            this.gridViewBtnMobile,
+            this.wallViewBtnMobile
+        ].filter(Boolean);
         if (!buttons.length) return;
 
         const activeClasses = ['bg-audio-600', 'text-white', 'shadow-lg'];
@@ -4058,11 +4079,21 @@ class AudioDashboard {
             btn.classList.add(...inactiveClasses);
         });
 
-        const map = { list: this.listViewBtn, grid: this.gridViewBtn, wall: this.wallViewBtn };
-        const activeBtn = map[this.viewMode] || this.listViewBtn || buttons[0];
-        if (activeBtn) {
-            activeBtn.classList.remove(...inactiveClasses);
-            activeBtn.classList.add(...activeClasses);
+        const map = {
+            list: [this.listViewBtn, this.listViewBtnMobile],
+            grid: [this.gridViewBtn, this.gridViewBtnMobile],
+            wall: [this.wallViewBtn, this.wallViewBtnMobile]
+        };
+        const desired = (map[this.viewMode] || []).filter(Boolean);
+        const fallback = (map.list || []).filter(Boolean);
+        const targets = desired.length ? desired : (fallback.length ? fallback : [buttons[0]]);
+        targets.forEach(btn => {
+            btn.classList.remove(...inactiveClasses);
+            btn.classList.add(...activeClasses);
+        });
+
+        if (this.resultsHero) {
+            this.resultsHero.classList.toggle('hidden', this.viewMode === 'wall');
         }
 
         this.updateHeroBadges();
