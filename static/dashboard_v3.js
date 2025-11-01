@@ -208,6 +208,14 @@ class AudioDashboard {
         this.pagination = document.getElementById('pagination');
         this.listViewBtn = document.getElementById('listViewBtn');
         this.gridViewBtn = document.getElementById('gridViewBtn');
+        this.wallViewBtn = document.getElementById('wallViewBtn');
+        this.listViewBtnMobile = document.getElementById('listViewBtnMobile');
+        this.gridViewBtnMobile = document.getElementById('gridViewBtnMobile');
+        this.wallViewBtnMobile = document.getElementById('wallViewBtnMobile');
+        this.sidebarCollapseToggle = document.getElementById('sidebarCollapseToggle');
+        this.sidebarExpandToggle = document.getElementById('sidebarExpandToggle');
+        this.sidebarElement = document.getElementById('sidebar');
+        this.resultsHero = document.getElementById('resultsHero');
         
         // Queue
         this.queueSidebar = document.getElementById('queueSidebar');
@@ -231,6 +239,8 @@ class AudioDashboard {
         this.settingsMenu = document.getElementById('settingsMenu');
         this.themeButtons = this.settingsMenu ? this.settingsMenu.querySelectorAll('[data-theme]') : [];
         this.themeMode = localStorage.getItem('ytv2.theme') || 'system';
+        this.sidebarCollapsed = localStorage.getItem('ytv2.sidebarCollapsed') === '1';
+        this._collapsedForMobile = null;
 
         // Realtime banner
         this.realtimeBanner = document.getElementById('realtimeBanner');
@@ -506,12 +516,11 @@ class AudioDashboard {
         this.queueToggle.addEventListener('click', () => this.toggleQueue());
         if (this.queueClearBtn) this.queueClearBtn.addEventListener('click', () => this.clearQueue());
         // Play All button removed - auto-playlist handles this
-        if (this.listViewBtn) this.listViewBtn.addEventListener('click', () => this.setViewMode('list'));
         
         // Mobile sidebar controls
         const mobileFiltersToggle = document.getElementById('mobileFiltersToggle');
         const closeSidebar = document.getElementById('closeSidebar');
-        const sidebar = document.getElementById('sidebar');
+        const sidebar = this.sidebarElement;
         
         if (mobileFiltersToggle) {
             mobileFiltersToggle.addEventListener('click', () => this.openMobileSidebar());
@@ -525,7 +534,40 @@ class AudioDashboard {
                 if (e.target === sidebar) this.closeMobileSidebar();
             });
         }
-        if (this.gridViewBtn) this.gridViewBtn.addEventListener('click', () => this.setViewMode('grid'));
+        this.desktopMediaQuery = window.matchMedia('(min-width: 1024px)');
+        if (this.desktopMediaQuery?.addEventListener) {
+            this.desktopMediaQuery.addEventListener('change', () => this.applySidebarCollapsedState());
+        } else if (this.desktopMediaQuery?.addListener) {
+            this.desktopMediaQuery.addListener(() => this.applySidebarCollapsedState());
+        }
+
+        const viewBindings = [
+            { btn: this.listViewBtn, mode: 'list' },
+            { btn: this.gridViewBtn, mode: 'grid' },
+            { btn: this.wallViewBtn, mode: 'wall' },
+            { btn: this.listViewBtnMobile, mode: 'list' },
+            { btn: this.gridViewBtnMobile, mode: 'grid' },
+            { btn: this.wallViewBtnMobile, mode: 'wall' }
+        ];
+        viewBindings.forEach(({ btn, mode }) => {
+            if (!btn) return;
+            btn.addEventListener('click', () => this.setViewMode(mode));
+        });
+        if (this.sidebarCollapseToggle) {
+            this.sidebarCollapseToggle.addEventListener('click', () => {
+                this.sidebarCollapsed = true;
+                localStorage.setItem('ytv2.sidebarCollapsed', '1');
+                this.applySidebarCollapsedState();
+            });
+        }
+        if (this.sidebarExpandToggle) {
+            this.sidebarExpandToggle.addEventListener('click', () => {
+                this.sidebarCollapsed = false;
+                localStorage.setItem('ytv2.sidebarCollapsed', '0');
+                this.applySidebarCollapsedState();
+            });
+        }
+        this.applySidebarCollapsedState();
         this.updateViewToggle();
         
         // Keyboard shortcuts
@@ -1940,13 +1982,17 @@ class AudioDashboard {
         // Render loading placeholders before fetching
         showSkeletons();
         
-        // Add pagination and sorting
-        params.append('page', this.currentPage.toString());
-        params.append('size', '12'); // Show 12 items per page
-        params.append('sort', this.currentSort);
+        const isWallMode = this.viewMode === 'wall';
+        const requestedPage = isWallMode ? 1 : this.currentPage;
+        const pageSize = isWallMode ? 500 : 12;
+
+        const requestParams = new URLSearchParams(params);
+        requestParams.append('page', requestedPage.toString());
+        requestParams.append('size', pageSize.toString());
+        requestParams.append('sort', this.currentSort);
 
         try {
-            const requestUrl = `/api/reports?${params}`;
+            const requestUrl = `/api/reports?${requestParams}`;
             console.log('[YTV2] Request URL:', requestUrl); // Debug logging per OpenAI
             const response = await fetch(requestUrl);
             const data = await response.json();
@@ -1960,6 +2006,32 @@ class AudioDashboard {
             
             let items = data.reports || data.data || [];
             console.log(`[YTV2] Items from server: ${items.length}`);
+
+            if (isWallMode) {
+                const totalPagesFromServer = data.pagination?.pages ?? data.pagination?.total_pages ?? 1;
+                if (totalPagesFromServer > 1 && items.length < (data.pagination?.total ?? data.pagination?.total_count ?? Infinity)) {
+                    console.log(`[YTV2] Wall mode: fetching additional ${totalPagesFromServer - 1} pages`);
+                    for (let page = 2; page <= totalPagesFromServer; page++) {
+                        try {
+                            const extraParams = new URLSearchParams(requestParams);
+                            extraParams.set('page', page.toString());
+                            const extraUrl = `/api/reports?${extraParams}`;
+                            const extraResponse = await fetch(extraUrl);
+                            const extraData = await extraResponse.json();
+                            if (!extraResponse.ok) {
+                                console.warn(`Wall mode extra page ${page} failed`, extraData);
+                                break;
+                            }
+                            const extraItems = extraData.reports || extraData.data || [];
+                            console.log(`[YTV2] Extra page ${page} returned ${extraItems.length} items`);
+                            items = items.concat(extraItems);
+                        } catch (extraErr) {
+                            console.warn(`Wall mode extra page ${page} fetch threw`, extraErr);
+                            break;
+                        }
+                    }
+                }
+            }
 
             // 🚫 Skip client-side narrowing if server already filtered by subcategory
             if (hasServerSubcatFilter) {
@@ -2002,9 +2074,34 @@ class AudioDashboard {
             this.currentItems = items;
             this.augmentSourceFiltersFromItems(items);
             this.updateLatestIndexFromItems(items);
+
+            const paginationMeta = data.pagination || {
+                page: requestedPage,
+                size: pageSize,
+                total_count: items.length,
+                total: items.length,
+                total_pages: 1,
+                pages: 1,
+                has_next: false,
+                has_prev: false
+            };
+            if (isWallMode) {
+                paginationMeta.page = 1;
+                paginationMeta.size = items.length;
+                paginationMeta.total_pages = 1;
+                paginationMeta.pages = 1;
+                paginationMeta.has_next = false;
+                paginationMeta.has_prev = false;
+                if (typeof paginationMeta.total_count === 'number') {
+                    paginationMeta.total = paginationMeta.total_count;
+                } else {
+                    paginationMeta.total = items.length;
+                }
+            }
+
             this.renderContent(this.currentItems);
-            this.renderPagination(data.pagination);
-            this.updateResultsInfo(data.pagination);
+            this.renderPagination(paginationMeta);
+            this.updateResultsInfo(paginationMeta);
             const playableItems = this.rebuildPlaylist(this.currentItems);
             if (playableItems.length > 0) {
                 this.currentTrackIndex = 0;
@@ -2051,9 +2148,14 @@ class AudioDashboard {
             return;
         }
         
-        const html = this.viewMode === 'grid'
-            ? `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(i => this.createGridCard(i)).join('')}</div>`
-            : items.map(i => this.createContentCard(i)).join('');
+        let html = '';
+        if (this.viewMode === 'grid') {
+            html = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(i => this.createGridCard(i)).join('')}</div>`;
+        } else if (this.viewMode === 'wall') {
+            html = `<div class="wall-grid">${items.map(i => this.createWallCard(i)).join('')}</div>`;
+        } else {
+            html = items.map(i => this.createContentCard(i)).join('');
+        }
         this.contentGrid.innerHTML = html;
         this.decorateCards(items);
 
@@ -3098,6 +3200,14 @@ class AudioDashboard {
         return this.renderSummaryCard(normalizedItem, { view: 'grid' });
     }
 
+    createWallCard(item) {
+        const normalizedItem = this.normalizeCardItem(item);
+        if (this.flags && this.flags.twRevamp) {
+            return this.renderWallCardTW(normalizedItem);
+        }
+        return this.renderGridCardTW(normalizedItem);
+    }
+
     // V4 List card: audio-first stream card (no autoplay)
     renderStreamCardV4(item) {
         const hasAudio = Boolean(item.media && item.media.has_audio);
@@ -3434,6 +3544,31 @@ class AudioDashboard {
             </article>`;
     }
 
+    renderWallCardTW(item) {
+        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const rawSource = item.content_source || 'youtube';
+        const source = rawSource.toLowerCase();
+        const href = `/${item.file_stem}.json?v=2`;
+        const buttonDurations = this.getButtonDurations(item);
+        const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
+        const watchLinkAvailable = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
+        const mediaActions = this.renderMediaActionsV5(item, buttonDurations, hasAudio, watchLinkAvailable, source);
+        const chipRail = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 3);
+        const title = this.escapeHtml(item.title);
+        const thumb = item.thumbnail_url
+            ? `<img src="${item.thumbnail_url}" alt="" loading="lazy" class="wall-card__thumb">`
+            : `<div class="wall-card__thumb wall-card__thumb--fallback"></div>`;
+        return `
+            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0" class="wall-card">
+                <div class="wall-card__media">${thumb}</div>
+                <div class="wall-card__overlay">
+                    <div class="wall-card__meta">${chipRail || ''}</div>
+                    <h3 class="wall-card__title">${title}</h3>
+                    <div class="wall-card__actions">${mediaActions || ''}</div>
+                </div>
+            </article>`;
+    }
+
     renderSummaryCard(normalizedItem, { view = 'list' } = {}) {
         const hasAudio = Boolean(normalizedItem.media && normalizedItem.media.has_audio);
         const rawSource = normalizedItem.content_source || 'youtube';
@@ -3702,13 +3837,18 @@ class AudioDashboard {
     }
 
     renderPagination(pagination) {
-        if (pagination.pages <= 1) {
+        if (this.viewMode === 'wall') {
+            this.pagination.innerHTML = '';
+            return;
+        }
+        const totalPages = pagination.pages ?? pagination.total_pages ?? 1;
+        const currentPage = pagination.page ?? 1;
+
+        if (totalPages <= 1) {
             this.pagination.innerHTML = '';
             return;
         }
 
-        const currentPage = pagination.page;
-        const totalPages = pagination.pages;
         const showPages = 5;
         
         let startPage = Math.max(1, currentPage - Math.floor(showPages / 2));
@@ -3775,9 +3915,14 @@ class AudioDashboard {
             if (this.resultsSubtitle) this.resultsSubtitle.textContent = 'Your daily audio briefing';
         }
 
+        const wallMode = this.viewMode === 'wall';
+        const currentPage = pagination.page ?? 1;
+        const totalPages = pagination.pages ?? pagination.total_pages ?? 1;
+        const totalCountForDisplay = pagination.total ?? pagination.total_count ?? this.currentItems.length;
+
         // Create navigation arrows with the pagination text
-        const canGoBack = pagination.page > 1;
-        const canGoForward = pagination.page < pagination.pages;
+        const canGoBack = !wallMode && currentPage > 1;
+        const canGoForward = !wallMode && currentPage < totalPages;
 
         const leftArrow = canGoBack
             ? `<button class="inline-flex items-center text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100 transition-colors mr-2" data-nav="prev" title="Previous page">
@@ -3795,24 +3940,28 @@ class AudioDashboard {
                </button>`
             : `<span class="inline-block w-4 ml-2"></span>`;
 
-        this.resultsCount.innerHTML =
-            `${leftArrow}${pagination.total} summaries found • Page ${pagination.page} of ${pagination.pages}${rightArrow}`;
+        if (wallMode) {
+            this.resultsCount.textContent = `${totalCountForDisplay} summaries available`;
+        } else {
+            this.resultsCount.innerHTML =
+                `${leftArrow}${totalCountForDisplay} summaries found • Page ${currentPage} of ${totalPages}${rightArrow}`;
+
+            // Add click handlers for navigation arrows
+            this.resultsCount.querySelectorAll('[data-nav]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const direction = e.currentTarget.dataset.nav;
+                    if (direction === 'prev' && currentPage > 1) {
+                        this.currentPage = currentPage - 1;
+                        this.loadContent();
+                    } else if (direction === 'next' && currentPage < totalPages) {
+                        this.currentPage = currentPage + 1;
+                        this.loadContent();
+                    }
+                });
+            });
+        }
 
         this.updateHeroBadges();
-
-        // Add click handlers for navigation arrows
-        this.resultsCount.querySelectorAll('[data-nav]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const direction = e.currentTarget.dataset.nav;
-                if (direction === 'prev' && pagination.page > 1) {
-                    this.currentPage = pagination.page - 1;
-                    this.loadContent();
-                } else if (direction === 'next' && pagination.page < pagination.pages) {
-                    this.currentPage = pagination.page + 1;
-                    this.loadContent();
-                }
-            });
-        });
     }
 
     async playAudio(reportId) {
@@ -3999,29 +4148,92 @@ class AudioDashboard {
     }
 
     setViewMode(mode) {
+        const previousMode = this.viewMode;
         this.viewMode = mode;
         localStorage.setItem('ytv2.viewMode', mode);
+        if (mode === 'wall') {
+            this._previousSidebarCollapsed = this.sidebarCollapsed;
+            this._previousPageBeforeWall = this.currentPage;
+            this.currentPage = 1;
+            if (!this.sidebarCollapsed && this.desktopMediaQuery?.matches) {
+                this.sidebarCollapsed = true;
+                localStorage.setItem('ytv2.sidebarCollapsed', '1');
+                this.applySidebarCollapsedState();
+            }
+        } else {
+            if (previousMode === 'wall' && typeof this._previousPageBeforeWall === 'number') {
+                this.currentPage = this._previousPageBeforeWall;
+                this._previousPageBeforeWall = undefined;
+            }
+            if (typeof this._previousSidebarCollapsed === 'boolean') {
+                const shouldRestore = this._previousSidebarCollapsed;
+                this._previousSidebarCollapsed = undefined;
+                this.sidebarCollapsed = shouldRestore;
+                localStorage.setItem('ytv2.sidebarCollapsed', shouldRestore ? '1' : '0');
+                this.applySidebarCollapsedState();
+            }
+        }
         // Re-render current items
         this.updateViewToggle();
-        if (this.currentItems) this.renderContent(this.currentItems);
+        if (this.currentItems && this.currentItems.length) {
+            this.renderContent(this.currentItems);
+        }
+        this.loadContent();
     }
 
     updateViewToggle() {
-        if (!this.listViewBtn || !this.gridViewBtn) return;
+        const buttons = [
+            this.listViewBtn,
+            this.gridViewBtn,
+            this.wallViewBtn,
+            this.listViewBtnMobile,
+            this.gridViewBtnMobile,
+            this.wallViewBtnMobile
+        ].filter(Boolean);
+        if (!buttons.length) return;
 
         const activeClasses = ['bg-audio-600', 'text-white', 'shadow-lg'];
         const inactiveClasses = ['bg-white/80', 'dark:bg-slate-900/70', 'text-slate-600', 'dark:text-slate-200', 'border', 'border-white/60', 'dark:border-slate-700/70', 'shadow-sm'];
 
-        [this.listViewBtn, this.gridViewBtn].forEach(btn => {
+        buttons.forEach(btn => {
             btn.classList.remove(...activeClasses, ...inactiveClasses);
             btn.classList.add(...inactiveClasses);
         });
 
-        const activeBtn = this.viewMode === 'grid' ? this.gridViewBtn : this.listViewBtn;
-        activeBtn.classList.remove(...inactiveClasses);
-        activeBtn.classList.add(...activeClasses);
+        const map = {
+            list: [this.listViewBtn, this.listViewBtnMobile],
+            grid: [this.gridViewBtn, this.gridViewBtnMobile],
+            wall: [this.wallViewBtn, this.wallViewBtnMobile]
+        };
+        const desired = (map[this.viewMode] || []).filter(Boolean);
+        const fallback = (map.list || []).filter(Boolean);
+        const targets = desired.length ? desired : (fallback.length ? fallback : [buttons[0]]);
+        targets.forEach(btn => {
+            btn.classList.remove(...inactiveClasses);
+            btn.classList.add(...activeClasses);
+        });
+
+        document.body.classList.toggle('wall-mode', this.viewMode === 'wall');
+        if (this.resultsHero) {
+            this.resultsHero.classList.toggle('hidden', this.viewMode === 'wall');
+        }
 
         this.updateHeroBadges();
+    }
+
+    applySidebarCollapsedState() {
+        const isDesktop = this.desktopMediaQuery ? this.desktopMediaQuery.matches : window.innerWidth >= 1024;
+        const shouldCollapse = Boolean(this.sidebarCollapsed && isDesktop);
+        document.body.classList.toggle('sidebar-collapsed', shouldCollapse);
+        if (this.sidebarElement) {
+            this.sidebarElement.setAttribute('aria-hidden', shouldCollapse ? 'true' : 'false');
+        }
+        if (this.sidebarCollapseToggle) {
+            this.sidebarCollapseToggle.setAttribute('aria-pressed', shouldCollapse ? 'true' : 'false');
+        }
+        if (this.sidebarExpandToggle) {
+            this.sidebarExpandToggle.setAttribute('aria-hidden', shouldCollapse ? 'false' : 'true');
+        }
     }
 
     setCurrentFromItem(item) {
@@ -5733,8 +5945,13 @@ class AudioDashboard {
 
     // Mobile sidebar methods
     openMobileSidebar() {
-        const sidebar = document.getElementById('sidebar');
+        const sidebar = this.sidebarElement || document.getElementById('sidebar');
         if (sidebar) {
+            this._collapsedForMobile = this.sidebarCollapsed;
+            if (this.sidebarCollapsed) {
+                this.sidebarCollapsed = false;
+                this.applySidebarCollapsedState();
+            }
             // Force display the sidebar on mobile by overriding responsive classes
             sidebar.classList.remove('hidden');
             sidebar.classList.add('flex');
@@ -5746,7 +5963,7 @@ class AudioDashboard {
     }
 
     closeMobileSidebar() {
-        const sidebar = document.getElementById('sidebar');
+        const sidebar = this.sidebarElement || document.getElementById('sidebar');
         if (sidebar) {
             // Hide the sidebar properly
             sidebar.classList.remove('flex');
@@ -5754,6 +5971,11 @@ class AudioDashboard {
             sidebar.style.display = '';
             // Restore body scroll
             document.body.style.overflow = '';
+            if (typeof this._collapsedForMobile === 'boolean') {
+                this.sidebarCollapsed = this._collapsedForMobile;
+                this._collapsedForMobile = null;
+                this.applySidebarCollapsedState();
+            }
         }
     }
 
