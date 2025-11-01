@@ -2211,6 +2211,12 @@ class AudioDashboard {
         // Highlight currently playing
         this.updatePlayingCard();
 
+        // Ensure global image mode is applied to all cards and error fallbacks are wired
+        try {
+            this.applyImageModeToAllCards();
+            this.contentGrid.querySelectorAll('[data-card]').forEach(card => this.wireImageErrorHandlers(card));
+        } catch (_) { /* no-op */ }
+
         // Apply deep-link expansion if present
         this.applyHashDeepLink();
 
