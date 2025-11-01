@@ -436,6 +436,48 @@ body {
     transform: scale(1.015);
 }
 
+/* Media hover highlight (applies to all TW card types) */
+[data-card] .summary-card__media,
+[data-card] .stream-card__media,
+[data-card] .wall-card__media,
+[data-card] .mosaic-card .relative.w-full.h-40 {
+    position: relative;
+}
+
+[data-card] .summary-card__media::after,
+[data-card] .stream-card__media::after,
+[data-card] .wall-card__media::after,
+[data-card] .mosaic-card .relative.w-full.h-40::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 180ms ease;
+    /* Soft inner ring + outer glow */
+    box-shadow:
+      inset 0 0 0 2px rgba(14, 165, 233, 0.25),
+      0 18px 40px -24px rgba(14, 165, 233, 0.45);
+    z-index: 2;
+}
+
+[data-card]:hover .summary-card__media::after,
+[data-card]:hover .stream-card__media::after,
+[data-card]:hover .wall-card__media::after,
+[data-card]:hover .mosaic-card .relative.w-full.h-40::after {
+    opacity: 1;
+}
+
+/* Subtle media lift on hover */
+[data-card]:hover .summary-card__media img,
+[data-card]:hover .stream-card__media img,
+[data-card]:hover .wall-card__media img,
+[data-card]:hover .mosaic-card .relative.w-full.h-40 img {
+    filter: brightness(1.04) saturate(1.02);
+    transition: filter 180ms ease;
+}
+
 .summary-card__menu-btn {
     position: absolute;
     top: 0.75rem;
