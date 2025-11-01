@@ -455,10 +455,12 @@ body {
     pointer-events: none;
     opacity: 0;
     transition: opacity 180ms ease;
-    /* Soft inner ring + outer glow */
+    /* Brighter inner ring + stronger outer glow */
     box-shadow:
-      inset 0 0 0 2px rgba(14, 165, 233, 0.25),
-      0 18px 40px -24px rgba(14, 165, 233, 0.45);
+      inset 0 0 0 3px rgba(14, 165, 233, 0.50),
+      0 14px 44px -10px rgba(14, 165, 233, 0.70),
+      0 0 0 3px rgba(14, 165, 233, 0.25);
+    background: radial-gradient(120% 120% at 50% 30%, rgba(14,165,233,0.14), rgba(14,165,233,0.06) 45%, transparent 70%);
     z-index: 2;
 }
 
@@ -474,8 +476,9 @@ body {
 [data-card]:hover .stream-card__media img,
 [data-card]:hover .wall-card__media img,
 [data-card]:hover .mosaic-card .relative.w-full.h-40 img {
-    filter: brightness(1.04) saturate(1.02);
-    transition: filter 180ms ease;
+    filter: brightness(1.06) saturate(1.05);
+    transform: scale(1.03);
+    transition: filter 180ms ease, transform 180ms ease;
 }
 
 .summary-card__menu-btn {
