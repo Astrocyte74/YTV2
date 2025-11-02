@@ -1088,12 +1088,11 @@ body {
 .wall-card--selected {
     transform: translateY(-6px) scale(1.05);
     z-index: 10;
-    /* Match reader glow */
+    /* Match reader glow but avoid a hard ring */
     box-shadow:
       0 34px 80px -24px rgba(14,165,233,0.55),
-      0 0 0 2px rgba(14,165,233,0.35),
       var(--card-shadow-strong);
-    border: 1px solid rgba(14,165,233,0.35);
+    border: none;
 }
 /* Selected indicator bar (subtle accent strip at top of selected card) */
 .wall-card--selected .wall-card__overlay::before {
