@@ -268,6 +268,10 @@ class AudioDashboard {
         this.imgModeThumbBtn = document.getElementById('imgModeThumbBtn');
         this.imgModeAiBtn = document.getElementById('imgModeAiBtn');
         this.imgModeRotateBtn = document.getElementById('imgModeRotateBtn');
+        // Mobile image mode controls
+        this.imgModeThumbBtnMobile = document.getElementById('imgModeThumbBtnMobile');
+        this.imgModeAiBtnMobile = document.getElementById('imgModeAiBtnMobile');
+        this.imgModeRotateBtnMobile = document.getElementById('imgModeRotateBtnMobile');
 
         // Image mode and hover-switch state
         this.imageMode = localStorage.getItem('ytv2.imageMode') || 'thumbnail';
@@ -324,6 +328,10 @@ class AudioDashboard {
         if (this.imgModeThumbBtn) this.imgModeThumbBtn.addEventListener('click', () => setMode('thumbnail'));
         if (this.imgModeAiBtn) this.imgModeAiBtn.addEventListener('click', () => setMode('ai'));
         if (this.imgModeRotateBtn) this.imgModeRotateBtn.addEventListener('click', () => setMode('rotate'));
+        // Mobile bindings
+        if (this.imgModeThumbBtnMobile) this.imgModeThumbBtnMobile.addEventListener('click', () => setMode('thumbnail'));
+        if (this.imgModeAiBtnMobile) this.imgModeAiBtnMobile.addEventListener('click', () => setMode('ai'));
+        if (this.imgModeRotateBtnMobile) this.imgModeRotateBtnMobile.addEventListener('click', () => setMode('rotate'));
         this.updateImageModeUI();
         
         // Search and filters
@@ -5005,14 +5013,24 @@ class AudioDashboard {
 
     // --- Global image mode controls ---
     updateImageModeUI() {
-        const map = {
-            'thumbnail': this.imgModeThumbBtn,
-            'ai': this.imgModeAiBtn,
-            'rotate': this.imgModeRotateBtn
-        };
-        Object.values(map).forEach(btn => { if (btn) btn.classList.remove('bg-slate-200', 'dark:bg-slate-700'); });
-        const active = map[this.imageMode] || null;
-        if (active) active.classList.add('bg-slate-200', 'dark:bg-slate-700');
+        const sets = [
+            {
+                thumb: this.imgModeThumbBtn,
+                ai: this.imgModeAiBtn,
+                rotate: this.imgModeRotateBtn
+            },
+            {
+                thumb: this.imgModeThumbBtnMobile,
+                ai: this.imgModeAiBtnMobile,
+                rotate: this.imgModeRotateBtnMobile
+            }
+        ];
+        sets.forEach(s => {
+            if (!s) return;
+            [s.thumb, s.ai, s.rotate].forEach(btn => { if (btn) btn.classList.remove('bg-slate-200', 'dark:bg-slate-700'); });
+            const active = this.imageMode === 'thumbnail' ? s.thumb : this.imageMode === 'ai' ? s.ai : s.rotate;
+            if (active) active.classList.add('bg-slate-200', 'dark:bg-slate-700');
+        });
     }
 
     applyImageModeToAllCards() {
