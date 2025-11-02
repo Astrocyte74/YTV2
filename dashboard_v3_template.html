@@ -12,7 +12,7 @@
     <!-- Shared styles across dashboard and report pages -->
     <link rel="stylesheet" href="/static/shared.css">
     <!-- Dashboard specific styles -->
-    <link rel="stylesheet" href="dashboard.css?v=20251101a">
+    <link rel="stylesheet" href="dashboard.css?v=20251101c">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -302,7 +302,19 @@
                                 <span class="ml-auto text-xs text-slate-400" id="themeCheck-dark"></span>
                             </button>
                             <div class="mt-2 border-t border-slate-200 dark:border-slate-700"></div>
+                            <div class="px-3 py-2 text-xs uppercase tracking-wide text-slate-400">View</div>
+                            <div class="flex items-center gap-2 px-3 py-2">
+                                <button id="viewListSettingBtn" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">List</button>
+                                <button id="viewGridSettingBtn" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">Grid</button>
+                                <button id="viewWallSettingBtn" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">Wall</button>
+                            </div>
+                            <div class="mt-2 border-t border-slate-200 dark:border-slate-700"></div>
                             <div class="px-3 py-2 text-xs uppercase tracking-wide text-slate-400">Images</div>
+                            <div class="flex items-center gap-2 px-3 py-2">
+                                <button id="imgModeThumbSettingBtn" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">Thumbnail</button>
+                                <button id="imgModeAiSettingBtn" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">AI</button>
+                                <button id="imgModeRotateSettingBtn" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">Rotate</button>
+                            </div>
                             <label class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-700 dark:text-slate-200">
                                 <input id="hoverSwitchToggle" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-audio-600 focus:ring-audio-500" disabled>
                                 <span>Hover switches image (coming soon)</span>
@@ -653,6 +665,13 @@
                                     <button id="gridViewBtnMobile" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">Grid</button>
                                     <button id="wallViewBtnMobile" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">Wall</button>
                                 </div>
+                                <!-- Mobile image mode segmented control -->
+                                <div class="inline-flex items-center gap-1 p-1 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/85 dark:bg-slate-950/60 backdrop-blur shadow-inner lg:hidden">
+                                    <span class="px-2 text-xs text-slate-500 dark:text-slate-300 select-none">Image</span>
+                                    <button id="imgModeThumbBtnMobile" class="px-3 py-1.5 rounded-full text-sm font-medium transition-all">Thumbnail</button>
+                                    <button id="imgModeAiBtnMobile" class="px-3 py-1.5 rounded-full text-sm font-medium transition-all">AI</button>
+                                    <button id="imgModeRotateBtnMobile" class="px-3 py-1.5 rounded-full text-sm font-medium transition-all">Rotate</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -777,7 +796,7 @@
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
     <script src="ui_flags.js?v=5"></script>
-    <script src="dashboard_v3.js?v=pg11"></script>
+    <script src="dashboard_v3.js?v=pg14"></script>
 
 </body>
 </html>

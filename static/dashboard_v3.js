@@ -268,6 +268,17 @@ class AudioDashboard {
         this.imgModeThumbBtn = document.getElementById('imgModeThumbBtn');
         this.imgModeAiBtn = document.getElementById('imgModeAiBtn');
         this.imgModeRotateBtn = document.getElementById('imgModeRotateBtn');
+        // Mobile image mode controls
+        this.imgModeThumbBtnMobile = document.getElementById('imgModeThumbBtnMobile');
+        this.imgModeAiBtnMobile = document.getElementById('imgModeAiBtnMobile');
+        this.imgModeRotateBtnMobile = document.getElementById('imgModeRotateBtnMobile');
+        // Settings menu controls
+        this.viewListSettingBtn = document.getElementById('viewListSettingBtn');
+        this.viewGridSettingBtn = document.getElementById('viewGridSettingBtn');
+        this.viewWallSettingBtn = document.getElementById('viewWallSettingBtn');
+        this.imgModeThumbSettingBtn = document.getElementById('imgModeThumbSettingBtn');
+        this.imgModeAiSettingBtn = document.getElementById('imgModeAiSettingBtn');
+        this.imgModeRotateSettingBtn = document.getElementById('imgModeRotateSettingBtn');
 
         // Image mode and hover-switch state
         this.imageMode = localStorage.getItem('ytv2.imageMode') || 'thumbnail';
@@ -315,15 +326,20 @@ class AudioDashboard {
         if (this.confirmDeleteBtn) this.confirmDeleteBtn.addEventListener('click', () => this.confirmDelete());
 
         // Image mode controls
-        const setMode = (mode) => {
-            this.imageMode = mode;
-            localStorage.setItem('ytv2.imageMode', mode);
-            this.updateImageModeUI();
-            this.applyImageModeToAllCards();
-        };
-        if (this.imgModeThumbBtn) this.imgModeThumbBtn.addEventListener('click', () => setMode('thumbnail'));
-        if (this.imgModeAiBtn) this.imgModeAiBtn.addEventListener('click', () => setMode('ai'));
-        if (this.imgModeRotateBtn) this.imgModeRotateBtn.addEventListener('click', () => setMode('rotate'));
+        if (this.imgModeThumbBtn) this.imgModeThumbBtn.addEventListener('click', () => this.setImageMode('thumbnail'));
+        if (this.imgModeAiBtn) this.imgModeAiBtn.addEventListener('click', () => this.setImageMode('ai'));
+        if (this.imgModeRotateBtn) this.imgModeRotateBtn.addEventListener('click', () => this.setImageMode('rotate'));
+        // Mobile bindings
+        if (this.imgModeThumbBtnMobile) this.imgModeThumbBtnMobile.addEventListener('click', () => this.setImageMode('thumbnail'));
+        if (this.imgModeAiBtnMobile) this.imgModeAiBtnMobile.addEventListener('click', () => this.setImageMode('ai'));
+        if (this.imgModeRotateBtnMobile) this.imgModeRotateBtnMobile.addEventListener('click', () => this.setImageMode('rotate'));
+        // Settings menu bindings (view + images)
+        if (this.viewListSettingBtn) this.viewListSettingBtn.addEventListener('click', () => this.setViewMode('list'));
+        if (this.viewGridSettingBtn) this.viewGridSettingBtn.addEventListener('click', () => this.setViewMode('grid'));
+        if (this.viewWallSettingBtn) this.viewWallSettingBtn.addEventListener('click', () => this.setViewMode('wall'));
+        if (this.imgModeThumbSettingBtn) this.imgModeThumbSettingBtn.addEventListener('click', () => this.setImageMode('thumbnail'));
+        if (this.imgModeAiSettingBtn) this.imgModeAiSettingBtn.addEventListener('click', () => this.setImageMode('ai'));
+        if (this.imgModeRotateSettingBtn) this.imgModeRotateSettingBtn.addEventListener('click', () => this.setImageMode('rotate'));
         this.updateImageModeUI();
         
         // Search and filters
@@ -3644,6 +3660,19 @@ class AudioDashboard {
         const watchLinkAvailable = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
         const mediaActions = this.renderMediaActionsV5(item, buttonDurations, hasAudio, watchLinkAvailable, source);
         const chipRail = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 3);
+        const menuMarkup = `
+            <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <circle cx="5" cy="12" r="1.5"></circle>
+                    <circle cx="12" cy="12" r="1.5"></circle>
+                    <circle cx="19" cy="12" r="1.5"></circle>
+                </svg>
+            </button>
+            <div class="summary-card__menu hidden" data-kebab-menu role="menu">
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
+            </div>`;
         const title = this.escapeHtml(item.title);
         const hasThumb = Boolean(item.thumbnail_url);
         const summaryImageUrl = item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
@@ -3664,6 +3693,7 @@ class AudioDashboard {
         }
         return `
             <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0" class="wall-card">
+                ${menuMarkup}
                 <div class="wall-card__media">${toggleBtn}${mediaImgs}</div>
                 <div class="wall-card__overlay">
                     <div class="wall-card__meta">${chipRail || ''}</div>
@@ -5005,14 +5035,36 @@ class AudioDashboard {
 
     // --- Global image mode controls ---
     updateImageModeUI() {
-        const map = {
-            'thumbnail': this.imgModeThumbBtn,
-            'ai': this.imgModeAiBtn,
-            'rotate': this.imgModeRotateBtn
-        };
-        Object.values(map).forEach(btn => { if (btn) btn.classList.remove('bg-slate-200', 'dark:bg-slate-700'); });
-        const active = map[this.imageMode] || null;
-        if (active) active.classList.add('bg-slate-200', 'dark:bg-slate-700');
+        const sets = [
+            {
+                thumb: this.imgModeThumbBtn,
+                ai: this.imgModeAiBtn,
+                rotate: this.imgModeRotateBtn
+            },
+            {
+                thumb: this.imgModeThumbBtnMobile,
+                ai: this.imgModeAiBtnMobile,
+                rotate: this.imgModeRotateBtnMobile
+            },
+            {
+                thumb: this.imgModeThumbSettingBtn,
+                ai: this.imgModeAiSettingBtn,
+                rotate: this.imgModeRotateSettingBtn
+            }
+        ];
+        sets.forEach(s => {
+            if (!s) return;
+            [s.thumb, s.ai, s.rotate].forEach(btn => { if (btn) btn.classList.remove('bg-slate-200', 'dark:bg-slate-700'); });
+            const active = this.imageMode === 'thumbnail' ? s.thumb : this.imageMode === 'ai' ? s.ai : s.rotate;
+            if (active) active.classList.add('bg-slate-200', 'dark:bg-slate-700');
+        });
+    }
+
+    setImageMode(mode) {
+        this.imageMode = mode;
+        localStorage.setItem('ytv2.imageMode', mode);
+        this.updateImageModeUI();
+        this.applyImageModeToAllCards();
     }
 
     applyImageModeToAllCards() {
