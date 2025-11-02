@@ -756,6 +756,19 @@
           </div>
         </div>
 
+        <!-- Wall Reader Modal (mobile) -->
+        <div id="wallReaderModal" class="lg:hidden fixed inset-0 bg-black/40 backdrop-blur-sm hidden items-center justify-end z-50">
+          <div class="w-full max-h-[85vh] bg-white dark:bg-slate-900 rounded-t-2xl shadow-2xl p-5 overflow-y-auto">
+            <div class="flex items-center justify-between mb-3">
+              <h3 id="wallReaderTitle" class="text-base font-semibold text-slate-800 dark:text-slate-100">Summary</h3>
+              <button id="wallReaderClose" class="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700" aria-label="Close">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div id="wallReaderBody" class="prose prose-sm dark:prose-invert max-w-none"></div>
+          </div>
+        </div>
+
         <!-- Mobile Mini Player (bottom sticky) -->
         <div id="mobileMiniPlayer" class="lg:hidden fixed bottom-0 left-0 right-0 bg-gradient-to-r from-audio-500 to-audio-600 text-white p-4 shadow-xl z-40 transform translate-y-full transition-transform hidden border-t border-white/20">
             <div class="flex items-center gap-4">
@@ -796,7 +809,7 @@
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
     <script src="ui_flags.js?v=5"></script>
-    <script src="dashboard_v3.js?v=pg14"></script>
+    <script src="dashboard_v3.js?v=pg15"></script>
 
 </body>
 </html>

@@ -998,6 +998,36 @@ body {
     width: 100%;
     padding-bottom: 2rem;
 }
+.wall-expander {
+    grid-column: 1 / -1;
+    margin-top: 0.35rem;
+    margin-bottom: 0.5rem;
+    border-radius: 0.75rem;
+    background: rgba(255,255,255,0.88);
+    color: #0f172a;
+    border: 1px solid rgba(226,232,240,0.8);
+    box-shadow: var(--card-shadow-strong);
+    padding: 1rem 1rem;
+}
+.dark .wall-expander {
+    background: rgba(2,6,23,0.85);
+    color: #e2e8f0;
+    border-color: rgba(30,41,59,0.8);
+}
+.wall-expander__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+.wall-expander__title { font-size: 1rem; font-weight: 600; margin: 0; }
+.wall-expander__close {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 2rem; height: 2rem; border-radius: 0.5rem;
+    background: rgba(148,163,184,0.15);
+}
+.wall-expander__close:hover { background: rgba(148,163,184,0.25); }
 .wall-card {
     position: relative;
     aspect-ratio: 2 / 3;
