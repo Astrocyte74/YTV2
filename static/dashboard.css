@@ -1157,6 +1157,16 @@ body {
     display: inline-flex;
     gap: 0.4rem;
 }
+
+/* Ensure selected card glow wins over later hover rules */
+.wall-reader-open .wall-card.wall-card--selected {
+    box-shadow:
+      0 34px 80px -24px rgba(14,165,233,0.55),
+      var(--card-shadow-strong) !important;
+    transform: translateY(-6px) scale(1.05) !important;
+    z-index: 12;
+    border: none;
+}
 .wall-card__actions .stream-card__media-btn {
     width: 2rem;
     height: 2rem;
