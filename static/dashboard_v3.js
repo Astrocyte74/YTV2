@@ -2381,6 +2381,10 @@ class AudioDashboard {
     }
 
     handleRead(id) {
+        if (this.viewMode === 'wall') {
+            const card = this.contentGrid && this.contentGrid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`);
+            return this.handleWallRead(id, card);
+        }
         if (this.flags.cardExpandInline) {
             if (this.currentExpandedId === id) {
                 return this.collapseCardInline(id);
@@ -2644,10 +2648,20 @@ class AudioDashboard {
 
     applyHashDeepLink() {
         const id = this.parseHash();
-        if (!id) return;
-        if (this.flags.cardExpandInline) {
-            const card = this.contentGrid.querySelector(`[data-report-id="${id}"]`);
-            if (card) this.expandCardInline(id);
+        if (id) {
+            if (this.flags.cardExpandInline && this.viewMode !== 'wall') {
+                const card = this.contentGrid.querySelector(`[data-report-id="${id}"]`);
+                if (card) this.expandCardInline(id);
+            }
+            return;
+        }
+        const hash = String(window.location.hash || '');
+        if (hash.startsWith('#read=')) {
+            const rid = decodeURIComponent(hash.slice('#read='.length));
+            if (rid) {
+                const card = this.contentGrid && this.contentGrid.querySelector(`[data-report-id="${CSS.escape(rid)}"]`);
+                this.handleRead(rid, card);
+            }
         }
     }
 
@@ -3658,7 +3672,10 @@ class AudioDashboard {
         const buttonDurations = this.getButtonDurations(item);
         const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
         const watchLinkAvailable = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
-        const mediaActions = this.renderMediaActionsV5(item, buttonDurations, hasAudio, watchLinkAvailable, source);
+        let mediaActions = this.renderMediaActionsV5(item, buttonDurations, hasAudio, watchLinkAvailable, source);
+        // Add Read button for wall overlay
+        const readBtn = `<button type="button" class="stream-card__media-btn" data-action="read" title="Read summary">\n            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4v15.5"/><path d="M8 4h12v13H8z"/></svg><span class=\"sr-only\">Read</span>\n        </button>`;
+        mediaActions = `<div class="stream-card__media-actions">${readBtn}${mediaActions || ''}</div>`;
         const chipRail = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 3);
         const menuMarkup = `
             <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
@@ -3701,6 +3718,91 @@ class AudioDashboard {
                     <div class="wall-card__actions">${mediaActions || ''}</div>
                 </div>
             </article>`;
+    }
+
+    // --- Wall reader handlers ---
+    handleWallRead(id, cardEl) {
+        const useInline = (this.flags && Object.prototype.hasOwnProperty.call(this.flags, 'wallReadInline')) ? !!this.flags.wallReadInline : true;
+        const isDesktop = window.innerWidth >= 1024;
+        if (useInline && isDesktop) {
+            return this.openWallRowReader(id, cardEl);
+        }
+        return this.openWallModalReader(id);
+    }
+
+    openWallModalReader(id) {
+        const modal = document.getElementById('wallReaderModal');
+        const body = document.getElementById('wallReaderBody');
+        const titleEl = document.getElementById('wallReaderTitle');
+        const closeBtn = document.getElementById('wallReaderClose');
+        const item = (this.currentItems || []).find(x => x.file_stem === id);
+        if (!modal || !body || !item) return;
+        titleEl.textContent = item.title || 'Summary';
+        body.innerHTML = this.renderWallReaderSection(item);
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        const onClose = () => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            closeBtn.removeEventListener('click', onClose);
+            modal.removeEventListener('click', onOutside);
+            document.removeEventListener('keydown', onEsc);
+            this.sendTelemetry('read_close', { id, view: 'wall' });
+        };
+        const onOutside = (e) => { if (e.target === modal) onClose(); };
+        const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
+        closeBtn.addEventListener('click', onClose);
+        modal.addEventListener('click', onOutside);
+        document.addEventListener('keydown', onEsc);
+        this.sendTelemetry('read_open', { id, view: 'wall' });
+    }
+
+    openWallRowReader(id, cardEl) {
+        const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+        if (!grid || !cardEl) return;
+        // Remove any existing expander
+        const prev = grid.querySelector('[data-wall-reader]');
+        if (prev && prev.parentElement) prev.parentElement.removeChild(prev);
+        const item = (this.currentItems || []).find(x => x.file_stem === id);
+        if (!item) return;
+        // Find last card in the clicked row by similar offsetTop
+        const cards = Array.from(grid.querySelectorAll('.wall-card'));
+        const top = cardEl.offsetTop;
+        const rowCards = cards.filter(c => Math.abs(c.offsetTop - top) < 4);
+        const anchor = rowCards[rowCards.length - 1] || cardEl;
+
+        const section = document.createElement('section');
+        section.className = 'wall-expander';
+        section.setAttribute('data-wall-reader', '');
+        section.setAttribute('role', 'region');
+        section.setAttribute('aria-label', 'Summary');
+        section.innerHTML = `
+            <div class="wall-expander__header">
+                <h4 class="wall-expander__title">${this.escapeHtml(item.title || 'Summary')}</h4>
+                <button class="wall-expander__close" aria-label="Close" data-action="wall-reader-close">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <div class="prose prose-sm dark:prose-invert max-w-none">${this.renderWallReaderSection(item)}</div>
+        `;
+        anchor.insertAdjacentElement('afterend', section);
+        const closeBtn = section.querySelector('[data-action="wall-reader-close"]');
+        const onClose = () => {
+            if (section && section.parentElement) section.parentElement.removeChild(section);
+            document.removeEventListener('keydown', onEsc);
+            this.sendTelemetry('read_close', { id, view: 'wall' });
+        };
+        const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
+        if (closeBtn) closeBtn.addEventListener('click', onClose);
+        document.addEventListener('keydown', onEsc);
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        this.sendTelemetry('read_open', { id, view: 'wall' });
+    }
+
+    renderWallReaderSection(item) {
+        // Prefer summary_html; fallback to formatted key-points or plain text
+        const html = item.summary_html || this.computeFallbackSummaryHtml(item) || '';
+        return html;
     }
 
     renderSummaryCard(normalizedItem, { view = 'list' } = {}) {
