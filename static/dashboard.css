@@ -1014,6 +1014,20 @@ body {
     color: #e2e8f0;
     border-color: rgba(30,41,59,0.8);
 }
+.wall-expander::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: var(--caret-left, 50%);
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-bottom: 8px solid rgba(226,232,240,0.9);
+}
+.dark .wall-expander::before {
+    border-bottom-color: rgba(30,41,59,0.95);
+}
 .wall-expander__header {
     display: flex;
     align-items: center;
@@ -1028,6 +1042,16 @@ body {
     background: rgba(148,163,184,0.15);
 }
 .wall-expander__close:hover { background: rgba(148,163,184,0.25); }
+
+.wall-expander__thumb {
+    width: 40px; height: 40px; border-radius: 0.5rem; object-fit: cover;
+    box-shadow: 0 4px 10px rgba(2,6,23,0.2);
+}
+
+.wall-card--selected {
+    box-shadow: 0 0 0 3px rgba(14,165,233,0.65), var(--card-shadow-strong);
+    transform: translateY(-4px) scale(1.02);
+}
 .wall-card {
     position: relative;
     aspect-ratio: 2 / 3;

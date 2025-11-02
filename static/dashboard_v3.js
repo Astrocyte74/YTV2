@@ -3763,6 +3763,8 @@ class AudioDashboard {
         // Remove any existing expander
         const prev = grid.querySelector('[data-wall-reader]');
         if (prev && prev.parentElement) prev.parentElement.removeChild(prev);
+        // Clear previous selection highlight
+        grid.querySelectorAll('.wall-card--selected').forEach(el => el.classList.remove('wall-card--selected'));
         const item = (this.currentItems || []).find(x => x.file_stem === id);
         if (!item) return;
         // Find last card in the clicked row by similar offsetTop
@@ -3776,9 +3778,14 @@ class AudioDashboard {
         section.setAttribute('data-wall-reader', '');
         section.setAttribute('role', 'region');
         section.setAttribute('aria-label', 'Summary');
+        const cardImg = cardEl.querySelector('img');
+        const imgSrc = cardImg && cardImg.src ? cardImg.src : '';
         section.innerHTML = `
             <div class="wall-expander__header">
-                <h4 class="wall-expander__title">${this.escapeHtml(item.title || 'Summary')}</h4>
+                <div class="flex items-center gap-3">
+                    ${imgSrc ? `<img class="wall-expander__thumb" alt="" src="${imgSrc}">` : ''}
+                    <h4 class="wall-expander__title">${this.escapeHtml(item.title || 'Summary')}</h4>
+                </div>
                 <button class="wall-expander__close" aria-label="Close" data-action="wall-reader-close">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
@@ -3786,16 +3793,27 @@ class AudioDashboard {
             <div class="prose prose-sm dark:prose-invert max-w-none">${this.renderWallReaderSection(item)}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
+        // Highlight the source card and set caret position
+        try {
+            cardEl.classList.add('wall-card--selected');
+            const caretX = cardEl.offsetLeft + (cardEl.offsetWidth / 2);
+            section.style.setProperty('--caret-left', caretX + 'px');
+        } catch(_) {}
         const closeBtn = section.querySelector('[data-action="wall-reader-close"]');
         const onClose = () => {
             if (section && section.parentElement) section.parentElement.removeChild(section);
             document.removeEventListener('keydown', onEsc);
             this.sendTelemetry('read_close', { id, view: 'wall' });
+            try { cardEl.classList.remove('wall-card--selected'); } catch(_) {}
         };
         const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
         if (closeBtn) closeBtn.addEventListener('click', onClose);
         document.addEventListener('keydown', onEsc);
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Scroll with header offset so the expander is fully visible and the source row remains in view
+        const header = document.querySelector('header');
+        const headerH = header ? header.getBoundingClientRect().height : 64;
+        const targetTop = section.getBoundingClientRect().top + window.pageYOffset - headerH - 12;
+        window.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
         this.sendTelemetry('read_open', { id, view: 'wall' });
     }
 
