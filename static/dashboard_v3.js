@@ -3776,8 +3776,9 @@ class AudioDashboard {
             return;
         }
         if (prev && prev.parentElement) prev.parentElement.removeChild(prev);
-        // Clear previous selection highlight
+        // Clear previous selection highlight and connector overlay
         grid.querySelectorAll('.wall-card--selected').forEach(el => el.classList.remove('wall-card--selected'));
+        try { this.removeWallConnectorOverlay(); } catch(_) {}
         const item = (this.currentItems || []).find(x => x.file_stem === id);
         if (!item) return;
         // Find last card in the clicked row by similar offsetTop
@@ -3837,6 +3838,23 @@ class AudioDashboard {
             // Clamp caret within expander width
             caretLeft = Math.max(16, Math.min(caretLeft, secRect.width - 16));
             section.style.setProperty('--caret-left', caretLeft + 'px');
+            const caretPct = Math.max(0, Math.min(100, (caretLeft / Math.max(1, secRect.width)) * 100));
+            section.style.setProperty('--caret-left-pct', caretPct + '%');
+            // Card-side connector X (percentage of card width). Currently centered.
+            cardEl.style.setProperty('--connector-x-pct', '50%');
+            // Draw/update connector overlay (curved link + subtle glow)
+            this.updateWallConnectorOverlay(cardEl, section, caretLeft);
+            // Recompute once after layout settles (fonts/images)
+            try { setTimeout(() => this.updateWallConnectorOverlay(cardEl, section, caretLeft), 150); } catch(_) {}
+            // Keep overlay aligned on scroll/resize until closed
+            const boundUpdate = () => this.updateWallConnectorOverlay(cardEl, section);
+            this._wallConnectorHandlers = this._wallConnectorHandlers || [];
+            this._wallConnectorHandlers.forEach(h => window.removeEventListener(h.type, h.fn, h.opts));
+            this._wallConnectorHandlers = [
+                { type: 'resize', fn: boundUpdate, opts: { passive: true } },
+                { type: 'scroll', fn: boundUpdate, opts: { passive: true } }
+            ];
+            this._wallConnectorHandlers.forEach(h => window.addEventListener(h.type, h.fn, h.opts));
         } catch(_) {}
         const closeBtn = section.querySelector('[data-action="wall-reader-close"]');
         const openBtn = section.querySelector('[data-action="wall-reader-open-page"]');
@@ -3855,6 +3873,11 @@ class AudioDashboard {
                 if (section && section.parentElement) section.parentElement.removeChild(section);
                 section.removeEventListener('transitionend', finalize);
                 try { document.body.classList.remove('wall-reader-open'); } catch(_) {}
+                try { this.removeWallConnectorOverlay(); } catch(_) {}
+                if (this._wallConnectorHandlers) {
+                    this._wallConnectorHandlers.forEach(h => window.removeEventListener(h.type, h.fn, h.opts));
+                    this._wallConnectorHandlers = [];
+                }
             };
             section.addEventListener('transitionend', finalize);
             document.removeEventListener('keydown', onEsc);
@@ -3883,6 +3906,51 @@ class AudioDashboard {
         const targetTop = cardEl.getBoundingClientRect().top + window.pageYOffset - headerH - 16;
         window.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
         this.sendTelemetry('read_open', { id, view: 'wall' });
+    }
+
+    // --- Connector overlay helpers (wall mode) ---
+    ensureWallConnectorOverlay() {
+        if (this._wallConnector) return this._wallConnector;
+        const el = document.createElement('div');
+        el.className = 'wall-connector-overlay';
+        el.setAttribute('data-wall-connector', '');
+        el.innerHTML = `<svg class="wall-connector-svg" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" aria-hidden="true" focusable="false"><path class="wall-connector-path" d=""/></svg>`;
+        document.body.appendChild(el);
+        this._wallConnector = el;
+        return el;
+    }
+    removeWallConnectorOverlay() {
+        if (this._wallConnector && this._wallConnector.parentElement) {
+            this._wallConnector.parentElement.removeChild(this._wallConnector);
+        }
+        this._wallConnector = null;
+    }
+    updateWallConnectorOverlay(cardEl, sectionEl, caretLeftPx) {
+        try {
+            const overlay = this.ensureWallConnectorOverlay();
+            const svg = overlay.querySelector('svg');
+            const path = overlay.querySelector('path');
+            if (!svg || !path) return;
+
+            const cardRect = cardEl.getBoundingClientRect();
+            const secRect = sectionEl.getBoundingClientRect();
+            const caretLeft = (typeof caretLeftPx === 'number' && !Number.isNaN(caretLeftPx))
+                ? caretLeftPx
+                : (Math.max(16, Math.min((cardRect.left - secRect.left) + (cardRect.width / 2), secRect.width - 16)));
+
+            const startX = Math.round(cardRect.left + (cardRect.width / 2));
+            const startY = Math.round(cardRect.bottom - 2);
+            const endX = Math.round(secRect.left + caretLeft);
+            const endY = Math.round(secRect.top + 2);
+
+            // Smooth cubic curve; control points halfway vertically with slight horizontal bias
+            const midY = Math.round((startY + endY) / 2);
+            const c1x = startX, c1y = midY;
+            const c2x = endX,   c2y = midY;
+
+            const d = `M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}`;
+            path.setAttribute('d', d);
+        } catch (_) { /* no-op */ }
     }
 
     renderWallReaderSection(item) {

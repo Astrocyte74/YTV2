@@ -514,6 +514,21 @@ body {
     backdrop-filter: blur(8px);
 }
 
+/* Connector overlay styling */
+.wall-connector-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 60; /* above grid and expander */
+}
+.wall-connector-overlay .wall-connector-svg { width: 100%; height: 100%; display: block; }
+.wall-connector-overlay .wall-connector-path {
+    stroke: rgba(14,165,233,0.8);
+    stroke-width: 3;
+    fill: none;
+    filter: drop-shadow(0 0 8px rgba(14,165,233,0.65)) drop-shadow(0 10px 24px rgba(14,165,233,0.35));
+}
+
 /* Toggle between thumbnail and AI summary image */
 /* Hide per-card image toggle in favor of global Image mode controls */
 .summary-card__toggle { display: none !important; }
@@ -1044,6 +1059,29 @@ body {
 .dark .wall-expander::before {
     border-bottom-color: rgba(30,41,59,0.95);
 }
+/* Reader panel glow with a notch near the caret (top edge) */
+.wall-expander::after {
+    content: '';
+    position: absolute;
+    inset: -6px -6px 0 -6px; /* Extend glow slightly outside */
+    border-radius: 0.75rem;
+    pointer-events: none;
+    box-shadow:
+      0 0 0 3px rgba(14,165,233,0.30),
+      0 28px 60px -24px rgba(14,165,233,0.50),
+      0 0 0 6px rgba(14,165,233,0.12);
+    --caret: var(--caret-left-pct, 50%);
+    --wedge: 16px; /* notch height */
+    --gap: 4.5%;
+    /* Create a notch on the top edge centered at caret */
+    clip-path: polygon(
+      0 0,
+      calc(var(--caret) - var(--gap)) 0,
+      var(--caret) var(--wedge),
+      calc(var(--caret) + var(--gap)) 0,
+      100% 0, 100% 100%, 0 100%
+    );
+}
 .wall-expander__header {
     display: flex;
     align-items: center;
@@ -1067,6 +1105,27 @@ body {
 .wall-card--selected {
     box-shadow: 0 0 0 3px rgba(14,165,233,0.65), var(--card-shadow-strong);
     transform: translateY(-4px) scale(1.02);
+}
+/* Selected card: additive glow via pseudo-element with notch at bottom center */
+.wall-card--selected::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 0.75rem;
+    pointer-events: none;
+    box-shadow:
+      0 0 0 3px rgba(14,165,233,0.55),
+      0 18px 52px -12px rgba(14,165,233,0.70),
+      0 0 0 4px rgba(14,165,233,0.25);
+    /* Cut a small wedge where the connector touches the card (bottom center) */
+    --cx: var(--connector-x-pct, 50%);
+    --wedge: 12px;
+    --gap: 3.2%;
+    clip-path: polygon(
+      0 0, 100% 0, 100% calc(100% - var(--wedge)),
+      calc(var(--cx) + var(--gap)) calc(100% - var(--wedge)), var(--cx) 100%, calc(var(--cx) - var(--gap)) calc(100% - var(--wedge)),
+      0 calc(100% - var(--wedge))
+    );
 }
 .wall-card {
     position: relative;
