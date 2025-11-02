@@ -6164,6 +6164,27 @@ class AudioDashboard {
         // Normalize line breaks and trim
         let text = rawText.replace(/\r\n?/g, '\n').trim();
 
+        // Convert inline bullet separators ("Header • point • point …") into
+        // a header + newline-delimited hyphen bullets so we can render lists.
+        // Works across paragraphs separated by blank lines.
+        try {
+            const paras = text.split(/\n{2,}/);
+            const rebuilt = paras.map(p => {
+                if (!p || p.indexOf('•') === -1) return p;
+                // Split around the bullet dot with surrounding spaces
+                const bits = p.split(/\s*•\s*/).map(s => s.trim()).filter(Boolean);
+                if (bits.length < 2) return p;
+                // Treat first chunk as a header when it doesn't start with a bullet marker
+                const first = bits.shift();
+                const header = first.length <= 160 ? first : null;
+                const bullets = header ? bits : [first, ...bits];
+                const headerLine = header ? header + '\n' : '';
+                const bulletLines = bullets.map(b => `- ${b}`).join('\n');
+                return headerLine + bulletLines;
+            }).join('\n\n');
+            text = rebuilt;
+        } catch (_) {}
+
         // Detect "run-on hyphen bullets" and convert to line-broken bullets
         // Example: "... sentence. - point one - point two - point three" -> break into lines with "- "
         // Avoid hyphens in the middle of words by requiring surrounding whitespace/punctuation
