@@ -3770,6 +3770,8 @@ class AudioDashboard {
             // Toggle: clicking again on same item collapses
             prev.parentElement.removeChild(prev);
             try { cardEl.classList.remove('wall-card--selected'); } catch(_) {}
+            // When the inline reader is fully closed, drop the global flag
+            try { document.body.classList.remove('wall-reader-open'); } catch(_) {}
             this.sendTelemetry('read_close', { id, view: 'wall', toggled: true });
             return;
         }
@@ -3826,6 +3828,8 @@ class AudioDashboard {
         // Highlight the source card and set caret position (relative to expander)
         try {
             cardEl.classList.add('wall-card--selected');
+            // Signal that a wall reader is open to adjust hover styling
+            document.body.classList.add('wall-reader-open');
             // Compute after insertion so positions are accurate
             const cardRect = cardEl.getBoundingClientRect();
             const secRect = section.getBoundingClientRect();
@@ -3850,6 +3854,7 @@ class AudioDashboard {
             const finalize = () => {
                 if (section && section.parentElement) section.parentElement.removeChild(section);
                 section.removeEventListener('transitionend', finalize);
+                try { document.body.classList.remove('wall-reader-open'); } catch(_) {}
             };
             section.addEventListener('transitionend', finalize);
             document.removeEventListener('keydown', onEsc);

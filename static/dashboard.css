@@ -471,6 +471,22 @@ body {
     opacity: 1;
 }
 
+/* When the inline wall reader is open, suppress hover glow on non-selected cards */
+.wall-reader-open [data-card] .summary-card__media::after,
+.wall-reader-open [data-card] .stream-card__media::after,
+.wall-reader-open [data-card] .wall-card__media::after,
+.wall-reader-open [data-card] .mosaic-card .relative.w-full.h-40::after {
+    opacity: 0 !important;
+}
+.wall-reader-open .wall-card--selected .wall-card__media::after {
+    opacity: 1 !important;
+    /* Make the selected card unmistakable */
+    box-shadow:
+      inset 0 0 0 3px rgba(14, 165, 233, 0.85),
+      0 18px 52px -8px rgba(14, 165, 233, 0.85),
+      0 0 0 4px rgba(14, 165, 233, 0.35);
+}
+
 /* Subtle media lift on hover */
 [data-card]:hover .summary-card__media img,
 [data-card]:hover .stream-card__media img,
