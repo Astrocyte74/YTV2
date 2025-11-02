@@ -3793,8 +3793,20 @@ class AudioDashboard {
         section.setAttribute('role', 'region');
         section.setAttribute('aria-label', 'Summary');
         section.setAttribute('data-wall-reader-id', id);
-        const cardImg = cardEl.querySelector('img');
-        const imgSrc = cardImg && cardImg.src ? cardImg.src : '';
+        // Prefer AI summary image for the reader header when available
+        let imgSrc = '';
+        try {
+            const preferred = item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
+            if (preferred) imgSrc = preferred;
+            else if (item.thumbnail_url) imgSrc = item.thumbnail_url;
+            else {
+                const cardImg = cardEl.querySelector('img');
+                imgSrc = (cardImg && cardImg.src) ? cardImg.src : '';
+            }
+        } catch (_) {
+            const cardImg = cardEl.querySelector('img');
+            imgSrc = (cardImg && cardImg.src) ? cardImg.src : '';
+        }
         section.style.overflow = 'hidden';
         section.style.height = '0px';
         section.innerHTML = `
@@ -6150,7 +6162,21 @@ class AudioDashboard {
         }
 
         // Normalize line breaks and trim
-        const text = rawText.replace(/\r\n?/g, '\n').trim();
+        let text = rawText.replace(/\r\n?/g, '\n').trim();
+
+        // Detect "run-on hyphen bullets" and convert to line-broken bullets
+        // Example: "... sentence. - point one - point two - point three" -> break into lines with "- "
+        // Avoid hyphens in the middle of words by requiring surrounding whitespace/punctuation
+        try {
+            const newlineCount = (text.match(/\n/g) || []).length;
+            const hyphenRuns = (text.match(/(?:^|[.!?])\s*[-–—]\s+/g) || []).length;
+            if (newlineCount <= 2 && hyphenRuns >= 2) {
+                // Insert newlines before hyphen bullets following sentence boundaries or start
+                text = text
+                    .replace(/(?:^|([.!?]))\s*[-–—]\s+/g, (m, p1) => (p1 ? p1 + '\n- ' : '- '))
+                    .replace(/\s{2,}/g, ' ');
+            }
+        } catch (_) {}
 
         // Check for structured markers
         const hasMainTopic = /^(?:•\s*)?\*\*Main topic:\*\*\s*.+$/mi.test(text);
@@ -6166,6 +6192,19 @@ class AudioDashboard {
         // If we have comprehensive structure, format it nicely
         else if (hasComprehensiveStructure) {
             return this.renderComprehensiveContent(text);
+        }
+
+        // If we now have clear bullet lines, render them as a list
+        const bulletLines = text.split('\n').map(s => s.trim()).filter(s => /^[-•*]\s+/.test(s));
+        if (bulletLines.length >= 2) {
+            const prefaceIdx = text.indexOf('\n- ');
+            const preface = prefaceIdx > 0 ? text.slice(0, prefaceIdx).trim() : '';
+            const bulletHtml = bulletLines.map(l => l.replace(/^[-•*]\s+/, ''))
+                .map(b => `<li>${this.escapeHtml(b)}</li>`).join('');
+            const parts = [];
+            if (preface) parts.push(`<p>${this.escapeHtml(preface)}</p>`);
+            parts.push(`<ul class="kp-list">${bulletHtml}</ul>`);
+            return parts.join('');
         }
 
         // Fallback to normal paragraph formatting
