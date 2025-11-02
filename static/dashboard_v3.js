@@ -3677,9 +3677,8 @@ class AudioDashboard {
         const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
         const watchLinkAvailable = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
         let mediaActions = this.renderMediaActionsV5(item, buttonDurations, hasAudio, watchLinkAvailable, source);
-        // Add Read button for wall overlay
-        const readBtn = `<button type="button" class="stream-card__media-btn" data-action="read" title="Read summary">\n            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4v15.5"/><path d="M8 4h12v13H8z"/></svg><span class=\"sr-only\">Read</span>\n        </button>`;
-        mediaActions = `<div class="stream-card__media-actions">${readBtn}${mediaActions || ''}</div>`;
+        // Remove inline reader button in wall mode; clicking the card opens reader
+        mediaActions = `<div class="stream-card__media-actions">${mediaActions || ''}</div>`;
         const chipRail = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 3);
         const menuMarkup = `
             <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
@@ -3816,11 +3815,23 @@ class AudioDashboard {
                     <h4 class="wall-expander__title">${this.escapeHtml(item.title || 'Summary')}</h4>
                 </div>
                 <div class="flex items-center gap-2">
-                <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-page" title="Open page">Open</button>
-                <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-copy" title="Copy link">Copy link</button>
-                <button class="wall-expander__close" aria-label="Close" data-action="wall-reader-close">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
+                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-page" title="Open page">Open</button>
+                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-copy" title="Copy link">Copy link</button>
+                    <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <circle cx="5" cy="12" r="1.5"></circle>
+                            <circle cx="12" cy="12" r="1.5"></circle>
+                            <circle cx="19" cy="12" r="1.5"></circle>
+                        </svg>
+                    </button>
+                    <div class="summary-card__menu hidden" data-kebab-menu role="menu">
+                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                        <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
+                    </div>
+                    <button class="wall-expander__close" aria-label="Close" data-action="wall-reader-close">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
                 </div>
             </div>
             <div class="prose prose-sm dark:prose-invert max-w-none">${this.renderWallReaderSection(item)}</div>
@@ -3871,6 +3882,7 @@ class AudioDashboard {
         const closeBtn = section.querySelector('[data-action="wall-reader-close"]');
         const openBtn = section.querySelector('[data-action="wall-reader-open-page"]');
         const copyBtn = section.querySelector('[data-action="wall-reader-copy"]');
+        const menuBtn = section.querySelector('[data-action="menu"]');
         const onClose = () => {
             if (!section || !section.parentElement) return;
             // Animate collapse
@@ -3911,6 +3923,21 @@ class AudioDashboard {
                 this.showToast('Unable to copy link', 'error');
             }
         });
+        if (menuBtn) {
+            menuBtn.addEventListener('click', () => this.toggleKebabMenu(section, true, menuBtn));
+            const menu = section.querySelector('[data-kebab-menu]');
+            if (menu) {
+                const onMenuClick = (e) => {
+                    const a = e.target.closest('[data-action]');
+                    if (!a) return;
+                    const act = a.getAttribute('data-action');
+                    if (act === 'copy-link') { this.copyLink(cardEl, id); this.toggleKebabMenu(section, false); }
+                    if (act === 'reprocess') { this.openReprocessModal(id, cardEl); this.toggleKebabMenu(section, false); }
+                    if (act === 'delete') { this.handleDelete(id, cardEl); this.toggleKebabMenu(section, false); }
+                };
+                menu.addEventListener('click', onMenuClick);
+            }
+        }
         document.addEventListener('keydown', onEsc);
         // Scroll with header offset so the source card stays in view (row context retained)
         const header = document.querySelector('header');
