@@ -2202,6 +2202,10 @@ class AudioDashboard {
                 if (this._suppressOpen) { e.preventDefault(); e.stopPropagation(); return; }
                 // Ignore if click on a control, action, or filter chip
                 if (e.target.closest('[data-control]') || e.target.closest('[data-action]') || e.target.closest('[data-filter-chip]')) return;
+                if (this.viewMode === 'wall') {
+                    const id = card.getAttribute('data-report-id');
+                    if (id) { e.preventDefault(); e.stopPropagation(); this.handleWallRead(id, card); return; }
+                }
                 const href = card.dataset.href;
                 if (href) window.location.href = href;
             });
@@ -3762,6 +3766,13 @@ class AudioDashboard {
         if (!grid || !cardEl) return;
         // Remove any existing expander
         const prev = grid.querySelector('[data-wall-reader]');
+        if (prev && prev.getAttribute('data-wall-reader-id') === id) {
+            // Toggle: clicking again on same item collapses
+            prev.parentElement.removeChild(prev);
+            try { cardEl.classList.remove('wall-card--selected'); } catch(_) {}
+            this.sendTelemetry('read_close', { id, view: 'wall', toggled: true });
+            return;
+        }
         if (prev && prev.parentElement) prev.parentElement.removeChild(prev);
         // Clear previous selection highlight
         grid.querySelectorAll('.wall-card--selected').forEach(el => el.classList.remove('wall-card--selected'));
@@ -3778,21 +3789,40 @@ class AudioDashboard {
         section.setAttribute('data-wall-reader', '');
         section.setAttribute('role', 'region');
         section.setAttribute('aria-label', 'Summary');
+        section.setAttribute('data-wall-reader-id', id);
         const cardImg = cardEl.querySelector('img');
         const imgSrc = cardImg && cardImg.src ? cardImg.src : '';
+        section.style.overflow = 'hidden';
+        section.style.height = '0px';
         section.innerHTML = `
             <div class="wall-expander__header">
                 <div class="flex items-center gap-3">
                     ${imgSrc ? `<img class="wall-expander__thumb" alt="" src="${imgSrc}">` : ''}
                     <h4 class="wall-expander__title">${this.escapeHtml(item.title || 'Summary')}</h4>
                 </div>
+                <div class="flex items-center gap-2">
+                <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-page" title="Open page">Open</button>
+                <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-copy" title="Copy link">Copy link</button>
                 <button class="wall-expander__close" aria-label="Close" data-action="wall-reader-close">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
+                </div>
             </div>
             <div class="prose prose-sm dark:prose-invert max-w-none">${this.renderWallReaderSection(item)}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
+        // Animate open height
+        requestAnimationFrame(() => {
+            const full = section.scrollHeight;
+            section.style.transition = 'height 200ms ease';
+            section.style.height = full + 'px';
+            const onEnd = () => {
+                section.style.height = 'auto';
+                section.style.overflow = '';
+                section.removeEventListener('transitionend', onEnd);
+            };
+            section.addEventListener('transitionend', onEnd);
+        });
         // Highlight the source card and set caret position (relative to expander)
         try {
             cardEl.classList.add('wall-card--selected');
@@ -3805,14 +3835,42 @@ class AudioDashboard {
             section.style.setProperty('--caret-left', caretLeft + 'px');
         } catch(_) {}
         const closeBtn = section.querySelector('[data-action="wall-reader-close"]');
+        const openBtn = section.querySelector('[data-action="wall-reader-open-page"]');
+        const copyBtn = section.querySelector('[data-action="wall-reader-copy"]');
         const onClose = () => {
-            if (section && section.parentElement) section.parentElement.removeChild(section);
+            if (!section || !section.parentElement) return;
+            // Animate collapse
+            section.style.overflow = 'hidden';
+            const full = section.scrollHeight;
+            section.style.height = full + 'px';
+            requestAnimationFrame(() => {
+                section.style.transition = 'height 160ms ease';
+                section.style.height = '0px';
+            });
+            const finalize = () => {
+                if (section && section.parentElement) section.parentElement.removeChild(section);
+                section.removeEventListener('transitionend', finalize);
+            };
+            section.addEventListener('transitionend', finalize);
             document.removeEventListener('keydown', onEsc);
             this.sendTelemetry('read_close', { id, view: 'wall' });
             try { cardEl.classList.remove('wall-card--selected'); } catch(_) {}
         };
         const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
         if (closeBtn) closeBtn.addEventListener('click', onClose);
+        if (openBtn) openBtn.addEventListener('click', () => {
+            window.location.href = `/${encodeURIComponent(id)}.json?v=2`;
+        });
+        if (copyBtn) copyBtn.addEventListener('click', async () => {
+            try {
+                const url = new URL(window.location.href);
+                url.hash = `read=${encodeURIComponent(id)}`;
+                await navigator.clipboard.writeText(url.toString());
+                this.showToast('Reader link copied', 'success');
+            } catch (_) {
+                this.showToast('Unable to copy link', 'error');
+            }
+        });
         document.addEventListener('keydown', onEsc);
         // Scroll with header offset so the source card stays in view (row context retained)
         const header = document.querySelector('header');
