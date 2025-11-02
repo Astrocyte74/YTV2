@@ -6,4 +6,6 @@ window.UI_FLAGS = Object.assign({}, window.UI_FLAGS || {}, {
   twRevamp: true,
   // Allow inline expand/collapse for Read action
   cardExpandInline: true,
+  // Wall view: use inline row-level reader (desktop). When false, always use modal.
+  wallReadInline: true,
 });
