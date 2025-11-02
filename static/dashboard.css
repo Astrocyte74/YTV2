@@ -513,6 +513,8 @@ body {
 
 /* Connector overlay styling */
 .wall-connector-overlay {
+    /* Temporarily disable connector line per UX feedback */
+    display: none !important;
     position: fixed;
     inset: 0;
     pointer-events: none;
@@ -1090,20 +1092,21 @@ body {
     z-index: 10;
     /* Match reader glow but avoid a hard ring */
     box-shadow:
-      0 34px 80px -24px rgba(14,165,233,0.55),
+      0 34px 80px -24px rgba(14,165,233,0.65),
+      0 0 60px 18px rgba(14,165,233,0.30),
       var(--card-shadow-strong);
     border: none;
 }
-/* Selected indicator bar (subtle accent strip at top of selected card) */
-.wall-card--selected .wall-card__overlay::before {
+/* Ambient soft glow halo without a ring */
+.wall-reader-open .wall-card.wall-card--selected::before {
     content: '';
     position: absolute;
-    top: 0.35rem;
-    left: 0.35rem;
-    right: 0.35rem;
-    height: 4px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, rgba(14,165,233,0.0), rgba(14,165,233,0.9), rgba(14,165,233,0.0));
+    inset: -10px;
+    border-radius: calc(0.75rem + 10px);
+    pointer-events: none;
+    box-shadow:
+      0 40px 95px -28px rgba(14,165,233,0.60),
+      0 0 70px 24px rgba(14,165,233,0.28);
 }
 .wall-card {
     position: relative;
