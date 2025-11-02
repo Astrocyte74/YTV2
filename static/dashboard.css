@@ -539,6 +539,23 @@ body {
     background: rgba(15, 23, 42, 0.6);
 }
 
+/* Reader header kebab menu: inline in header row */
+.wall-expander .summary-card__menu-btn {
+    position: static;
+    top: auto; right: auto;
+    width: 2rem; height: 2rem;
+    background: rgba(148,163,184,0.15);
+    border-color: rgba(148,163,184,0.35);
+}
+.dark .wall-expander .summary-card__menu-btn {
+    background: rgba(15, 23, 42, 0.55);
+    border-color: rgba(148, 163, 184, 0.35);
+}
+.wall-expander .summary-card__menu {
+    top: 2.6rem;
+    right: 0.25rem;
+}
+
 .dark .summary-card__menu-btn {
     background: rgba(15, 23, 42, 0.68);
     border-color: rgba(148, 163, 184, 0.35);
@@ -1073,6 +1090,7 @@ body {
     justify-content: space-between;
     gap: 0.75rem;
     margin-bottom: 0.5rem;
+    position: relative;
 }
 .wall-expander__title { font-size: 1rem; font-weight: 600; margin: 0; }
 .wall-expander__close {
