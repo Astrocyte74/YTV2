@@ -3793,11 +3793,16 @@ class AudioDashboard {
             <div class="prose prose-sm dark:prose-invert max-w-none">${this.renderWallReaderSection(item)}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
-        // Highlight the source card and set caret position
+        // Highlight the source card and set caret position (relative to expander)
         try {
             cardEl.classList.add('wall-card--selected');
-            const caretX = cardEl.offsetLeft + (cardEl.offsetWidth / 2);
-            section.style.setProperty('--caret-left', caretX + 'px');
+            // Compute after insertion so positions are accurate
+            const cardRect = cardEl.getBoundingClientRect();
+            const secRect = section.getBoundingClientRect();
+            let caretLeft = (cardRect.left - secRect.left) + (cardRect.width / 2);
+            // Clamp caret within expander width
+            caretLeft = Math.max(16, Math.min(caretLeft, secRect.width - 16));
+            section.style.setProperty('--caret-left', caretLeft + 'px');
         } catch(_) {}
         const closeBtn = section.querySelector('[data-action="wall-reader-close"]');
         const onClose = () => {
@@ -3809,10 +3814,10 @@ class AudioDashboard {
         const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
         if (closeBtn) closeBtn.addEventListener('click', onClose);
         document.addEventListener('keydown', onEsc);
-        // Scroll with header offset so the expander is fully visible and the source row remains in view
+        // Scroll with header offset so the source card stays in view (row context retained)
         const header = document.querySelector('header');
         const headerH = header ? header.getBoundingClientRect().height : 64;
-        const targetTop = section.getBoundingClientRect().top + window.pageYOffset - headerH - 12;
+        const targetTop = cardEl.getBoundingClientRect().top + window.pageYOffset - headerH - 16;
         window.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
         this.sendTelemetry('read_open', { id, view: 'wall' });
     }
