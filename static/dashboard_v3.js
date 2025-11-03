@@ -3974,7 +3974,7 @@ class AudioDashboard {
             if (j === i) return;
             const nextCard = cardsAll[j];
             const nextId = nextCard?.getAttribute('data-report-id');
-            if (nextId) this.openWallRowReader(nextId, nextCard);
+            if (nextId) { onClose(); this.openWallRowReader(nextId, nextCard); }
         };
         if (closeBtn) closeBtn.addEventListener('click', onClose);
         if (openBtn) openBtn.addEventListener('click', () => {
@@ -3997,6 +3997,7 @@ class AudioDashboard {
             }
         }
         document.addEventListener('keydown', onEsc);
+        document.addEventListener('keydown', onArrow);
         document.addEventListener('keydown', onArrow);
         // Scroll with header offset so the source card stays in view (row context retained)
         const header = document.querySelector('header');
