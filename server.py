@@ -4099,7 +4099,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(json.dumps({"row": row}).encode())
+            # Datetime-safe serialization
+            self.wfile.write(json.dumps({"row": row}, default=str).encode())
 
         except Exception as e:
             logger.error(f"Error in debug_content: {e}")
