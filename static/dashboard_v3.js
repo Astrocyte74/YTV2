@@ -3754,9 +3754,65 @@ class AudioDashboard {
         };
         const onOutside = (e) => { if (e.target === modal) onClose(); };
         const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
+        const onArrow = (e) => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            e.preventDefault();
+            const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+            const cardsAll = grid ? Array.from(grid.querySelectorAll('.wall-card')) : [];
+            const current = this.contentGrid && this.contentGrid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`);
+            const i = current ? cardsAll.indexOf(current) : -1;
+            if (i === -1) return;
+            const j = e.key === 'ArrowLeft' ? Math.max(0, i - 1) : Math.min(cardsAll.length - 1, i + 1);
+            const nextCard = cardsAll[j];
+            const nextId = nextCard?.getAttribute('data-report-id');
+            if (nextId) {
+                onClose();
+                this.openWallModalReader(nextId);
+            }
+        };
+        const onArrow = (e) => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            e.preventDefault();
+            const cardsAll = Array.from(grid.querySelectorAll('.wall-card'));
+            const i = cardsAll.indexOf(cardEl);
+            if (i === -1) return;
+            const j = e.key === 'ArrowLeft' ? Math.max(0, i - 1) : Math.min(cardsAll.length - 1, i + 1);
+            if (j === i) return;
+            const nextCard = cardsAll[j];
+            const nextId = nextCard?.getAttribute('data-report-id');
+            if (nextId) this.openWallRowReader(nextId, nextCard);
+        };
         closeBtn.addEventListener('click', onClose);
         modal.addEventListener('click', onOutside);
         document.addEventListener('keydown', onEsc);
+        document.addEventListener('keydown', onArrow);
+        document.addEventListener('keydown', onArrow);
+        // Actions: Open, kebab menu
+        try {
+            const openBtn = modal.querySelector('[data-action="wall-reader-open-page"]');
+            const menuBtn = modal.querySelector('[data-action="menu"]');
+            const cardEl = this.contentGrid && this.contentGrid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`);
+            if (openBtn) {
+                openBtn.addEventListener('click', () => {
+                    window.location.href = `/${encodeURIComponent(id)}.json?v=2`;
+                });
+            }
+            if (menuBtn) {
+                menuBtn.addEventListener('click', () => this.toggleKebabMenu(modal, true, menuBtn));
+                const menu = modal.querySelector('[data-kebab-menu]');
+                if (menu) {
+                    const onMenuClick = (e) => {
+                        const a = e.target.closest('[data-action]');
+                        if (!a) return;
+                        const act = a.getAttribute('data-action');
+                        if (act === 'copy-link') { this.copyLink(cardEl || modal, id); this.toggleKebabMenu(modal, false); }
+                        if (act === 'reprocess') { this.openReprocessModal(id, cardEl || modal); this.toggleKebabMenu(modal, false); }
+                        if (act === 'delete') { if (cardEl) this.handleDelete(id, cardEl); this.toggleKebabMenu(modal, false); }
+                    };
+                    menu.addEventListener('click', onMenuClick);
+                }
+            }
+        } catch (_) {}
         this.sendTelemetry('read_open', { id, view: 'wall' });
     }
 
@@ -3816,7 +3872,6 @@ class AudioDashboard {
                 </div>
                 <div class="flex items-center gap-2">
                     <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-page" title="Open page">Open</button>
-                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-copy" title="Copy link">Copy link</button>
                     <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                             <circle cx="5" cy="12" r="1.5"></circle>
@@ -3881,7 +3936,6 @@ class AudioDashboard {
         } catch(_) {}
         const closeBtn = section.querySelector('[data-action="wall-reader-close"]');
         const openBtn = section.querySelector('[data-action="wall-reader-open-page"]');
-        const copyBtn = section.querySelector('[data-action="wall-reader-copy"]');
         const menuBtn = section.querySelector('[data-action="menu"]');
         const onClose = () => {
             if (!section || !section.parentElement) return;
@@ -3905,7 +3959,9 @@ class AudioDashboard {
             };
             section.addEventListener('transitionend', finalize);
             document.removeEventListener('keydown', onEsc);
+            document.removeEventListener('keydown', onArrow);
             this.sendTelemetry('read_close', { id, view: 'wall' });
+            document.removeEventListener('keydown', onArrow);
             try { cardEl.classList.remove('wall-card--selected'); } catch(_) {}
         };
         const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
@@ -3913,16 +3969,7 @@ class AudioDashboard {
         if (openBtn) openBtn.addEventListener('click', () => {
             window.location.href = `/${encodeURIComponent(id)}.json?v=2`;
         });
-        if (copyBtn) copyBtn.addEventListener('click', async () => {
-            try {
-                const url = new URL(window.location.href);
-                url.hash = `read=${encodeURIComponent(id)}`;
-                await navigator.clipboard.writeText(url.toString());
-                this.showToast('Reader link copied', 'success');
-            } catch (_) {
-                this.showToast('Unable to copy link', 'error');
-            }
-        });
+        // Copy link is available via kebab menu only
         if (menuBtn) {
             menuBtn.addEventListener('click', () => this.toggleKebabMenu(section, true, menuBtn));
             const menu = section.querySelector('[data-kebab-menu]');
