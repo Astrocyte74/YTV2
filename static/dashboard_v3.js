@@ -4082,7 +4082,9 @@ class AudioDashboard {
         const styleAttr = view === 'grid' ? '' : ' style="--thumbW: 240px;"';
         const sourceBadge = this.renderSourceBadge(normalizedItem.content_source || 'youtube', normalizedItem.source_label || null);
         const languageChip = this.renderLanguageChip(normalizedItem.analysis?.language);
-        const summaryTypeChip = this.renderSummaryTypeChip(normalizedItem.summary_type);
+        // Show 'Audio (missing)' chip when type says audio but file is absent
+        const summaryTypeValue = (normalizedItem.summary_type === 'audio' && !hasAudio) ? 'audio-missing' : normalizedItem.summary_type;
+        const summaryTypeChip = this.renderSummaryTypeChip(summaryTypeValue);
         const nowPlayingPill = isPlaying ? '<div class="summary-card__badge"><span class="summary-pill summary-pill--playing">Now playing</span></div>' : '';
         const identityMetaParts = [sourceBadge, languageChip, summaryTypeChip, nowPlayingPill].filter(Boolean);
         const identityMeta = identityMetaParts.length ? `<div class="summary-card__meta">${identityMetaParts.join('')}</div>` : '';
@@ -4175,18 +4177,15 @@ class AudioDashboard {
         if (durations.read) {
             segments.push({ text: `Read ${durations.read}` });
         }
+        // Only show Listen when audio truly exists; otherwise omit
         if (hasAudio) {
             segments.push({ text: durations.listen ? `Listen ${durations.listen}` : 'Listen ready' });
-        } else {
-            segments.push({ text: 'Listen N/A', muted: true });
         }
         const watchLabel = source === 'youtube' ? 'Watch' : 'Open';
         if (durations.watch) {
             segments.push({ text: `${watchLabel} ${durations.watch}` });
         } else if (hasWatchLink) {
             segments.push({ text: `${watchLabel} ready` });
-        } else {
-            segments.push({ text: `${watchLabel} N/A`, muted: true });
         }
 
         if (!segments.length) return '';
