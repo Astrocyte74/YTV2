@@ -3489,7 +3489,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             }).encode())
 
         except Exception as e:
-            logger.error(f"Audio upload error: {e}")
+            logger.exception("Audio upload error")
             self.send_error(500, f"Audio upload failed: {str(e)}")
 
     def handle_upload_image(self):
@@ -3594,7 +3594,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             }).encode())
 
         except Exception as e:
-            logger.error(f"Image upload error: {e}")
+            logger.exception("Image upload error")
             self.send_error(500, f"Image upload failed: {str(e)}")
     
     def handle_content_api(self):
