@@ -131,6 +131,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Deployment commit for traceability in responses. Prefer env override when available.
+COMMIT_SHA = os.getenv('DEPLOY_COMMIT', '').strip() or 'feature/image-display-controls'
+
 # --------------------------
 # Auth and Rate Limiting
 # --------------------------
@@ -1806,6 +1809,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'text/html; charset=utf-8')
             self.send_header('Cache-Control', 'no-cache')
+            self.send_header('X-Commit', COMMIT_SHA)
             self.end_headers()
             self.wfile.write(html_content.encode('utf-8'))
                 
@@ -2614,6 +2618,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # Send response
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
+            self.send_header('X-Commit', COMMIT_SHA)
             self.send_header('Cache-Control', 'public, max-age=60')  # Cache for 1 minute
             self.end_headers()
             
@@ -2783,6 +2788,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # Send response
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
+            self.send_header('X-Commit', COMMIT_SHA)
             self.send_header('Cache-Control', 'no-cache')  # Don't cache filtered results
             self.end_headers()
             
@@ -2823,6 +2829,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 if report_data:
                     self.send_response(200)
                     self.send_header('Content-type', 'application/json')
+                    self.send_header('X-Commit', COMMIT_SHA)
                     self.end_headers()
                     self.wfile.write(json.dumps(report_data, ensure_ascii=False, indent=2).encode())
                     return
