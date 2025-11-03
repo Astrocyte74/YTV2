@@ -1859,7 +1859,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "has_audio": report_data.get('has_audio', False),
                 "summary_type": report_data.get('summary_type_latest', 'unknown'),
                 # Also expose variants at the top-level to match list responses
-                "summary_variants": enriched_variants
+                "summary_variants": enriched_variants,
+                # Embed commit for deploy verification (header may be stripped upstream)
+                "deployment_commit": COMMIT_SHA
             }
 
             # Send JSON response
@@ -2451,6 +2453,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_filters(query_params)
             elif path == '/api/reports':
                 self.serve_api_reports_v2(query_params)
+            elif path.startswith('/api/debug/content'):
+                self.handle_debug_content()
             elif path.startswith('/api/reports/'):
                 self.serve_api_report_detail()
             elif path == '/api/health':
@@ -2782,8 +2786,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 # SQLite format: already a dict
                 results = search_result
 
-            # Add deployment verification flag
+            # Add deployment verification flag and embed commit for environments stripping headers
             results['deployment_version'] = 'v2025-09-11-sorting-fix'
+            results['deployment_commit'] = COMMIT_SHA
             
             # Send response
             self.send_response(200)
