@@ -1829,6 +1829,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 summary_html = summary_data.get('html', '')
                 summary_variant = summary_data.get('type', 'comprehensive')
 
+            # Extract enriched summary variants when present (from Postgres aggregator)
+            enriched_variants = report_data.get('summary_variants') or []
+
             # Create JSON response in the format expected by dashboard
             json_response = {
                 "video": {
@@ -1842,13 +1845,17 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "summary": {
                     "text": summary_text,
                     "html": summary_html,
-                    "type": summary_variant
+                    "type": summary_variant,
+                    # Surface variants inline for consumers expecting nested placement
+                    "variants": enriched_variants
                 },
                 "thumbnail_url": report_data.get('thumbnail_url', ''),
                 "analysis": report_data.get('analysis_json') or report_data.get('analysis', {}),
                 "subcategories_json": report_data.get('subcategories_json'),
                 "has_audio": report_data.get('has_audio', False),
-                "summary_type": report_data.get('summary_type_latest', 'unknown')
+                "summary_type": report_data.get('summary_type_latest', 'unknown'),
+                # Also expose variants at the top-level to match list responses
+                "summary_variants": enriched_variants
             }
 
             # Send JSON response
