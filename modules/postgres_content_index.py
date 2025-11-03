@@ -325,6 +325,21 @@ class PostgreSQLContentIndex:
         )
         source_label = self.SOURCE_LABELS.get(inferred_source, inferred_source.title())
 
+        # Pass through audio/media flags from content row
+        has_audio = bool(row.get('has_audio'))
+        media_json = row.get('media') or {}
+        if isinstance(media_json, str):
+            try:
+                media_json = json.loads(media_json)
+            except json.JSONDecodeError:
+                media_json = {}
+        media_metadata_json = row.get('media_metadata') or {}
+        if isinstance(media_metadata_json, str):
+            try:
+                media_metadata_json = json.loads(media_metadata_json)
+            except json.JSONDecodeError:
+                media_metadata_json = {}
+
         # Summary metadata (only attached for detailed view, but we pass through here)
         summary_variant = row.get('summary_variant') or 'comprehensive'
         summary_text = row.get('summary_text')
@@ -859,13 +874,20 @@ class PostgreSQLContentIndex:
                     }
                 }
 
-            formatted['processor_info'] = {
-                'model': 'postgres_backend',
-                'processing_time': 0,
-                'timestamp': formatted.get('indexed_at', '')
-            }
+        formatted['processor_info'] = {
+            'model': 'postgres_backend',
+            'processing_time': 0,
+            'timestamp': formatted.get('indexed_at', '')
+        }
 
-            return formatted
+        # Attach audio/media fields so server JSON can reflect authoritative state
+        formatted['has_audio'] = has_audio
+        if media_json:
+            formatted['media'] = media_json
+        if media_metadata_json:
+            formatted['media_metadata'] = media_metadata_json
+
+        return formatted
 
         finally:
             conn.close()
