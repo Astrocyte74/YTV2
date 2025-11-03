@@ -1273,6 +1273,109 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_my_delete_quiz()
         else:
             self.send_error(404, "DELETE endpoint not found")
+
+    def do_HEAD(self):
+        """Provide HEAD for static /exports routes so clients can probe file existence."""
+        try:
+            path = self.path.split('?', 1)[0]
+            if path.startswith('/exports/by_video/'):
+                return self.head_audio_by_video()
+            if path.startswith('/exports/'):
+                return self.head_audio_file()
+            # Default for other routes
+            return super().do_HEAD()
+        except Exception as e:
+            logger.error(f"HEAD error for {self.path}: {e}")
+            try:
+                self.send_error(500, "HEAD error")
+            except Exception:
+                pass
+
+    def head_audio_file(self):
+        """HEAD handler mirroring serve_audio_file without writing body."""
+        try:
+            from pathlib import Path
+            if not self.path.startswith('/exports/'):
+                self.send_error(404, "Not found")
+                return
+            root = Path('/app/data/exports').resolve()
+            rel = self.path[len('/exports/'):].lstrip('/')
+            fs_path = (root / rel).resolve()
+            if not str(fs_path).startswith(str(root)):
+                self.send_error(403, "Forbidden")
+                return
+            # Legacy flat path fallback into audio/
+            if not fs_path.is_file():
+                rel_norm = rel.replace('\\', '/').lstrip('/')
+                if '/' not in rel_norm:
+                    alt = (root / 'audio' / rel_norm).resolve()
+                    if str(alt).startswith(str(root)) and alt.is_file():
+                        fs_path = alt
+                if not fs_path.is_file():
+                    alt2 = (root / 'audio' / f"yt:{rel_norm}").resolve()
+                    if str(alt2).startswith(str(root)) and alt2.is_file():
+                        fs_path = alt2
+            if fs_path.is_file():
+                ctype, _ = mimetypes.guess_type(str(fs_path))
+                ctype = ctype or 'application/octet-stream'
+                self.send_response(200)
+                self.send_header('Content-type', ctype)
+                self.send_header('Content-Length', str(fs_path.stat().st_size))
+                self.send_header('Cache-Control', 'public, max-age=3600')
+                self.end_headers()
+            else:
+                self.send_error(404, 'Export not found')
+        except Exception as e:
+            logger.error(f"HEAD export error {self.path}: {e}")
+            self.send_error(500, 'Error handling HEAD for export')
+
+    def head_audio_by_video(self):
+        """HEAD handler for /exports/by_video/<video_id>.mp3 without writing body."""
+        try:
+            from pathlib import Path
+            parts = self.path.split('/')
+            if len(parts) < 4:
+                self.send_error(400, 'Invalid by_video path')
+                return
+            video_id_with_ext = parts[-1]
+            video_id = video_id_with_ext.replace('.mp3', '')
+            clean_id = video_id.replace('yt:', '').replace(':', '')
+            search_dirs = [Path('/app/data/exports')]
+            audio_subdir = Path('/app/data/exports/audio')
+            if audio_subdir.exists():
+                search_dirs.append(audio_subdir)
+            patterns = [
+                f'{clean_id}.mp3',
+                f'audio_{video_id}_*.mp3',
+                f'{video_id}_*.mp3',
+                f'*{video_id}*.mp3',
+                f'*{clean_id}*.mp3',
+            ]
+            best = None
+            best_mtime = -1
+            for d in search_dirs:
+                if not d.exists():
+                    continue
+                for pat in patterns:
+                    for p in d.glob(pat):
+                        try:
+                            mt = p.stat().st_mtime
+                            if mt > best_mtime:
+                                best_mtime = mt
+                                best = p
+                        except OSError:
+                            continue
+            if not best:
+                self.send_error(404, f'Audio not found for video_id {video_id}')
+                return
+            self.send_response(200)
+            self.send_header('Content-type', 'audio/mpeg')
+            self.send_header('Content-Length', str(best.stat().st_size))
+            self.send_header('Cache-Control', 'public, max-age=600')
+            self.end_headers()
+        except Exception as e:
+            logger.error(f"HEAD by_video error {self.path}: {e}")
+            self.send_error(500, 'Error resolving audio by video id (HEAD)')
     
     def serve_dashboard(self):
         """Serve the modern dashboard using templates"""
