@@ -1295,11 +1295,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         """HEAD handler mirroring serve_audio_file without writing body."""
         try:
             from pathlib import Path
-            if not self.path.startswith('/exports/'):
+            request_path = self.path.split('?', 1)[0]
+            if not request_path.startswith('/exports/'):
                 self.send_error(404, "Not found")
                 return
             root = Path('/app/data/exports').resolve()
-            rel = self.path[len('/exports/'):].lstrip('/')
+            rel = request_path[len('/exports/'):].lstrip('/')
             fs_path = (root / rel).resolve()
             if not str(fs_path).startswith(str(root)):
                 self.send_error(403, "Forbidden")
@@ -1333,7 +1334,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         """HEAD handler for /exports/by_video/<video_id>.mp3 without writing body."""
         try:
             from pathlib import Path
-            parts = self.path.split('/')
+            request_path = self.path.split('?', 1)[0]
+            parts = request_path.split('/')
             if len(parts) < 4:
                 self.send_error(400, 'Invalid by_video path')
                 return
@@ -2031,15 +2033,16 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         try:
             from pathlib import Path
 
-            # e.g. self.path == "/exports/audio/s_cD7g74kFE.mp3" or "/exports/s_cD7g74kFE.mp3"
-            if not self.path.startswith('/exports/'):
+            # e.g. "/exports/audio/foo.mp3?v=123" or "/exports/foo.mp3"
+            request_path = self.path.split('?', 1)[0]
+            if not request_path.startswith('/exports/'):
                 self.send_error(404, "Not found")
                 return
 
             root = Path("/app/data/exports").resolve()
 
             # strip leading prefix and build filesystem path
-            rel = self.path[len("/exports/"):].lstrip("/")  # "audio/s_cD7g74kFE.mp3" or "s_cD7g74kFE.mp3"
+            rel = request_path[len("/exports/"):].lstrip("/")  # "audio/<file>.mp3" or "<file>.mp3"
             fs_path = (root / rel).resolve()
 
             # path traversal guard
@@ -2091,8 +2094,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         Route: /exports/by_video/<video_id>.mp3 (extension optional)
         """
         try:
-            # Extract video_id from path
-            parts = self.path.split('/')
+            # Extract video_id from path (strip query params)
+            request_path = self.path.split('?', 1)[0]
+            parts = request_path.split('/')
             if len(parts) < 4:
                 self.send_error(400, "Invalid by_video path")
                 return
