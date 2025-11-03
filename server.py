@@ -1836,6 +1836,47 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # Extract enriched summary variants when present (from Postgres aggregator)
             enriched_variants = report_data.get('summary_variants') or []
 
+            # Compute has_audio more robustly: trust DB flag, but also
+            # infer from variants/media when present so single JSON mirrors list
+            media_block = report_data.get('media') or {}
+            media_meta = report_data.get('media_metadata') or {}
+            audio_url_from_media = None
+            try:
+                if isinstance(media_block, str):
+                    import json as _json
+                    media_block = _json.loads(media_block)
+                if isinstance(media_block, dict):
+                    audio_url_from_media = media_block.get('audio_url')
+            except Exception:
+                pass
+
+            audio_variant_present = False
+            audio_url_from_variants = None
+            for v in (enriched_variants or []):
+                if isinstance(v, dict):
+                    variant_id = str(v.get('variant', '')).lower()
+                    if v.get('kind') == 'audio' or variant_id.startswith('audio'):
+                        audio_variant_present = True
+                        if not audio_url_from_variants and v.get('audio_url'):
+                            audio_url_from_variants = v.get('audio_url')
+
+            has_audio_flag = bool(report_data.get('has_audio', False))
+            mp3_dur = 0
+            try:
+                if isinstance(media_meta, str):
+                    import json as _json
+                    media_meta = _json.loads(media_meta)
+                if isinstance(media_meta, dict):
+                    val = media_meta.get('mp3_duration_seconds')
+                    if isinstance(val, str) and val.isdigit():
+                        mp3_dur = int(val)
+                    elif isinstance(val, (int, float)):
+                        mp3_dur = int(val)
+            except Exception:
+                pass
+
+            computed_has_audio = has_audio_flag or bool(audio_url_from_media) or bool(audio_url_from_variants) or (audio_variant_present and mp3_dur > 0)
+
             # Create JSON response in the format expected by dashboard
             json_response = {
                 "video": {
@@ -1856,7 +1897,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "thumbnail_url": report_data.get('thumbnail_url', ''),
                 "analysis": report_data.get('analysis_json') or report_data.get('analysis', {}),
                 "subcategories_json": report_data.get('subcategories_json'),
-                "has_audio": report_data.get('has_audio', False),
+                "has_audio": bool(computed_has_audio),
                 "summary_type": report_data.get('summary_type_latest', 'unknown'),
                 # Also expose variants at the top-level to match list responses
                 "summary_variants": enriched_variants,
