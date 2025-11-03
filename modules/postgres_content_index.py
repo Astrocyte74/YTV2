@@ -806,7 +806,13 @@ class PostgreSQLContentIndex:
                             'html', vs.html,
                             'generated_at', vs.created_at,
                             'kind', CASE WHEN vs.variant LIKE 'audio%%' THEN 'audio' ELSE 'text' END,
-                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END
+                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END,
+                            'audio_url', CASE WHEN vs.variant LIKE 'audio%%'
+                                              THEN COALESCE(c.media->>'audio_url', c.analysis_json->>'audio_url')
+                                              ELSE NULL END,
+                            'duration', CASE WHEN vs.variant LIKE 'audio%%'
+                                             THEN NULLIF((c.media_metadata->>'mp3_duration_seconds'), '')::int
+                                             ELSE NULL END
                         )
                         ORDER BY {variant_order_sql}, vs.created_at DESC
                     ) AS summary_variants
