@@ -471,6 +471,19 @@ body {
     opacity: 1;
 }
 
+/* When the inline wall reader is open, suppress hover glow on non-selected cards */
+.wall-reader-open [data-card] .summary-card__media::after,
+.wall-reader-open [data-card] .stream-card__media::after,
+.wall-reader-open [data-card] .wall-card__media::after,
+.wall-reader-open [data-card] .mosaic-card .relative.w-full.h-40::after {
+    opacity: 0 !important;
+}
+.wall-reader-open .wall-card--selected .wall-card__media::after {
+    /* Remove the inner media ring; rely on card-level glow to match reader */
+    opacity: 0 !important;
+    box-shadow: none !important;
+}
+
 /* Subtle media lift on hover */
 [data-card]:hover .summary-card__media img,
 [data-card]:hover .stream-card__media img,
@@ -498,6 +511,24 @@ body {
     backdrop-filter: blur(8px);
 }
 
+/* Connector overlay styling */
+.wall-connector-overlay {
+    /* Temporarily disable connector line per UX feedback */
+    display: none !important;
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 60; /* above grid and expander */
+}
+.wall-connector-overlay .wall-connector-svg { width: 100%; height: 100%; display: block; }
+.wall-connector-overlay .wall-connector-path {
+    stroke: rgba(14,165,233,0.65);
+    stroke-width: 4;
+    fill: none;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 10px rgba(14,165,233,0.50)) drop-shadow(0 14px 32px rgba(14,165,233,0.30));
+}
+
 /* Toggle between thumbnail and AI summary image */
 /* Hide per-card image toggle in favor of global Image mode controls */
 .summary-card__toggle { display: none !important; }
@@ -506,6 +537,23 @@ body {
 .summary-card__menu-btn:focus-visible {
     transform: translateY(-1px);
     background: rgba(15, 23, 42, 0.6);
+}
+
+/* Reader header kebab menu: inline in header row */
+.wall-expander .summary-card__menu-btn {
+    position: static;
+    top: auto; right: auto;
+    width: 2rem; height: 2rem;
+    background: rgba(148,163,184,0.15);
+    border-color: rgba(148,163,184,0.35);
+}
+.dark .wall-expander .summary-card__menu-btn {
+    background: rgba(15, 23, 42, 0.55);
+    border-color: rgba(148, 163, 184, 0.35);
+}
+.wall-expander .summary-card__menu {
+    top: 2.6rem;
+    right: 0.25rem;
 }
 
 .dark .summary-card__menu-btn {
@@ -1014,12 +1062,35 @@ body {
     color: #e2e8f0;
     border-color: rgba(30,41,59,0.8);
 }
+.wall-expander::before {
+    content: '';
+    position: absolute;
+    top: -8px;
+    left: var(--caret-left, 50%);
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-bottom: 8px solid rgba(226,232,240,0.9);
+}
+.dark .wall-expander::before {
+    border-bottom-color: rgba(30,41,59,0.95);
+}
+/* Reader panel – stronger accent glow when open (no hard ring) */
+.wall-reader-open .wall-expander {
+    box-shadow:
+      0 34px 80px -24px rgba(14,165,233,0.55),
+      0 0 0 2px rgba(14,165,233,0.35),
+      var(--card-shadow-strong);
+    border-color: rgba(14,165,233,0.35);
+}
 .wall-expander__header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
     margin-bottom: 0.5rem;
+    position: relative;
 }
 .wall-expander__title { font-size: 1rem; font-weight: 600; margin: 0; }
 .wall-expander__close {
@@ -1028,6 +1099,33 @@ body {
     background: rgba(148,163,184,0.15);
 }
 .wall-expander__close:hover { background: rgba(148,163,184,0.25); }
+
+.wall-expander__thumb {
+    width: 40px; height: 40px; border-radius: 0.5rem; object-fit: cover;
+    box-shadow: 0 4px 10px rgba(2,6,23,0.2);
+}
+
+.wall-card--selected {
+    transform: translateY(-6px) scale(1.05);
+    z-index: 10;
+    /* Match reader glow but avoid a hard ring */
+    box-shadow:
+      0 34px 80px -24px rgba(14,165,233,0.65),
+      0 0 60px 18px rgba(14,165,233,0.30),
+      var(--card-shadow-strong);
+    border: none;
+}
+/* Ambient soft glow halo without a ring */
+.wall-reader-open .wall-card.wall-card--selected::before {
+    content: '';
+    position: absolute;
+    inset: -10px;
+    border-radius: calc(0.75rem + 10px);
+    pointer-events: none;
+    box-shadow:
+      0 40px 95px -28px rgba(14,165,233,0.60),
+      0 0 70px 24px rgba(14,165,233,0.28);
+}
 .wall-card {
     position: relative;
     aspect-ratio: 2 / 3;
@@ -1079,6 +1177,16 @@ body {
 .wall-card__actions .stream-card__media-actions {
     display: inline-flex;
     gap: 0.4rem;
+}
+
+/* Ensure selected card glow wins over later hover rules */
+.wall-reader-open .wall-card.wall-card--selected {
+    box-shadow:
+      0 34px 80px -24px rgba(14,165,233,0.55),
+      var(--card-shadow-strong) !important;
+    transform: translateY(-6px) scale(1.05) !important;
+    z-index: 12;
+    border: none;
 }
 .wall-card__actions .stream-card__media-btn {
     width: 2rem;
