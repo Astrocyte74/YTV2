@@ -3394,24 +3394,33 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def handle_upload_audio(self):
         """Upload audio files from NAS (legacy compatibility)."""
         try:
-            # Check sync secret for authentication
+            # Auth: accept either Bearer SYNC_SECRET or X-INGEST-TOKEN
             sync_secret = os.getenv('SYNC_SECRET')
-            if not sync_secret:
-                self.send_error(500, "Sync not configured")
-                return
+            ingest_token = os.getenv('INGEST_TOKEN')
 
+            auth_ok = False
             auth_header = self.headers.get('Authorization', '')
-            if not auth_header.startswith('Bearer ') or auth_header[7:] != sync_secret:
-                logger.warning(f"Audio upload rejected: Invalid auth from {self.client_address[0]}")
+            if sync_secret and auth_header.startswith('Bearer ') and auth_header[7:] == sync_secret:
+                auth_ok = True
+            elif ingest_token and self.headers.get('X-INGEST-TOKEN') == ingest_token:
+                auth_ok = True
+
+            if not auth_ok:
+                logger.warning(
+                    "Audio upload rejected: Unauthorized (from %s). Provided headers: Authorization=%s, X-INGEST-TOKEN=%s",
+                    self.client_address[0],
+                    'present' if auth_header else 'absent',
+                    'present' if self.headers.get('X-INGEST-TOKEN') else 'absent'
+                )
                 self.send_error(401, "Unauthorized")
                 return
-            
+
             # Parse multipart form data
             content_type = self.headers.get('Content-Type', '')
             if not content_type.startswith('multipart/form-data'):
                 self.send_error(400, "Expected multipart/form-data")
                 return
-            
+
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length == 0:
                 self.send_error(400, "No data received")
@@ -3419,40 +3428,53 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             if content_length > 25 * 1024 * 1024:  # 25MB limit for audio
                 self.send_error(413, "Audio file too large")
                 return
-            
+
             post_data = self.rfile.read(content_length)
-            
-            # Parse form data
+
+            # Parse form data (ensure FieldStorage sees content headers via environ)
             import cgi
             import io
-            
             form_data = cgi.FieldStorage(
                 fp=io.BytesIO(post_data),
                 headers=self.headers,
-                environ={'REQUEST_METHOD': 'POST'}
+                environ={
+                    'REQUEST_METHOD': 'POST',
+                    'CONTENT_TYPE': content_type,
+                    'CONTENT_LENGTH': str(content_length),
+                }
             )
-            
+
             if 'audio' not in form_data:
                 self.send_error(400, "No audio file provided")
                 return
-            
+
             audio_field = form_data['audio']
-            if not audio_field.filename:
+            if not getattr(audio_field, 'filename', None):
                 self.send_error(400, "No audio filename provided")
                 return
-            
-            # Save audio file to persistent storage
+
+            # Save audio file to persistent storage atomically
             exports_root = Path('/app/data/exports') if Path('/app/data').exists() else Path('./exports')
             audio_dir = exports_root / 'audio'
             audio_dir.mkdir(parents=True, exist_ok=True)
 
             audio_path = audio_dir / audio_field.filename
-            with open(audio_path, 'wb') as f:
+            tmp_path = audio_path.with_suffix(audio_path.suffix + '.tmp')
+            with open(tmp_path, 'wb') as f:
                 audio_field.file.seek(0)
                 f.write(audio_field.file.read())
-            
-            logger.info(f"✅ Audio file uploaded: {audio_field.filename}")
-            
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except Exception:
+                    pass
+            os.replace(tmp_path, audio_path)  # atomic
+
+            size = audio_path.stat().st_size
+            logger.info(f"✅ Audio file uploaded: {audio_field.filename} ({size} bytes)")
+
+            public_url = f"/exports/audio/{audio_field.filename}"
+
             # Send success response
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
@@ -3461,9 +3483,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 'success': True,
                 'message': 'Audio uploaded successfully',
                 'filename': audio_field.filename,
-                'size': audio_path.stat().st_size
+                'relative_path': public_url,
+                'public_url': public_url,
+                'size': size,
             }).encode())
-            
+
         except Exception as e:
             logger.error(f"Audio upload error: {e}")
             self.send_error(500, f"Audio upload failed: {str(e)}")
@@ -3521,7 +3545,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             form_data = cgi.FieldStorage(
                 fp=io.BytesIO(post_data),
                 headers=self.headers,
-                environ={'REQUEST_METHOD': 'POST'}
+                environ={
+                    'REQUEST_METHOD': 'POST',
+                    'CONTENT_TYPE': content_type,
+                    'CONTENT_LENGTH': str(content_length),
+                }
             )
 
             if 'image' not in form_data:
@@ -3540,9 +3568,16 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
             filename = basename(img_field.filename)
             img_path = images_dir / filename
-            with open(img_path, 'wb') as f:
+            tmp_path = img_path.with_suffix(img_path.suffix + '.tmp')
+            with open(tmp_path, 'wb') as f:
                 img_field.file.seek(0)
                 f.write(img_field.file.read())
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except Exception:
+                    pass
+            os.replace(tmp_path, img_path)
 
             public_url = f"/exports/images/{filename}"
             logger.info(f"🖼️ Image file uploaded: {filename} -> {public_url}")
