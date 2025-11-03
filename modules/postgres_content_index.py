@@ -874,20 +874,13 @@ class PostgreSQLContentIndex:
                     }
                 }
 
-        formatted['processor_info'] = {
-            'model': 'postgres_backend',
-            'processing_time': 0,
-            'timestamp': formatted.get('indexed_at', '')
-        }
+            formatted['processor_info'] = {
+                'model': 'postgres_backend',
+                'processing_time': 0,
+                'timestamp': formatted.get('indexed_at', '')
+            }
 
-        # Attach audio/media fields so server JSON can reflect authoritative state
-        formatted['has_audio'] = has_audio
-        if media_json:
-            formatted['media'] = media_json
-        if media_metadata_json:
-            formatted['media_metadata'] = media_metadata_json
-
-        return formatted
+            return formatted
 
         finally:
             conn.close()
