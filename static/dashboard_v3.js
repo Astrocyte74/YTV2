@@ -2202,6 +2202,10 @@ class AudioDashboard {
                 if (this._suppressOpen) { e.preventDefault(); e.stopPropagation(); return; }
                 // Ignore if click on a control, action, or filter chip
                 if (e.target.closest('[data-control]') || e.target.closest('[data-action]') || e.target.closest('[data-filter-chip]')) return;
+                if (this.viewMode === 'wall') {
+                    const id = card.getAttribute('data-report-id');
+                    if (id) { e.preventDefault(); e.stopPropagation(); this.handleWallRead(id, card); return; }
+                }
                 const href = card.dataset.href;
                 if (href) window.location.href = href;
             });
@@ -3673,9 +3677,8 @@ class AudioDashboard {
         const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
         const watchLinkAvailable = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
         let mediaActions = this.renderMediaActionsV5(item, buttonDurations, hasAudio, watchLinkAvailable, source);
-        // Add Read button for wall overlay
-        const readBtn = `<button type="button" class="stream-card__media-btn" data-action="read" title="Read summary">\n            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4v15.5"/><path d="M8 4h12v13H8z"/></svg><span class=\"sr-only\">Read</span>\n        </button>`;
-        mediaActions = `<div class="stream-card__media-actions">${readBtn}${mediaActions || ''}</div>`;
+        // Remove inline reader button in wall mode; clicking the card opens reader
+        mediaActions = `<div class="stream-card__media-actions">${mediaActions || ''}</div>`;
         const chipRail = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 3);
         const menuMarkup = `
             <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
@@ -3751,9 +3754,65 @@ class AudioDashboard {
         };
         const onOutside = (e) => { if (e.target === modal) onClose(); };
         const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
+        const onArrowRowInline = (e) => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            e.preventDefault();
+            const cardsAll = Array.from(grid.querySelectorAll('.wall-card'));
+            const i = cardsAll.indexOf(cardEl);
+            if (i === -1) return;
+            const j = e.key === 'ArrowLeft' ? Math.max(0, i - 1) : Math.min(cardsAll.length - 1, i + 1);
+            if (j === i) return;
+            const nextCard = cardsAll[j];
+            const nextId = nextCard?.getAttribute('data-report-id');
+            if (nextId) this.openWallRowReader(nextId, nextCard);
+        };
+        const onArrow = (e) => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            e.preventDefault();
+            const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+            const cardsAll = grid ? Array.from(grid.querySelectorAll('.wall-card')) : [];
+            const current = this.contentGrid && this.contentGrid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`);
+            const i = current ? cardsAll.indexOf(current) : -1;
+            if (i === -1) return;
+            const j = e.key === 'ArrowLeft' ? Math.max(0, i - 1) : Math.min(cardsAll.length - 1, i + 1);
+            const nextCard = cardsAll[j];
+            const nextId = nextCard?.getAttribute('data-report-id');
+            if (nextId) {
+                onClose();
+                this.openWallModalReader(nextId);
+            }
+        };
         closeBtn.addEventListener('click', onClose);
         modal.addEventListener('click', onOutside);
         document.addEventListener('keydown', onEsc);
+        document.addEventListener('keydown', onArrow);
+        document.addEventListener('keydown', onArrow);
+        // Actions: Open, kebab menu
+        try {
+            const openBtn = modal.querySelector('[data-action="wall-reader-open-page"]');
+            const menuBtn = modal.querySelector('[data-action="menu"]');
+            const cardEl = this.contentGrid && this.contentGrid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`);
+            if (openBtn) {
+                openBtn.addEventListener('click', () => {
+                    window.location.href = `/${encodeURIComponent(id)}.json?v=2`;
+                });
+            }
+            if (menuBtn) {
+                menuBtn.addEventListener('click', () => this.toggleKebabMenu(modal, true, menuBtn));
+                const menu = modal.querySelector('[data-kebab-menu]');
+                if (menu) {
+                    const onMenuClick = (e) => {
+                        const a = e.target.closest('[data-action]');
+                        if (!a) return;
+                        const act = a.getAttribute('data-action');
+                        if (act === 'copy-link') { this.copyLink(cardEl || modal, id); this.toggleKebabMenu(modal, false); }
+                        if (act === 'reprocess') { this.openReprocessModal(id, cardEl || modal); this.toggleKebabMenu(modal, false); }
+                        if (act === 'delete') { if (cardEl) this.handleDelete(id, cardEl); this.toggleKebabMenu(modal, false); }
+                    };
+                    menu.addEventListener('click', onMenuClick);
+                }
+            }
+        } catch (_) {}
         this.sendTelemetry('read_open', { id, view: 'wall' });
     }
 
@@ -3762,7 +3821,19 @@ class AudioDashboard {
         if (!grid || !cardEl) return;
         // Remove any existing expander
         const prev = grid.querySelector('[data-wall-reader]');
+        if (prev && prev.getAttribute('data-wall-reader-id') === id) {
+            // Toggle: clicking again on same item collapses
+            prev.parentElement.removeChild(prev);
+            try { cardEl.classList.remove('wall-card--selected'); } catch(_) {}
+            // When the inline reader is fully closed, drop the global flag
+            try { document.body.classList.remove('wall-reader-open'); } catch(_) {}
+            this.sendTelemetry('read_close', { id, view: 'wall', toggled: true });
+            return;
+        }
         if (prev && prev.parentElement) prev.parentElement.removeChild(prev);
+        // Clear previous selection highlight and connector overlay
+        grid.querySelectorAll('.wall-card--selected').forEach(el => el.classList.remove('wall-card--selected'));
+        try { this.removeWallConnectorOverlay(); } catch(_) {}
         const item = (this.currentItems || []).find(x => x.file_stem === id);
         if (!item) return;
         // Find last card in the clicked row by similar offsetTop
@@ -3776,27 +3847,209 @@ class AudioDashboard {
         section.setAttribute('data-wall-reader', '');
         section.setAttribute('role', 'region');
         section.setAttribute('aria-label', 'Summary');
+        section.setAttribute('data-wall-reader-id', id);
+        // Prefer AI summary image for the reader header when available
+        let imgSrc = '';
+        try {
+            const preferred = item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
+            if (preferred) imgSrc = preferred;
+            else if (item.thumbnail_url) imgSrc = item.thumbnail_url;
+            else {
+                const cardImg = cardEl.querySelector('img');
+                imgSrc = (cardImg && cardImg.src) ? cardImg.src : '';
+            }
+        } catch (_) {
+            const cardImg = cardEl.querySelector('img');
+            imgSrc = (cardImg && cardImg.src) ? cardImg.src : '';
+        }
+        section.style.overflow = 'hidden';
+        section.style.height = '0px';
         section.innerHTML = `
             <div class="wall-expander__header">
-                <h4 class="wall-expander__title">${this.escapeHtml(item.title || 'Summary')}</h4>
-                <button class="wall-expander__close" aria-label="Close" data-action="wall-reader-close">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
+                <div class="flex items-center gap-3">
+                    ${imgSrc ? `<img class="wall-expander__thumb" alt="" src="${imgSrc}">` : ''}
+                    <h4 class="wall-expander__title">${this.escapeHtml(item.title || 'Summary')}</h4>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-page" title="Open page">Open</button>
+                    <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <circle cx="5" cy="12" r="1.5"></circle>
+                            <circle cx="12" cy="12" r="1.5"></circle>
+                            <circle cx="19" cy="12" r="1.5"></circle>
+                        </svg>
+                    </button>
+                    <div class="summary-card__menu hidden" data-kebab-menu role="menu">
+                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                        <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
+                    </div>
+                    <button class="wall-expander__close" aria-label="Close" data-action="wall-reader-close">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
             </div>
             <div class="prose prose-sm dark:prose-invert max-w-none">${this.renderWallReaderSection(item)}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
+        // Animate open height
+        requestAnimationFrame(() => {
+            const full = section.scrollHeight;
+            section.style.transition = 'height 200ms ease';
+            section.style.height = full + 'px';
+            const onEnd = () => {
+                section.style.height = 'auto';
+                section.style.overflow = '';
+                section.removeEventListener('transitionend', onEnd);
+            };
+            section.addEventListener('transitionend', onEnd);
+        });
+        // Highlight the source card and set caret position (relative to expander)
+        try {
+            cardEl.classList.add('wall-card--selected');
+            // Signal that a wall reader is open to adjust hover styling
+            document.body.classList.add('wall-reader-open');
+            // Compute after insertion so positions are accurate
+            const cardRect = cardEl.getBoundingClientRect();
+            const secRect = section.getBoundingClientRect();
+            let caretLeft = (cardRect.left - secRect.left) + (cardRect.width / 2);
+            // Clamp caret within expander width
+            caretLeft = Math.max(16, Math.min(caretLeft, secRect.width - 16));
+            section.style.setProperty('--caret-left', caretLeft + 'px');
+            const caretPct = Math.max(0, Math.min(100, (caretLeft / Math.max(1, secRect.width)) * 100));
+            section.style.setProperty('--caret-left-pct', caretPct + '%');
+            // Card-side connector X (percentage of card width). Currently centered.
+            cardEl.style.setProperty('--connector-x-pct', '50%');
+            // Draw/update connector overlay (curved link + subtle glow)
+            this.updateWallConnectorOverlay(cardEl, section, caretLeft);
+            // Recompute once after layout settles (fonts/images)
+            try { setTimeout(() => this.updateWallConnectorOverlay(cardEl, section, caretLeft), 150); } catch(_) {}
+            // Keep overlay aligned on scroll/resize until closed
+            const boundUpdate = () => this.updateWallConnectorOverlay(cardEl, section);
+            this._wallConnectorHandlers = this._wallConnectorHandlers || [];
+            this._wallConnectorHandlers.forEach(h => window.removeEventListener(h.type, h.fn, h.opts));
+            this._wallConnectorHandlers = [
+                { type: 'resize', fn: boundUpdate, opts: { passive: true } },
+                { type: 'scroll', fn: boundUpdate, opts: { passive: true } }
+            ];
+            this._wallConnectorHandlers.forEach(h => window.addEventListener(h.type, h.fn, h.opts));
+        } catch(_) {}
         const closeBtn = section.querySelector('[data-action="wall-reader-close"]');
+        const openBtn = section.querySelector('[data-action="wall-reader-open-page"]');
+        const menuBtn = section.querySelector('[data-action="menu"]');
         const onClose = () => {
-            if (section && section.parentElement) section.parentElement.removeChild(section);
+            if (!section || !section.parentElement) return;
+            // Animate collapse
+            section.style.overflow = 'hidden';
+            const full = section.scrollHeight;
+            section.style.height = full + 'px';
+            requestAnimationFrame(() => {
+                section.style.transition = 'height 160ms ease';
+                section.style.height = '0px';
+            });
+            const finalize = () => {
+                if (section && section.parentElement) section.parentElement.removeChild(section);
+                section.removeEventListener('transitionend', finalize);
+                try { document.body.classList.remove('wall-reader-open'); } catch(_) {}
+                try { this.removeWallConnectorOverlay(); } catch(_) {}
+                if (this._wallConnectorHandlers) {
+                    this._wallConnectorHandlers.forEach(h => window.removeEventListener(h.type, h.fn, h.opts));
+                    this._wallConnectorHandlers = [];
+                }
+            };
+            section.addEventListener('transitionend', finalize);
             document.removeEventListener('keydown', onEsc);
+            document.removeEventListener('keydown', onArrow);
             this.sendTelemetry('read_close', { id, view: 'wall' });
+            try { cardEl.classList.remove('wall-card--selected'); } catch(_) {}
         };
         const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
+        const onArrow = (e) => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            e.preventDefault();
+            const cardsAll = Array.from(grid.querySelectorAll('.wall-card'));
+            const i = cardsAll.indexOf(cardEl);
+            if (i === -1) return;
+            const j = e.key === 'ArrowLeft' ? Math.max(0, i - 1) : Math.min(cardsAll.length - 1, i + 1);
+            if (j === i) return;
+            const nextCard = cardsAll[j];
+            const nextId = nextCard?.getAttribute('data-report-id');
+            if (nextId) { onClose(); this.openWallRowReader(nextId, nextCard); }
+        };
         if (closeBtn) closeBtn.addEventListener('click', onClose);
+        if (openBtn) openBtn.addEventListener('click', () => {
+            window.location.href = `/${encodeURIComponent(id)}.json?v=2`;
+        });
+        // Copy link is available via kebab menu only
+        if (menuBtn) {
+            menuBtn.addEventListener('click', () => this.toggleKebabMenu(section, true, menuBtn));
+            const menu = section.querySelector('[data-kebab-menu]');
+            if (menu) {
+                const onMenuClick = (e) => {
+                    const a = e.target.closest('[data-action]');
+                    if (!a) return;
+                    const act = a.getAttribute('data-action');
+                    if (act === 'copy-link') { this.copyLink(cardEl, id); this.toggleKebabMenu(section, false); }
+                    if (act === 'reprocess') { this.openReprocessModal(id, cardEl); this.toggleKebabMenu(section, false); }
+                    if (act === 'delete') { this.handleDelete(id, cardEl); this.toggleKebabMenu(section, false); }
+                };
+                menu.addEventListener('click', onMenuClick);
+            }
+        }
         document.addEventListener('keydown', onEsc);
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.addEventListener('keydown', onArrow);
+        document.addEventListener('keydown', onArrow);
+        // Scroll with header offset so the source card stays in view (row context retained)
+        const header = document.querySelector('header');
+        const headerH = header ? header.getBoundingClientRect().height : 64;
+        const targetTop = cardEl.getBoundingClientRect().top + window.pageYOffset - headerH - 16;
+        window.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
         this.sendTelemetry('read_open', { id, view: 'wall' });
+    }
+
+    // --- Connector overlay helpers (wall mode) ---
+    ensureWallConnectorOverlay() {
+        if (this._wallConnector) return this._wallConnector;
+        const el = document.createElement('div');
+        el.className = 'wall-connector-overlay';
+        el.setAttribute('data-wall-connector', '');
+        el.innerHTML = `<svg class="wall-connector-svg" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" aria-hidden="true" focusable="false"><path class="wall-connector-path" d=""/></svg>`;
+        document.body.appendChild(el);
+        this._wallConnector = el;
+        return el;
+    }
+    removeWallConnectorOverlay() {
+        if (this._wallConnector && this._wallConnector.parentElement) {
+            this._wallConnector.parentElement.removeChild(this._wallConnector);
+        }
+        this._wallConnector = null;
+    }
+    updateWallConnectorOverlay(cardEl, sectionEl, caretLeftPx) {
+        try {
+            const overlay = this.ensureWallConnectorOverlay();
+            const svg = overlay.querySelector('svg');
+            const path = overlay.querySelector('path');
+            if (!svg || !path) return;
+
+            const cardRect = cardEl.getBoundingClientRect();
+            const secRect = sectionEl.getBoundingClientRect();
+            const caretLeft = (typeof caretLeftPx === 'number' && !Number.isNaN(caretLeftPx))
+                ? caretLeftPx
+                : (Math.max(16, Math.min((cardRect.left - secRect.left) + (cardRect.width / 2), secRect.width - 16)));
+
+            const startX = Math.round(cardRect.left + (cardRect.width / 2));
+            const startY = Math.round(cardRect.bottom - 2);
+            const endX = Math.round(secRect.left + caretLeft);
+            const endY = Math.round(secRect.top + 2);
+
+            // Smooth cubic curve; control points halfway vertically with slight horizontal bias
+            const midY = Math.round((startY + endY) / 2);
+            const c1x = startX, c1y = midY;
+            const c2x = endX,   c2y = midY;
+
+            const d = `M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}`;
+            path.setAttribute('d', d);
+        } catch (_) { /* no-op */ }
     }
 
     renderWallReaderSection(item) {
@@ -5996,7 +6249,42 @@ class AudioDashboard {
         }
 
         // Normalize line breaks and trim
-        const text = rawText.replace(/\r\n?/g, '\n').trim();
+        let text = rawText.replace(/\r\n?/g, '\n').trim();
+
+        // Convert inline bullet separators ("Header • point • point …") into
+        // a header + newline-delimited hyphen bullets so we can render lists.
+        // Works across paragraphs separated by blank lines.
+        try {
+            const paras = text.split(/\n{2,}/);
+            const rebuilt = paras.map(p => {
+                if (!p || p.indexOf('•') === -1) return p;
+                // Split around the bullet dot with surrounding spaces
+                const bits = p.split(/\s*•\s*/).map(s => s.trim()).filter(Boolean);
+                if (bits.length < 2) return p;
+                // Treat first chunk as a header when it doesn't start with a bullet marker
+                const first = bits.shift();
+                const header = first.length <= 160 ? first : null;
+                const bullets = header ? bits : [first, ...bits];
+                const headerLine = header ? header + '\n' : '';
+                const bulletLines = bullets.map(b => `- ${b}`).join('\n');
+                return headerLine + bulletLines;
+            }).join('\n\n');
+            text = rebuilt;
+        } catch (_) {}
+
+        // Detect "run-on hyphen bullets" and convert to line-broken bullets
+        // Example: "... sentence. - point one - point two - point three" -> break into lines with "- "
+        // Avoid hyphens in the middle of words by requiring surrounding whitespace/punctuation
+        try {
+            const newlineCount = (text.match(/\n/g) || []).length;
+            const hyphenRuns = (text.match(/(?:^|[.!?])\s*[-–—]\s+/g) || []).length;
+            if (newlineCount <= 2 && hyphenRuns >= 2) {
+                // Insert newlines before hyphen bullets following sentence boundaries or start
+                text = text
+                    .replace(/(?:^|([.!?]))\s*[-–—]\s+/g, (m, p1) => (p1 ? p1 + '\n- ' : '- '))
+                    .replace(/\s{2,}/g, ' ');
+            }
+        } catch (_) {}
 
         // Check for structured markers
         const hasMainTopic = /^(?:•\s*)?\*\*Main topic:\*\*\s*.+$/mi.test(text);
@@ -6012,6 +6300,19 @@ class AudioDashboard {
         // If we have comprehensive structure, format it nicely
         else if (hasComprehensiveStructure) {
             return this.renderComprehensiveContent(text);
+        }
+
+        // If we now have clear bullet lines, render them as a list
+        const bulletLines = text.split('\n').map(s => s.trim()).filter(s => /^[-•*]\s+/.test(s));
+        if (bulletLines.length >= 2) {
+            const prefaceIdx = text.indexOf('\n- ');
+            const preface = prefaceIdx > 0 ? text.slice(0, prefaceIdx).trim() : '';
+            const bulletHtml = bulletLines.map(l => l.replace(/^[-•*]\s+/, ''))
+                .map(b => `<li>${this.escapeHtml(b)}</li>`).join('');
+            const parts = [];
+            if (preface) parts.push(`<p>${this.escapeHtml(preface)}</p>`);
+            parts.push(`<ul class="kp-list">${bulletHtml}</ul>`);
+            return parts.join('');
         }
 
         // Fallback to normal paragraph formatting
