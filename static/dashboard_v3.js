@@ -3754,11 +3754,9 @@ class AudioDashboard {
         };
         const onOutside = (e) => { if (e.target === modal) onClose(); };
         const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
-        const onArrow = (e) => {
+        const onArrowRowInline = (e) => {
             if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
             e.preventDefault();
-            const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
-            if (!grid) return;
             const cardsAll = Array.from(grid.querySelectorAll('.wall-card'));
             const i = cardsAll.indexOf(cardEl);
             if (i === -1) return;
@@ -3963,10 +3961,21 @@ class AudioDashboard {
             document.removeEventListener('keydown', onEsc);
             document.removeEventListener('keydown', onArrow);
             this.sendTelemetry('read_close', { id, view: 'wall' });
-            document.removeEventListener('keydown', onArrow);
             try { cardEl.classList.remove('wall-card--selected'); } catch(_) {}
         };
         const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
+        const onArrow = (e) => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            e.preventDefault();
+            const cardsAll = Array.from(grid.querySelectorAll('.wall-card'));
+            const i = cardsAll.indexOf(cardEl);
+            if (i === -1) return;
+            const j = e.key === 'ArrowLeft' ? Math.max(0, i - 1) : Math.min(cardsAll.length - 1, i + 1);
+            if (j === i) return;
+            const nextCard = cardsAll[j];
+            const nextId = nextCard?.getAttribute('data-report-id');
+            if (nextId) this.openWallRowReader(nextId, nextCard);
+        };
         if (closeBtn) closeBtn.addEventListener('click', onClose);
         if (openBtn) openBtn.addEventListener('click', () => {
             window.location.href = `/${encodeURIComponent(id)}.json?v=2`;
@@ -3988,6 +3997,7 @@ class AudioDashboard {
             }
         }
         document.addEventListener('keydown', onEsc);
+        document.addEventListener('keydown', onArrow);
         // Scroll with header offset so the source card stays in view (row context retained)
         const header = document.querySelector('header');
         const headerH = header ? header.getBoundingClientRect().height : 64;
