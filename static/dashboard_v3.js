@@ -1298,9 +1298,11 @@ class AudioDashboard {
     }
 
     itemHasAudio(item) {
-        if (!item || !item.media || !item.media.has_audio) return false;
+        if (!item) return false;
+        const flag = Boolean(item.media && item.media.has_audio);
         const metaSecs = Number(item.media_metadata?.mp3_duration_seconds || item.media?.audio_duration_seconds || 0);
-        return metaSecs > 0;
+        const explicitUrl = Boolean(item.media && item.media.audio_url);
+        return flag || explicitUrl || metaSecs > 0;
     }
 
     resetAudioElement() {
