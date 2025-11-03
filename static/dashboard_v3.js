@@ -2310,7 +2310,7 @@ class AudioDashboard {
         });
     }
 
-    onClickCardAction(e) {
+    async onClickCardAction(e) {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         const card = btn.closest('[data-report-id]');
@@ -2324,7 +2324,27 @@ class AudioDashboard {
         const id = card.dataset.reportId;
         if (action === 'listen') {
             const hasAudio = card.getAttribute('data-has-audio') === 'true';
+            // Extra guard: verify existence when the server flag may be stale
             if (!hasAudio) { this.showToast('No audio for this item', 'warn'); return; }
+            try {
+                const item = (this.currentItems || []).find(x => x.file_stem === id);
+                const src = this.getAudioSourceForItem(item || {});
+                if (!src) throw new Error('no-src');
+                const head = await fetch(src, { method: 'HEAD', headers: { 'ngrok-skip-browser-warning': '1' } });
+                if (!head.ok) throw new Error(String(head.status || '404'));
+            } catch (_) {
+                // Mark as unavailable and clean up UI
+                card.setAttribute('data-has-audio', 'false');
+                try { card.querySelectorAll('[data-listen-button]').forEach(el => el.remove()); } catch(_) {}
+                try {
+                    card.querySelectorAll('.summary-card__consumption .summary-card__consumption-item').forEach(span => {
+                        const t = (span.textContent || '').trim();
+                        if (/^Listen\b/i.test(t)) span.remove();
+                    });
+                } catch(_) {}
+                this.showToast('Audio not available for this item', 'warn');
+                return;
+            }
             // If tapping Listen on the currently selected item, toggle play/pause
             if (this.currentAudio && this.currentAudio.id === id) {
                 this.togglePlayPause();
