@@ -3758,6 +3758,20 @@ class AudioDashboard {
             if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
             e.preventDefault();
             const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+            if (!grid) return;
+            const cardsAll = Array.from(grid.querySelectorAll('.wall-card'));
+            const i = cardsAll.indexOf(cardEl);
+            if (i === -1) return;
+            const j = e.key === 'ArrowLeft' ? Math.max(0, i - 1) : Math.min(cardsAll.length - 1, i + 1);
+            if (j === i) return;
+            const nextCard = cardsAll[j];
+            const nextId = nextCard?.getAttribute('data-report-id');
+            if (nextId) this.openWallRowReader(nextId, nextCard);
+        };
+        const onArrow = (e) => {
+            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+            e.preventDefault();
+            const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
             const cardsAll = grid ? Array.from(grid.querySelectorAll('.wall-card')) : [];
             const current = this.contentGrid && this.contentGrid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`);
             const i = current ? cardsAll.indexOf(current) : -1;
@@ -3769,18 +3783,6 @@ class AudioDashboard {
                 onClose();
                 this.openWallModalReader(nextId);
             }
-        };
-        const onArrow = (e) => {
-            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-            e.preventDefault();
-            const cardsAll = Array.from(grid.querySelectorAll('.wall-card'));
-            const i = cardsAll.indexOf(cardEl);
-            if (i === -1) return;
-            const j = e.key === 'ArrowLeft' ? Math.max(0, i - 1) : Math.min(cardsAll.length - 1, i + 1);
-            if (j === i) return;
-            const nextCard = cardsAll[j];
-            const nextId = nextCard?.getAttribute('data-report-id');
-            if (nextId) this.openWallRowReader(nextId, nextCard);
         };
         closeBtn.addEventListener('click', onClose);
         modal.addEventListener('click', onOutside);
