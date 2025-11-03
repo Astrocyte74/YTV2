@@ -1284,16 +1284,32 @@ class AudioDashboard {
     getAudioSourceForItem(item) {
         if (!this.itemHasAudio(item)) return null;
         // 1) Explicit URL from backend wins
-        if (item?.media?.audio_url) return this.normalizeAssetUrl(item.media.audio_url);
+        if (item?.media?.audio_url) {
+            let url = this.normalizeAssetUrl(item.media.audio_url);
+            if (item.audio_version) url += (url.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(String(item.audio_version));
+            return url;
+        }
         const reportId = item?.file_stem;
         const videoId = item?.video_id;
         const source = (item?.content_source || item?.source || '').toLowerCase();
         // 2) Standard mapped route by video id
-        if (videoId) return `/exports/by_video/${videoId}.mp3`;
+        if (videoId) {
+            let url = `/exports/by_video/${videoId}.mp3`;
+            if (item.audio_version) url += `?v=${encodeURIComponent(String(item.audio_version))}`;
+            return url;
+        }
         // 3) Fallback to slug name
-        if (reportId) return `/exports/${reportId}.mp3`;
+        if (reportId) {
+            let url = `/exports/${reportId}.mp3`;
+            if (item.audio_version) url += `?v=${encodeURIComponent(String(item.audio_version))}`;
+            return url;
+        }
         // 4) Legacy reddit naming under /exports/audio/reddit<slug>.mp3
-        if (source === 'reddit' && reportId) return `/exports/audio/reddit${reportId}.mp3`;
+        if (source === 'reddit' && reportId) {
+            let url = `/exports/audio/reddit${reportId}.mp3`;
+            if (item.audio_version) url += `?v=${encodeURIComponent(String(item.audio_version))}`;
+            return url;
+        }
         return null;
     }
 
