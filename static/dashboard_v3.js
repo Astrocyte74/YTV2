@@ -1272,7 +1272,7 @@ class AudioDashboard {
 
     getPlayableItems(items = this.currentItems) {
         if (!Array.isArray(items)) return [];
-        return items.filter(item => item && item.media && item.media.has_audio);
+        return items.filter(item => this.itemHasAudio(item));
     }
 
     rebuildPlaylist(items = this.currentItems) {
@@ -1282,12 +1282,25 @@ class AudioDashboard {
     }
 
     getAudioSourceForItem(item) {
-        if (!item || !item.media || !item.media.has_audio) return null;
-        if (item.media.audio_url) return item.media.audio_url;
-        const videoId = item.video_id;
+        if (!this.itemHasAudio(item)) return null;
+        // 1) Explicit URL from backend wins
+        if (item?.media?.audio_url) return this.normalizeAssetUrl(item.media.audio_url);
+        const reportId = item?.file_stem;
+        const videoId = item?.video_id;
+        const source = (item?.content_source || item?.source || '').toLowerCase();
+        // 2) Standard mapped route by video id
         if (videoId) return `/exports/by_video/${videoId}.mp3`;
-        const reportId = item.file_stem;
-        return reportId ? `/exports/${reportId}.mp3` : null;
+        // 3) Fallback to slug name
+        if (reportId) return `/exports/${reportId}.mp3`;
+        // 4) Legacy reddit naming under /exports/audio/reddit<slug>.mp3
+        if (source === 'reddit' && reportId) return `/exports/audio/reddit${reportId}.mp3`;
+        return null;
+    }
+
+    itemHasAudio(item) {
+        if (!item || !item.media || !item.media.has_audio) return false;
+        const metaSecs = Number(item.media_metadata?.mp3_duration_seconds || item.media?.audio_duration_seconds || 0);
+        return metaSecs > 0;
     }
 
     resetAudioElement() {
@@ -2259,7 +2272,7 @@ class AudioDashboard {
 
             const normalizedItem = this.normalizeCardItem(rawItem);
             const buttonDurations = this.getButtonDurations(normalizedItem);
-            const hasAudio = Boolean(normalizedItem.media && normalizedItem.media.has_audio);
+            const hasAudio = this.itemHasAudio(normalizedItem);
             const actionContainer = card.querySelector('[data-action="read"]')?.parentElement;
             if (!actionContainer) return;
 
@@ -3304,7 +3317,7 @@ class AudioDashboard {
 
     // V4 List card: audio-first stream card (no autoplay)
     renderStreamCardV4(item) {
-        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const hasAudio = this.itemHasAudio(item);
         const rawSource = item.content_source || 'youtube';
         const source = rawSource.toLowerCase();
         const hasWatchLink = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
@@ -3383,7 +3396,7 @@ class AudioDashboard {
 
     // V4 Grid card: mosaic tile
     renderGridCardV4(item) {
-        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const hasAudio = this.itemHasAudio(item);
         const rawSource = item.content_source || 'youtube';
         const source = rawSource.toLowerCase();
         const href = `/${item.file_stem}.json?v=2`;
@@ -3502,7 +3515,7 @@ class AudioDashboard {
 
     // V5 List card (Stream): Tailwind-first layout
     renderStreamCardTW(item) {
-        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const hasAudio = this.itemHasAudio(item);
         const rawSource = item.content_source || 'youtube';
         const source = rawSource.toLowerCase();
         const href = `/${item.file_stem}.json?v=2`;
@@ -3610,7 +3623,7 @@ class AudioDashboard {
     }
 // V5 Grid card (Mosaic): Tailwind-first tile
     renderGridCardTW(item) {
-        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const hasAudio = this.itemHasAudio(item);
         const rawSource = item.content_source || 'youtube';
         const source = rawSource.toLowerCase();
         const href = `/${item.file_stem}.json?v=2`;
@@ -3669,7 +3682,7 @@ class AudioDashboard {
     }
 
     renderWallCardTW(item) {
-        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const hasAudio = this.itemHasAudio(item);
         const rawSource = item.content_source || 'youtube';
         const source = rawSource.toLowerCase();
         const href = `/${item.file_stem}.json?v=2`;
@@ -4059,7 +4072,7 @@ class AudioDashboard {
     }
 
     renderSummaryCard(normalizedItem, { view = 'list' } = {}) {
-        const hasAudio = Boolean(normalizedItem.media && normalizedItem.media.has_audio);
+        const hasAudio = this.itemHasAudio(normalizedItem);
         const rawSource = normalizedItem.content_source || 'youtube';
         const source = rawSource.toLowerCase();
         const hasWatchLink = source === 'youtube' ? Boolean(normalizedItem.video_id) : Boolean(normalizedItem.canonical_url);
@@ -4550,6 +4563,14 @@ class AudioDashboard {
         if (src.includes('/exports/by_video/') && id) {
             const fallback = `/exports/${id}.mp3`;
             this.audioElement.src = fallback;
+            this.audioElement.load();
+            this.refreshAudioVariantBlocks();
+            return;
+        }
+        // Reddit legacy fallback: /exports/audio/reddit<id>.mp3
+        if (id && !src.includes(`/exports/audio/reddit${id}.mp3`)) {
+            const redditLegacy = `/exports/audio/reddit${id}.mp3`;
+            this.audioElement.src = redditLegacy;
             this.audioElement.load();
             this.refreshAudioVariantBlocks();
             return;
