@@ -3429,13 +3429,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(413, "Audio file too large")
                 return
 
-            post_data = self.rfile.read(content_length)
-
-            # Parse form data (ensure FieldStorage sees content headers via environ)
+            # Parse form data (streaming)
             import cgi
-            import io
             form_data = cgi.FieldStorage(
-                fp=io.BytesIO(post_data),
+                fp=self.rfile,
                 headers=self.headers,
                 environ={
                     'REQUEST_METHOD': 'POST',
@@ -3461,8 +3458,16 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             audio_path = audio_dir / audio_field.filename
             tmp_path = audio_path.with_suffix(audio_path.suffix + '.tmp')
             with open(tmp_path, 'wb') as f:
-                audio_field.file.seek(0)
-                f.write(audio_field.file.read())
+                try:
+                    audio_field.file.seek(0)
+                except Exception:
+                    pass
+                # Stream copy to avoid large memory use
+                while True:
+                    chunk = audio_field.file.read(8192)
+                    if not chunk:
+                        break
+                    f.write(chunk)
                 f.flush()
                 try:
                     os.fsync(f.fileno())
@@ -3471,6 +3476,19 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             os.replace(tmp_path, audio_path)  # atomic
 
             size = audio_path.stat().st_size
+            if size <= 0:
+                # cleanup and error
+                try:
+                    if tmp_path.exists():
+                        tmp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                try:
+                    # Remove zero-byte final file to avoid misleading HEAD 200 with 0 size
+                    audio_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise ValueError("zero-size upload")
             logger.info(f"✅ Audio file uploaded: {audio_field.filename} ({size} bytes)")
 
             public_url = f"/exports/audio/{audio_field.filename}"
@@ -3535,15 +3553,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(413, "Image file too large")
                 return
 
-            post_data = self.rfile.read(content_length)
-
-            # Parse form data
+            # Parse form data (streaming)
             import cgi
-            import io
             from os.path import basename
-
             form_data = cgi.FieldStorage(
-                fp=io.BytesIO(post_data),
+                fp=self.rfile,
                 headers=self.headers,
                 environ={
                     'REQUEST_METHOD': 'POST',
@@ -3570,14 +3584,32 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             img_path = images_dir / filename
             tmp_path = img_path.with_suffix(img_path.suffix + '.tmp')
             with open(tmp_path, 'wb') as f:
-                img_field.file.seek(0)
-                f.write(img_field.file.read())
+                try:
+                    img_field.file.seek(0)
+                except Exception:
+                    pass
+                while True:
+                    chunk = img_field.file.read(8192)
+                    if not chunk:
+                        break
+                    f.write(chunk)
                 f.flush()
                 try:
                     os.fsync(f.fileno())
                 except Exception:
                     pass
             os.replace(tmp_path, img_path)
+            if img_path.stat().st_size <= 0:
+                try:
+                    if tmp_path.exists():
+                        tmp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                try:
+                    img_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise ValueError("zero-size upload")
 
             public_url = f"/exports/images/{filename}"
             logger.info(f"🖼️ Image file uploaded: {filename} -> {public_url}")
