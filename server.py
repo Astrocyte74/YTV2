@@ -2496,6 +2496,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_reports_v2(query_params)
             elif path.startswith('/api/debug/content'):
                 self.handle_debug_content()
+            elif path == '/api/health/storage':
+                self.handle_storage_health()
             elif path.startswith('/api/reports/'):
                 self.serve_api_report_detail()
             elif path == '/api/health':
@@ -4181,6 +4183,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def handle_debug_content(self):
         """Handle GET /api/debug/content?video_id=X - Direct video lookup for debugging."""
         try:
+            # Admin gate
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
             # Parse query parameters
             import urllib.parse
             qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -4216,6 +4225,91 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"error": f"internal error: {str(e)}"}).encode())
+
+    def handle_storage_health(self):
+        """GET /api/health/storage - disk usage + exports sanity (admin-only).
+
+        Returns JSON with total/used/free bytes, used_pct, and a small sample of recent files
+        and zero-byte files under exports/. 401 when DEBUG_TOKEN is missing/invalid.
+        503 when used_pct >= 98 to allow external alerting.
+        """
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            # Determine export root
+            exports_root = Path('/app/data/exports') if Path('/app/data').exists() else Path('./exports')
+            disk_root = Path('/app/data') if Path('/app/data').exists() else exports_root
+
+            import shutil, time
+            usage = shutil.disk_usage(str(disk_root))
+            used_pct = (usage.used / usage.total) * 100 if usage.total else 0.0
+
+            zero_byte_files = []
+            recent_files = []
+            try:
+                # Walk with caps to avoid heavy scans
+                for p in exports_root.rglob('*'):
+                    if not p.is_file():
+                        continue
+                    try:
+                        st = p.stat()
+                    except Exception:
+                        continue
+                    if st.st_size == 0 and len(zero_byte_files) < 100:
+                        zero_byte_files.append({
+                            'path': str(p.relative_to(exports_root)),
+                            'size': 0,
+                            'mtime': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(st.st_mtime))
+                        })
+                    recent_files.append((st.st_mtime, p, st.st_size))
+                    if len(recent_files) > 5000:
+                        recent_files.sort(reverse=True)
+                        recent_files = recent_files[:1000]
+            except Exception:
+                pass
+
+            recent_files.sort(reverse=True)
+            recent_sample = []
+            for mtime, p, size in recent_files[:25]:
+                recent_sample.append({
+                    'path': str(p.relative_to(exports_root)),
+                    'size': int(size),
+                    'mtime': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(mtime))
+                })
+
+            payload = {
+                'total_bytes': int(usage.total),
+                'used_bytes': int(usage.used),
+                'free_bytes': int(usage.free),
+                'used_pct': round(used_pct, 2),
+                'threshold_pct': 95,
+                'exports_root': str(exports_root),
+                'exports': {
+                    'zero_byte_files': zero_byte_files,
+                    'recent_files': recent_sample
+                }
+            }
+
+            status = 200
+            if used_pct >= 98.0:
+                status = 503
+
+            self.send_response(status)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, indent=2).encode())
+
+        except Exception as e:
+            logger.error(f"Error serving storage health: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "storage health failed", "message": str(e)}).encode())
 
     def handle_ingest_audio(self):
         """Handle POST /ingest/audio - Audio file upload from NAS."""
@@ -5543,3 +5637,18 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Fatal error: {e}")
         sys.exit(1)
+    def _debug_auth_ok(self) -> bool:
+        """Verify debug token for admin-only endpoints.
+
+        Accepts either Authorization: Bearer <DEBUG_TOKEN> or X-Debug-Token: <DEBUG_TOKEN>.
+        When DEBUG_TOKEN is unset, deny access (secure default).
+        """
+        token = os.getenv('DEBUG_TOKEN') or ''
+        if not token:
+            return False
+        auth = self.headers.get('Authorization', '')
+        if auth.startswith('Bearer ') and auth[7:] == token:
+            return True
+        if self.headers.get('X-Debug-Token') == token:
+            return True
+        return False
