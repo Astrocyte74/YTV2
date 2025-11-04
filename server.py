@@ -653,7 +653,21 @@ def extract_html_report_metadata(file_path: Path) -> Dict:
 class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     """HTTP request handler with modern template system"""
     
-    
+    def _debug_auth_ok(self) -> bool:
+        """Verify debug token for admin-only endpoints.
+
+        Accepts either Authorization: Bearer <DEBUG_TOKEN> or X-Debug-Token: <DEBUG_TOKEN>.
+        When DEBUG_TOKEN is unset, deny access (secure default).
+        """
+        token = os.getenv('DEBUG_TOKEN') or ''
+        if not token:
+            return False
+        auth = self.headers.get('Authorization', '')
+        if auth.startswith('Bearer ') and auth[7:] == token:
+            return True
+        if self.headers.get('X-Debug-Token') == token:
+            return True
+        return False
     
     @staticmethod
     def _maybe_parse_dict_string(value):
@@ -5660,18 +5674,3 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Fatal error: {e}")
         sys.exit(1)
-    def _debug_auth_ok(self) -> bool:
-        """Verify debug token for admin-only endpoints.
-
-        Accepts either Authorization: Bearer <DEBUG_TOKEN> or X-Debug-Token: <DEBUG_TOKEN>.
-        When DEBUG_TOKEN is unset, deny access (secure default).
-        """
-        token = os.getenv('DEBUG_TOKEN') or ''
-        if not token:
-            return False
-        auth = self.headers.get('Authorization', '')
-        if auth.startswith('Bearer ') and auth[7:] == token:
-            return True
-        if self.headers.get('X-Debug-Token') == token:
-            return True
-        return False
