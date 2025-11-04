@@ -117,6 +117,20 @@ try:
 except Exception as e:
     pass  # Continue if .envrc sourcing fails
 
+## Feature toggle for V2 template as default
+USE_V2_DEFAULT = os.getenv("USE_V2_DEFAULT", "1") == "1"  # default ON
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('bot.log'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
 # Log minimal diagnostics about DEBUG_TOKEN (without revealing the secret)
 try:
     _raw_dbg = os.getenv('DEBUG_TOKEN') or ''
@@ -131,20 +145,6 @@ try:
         logger.info("🔐 DEBUG_TOKEN not set")
 except Exception:
     logger.exception("Failed to log DEBUG_TOKEN diagnostics")
-
-# Feature toggle for V2 template as default
-USE_V2_DEFAULT = os.getenv("USE_V2_DEFAULT", "1") == "1"  # default ON
-
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('bot.log'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
 
 # Deployment commit for traceability in responses. Prefer env override when available.
 COMMIT_SHA = os.getenv('DEPLOY_COMMIT', '').strip() or 'feature/image-display-controls'
