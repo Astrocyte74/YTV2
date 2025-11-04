@@ -2516,6 +2516,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_report_events()
             elif path == '/api/metrics':
                 self.serve_api_metrics()
+            elif path == '/api/version':
+                self.serve_api_version()
             elif path.startswith('/api/backup/'):
                 self.send_error(410, "Endpoint removed")
             elif path == '/api/download-database':
@@ -2623,6 +2625,25 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"error": "metrics proxy error", "message": str(e)}).encode())
+
+    def serve_api_version(self):
+        """GET /api/version - returns running deployment commit and basics."""
+        try:
+            payload = {
+                'deployment_commit': COMMIT_SHA,
+                'branch': os.getenv('RENDER_GIT_BRANCH') or 'feature/image-display-controls',
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            }
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(payload).encode())
+        except Exception as e:
+            logger.error(f"Error serving /api/version: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error':'version failed','message':str(e)}).encode())
 
     def serve_api_filters(self, query_params: Dict[str, List[str]]):
         """Serve Phase 2 filters API endpoint with faceted search"""
