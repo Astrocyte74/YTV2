@@ -10,12 +10,29 @@
     margin: 0 0 0.5rem 0;
     line-height: 1.4;
 }
+/* Ensure headings look correct inside prose containers */
+.prose h3.kp-heading,
+.prose .kp-heading {
+    font-weight: 600;
+    font-size: 1rem;
+    margin: 0.5rem 0 0.25rem;
+}
 
 .kp-list {
     margin: 0;
     padding-left: 1.1rem;
     line-height: 1.5;
     list-style-type: disc;
+}
+
+/* List styling under prose */
+.prose ul.kp-list {
+    list-style: disc;
+    margin: 0.25rem 0 0.5rem 1.25rem;
+    padding-left: 0;
+}
+.prose ul.kp-list li {
+    margin: 0.2rem 0;
 }
 
 .kp-list li {
@@ -31,6 +48,10 @@
     margin-top: 1rem;
     font-size: 1rem;
     line-height: 1.5;
+}
+
+.prose .kp-takeaway strong {
+    font-weight: 600;
 }
 
 /* Future shared styles can be added here */
