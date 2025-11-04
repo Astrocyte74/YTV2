@@ -71,3 +71,10 @@ Returns a single item payload matching the list format, plus `deployment_commit`
 
 Notes
 - Static files under `/exports/...` support both `GET` and `HEAD`, and tolerate cache‑busting query params (e.g., `?v=1762174657`).
+
+## Admin-only (debug)
+
+These endpoints are gated by `DEBUG_TOKEN`. Call with either `Authorization: Bearer <DEBUG_TOKEN>` or `X-Debug-Token: <DEBUG_TOKEN>`.
+
+- `GET /api/debug/content?video_id=<id>` — raw row preview for ops; JSON-serializes datetimes safely.
+- `GET /api/health/storage` — returns disk totals/used/free, `used_pct`, and small samples of zero‑byte and recent files under `/app/data/exports`. Returns HTTP 503 when `used_pct` ≥ 98 to allow alerting.
