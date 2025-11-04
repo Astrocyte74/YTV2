@@ -659,14 +659,17 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         Accepts either Authorization: Bearer <DEBUG_TOKEN> or X-Debug-Token: <DEBUG_TOKEN>.
         When DEBUG_TOKEN is unset, deny access (secure default).
         """
-        token = os.getenv('DEBUG_TOKEN') or ''
+        token = (os.getenv('DEBUG_TOKEN') or '').strip()
         if not token:
             return False
-        auth = self.headers.get('Authorization', '')
+        auth = (self.headers.get('Authorization', '') or '').strip()
         if auth.startswith('Bearer ') and auth[7:] == token:
             return True
-        if self.headers.get('X-Debug-Token') == token:
-            return True
+        # Accept common casings for the debug header
+        for h in ('X-Debug-Token', 'X-DEBUG-TOKEN', 'X-Debug'):
+            val = self.headers.get(h)
+            if isinstance(val, str) and val.strip() == token:
+                return True
         return False
     
     @staticmethod
