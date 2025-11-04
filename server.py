@@ -653,6 +653,8 @@ def extract_html_report_metadata(file_path: Path) -> Dict:
 class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     """HTTP request handler with modern template system"""
     
+    
+    
     @staticmethod
     def _maybe_parse_dict_string(value):
         """Parse dict-as-string format from chunked processing (JSON or Python literal)"""
