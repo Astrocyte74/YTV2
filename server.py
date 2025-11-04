@@ -117,6 +117,21 @@ try:
 except Exception as e:
     pass  # Continue if .envrc sourcing fails
 
+# Log minimal diagnostics about DEBUG_TOKEN (without revealing the secret)
+try:
+    _raw_dbg = os.getenv('DEBUG_TOKEN') or ''
+    if _raw_dbg:
+        import hashlib as _hashlib
+        _stripped = _raw_dbg.strip()
+        _changed = (len(_raw_dbg) != len(_stripped))
+        _sha = _hashlib.sha256(_stripped.encode()).hexdigest()
+        logger.info("🔐 DEBUG_TOKEN configured: len=%s strip_len=%s changed=%s sha256=%s",
+                    len(_raw_dbg), len(_stripped), _changed, _sha)
+    else:
+        logger.info("🔐 DEBUG_TOKEN not set")
+except Exception:
+    logger.exception("Failed to log DEBUG_TOKEN diagnostics")
+
 # Feature toggle for V2 template as default
 USE_V2_DEFAULT = os.getenv("USE_V2_DEFAULT", "1") == "1"  # default ON
 
