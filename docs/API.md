@@ -1,6 +1,6 @@
 # YTV2 Dashboard API
 
-This service exposes two public JSON endpoints that power the dashboard UI.
+This service exposes the JSON endpoints that power the dashboard UI.
 
 ## GET /api/filters
 Returns facet counts for building the filter sidebar.
@@ -43,6 +43,15 @@ Item fields (selected):
 - `content_source` (slug) and `source_label` (friendly)
 - `analysis`: `{ category:[], categories:[{category, subcategories:[]}], language, ... }`
 - `summary_html`, `summary_text`, `summary_variant`, `summary_variants`
+- `summary_image_url` (optional): model‑generated illustration under `/exports/images/...`
+- `media`: `{ has_audio: boolean, audio_url?: string, summary_image_url?: string, ... }`
+- `media_metadata`: `{ mp3_duration_seconds?: number, video_duration_seconds?: number }`
+
+Audio enrichment
+- For any `summary_variants` entry with kind `audio` (or variant starting with `audio`), the API injects:
+  - `audio_url` (server‑returned public path such as `/exports/audio/<file>.mp3`)
+  - `duration` (integer seconds)
+  These come from the authoritative `content.media` / `content.media_metadata` fields.
 
 ## Empty states and guard rails
 The UI may require at least one selection in certain groups (e.g., category, source, channel). When none are selected the client intentionally shows an empty state and does not call `/api/reports`.
@@ -56,3 +65,9 @@ For NAS → Dashboard syncing, use the private ingest endpoints with `X-INGEST-T
 - `POST /ingest/audio` – MP3 upload and `has_audio` update
 
 Details and curl examples: see `docs/NAS_INTEGRATION.md`.
+
+## GET /<video_id>.json (single report)
+Returns a single item payload matching the list format, plus `deployment_commit` for deploy verification. The server computes `has_audio` as true if the content row is flagged, if a media `audio_url` is present, or if any audio variant exists.
+
+Notes
+- Static files under `/exports/...` support both `GET` and `HEAD`, and tolerate cache‑busting query params (e.g., `?v=1762174657`).

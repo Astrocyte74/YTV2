@@ -28,6 +28,14 @@ NGROK_BASIC_PASS=optional_basic_pass
 PORT=10000
 ```
 
+## Disks and storage
+
+Uploads (audio/images) are written under `/app/data/exports` on the attached Render disk. Ensure adequate space:
+
+- Attach a disk mounted at `/app/data` (Service → Disks). Start with 5–10 GB for comfort.
+- Verify via `/api/config` (directories.exports shows `/app/data/exports`).
+- When disk is full, upload endpoints will 500 and may create zero‑byte artifacts. Increase disk size or clean old files, then retry.
+
 ## Notes
 - Cold builds can take a while (container build + extract).
 - Auto-deploy from Git works; use “Deploy latest commit” if Render misses a push.

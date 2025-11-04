@@ -1,13 +1,16 @@
 # NAS Integration (PostgreSQL Ingest)
 
-This describes how the NAS backend syncs content and audio to the Render‑hosted dashboard using the Postgres ingest endpoints. The legacy SQLite sync endpoints are removed.
+This describes how the NAS backend syncs content, audio, and images to the Render‑hosted dashboard. The legacy SQLite sync endpoints are removed.
 
 ## Overview
 - Database: PostgreSQL only (`DATABASE_URL_POSTGRES_NEW` on the dashboard)
 - Ingest endpoints (private):
   - `POST /ingest/report` – upsert content and optional summary variants
   - `POST /ingest/audio` – upload MP3 and flip `has_audio=true`
-- Auth header: `X-INGEST-TOKEN: <token>`
+  - Images use the modern upload endpoint (see below)
+- Auth headers:
+  - Primary: `X-INGEST-TOKEN: <token>`
+  - Legacy compatibility (uploads only): `Authorization: Bearer <SYNC_SECRET>`
 - Public read endpoints (unchanged): `/api/reports`, `/api/filters`
 
 ## Environment Variables
@@ -15,7 +18,7 @@ This describes how the NAS backend syncs content and audio to the Render‑hoste
 Dashboard (Render):
 - `DATABASE_URL_POSTGRES_NEW` – required
 - `INGEST_TOKEN` – required for NAS sync (private ingest)
-- Optional legacy: `SYNC_SECRET` (legacy upload endpoints only)
+- Optional legacy: `SYNC_SECRET` (legacy upload endpoints also accepted)
 
 NAS (backend):
 - `RENDER_DASHBOARD_URL=https://<your-render-app>.onrender.com`
@@ -93,8 +96,23 @@ curl -sS -X POST "$RENDER_DASHBOARD_URL/ingest/audio" \
 
 Storage and URLs:
 - Files are stored under `/app/data/exports/audio/`
-- Public path: `/exports/audio/<video_id>.mp3`
-- Note: the saved filename is a sanitized form (e.g., removing `yt:`/`:`). The database update uses the original `video_id` key.
+- Public paths are under `/exports/audio/` (filenames can be canonical or timestamped; prefer the server‑returned `public_url` in the upload response)
+- The API supports `HEAD` and cache‑busting query params (e.g., `?v=<audio_version>`)
+
+Modern upload (alternate):
+- `POST /api/upload-audio` – accepts either `Authorization: Bearer <SYNC_SECRET>` or `X-INGEST-TOKEN: <token>` and returns a JSON body including `public_url`, `relative_path`, and `size`.
+  NAS should prefer the server‑returned path and verify `size > 0`.
+
+### POST /api/upload-image
+Uploads a summary image PNG and returns a `public_url` under `/exports/images/...`.
+
+Headers:
+- Either `Authorization: Bearer <SYNC_SECRET>` or `X-INGEST-TOKEN: <token>`
+- multipart form: `image=@/path/file.png;type=image/png`
+
+Storage and URLs:
+- Files are stored under `/app/data/exports/images/`
+- Public path: `/exports/images/<filename>.png`
 
 ## Health Checks
 - `GET /health/ingest` → reports `{ status: "ok", token_set: true, pg_dsn_set: true }`
@@ -106,11 +124,11 @@ Storage and URLs:
 - Source is inferred from `canonical_url`/identifiers; do not send `content_source`.
 
 ## Troubleshooting
-- 401 Unauthorized: Missing or wrong `X-INGEST-TOKEN`.
+- 401 Unauthorized: Missing or wrong `X-INGEST-TOKEN` (or `SYNC_SECRET` for legacy uploads).
 - 500 upsert_failed: Check Render has `DATABASE_URL_POSTGRES_NEW` set; inspect logs for SQL details.
-- Audio uploaded but not visible: Ensure you used `/ingest/audio` (not legacy `/api/upload-audio`).
-- Wrong path/404: Verify public URL is `/exports/audio/<video_id>.mp3`.
+- Upload returns 500 or creates zero‑byte file: Check Render disk space. Increase the `/app/data` disk size, remove zero‑byte artifacts under `/app/data/exports`, and retry. Upload handlers write atomically (temp → rename) and reject zero‑size writes.
+- Wrong path/404: Prefer the server‑returned `public_url`; both `GET` and `HEAD` should return 200 with non‑zero Content‑Length.
 
 ---
 
-This NAS integration replaces legacy SQLite sync. Use the ingest endpoints with `X-INGEST-TOKEN` for all new content and audio.
+This NAS integration replaces legacy SQLite sync. Use the ingest endpoints with `X-INGEST-TOKEN` for content, and the modern upload endpoints for audio/images when convenient. Legacy Bearer uploads remain accepted for compatibility.
