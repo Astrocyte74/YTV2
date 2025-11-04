@@ -3920,7 +3920,7 @@ class AudioDashboard {
                     </button>
                 </div>
             </div>
-            <div class="prose prose-sm dark:prose-invert max-w-none">${this.renderWallReaderSection(item)}</div>
+            <div class="prose prose-sm dark:prose-invert max-w-none" data-summary-body>${this.renderWallReaderSection(item)}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
         // Animate open height
@@ -3935,6 +3935,11 @@ class AudioDashboard {
             };
             section.addEventListener('transitionend', onEnd);
         });
+        // Enhance injected HTML formatting for headings/lists
+        try {
+            const body = section.querySelector('[data-summary-body]');
+            this.enhanceSummaryHtml(body);
+        } catch (_) {}
         // Highlight the source card and set caret position (relative to expander)
         try {
             cardEl.classList.add('wall-card--selected');
@@ -4080,6 +4085,46 @@ class AudioDashboard {
 
             const d = `M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}`;
             path.setAttribute('d', d);
+        } catch (_) { /* no-op */ }
+    }
+
+    // Normalize NAS HTML variants at render time to ensure headings/lists styles apply
+    enhanceSummaryHtml(root) {
+        if (!root) return;
+        try {
+            const paras = Array.from(root.querySelectorAll('p'));
+            paras.forEach((p) => {
+                const text = (p.textContent || '').trim();
+                const next = p.nextElementSibling;
+                // Promote a standalone line followed by a bullet list to a heading
+                if (next && next.tagName === 'UL' && next.classList.contains('kp-list') && text && text.length <= 120) {
+                    const h = document.createElement('h3');
+                    h.className = 'kp-heading';
+                    h.textContent = text;
+                    p.replaceWith(h);
+                    return;
+                }
+                // Emphasize Bottom line: ...
+                const m = text.match(/^\s*(Bottom\s*-?\s*line)\s*:\s*(.*)$/i);
+                if (m) {
+                    const strong = document.createElement('strong');
+                    strong.textContent = `${m[1]}:`;
+                    p.classList.add('kp-takeaway');
+                    p.innerHTML = '';
+                    p.appendChild(strong);
+                    if (m[2]) {
+                        p.appendChild(document.createTextNode(' ' + m[2]));
+                    }
+                }
+            });
+            // Ensure list class is present
+            Array.from(root.querySelectorAll('ul')).forEach((ul) => {
+                if (!ul.classList.contains('kp-list')) {
+                    // If it looks like a bullet list, add class for consistent styling
+                    const firstLi = ul.querySelector('li');
+                    if (firstLi) ul.classList.add('kp-list');
+                }
+            });
         } catch (_) { /* no-op */ }
     }
 
