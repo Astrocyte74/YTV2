@@ -3237,51 +3237,74 @@ class AudioDashboard {
         const pop = document.createElement('div');
         pop.className = 'reader-display-popover';
         pop.setAttribute('role', 'dialog');
-        const sizeBtn = (id, label, style='') => `<button type="button" class="reader-chip" data-reader-size="${id}" aria-pressed="${prefs.size===id?'true':'false'}" style="${style}">${label}</button>`;
-        const familyBtn = (id, label, style='') => `<button type="button" class="reader-chip" data-reader-family="${id}" aria-pressed="${prefs.family===id?'true':'false'}" style="${style}">${label}</button>`;
-        const lineBtn = (id, label) => `<button type="button" class="reader-chip" data-reader-line="${id}" aria-pressed="${prefs.line===id?'true':'false'}">${label}</button>`;
-        const themeBtn = (id, label) => `<button type="button" class="reader-chip" data-reader-theme="${id}" aria-pressed="${prefs.theme===id?'true':'false'}">${label}</button>`;
-        const paraBtn = (id, label) => `<button type="button" class="reader-chip" data-reader-para="${id}" aria-pressed="${prefs.paraStyle===id?'true':'false'}">${label}</button>`;
-        const justifyBtn = (id, label) => `<button type="button" class="reader-chip" data-reader-justify="${id}" aria-pressed="${prefs.justify===id?'true':'false'}">${label}</button>`;
-        const measureBtn = (id, label) => `<button type=\"button\" class=\"reader-chip\" data-reader-measure=\"${id}\" aria-pressed=\"${prefs.measure===id?'true':'false'}\">${label}</button>`;
+        const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed?'true':'false'}">${label}</span>`;
+        const sizeSeg = `
+          <div class="reader-segment" role="radiogroup" aria-label="Text size">
+            ${segBtn('data-reader-size="s"', 'A', prefs.size==='s')}
+            ${segBtn('data-reader-size="m"', 'A', prefs.size==='m')}
+            ${segBtn('data-reader-size="l"', 'A', prefs.size==='l')}
+            ${segBtn('data-reader-size="xl"', 'A', prefs.size==='xl')}
+            ${segBtn('data-reader-size="xxl"', 'A', prefs.size==='xxl')}
+          </div>`;
+        const lineSeg = `
+          <div class="reader-segment" role="radiogroup" aria-label="Line height">
+            ${segBtn('data-reader-line="tight"', 'Tight', prefs.line==='tight')}
+            ${segBtn('data-reader-line="normal"', 'Normal', prefs.line==='normal')}
+            ${segBtn('data-reader-line="loose"', 'Loose', prefs.line==='loose')}
+          </div>`;
+        const familySeg = `
+          <div class="reader-segment" role="radiogroup" aria-label="Font family">
+            ${segBtn('data-reader-family="sans"', 'Sans', prefs.family==='sans')}
+            ${segBtn('data-reader-family="serif"', 'Serif', prefs.family==='serif')}
+          </div>`;
+        const justifySeg = `
+          <div class="reader-segment" role="radiogroup" aria-label="Justification">
+            ${segBtn('data-reader-justify="left"', 'Left', prefs.justify==='left')}
+            ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify==='justify')}
+          </div>`;
+        const paraTile = (id, label) => `
+          <div class="reader-tile" data-reader-para="${id}" aria-pressed="${prefs.paraStyle===id?'true':'false'}" role="button" aria-label="${label}">
+            <div class="tile-preview"><div class="tile-preview-inner">${'<div class=\\"strip\\"></div>'.repeat(3)}</div></div>
+            <div class="tile-label">${label}</div>
+          </div>`;
+        const themeTile = (id, label) => `
+          <div class="reader-tile" data-reader-theme="${id}" aria-pressed="${prefs.theme===id?'true':'false'}" role="button" aria-label="${label}">
+            <div class="tile-preview"><div class="tile-preview-inner">${'<div class=\\"strip\\"></div>'.repeat(3)}</div></div>
+            <div class="tile-label">${label}</div>
+          </div>`;
+        const measureTile = (id, label) => `
+          <div class="reader-tile" data-reader-measure="${id}" aria-pressed="${prefs.measure===id?'true':'false'}" role="button" aria-label="${label}">
+            <div class="tile-preview"><div class="tile-preview-inner">${'<div class=\\"strip\\"></div>'.repeat(3)}</div></div>
+            <div class="tile-label">${label}</div>
+          </div>`;
         pop.innerHTML = `
-            <h4>Display Options</h4>
-            <div class="reader-display-row" data-row="size">${[
-                sizeBtn('s','A','font-size:12px'),
-                sizeBtn('m','A','font-size:14px'),
-                sizeBtn('l','A','font-size:16px'),
-                sizeBtn('xl','A','font-size:18px'),
-                sizeBtn('xxl','A','font-size:20px')
-            ].join('')}</div>
-            <div class="reader-display-row" data-row="line">${[
-                lineBtn('tight','Tight'),
-                lineBtn('normal','Normal'),
-                lineBtn('loose','Loose')
-            ].join('')}</div>
-            <div class="reader-display-row" data-row="family">${[
-                familyBtn('sans','Sans','font-family: Inter, system-ui, sans-serif'),
-                familyBtn('serif','Serif','font-family: Georgia, serif')
-            ].join('')}</div>
-            <div class="reader-display-row" data-row="para">${[
-                paraBtn('spaced','Spaced'),
-                paraBtn('indented','Indented')
-            ].join('')}</div>
-            <div class="reader-display-row" data-row="theme">${[
-                themeBtn('light','Light'),
-                themeBtn('sepia','Sepia'),
-                themeBtn('dark','Dark')
-            ].join('')}</div>
-            <div class="reader-display-row" data-row="justify">${[
-                justifyBtn('left','Left'),
-                justifyBtn('justify','Justified')
-            ].join('')}</div>
-            <div class="reader-display-row" data-row="measure">${[
-                measureBtn('narrow','Narrow'),
-                measureBtn('medium','Medium'),
-                measureBtn('wide','Wide'),
-                measureBtn('full','Full')
-            ].join('')}</div>
-        `;
+          <div class="reader-panel">
+            <div class="reader-group">
+              <h5>Typography</h5>
+              <div class="reader-display-row" data-row="size">${sizeSeg}</div>
+              <div class="reader-display-row" data-row="line">${lineSeg}</div>
+              <div class="reader-display-row" data-row="family">${familySeg}</div>
+            </div>
+            <div class="reader-group">
+              <h5>Layout</h5>
+              <div class="reader-tiles" data-row="para">${[paraTile('spaced','Spaced'), paraTile('indented','Indented')].join('')}</div>
+              <div class="reader-display-row" data-row="justify">${justifySeg}</div>
+              <div class="reader-tiles" data-row="measure">${[
+                  measureTile('narrow','Narrow'),
+                  measureTile('medium','Medium'),
+                  measureTile('wide','Wide'),
+                  measureTile('full','Full')
+              ].join('')}</div>
+            </div>
+            <div class="reader-group">
+              <h5>Theme</h5>
+              <div class="reader-tiles" data-row="theme">${[
+                  themeTile('light','Light'),
+                  themeTile('sepia','Sepia'),
+                  themeTile('dark','Dark')
+              ].join('')}</div>
+            </div>
+          </div>`;
         // Position relative to anchor
         const anchorRect = anchorBtn.getBoundingClientRect();
         pop.style.position = 'fixed';
@@ -3294,7 +3317,7 @@ class AudioDashboard {
         setTimeout(() => { document.addEventListener('click', onAway, true); window.addEventListener('resize', onAway, true); }, 0);
         // Handlers
         pop.addEventListener('click', (e) => {
-            const btn = e.target.closest('button.reader-chip');
+            const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-theme], [data-reader-para], [data-reader-justify], [data-reader-measure]');
             if (!btn) return;
             const size = btn.getAttribute('data-reader-size');
             const line = btn.getAttribute('data-reader-line');
