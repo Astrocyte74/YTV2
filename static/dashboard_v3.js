@@ -97,6 +97,7 @@ const READER_FAMILY_MAP = {
 const READER_THEMES = ['light','sepia','dark'];
 const READER_PARA_STYLES = ['spaced','indented'];
 const READER_JUSTIFY = ['left','justify'];
+const READER_MEASURE_MAP = { narrow: '60ch', medium: '70ch', wide: '80ch', full: '100%' };
 
 class AudioDashboard {
     constructor() {
@@ -3167,7 +3168,7 @@ class AudioDashboard {
     getReaderDisplayPrefs() {
         try {
             const raw = localStorage.getItem(this.readerPrefsKey()) || localStorage.getItem('readerDisplayPrefs');
-            if (!raw) return { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left' };
+            if (!raw) return { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'medium' };
             const obj = JSON.parse(raw);
             return {
                 size: obj.size && READER_SIZE_MAP[obj.size] ? obj.size : 'm',
@@ -3175,10 +3176,11 @@ class AudioDashboard {
                 family: obj.family && READER_FAMILY_MAP[obj.family] ? obj.family : 'sans',
                 theme: READER_THEMES.includes(obj.theme) ? obj.theme : 'light',
                 paraStyle: READER_PARA_STYLES.includes(obj.paraStyle) ? obj.paraStyle : 'spaced',
-                justify: READER_JUSTIFY.includes(obj.justify) ? obj.justify : 'left'
+                justify: READER_JUSTIFY.includes(obj.justify) ? obj.justify : 'left',
+                measure: (obj.measure && READER_MEASURE_MAP[obj.measure]) ? obj.measure : 'medium'
             };
         } catch(_) {
-            return { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left' };
+            return { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'medium' };
         }
     }
     setReaderDisplayPrefs(next) {
@@ -3209,6 +3211,10 @@ class AudioDashboard {
             // Justification (CSS applies only on desktop)
             const just = this.getReaderDisplayPrefs().justify || 'left';
             try { container.classList.toggle('reader-justify--on', just === 'justify'); } catch(_) {}
+            // Measure (desktop-only cap; stored as variable used by CSS)
+            const measureKey = this.getReaderDisplayPrefs().measure || 'medium';
+            const mw = READER_MEASURE_MAP[measureKey] || '70ch';
+            try { container.style.setProperty('--reader-measure', mw); } catch(_) {}
         }
     }
     openReaderDisplayPopover(container, bodyEl, anchorBtn) {
@@ -3224,6 +3230,7 @@ class AudioDashboard {
         const themeBtn = (id, label) => `<button type="button" class="reader-chip" data-reader-theme="${id}" aria-pressed="${prefs.theme===id?'true':'false'}">${label}</button>`;
         const paraBtn = (id, label) => `<button type="button" class="reader-chip" data-reader-para="${id}" aria-pressed="${prefs.paraStyle===id?'true':'false'}">${label}</button>`;
         const justifyBtn = (id, label) => `<button type="button" class="reader-chip" data-reader-justify="${id}" aria-pressed="${prefs.justify===id?'true':'false'}">${label}</button>`;
+        const measureBtn = (id, label) => `<button type=\"button\" class=\"reader-chip\" data-reader-measure=\"${id}\" aria-pressed=\"${prefs.measure===id?'true':'false'}\">${label}</button>`;
         pop.innerHTML = `
             <h4>Display Options</h4>
             <div class="reader-display-row" data-row="size">${[
@@ -3255,6 +3262,12 @@ class AudioDashboard {
                 justifyBtn('left','Left'),
                 justifyBtn('justify','Justified')
             ].join('')}</div>
+            <div class="reader-display-row" data-row="measure">${[
+                measureBtn('narrow','Narrow'),
+                measureBtn('medium','Medium'),
+                measureBtn('wide','Wide'),
+                measureBtn('full','Full')
+            ].join('')}</div>
         `;
         // Position relative to anchor
         const anchorRect = anchorBtn.getBoundingClientRect();
@@ -3276,6 +3289,7 @@ class AudioDashboard {
             const theme = btn.getAttribute('data-reader-theme');
             const para = btn.getAttribute('data-reader-para');
             const justify = btn.getAttribute('data-reader-justify');
+            const measure = btn.getAttribute('data-reader-measure');
             let next = {};
             if (size && READER_SIZE_MAP[size]) next.size = size;
             if (line && READER_LINE_MAP[line]) next.line = line;
@@ -3283,6 +3297,7 @@ class AudioDashboard {
             if (theme && READER_THEMES.includes(theme)) next.theme = theme;
             if (para && READER_PARA_STYLES.includes(para)) next.paraStyle = para;
             if (justify && READER_JUSTIFY.includes(justify)) next.justify = justify;
+            if (measure && READER_MEASURE_MAP[measure]) next.measure = measure;
             const merged = this.setReaderDisplayPrefs(next);
             this.applyReaderDisplayPrefs(container, bodyEl);
             // Update pressed states
@@ -3292,6 +3307,7 @@ class AudioDashboard {
             pop.querySelectorAll('[data-reader-theme]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-theme')===merged.theme ? 'true' : 'false'));
             pop.querySelectorAll('[data-reader-para]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-para')===merged.paraStyle ? 'true' : 'false'));
             pop.querySelectorAll('[data-reader-justify]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-justify')===merged.justify ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-measure]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-measure')===merged.measure ? 'true' : 'false'));
             // Light telemetry on change
             try { this.sendTelemetry && this.sendTelemetry('reader_display_change', merged); } catch(_) {}
         });
