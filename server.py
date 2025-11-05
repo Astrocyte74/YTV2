@@ -149,6 +149,21 @@ except Exception:
 # Deployment commit for traceability in responses. Prefer env override when available.
 COMMIT_SHA = os.getenv('DEPLOY_COMMIT', '').strip() or 'feature/image-display-controls'
 
+# Preferred default summary variant(s) for report_v2 pages
+_pref_single = (os.getenv('SUMMARY_DEFAULT_VARIANT') or '').strip().lower()
+_pref_order_env = (os.getenv('SUMMARY_DEFAULT_VARIANT_ORDER') or '').strip()
+DEFAULT_VARIANT_PREF = []
+if _pref_single:
+    DEFAULT_VARIANT_PREF.append(_pref_single)
+if _pref_order_env:
+    for _p in _pref_order_env.split(','):
+        v = _p.strip().lower()
+        if v and v not in DEFAULT_VARIANT_PREF:
+            DEFAULT_VARIANT_PREF.append(v)
+for v in ('key-insights', 'comprehensive', 'bullet-points'):
+    if v not in DEFAULT_VARIANT_PREF:
+        DEFAULT_VARIANT_PREF.append(v)
+
 # --------------------------
 # Auth and Rate Limiting
 # --------------------------
@@ -1168,6 +1183,28 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         cache_bust_parts = [uploaded_pretty, views_pretty, ai_model]
         cache_bust = hash("".join(filter(None, cache_bust_parts))) % 10000
         
+        # Determine preferred default variant given available variants
+        try:
+            variants_raw = report_data.get('summary_variants') or summary.get('variants') or []
+            avail_ids = set()
+            if isinstance(variants_raw, list):
+                for it in variants_raw:
+                    if isinstance(it, dict):
+                        vid = str(it.get('variant') or it.get('summary_type') or '').strip().lower()
+                        if vid:
+                            avail_ids.add(vid)
+        except Exception:
+            avail_ids = set()
+
+        hinted = (summary_type or report_data.get('summary_type_latest') or report_data.get('summary_variant') or '').strip().lower()
+        chosen_default = None
+        for pref in DEFAULT_VARIANT_PREF:
+            if pref in avail_ids:
+                chosen_default = pref
+                break
+        if not chosen_default:
+            chosen_default = hinted or ('comprehensive' if 'comprehensive' in avail_ids else ('bullet-points' if 'bullet-points' in avail_ids else (next(iter(avail_ids)) if avail_ids else 'comprehensive')))
+
         return {
             "title": title,
             "thumbnail": thumbnail,
@@ -1193,7 +1230,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             "youtube_url": video.get("url") or report_data.get("url") or report_data.get("canonical_url", ""),
             "cache_bust": cache_bust,
             "summary_variants": report_data.get('summary_variants') or summary.get('variants') or [],
-            "summary_variant_default": summary_type or report_data.get('summary_type_latest') or report_data.get('summary_variant') or 'comprehensive'
+            "summary_variant_default": chosen_default
         }
     
     def do_GET(self):
