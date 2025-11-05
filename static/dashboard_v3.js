@@ -2411,6 +2411,14 @@ class AudioDashboard {
             this.toggleKebabMenu(card, false);
             this.openReprocessModal(id, card);
         }
+        if (action === 'set-default-variant') {
+            const v = (btn.getAttribute('data-variant') || '').toLowerCase();
+            if (v) {
+                try { localStorage.setItem('readerPreferredVariant', v); } catch(_) {}
+                if (this.showToast) this.showToast(`Default summary set to ${this.prettyVariantLabel(v)}`);
+            }
+            this.toggleKebabMenu(card, false);
+        }
         if (action === 'confirm-delete') { this.handleDelete(id, card); this.sendTelemetry('cta_delete', { id }); }
         if (action === 'cancel-delete') this.toggleDeletePopover(card, false);
         if (action === 'collapse') this.collapseCardInline(id);
@@ -3076,6 +3084,14 @@ class AudioDashboard {
         const remaining = uniqueOrder.filter((id) => !textFirst.includes(id));
         result.order = [...textFirst, ...remaining];
 
+        // User preference first when available
+        try {
+            const userPref = (localStorage.getItem('readerPreferredVariant') || '').toLowerCase();
+            if (userPref && result.map[userPref]) {
+                result.defaultId = userPref;
+            }
+        } catch (_) {}
+
         const preferred = [data.summary_type, data.summary?.type, data.summary_type_latest, data.summary?.variant];
         for (const candidate of preferred) {
             const norm = candidate && String(candidate).toLowerCase();
@@ -3568,6 +3584,11 @@ class AudioDashboard {
                 </svg>
             </button>
             <div class="summary-card__menu hidden" data-kebab-menu role="menu">
+                <div class="summary-card__menu-group" role="group" aria-label="Default summary">
+                    <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="key-insights">Set default: Insights</button>
+                    <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="comprehensive">Set default: Comprehensive</button>
+                    <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="bullet-points">Set default: Key Points</button>
+                </div>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
@@ -3721,6 +3742,11 @@ class AudioDashboard {
                 </svg>
             </button>
             <div class="summary-card__menu hidden" data-kebab-menu role="menu">
+                <div class="summary-card__menu-group" role="group" aria-label="Default summary">
+                    <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="key-insights">Set default: Insights</button>
+                    <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="comprehensive">Set default: Comprehensive</button>
+                    <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="bullet-points">Set default: Key Points</button>
+                </div>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
@@ -3914,6 +3940,11 @@ class AudioDashboard {
                         </svg>
                     </button>
                     <div class="summary-card__menu hidden" data-kebab-menu role="menu">
+                        <div class="summary-card__menu-group" role="group" aria-label="Default summary">
+                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="key-insights">Set default: Insights</button>
+                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="comprehensive">Set default: Comprehensive</button>
+                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="bullet-points">Set default: Key Points</button>
+                        </div>
                         <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                         <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
                         <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
