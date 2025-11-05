@@ -85,7 +85,8 @@ const VARIANT_META_MAP = REPROCESS_VARIANTS.reduce((map, variant) => {
     return map;
 }, {});
 
-const TEXT_VARIANT_ORDER = REPROCESS_VARIANTS.filter((variant) => variant.kind === 'text').map((variant) => variant.id);
+// Prefer Insights by default across the UI, then Comprehensive, then Key Points
+const TEXT_VARIANT_ORDER = ['key-insights', 'comprehensive', 'bullet-points'];
 
 class AudioDashboard {
     constructor() {
