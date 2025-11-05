@@ -23,16 +23,8 @@ RUN mkdir -p data exports
 # Expose port
 EXPOSE 10000
 
-# Health check via Python (avoid installing curl)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python - << 'PY' || exit 1
-import sys, urllib.request
-try:
-    with urllib.request.urlopen('http://localhost:10000/health', timeout=5) as r:
-        sys.exit(0 if r.status == 200 else 1)
-except Exception:
-    sys.exit(1)
-PY
+# Health check via small Python script (no OS packages needed)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 CMD ["python", "healthcheck.py"]
 
 # Run the dashboard server
 CMD ["python", "server.py"]
