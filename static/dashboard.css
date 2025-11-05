@@ -645,6 +645,21 @@ body {
 .reader-tile[data-reader-para] .tile-preview-inner { width: 86%; }
 .reader-tile[data-reader-para="indented"] .tile-preview-inner .strip:first-child { margin-left: 14px; }
 
+/* Justification micro-preview and tiles */
+.justify-mini { width: 160px; height: 16px; display: grid; grid-template-rows: repeat(3, 1fr); gap: 3px; margin-left: 6px; }
+.justify-mini .jline { height: 3px; background: rgba(71,85,105,0.9); border-radius: 2px; }
+.dark .justify-mini .jline { background: rgba(209,213,219,0.9); }
+[data-justify-state="left"] .justify-mini .jline:nth-child(1) { width: 84%; }
+[data-justify-state="left"] .justify-mini .jline:nth-child(2) { width: 72%; }
+[data-justify-state="left"] .justify-mini .jline:nth-child(3) { width: 61%; }
+[data-justify-state="justify"] .justify-mini .jline { width: 100%; }
+
+.reader-tile[data-reader-justify] .tile-preview-inner.justify-mini { width: 86%; display: grid; grid-template-rows: repeat(3, 1fr); gap: 4px; padding: 8px; }
+.reader-tile[data-reader-justify="left"] .justify-mini .jline:nth-child(1) { width: 84%; }
+.reader-tile[data-reader-justify="left"] .justify-mini .jline:nth-child(2) { width: 70%; }
+.reader-tile[data-reader-justify="left"] .justify-mini .jline:nth-child(3) { width: 58%; }
+.reader-tile[data-reader-justify="justify"] .justify-mini .jline { width: 100%; }
+
 
 /* Reader CSS variables (scoped to reader body containers) */
 .wall-expander [data-summary-body],
