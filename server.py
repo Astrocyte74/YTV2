@@ -3241,6 +3241,46 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         except Exception as e:
                             errors.append(f"Failed to delete audio {audio_path}: {e}")
         
+        # Remove cached JSON reports if present (Render disk or local dev)
+        try:
+            json_dirs = [
+                Path('/app/data/reports'),
+                Path('./data/reports')
+            ]
+            for jdir in json_dirs:
+                if not jdir.exists():
+                    continue
+                jpath = jdir / f"{report_id}.json"
+                if jpath.is_file():
+                    try:
+                        jpath.unlink()
+                        deleted_files.append(str(jpath))
+                        logger.info("Deleted cached JSON report: %s", jpath)
+                    except Exception as e:
+                        errors.append(f"Failed to delete JSON {jpath}: {e}")
+        except Exception as e:
+            errors.append(f"JSON cleanup error: {e}")
+
+        # Remove generated summary images if present
+        try:
+            img_dirs = [
+                Path('/app/data/exports/images'),
+                Path('./exports/images')
+            ]
+            for idir in img_dirs:
+                if not idir.exists():
+                    continue
+                for ext in ('.png', '.jpg', '.jpeg', '.webp'):
+                    for p in idir.glob(f"{report_id}_*{ext}"):
+                        try:
+                            p.unlink()
+                            deleted_files.append(str(p))
+                            logger.info("Deleted summary image: %s", p)
+                        except Exception as e:
+                            errors.append(f"Failed to delete image {p}: {e}")
+        except Exception as e:
+            errors.append(f"Image cleanup error: {e}")
+
         # (SQLite deletion removed in Postgres-only mode)
 
         # Delete from PostgreSQL database if using PostgreSQL backend
