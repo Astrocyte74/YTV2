@@ -3296,7 +3296,10 @@ class AudioDashboard {
             <div class="reader-group">
               <h5>Layout</h5>
               <div class="reader-tiles" data-row="para">${[paraTile('spaced','Spaced'), paraTile('indented','Indented')].join('')}</div>
-              <div class="reader-display-row" data-row="justify" data-justify-state="${prefs.justify}">${justifySeg}${justifyMini}</div>
+              <div class="reader-tiles" data-row="justify">${[
+                  `<div class=\"reader-tile\" data-reader-justify=\"left\" aria-pressed=\"${prefs.justify==='left'?'true':'false'}\" role=\"button\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div><div class=\"tile-label\">Left</div></div>`,
+                  `<div class=\"reader-tile\" data-reader-justify=\"justify\" aria-pressed=\"${prefs.justify==='justify'?'true':'false'}\" role=\"button\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div><div class=\"tile-label\">Justified</div></div>`
+              ].join('')}</div>
               <div class="reader-tiles" data-row="measure">${[
                   measureTile('narrow','Narrow'),
                   measureTile('medium','Medium'),
@@ -3312,7 +3315,7 @@ class AudioDashboard {
                   themeTile('dark','Dark')
               ].join('')}</div>
             </div>
-            <div class="reader-footer"><span></span><button type="button" class="reader-reset" data-reader-reset>Reset to defaults</button></div>
+            
           </div>`;
         // Position relative to anchor
         const anchorRect = anchorBtn.getBoundingClientRect();
