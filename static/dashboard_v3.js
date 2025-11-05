@@ -3287,35 +3287,51 @@ class AudioDashboard {
               <button type="button" class="reader-close" aria-label="Close" data-reader-close>×</button>
             </div>
           </div>
-          <div class="reader-panel">
-            <div class="reader-group">
-              <h5>Typography</h5>
-              <div class="reader-display-row reader-row-inline" data-row="typo-main">${sizeSeg}${familySeg}</div>
-              <div class="reader-display-row" data-row="line">${lineSeg}</div>
+          <div class="reader-panel reader-grid">
+            <div class="reader-col">
+              <div class="reader-group">
+                <h5>Typography</h5>
+                <div class="reader-field">
+                  <div class="reader-field-label">Font Size</div>
+                  <div class="reader-display-row" data-row="size">${sizeSeg}</div>
+                </div>
+                <div class="reader-field">
+                  <div class="reader-field-label">Font Family</div>
+                  <div class="reader-display-row" data-row="family">${familySeg}</div>
+                </div>
+                <div class="reader-field">
+                  <div class="reader-field-label">Line Spacing</div>
+                  <div class="reader-display-row" data-row="line">${lineSeg}</div>
+                </div>
+                <div class="reader-field">
+                  <div class="reader-live-preview" id="readerPreview">The quick brown fox jumps over the lazy dog.</div>
+                </div>
+              </div>
+              <div class="reader-group">
+                <h5>Theme</h5>
+                <div class="reader-tiles" data-row="theme">${[
+                    themeTile('light','Light'),
+                    themeTile('sepia','Sepia'),
+                    themeTile('dark','Dark')
+                ].join('')}</div>
+              </div>
             </div>
-            <div class="reader-group">
-              <h5>Layout</h5>
-              <div class="reader-tiles" data-row="para">${[paraTile('spaced','Spaced'), paraTile('indented','Indented')].join('')}</div>
-              <div class="reader-tiles" data-row="justify">${[
-                  `<div class=\"reader-tile\" data-reader-justify=\"left\" aria-pressed=\"${prefs.justify==='left'?'true':'false'}\" role=\"button\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div><div class=\"tile-label\">Left</div></div>`,
-                  `<div class=\"reader-tile\" data-reader-justify=\"justify\" aria-pressed=\"${prefs.justify==='justify'?'true':'false'}\" role=\"button\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div><div class=\"tile-label\">Justified</div></div>`
-              ].join('')}</div>
-              <div class="reader-tiles" data-row="measure">${[
-                  measureTile('narrow','Narrow'),
-                  measureTile('medium','Medium'),
-                  measureTile('wide','Wide'),
-                  measureTile('full','Full')
-              ].join('')}</div>
+            <div class="reader-col">
+              <div class="reader-group">
+                <h5>Layout</h5>
+                <div class="reader-tiles" data-row="para">${[paraTile('spaced','Spaced'), paraTile('indented','Indented')].join('')}</div>
+                <div class="reader-tiles" data-row="justify">${[
+                    `<div class=\"reader-tile\" data-reader-justify=\"left\" aria-pressed=\"${prefs.justify==='left'?'true':'false'}\" role=\"button\" title=\"Ragged-right paragraphs\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div><div class=\"tile-label\">Left</div></div>`,
+                    `<div class=\"reader-tile\" data-reader-justify=\"justify\" aria-pressed=\"${prefs.justify==='justify'?'true':'false'}\" role=\"button\" title=\"Fully justified paragraphs\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div><div class=\"tile-label\">Justified</div></div>`
+                ].join('')}</div>
+                <div class="reader-tiles" data-row="measure">${[
+                    measureTile('narrow','Narrow'),
+                    measureTile('medium','Medium'),
+                    measureTile('wide','Wide'),
+                    measureTile('full','Full')
+                ].join('')}</div>
+              </div>
             </div>
-            <div class="reader-group">
-              <h5>Theme</h5>
-              <div class="reader-tiles" data-row="theme">${[
-                  themeTile('light','Light'),
-                  themeTile('sepia','Sepia'),
-                  themeTile('dark','Dark')
-              ].join('')}</div>
-            </div>
-            
           </div>`;
         // Position relative to anchor
         const anchorRect = anchorBtn.getBoundingClientRect();
@@ -3348,6 +3364,18 @@ class AudioDashboard {
             if (measure && READER_MEASURE_MAP[measure]) next.measure = measure;
             const merged = this.setReaderDisplayPrefs(next);
             this.applyReaderDisplayPrefs(container, bodyEl);
+            // Update live preview
+            try {
+              const prev = pop.querySelector('#readerPreview');
+              if (prev) {
+                const fs = READER_SIZE_MAP[merged.size] || 1.0;
+                const lh = READER_LINE_MAP[merged.line] || 1.6;
+                const ff = READER_FAMILY_MAP[merged.family] || 'inherit';
+                prev.style.fontSize = fs + 'rem';
+                prev.style.lineHeight = String(lh);
+                prev.style.fontFamily = ff;
+              }
+            } catch(_) {}
             // Update pressed states
             pop.querySelectorAll('[data-reader-size]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-size')===merged.size ? 'true' : 'false'));
             pop.querySelectorAll('[data-reader-line]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-line')===merged.line ? 'true' : 'false'));
