@@ -1272,7 +1272,7 @@ class AudioDashboard {
 
     getPlayableItems(items = this.currentItems) {
         if (!Array.isArray(items)) return [];
-        return items.filter(item => item && item.media && item.media.has_audio);
+        return items.filter(item => this.itemHasAudio(item));
     }
 
     rebuildPlaylist(items = this.currentItems) {
@@ -1282,12 +1282,43 @@ class AudioDashboard {
     }
 
     getAudioSourceForItem(item) {
-        if (!item || !item.media || !item.media.has_audio) return null;
-        if (item.media.audio_url) return item.media.audio_url;
-        const videoId = item.video_id;
-        if (videoId) return `/exports/by_video/${videoId}.mp3`;
-        const reportId = item.file_stem;
-        return reportId ? `/exports/${reportId}.mp3` : null;
+        if (!this.itemHasAudio(item)) return null;
+        // 1) Explicit URL from backend wins
+        if (item?.media?.audio_url) {
+            let url = this.normalizeAssetUrl(item.media.audio_url);
+            if (item.audio_version) url += (url.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(String(item.audio_version));
+            return url;
+        }
+        const reportId = item?.file_stem;
+        const videoId = item?.video_id;
+        const source = (item?.content_source || item?.source || '').toLowerCase();
+        // 2) Standard mapped route by video id
+        if (videoId) {
+            let url = `/exports/by_video/${videoId}.mp3`;
+            if (item.audio_version) url += `?v=${encodeURIComponent(String(item.audio_version))}`;
+            return url;
+        }
+        // 3) Fallback to slug name
+        if (reportId) {
+            let url = `/exports/${reportId}.mp3`;
+            if (item.audio_version) url += `?v=${encodeURIComponent(String(item.audio_version))}`;
+            return url;
+        }
+        // 4) Legacy reddit naming under /exports/audio/reddit<slug>.mp3
+        if (source === 'reddit' && reportId) {
+            let url = `/exports/audio/reddit${reportId}.mp3`;
+            if (item.audio_version) url += `?v=${encodeURIComponent(String(item.audio_version))}`;
+            return url;
+        }
+        return null;
+    }
+
+    itemHasAudio(item) {
+        if (!item) return false;
+        const flag = Boolean(item.media && item.media.has_audio);
+        const metaSecs = Number(item.media_metadata?.mp3_duration_seconds || item.media?.audio_duration_seconds || 0);
+        const explicitUrl = Boolean(item.media && item.media.audio_url);
+        return flag || explicitUrl || metaSecs > 0;
     }
 
     resetAudioElement() {
@@ -2259,7 +2290,7 @@ class AudioDashboard {
 
             const normalizedItem = this.normalizeCardItem(rawItem);
             const buttonDurations = this.getButtonDurations(normalizedItem);
-            const hasAudio = Boolean(normalizedItem.media && normalizedItem.media.has_audio);
+            const hasAudio = this.itemHasAudio(normalizedItem);
             const actionContainer = card.querySelector('[data-action="read"]')?.parentElement;
             if (!actionContainer) return;
 
@@ -3304,7 +3335,7 @@ class AudioDashboard {
 
     // V4 List card: audio-first stream card (no autoplay)
     renderStreamCardV4(item) {
-        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const hasAudio = this.itemHasAudio(item);
         const rawSource = item.content_source || 'youtube';
         const source = rawSource.toLowerCase();
         const hasWatchLink = source === 'youtube' ? Boolean(item.video_id) : Boolean(item.canonical_url);
@@ -3383,7 +3414,7 @@ class AudioDashboard {
 
     // V4 Grid card: mosaic tile
     renderGridCardV4(item) {
-        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const hasAudio = this.itemHasAudio(item);
         const rawSource = item.content_source || 'youtube';
         const source = rawSource.toLowerCase();
         const href = `/${item.file_stem}.json?v=2`;
@@ -3502,7 +3533,7 @@ class AudioDashboard {
 
     // V5 List card (Stream): Tailwind-first layout
     renderStreamCardTW(item) {
-        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const hasAudio = this.itemHasAudio(item);
         const rawSource = item.content_source || 'youtube';
         const source = rawSource.toLowerCase();
         const href = `/${item.file_stem}.json?v=2`;
@@ -3610,7 +3641,7 @@ class AudioDashboard {
     }
 // V5 Grid card (Mosaic): Tailwind-first tile
     renderGridCardTW(item) {
-        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const hasAudio = this.itemHasAudio(item);
         const rawSource = item.content_source || 'youtube';
         const source = rawSource.toLowerCase();
         const href = `/${item.file_stem}.json?v=2`;
@@ -3669,7 +3700,7 @@ class AudioDashboard {
     }
 
     renderWallCardTW(item) {
-        const hasAudio = Boolean(item.media && item.media.has_audio);
+        const hasAudio = this.itemHasAudio(item);
         const rawSource = item.content_source || 'youtube';
         const source = rawSource.toLowerCase();
         const href = `/${item.file_stem}.json?v=2`;
@@ -3742,6 +3773,8 @@ class AudioDashboard {
         if (!modal || !body || !item) return;
         titleEl.textContent = item.title || 'Summary';
         body.innerHTML = this.renderWallReaderSection(item);
+        // Normalize NAS HTML for headings/lists on mobile modal
+        try { this.enhanceSummaryHtml(body); } catch (_) {}
         modal.classList.remove('hidden');
         modal.classList.add('flex');
         const onClose = () => {
@@ -3889,7 +3922,7 @@ class AudioDashboard {
                     </button>
                 </div>
             </div>
-            <div class="prose prose-sm dark:prose-invert max-w-none">${this.renderWallReaderSection(item)}</div>
+            <div class="prose prose-sm dark:prose-invert max-w-none" data-summary-body>${this.renderWallReaderSection(item)}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
         // Animate open height
@@ -3904,6 +3937,11 @@ class AudioDashboard {
             };
             section.addEventListener('transitionend', onEnd);
         });
+        // Enhance injected HTML formatting for headings/lists
+        try {
+            const body = section.querySelector('[data-summary-body]');
+            this.enhanceSummaryHtml(body);
+        } catch (_) {}
         // Highlight the source card and set caret position (relative to expander)
         try {
             cardEl.classList.add('wall-card--selected');
@@ -4052,6 +4090,46 @@ class AudioDashboard {
         } catch (_) { /* no-op */ }
     }
 
+    // Normalize NAS HTML variants at render time to ensure headings/lists styles apply
+    enhanceSummaryHtml(root) {
+        if (!root) return;
+        try {
+            const paras = Array.from(root.querySelectorAll('p'));
+            paras.forEach((p) => {
+                const text = (p.textContent || '').trim();
+                const next = p.nextElementSibling;
+                // Promote a standalone line followed by a bullet list to a heading
+                if (next && next.tagName === 'UL' && next.classList.contains('kp-list') && text && text.length <= 120) {
+                    const h = document.createElement('h3');
+                    h.className = 'kp-heading';
+                    h.textContent = text;
+                    p.replaceWith(h);
+                    return;
+                }
+                // Emphasize Bottom line: ...
+                const m = text.match(/^\s*(Bottom\s*-?\s*line)\s*:\s*(.*)$/i);
+                if (m) {
+                    const strong = document.createElement('strong');
+                    strong.textContent = `${m[1]}:`;
+                    p.classList.add('kp-takeaway');
+                    p.innerHTML = '';
+                    p.appendChild(strong);
+                    if (m[2]) {
+                        p.appendChild(document.createTextNode(' ' + m[2]));
+                    }
+                }
+            });
+            // Ensure list class is present
+            Array.from(root.querySelectorAll('ul')).forEach((ul) => {
+                if (!ul.classList.contains('kp-list')) {
+                    // If it looks like a bullet list, add class for consistent styling
+                    const firstLi = ul.querySelector('li');
+                    if (firstLi) ul.classList.add('kp-list');
+                }
+            });
+        } catch (_) { /* no-op */ }
+    }
+
     renderWallReaderSection(item) {
         // Prefer summary_html; fallback to formatted key-points or plain text
         const html = item.summary_html || this.computeFallbackSummaryHtml(item) || '';
@@ -4059,7 +4137,7 @@ class AudioDashboard {
     }
 
     renderSummaryCard(normalizedItem, { view = 'list' } = {}) {
-        const hasAudio = Boolean(normalizedItem.media && normalizedItem.media.has_audio);
+        const hasAudio = this.itemHasAudio(normalizedItem);
         const rawSource = normalizedItem.content_source || 'youtube';
         const source = rawSource.toLowerCase();
         const hasWatchLink = source === 'youtube' ? Boolean(normalizedItem.video_id) : Boolean(normalizedItem.canonical_url);
@@ -4082,7 +4160,9 @@ class AudioDashboard {
         const styleAttr = view === 'grid' ? '' : ' style="--thumbW: 240px;"';
         const sourceBadge = this.renderSourceBadge(normalizedItem.content_source || 'youtube', normalizedItem.source_label || null);
         const languageChip = this.renderLanguageChip(normalizedItem.analysis?.language);
-        const summaryTypeChip = this.renderSummaryTypeChip(normalizedItem.summary_type);
+        // Show 'Audio (missing)' chip when type says audio but file is absent
+        const summaryTypeValue = (normalizedItem.summary_type === 'audio' && !hasAudio) ? 'audio-missing' : normalizedItem.summary_type;
+        const summaryTypeChip = this.renderSummaryTypeChip(summaryTypeValue);
         const nowPlayingPill = isPlaying ? '<div class="summary-card__badge"><span class="summary-pill summary-pill--playing">Now playing</span></div>' : '';
         const identityMetaParts = [sourceBadge, languageChip, summaryTypeChip, nowPlayingPill].filter(Boolean);
         const identityMeta = identityMetaParts.length ? `<div class="summary-card__meta">${identityMetaParts.join('')}</div>` : '';
@@ -4175,18 +4255,15 @@ class AudioDashboard {
         if (durations.read) {
             segments.push({ text: `Read ${durations.read}` });
         }
+        // Only show Listen when audio truly exists; otherwise omit
         if (hasAudio) {
             segments.push({ text: durations.listen ? `Listen ${durations.listen}` : 'Listen ready' });
-        } else {
-            segments.push({ text: 'Listen N/A', muted: true });
         }
         const watchLabel = source === 'youtube' ? 'Watch' : 'Open';
         if (durations.watch) {
             segments.push({ text: `${watchLabel} ${durations.watch}` });
         } else if (hasWatchLink) {
             segments.push({ text: `${watchLabel} ready` });
-        } else {
-            segments.push({ text: `${watchLabel} N/A`, muted: true });
         }
 
         if (!segments.length) return '';
@@ -4544,15 +4621,46 @@ class AudioDashboard {
     }
 
     handleAudioError() {
-        // Try fallback path if by_video failed
         if (!this.currentAudio) return;
-        const src = this.audioElement.currentSrc || this.audioElement.src;
-        if (src.includes('/exports/by_video/') && this.currentAudio.id) {
-            const fallback = `/exports/${this.currentAudio.id}.mp3`;
+        const src = this.audioElement.currentSrc || this.audioElement.src || '';
+        const id = this.currentAudio.id;
+        // One-shot fallback from by_video to /exports/<id>.mp3
+        if (src.includes('/exports/by_video/') && id) {
+            const fallback = `/exports/${id}.mp3`;
             this.audioElement.src = fallback;
             this.audioElement.load();
             this.refreshAudioVariantBlocks();
+            return;
         }
+        // Reddit legacy fallback: /exports/audio/reddit<id>.mp3
+        if (id && !src.includes(`/exports/audio/reddit${id}.mp3`)) {
+            const redditLegacy = `/exports/audio/reddit${id}.mp3`;
+            this.audioElement.src = redditLegacy;
+            this.audioElement.load();
+            this.refreshAudioVariantBlocks();
+            return;
+        }
+        // If we’re already on fallback (or no valid src), mark as unavailable and clean up UI
+        try {
+            const card = document.querySelector(`[data-report-id="${id}"]`);
+            if (card) {
+                card.setAttribute('data-has-audio', 'false');
+                // Remove Listen buttons
+                card.querySelectorAll('[data-listen-button]').forEach(el => el.remove());
+                // Remove Listen segment
+                card.querySelectorAll('.summary-card__consumption .summary-card__consumption-item').forEach(span => {
+                    const t = (span.textContent || '').trim();
+                    if (/^Listen\b/i.test(t)) span.remove();
+                });
+            }
+        } catch (_) {}
+        this.showToast('Audio not available for this summary', 'warn');
+        // Reset current track
+        this.isPlaying = false;
+        this.currentAudio = null;
+        this.resetAudioElement();
+        this.updatePlayButton();
+        this.updatePlayingCard();
     }
 
     togglePlayPause() {
