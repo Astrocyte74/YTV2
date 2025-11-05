@@ -3165,9 +3165,12 @@ class AudioDashboard {
     }
 
     // === Reader Display Options (MVP) ===
+    readerPrefsKey() {
+        try { return (window.innerWidth || 0) >= 1024 ? 'readerDisplayPrefsDesktop' : 'readerDisplayPrefsMobile'; } catch(_) { return 'readerDisplayPrefs'; }
+    }
     getReaderDisplayPrefs() {
         try {
-            const raw = localStorage.getItem('readerDisplayPrefs');
+            const raw = localStorage.getItem(this.readerPrefsKey()) || localStorage.getItem('readerDisplayPrefs');
             if (!raw) return { size: 'm', line: 'normal', family: 'sans', theme: 'light' };
             const obj = JSON.parse(raw);
             return {
@@ -3184,7 +3187,7 @@ class AudioDashboard {
         try {
             const cur = this.getReaderDisplayPrefs();
             const merged = { ...cur, ...next };
-            localStorage.setItem('readerDisplayPrefs', JSON.stringify(merged));
+            localStorage.setItem(this.readerPrefsKey(), JSON.stringify(merged));
             return merged;
         } catch(_) { return this.getReaderDisplayPrefs(); }
     }
