@@ -97,7 +97,11 @@ const READER_FAMILY_MAP = {
 const READER_THEMES = ['light','sepia','dark'];
 const READER_PARA_STYLES = ['spaced','indented'];
 const READER_JUSTIFY = ['left','justify'];
-const READER_MEASURE_MAP = { narrow: '60ch', medium: '70ch', wide: '80ch', full: '100%' };
+// Measure mapping: tuned per feedback
+// - Previous 'medium'(70ch) becomes 'narrow'
+// - Previous 'wide'(80ch) becomes 'medium'
+// - New 'wide' at 90ch bridges the gap to 'full'
+const READER_MEASURE_MAP = { narrow: '70ch', medium: '80ch', wide: '90ch', full: '100%' };
 
 class AudioDashboard {
     constructor() {
@@ -3168,8 +3172,12 @@ class AudioDashboard {
     getReaderDisplayPrefs() {
         try {
             const raw = localStorage.getItem(this.readerPrefsKey()) || localStorage.getItem('readerDisplayPrefs');
-            if (!raw) return { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'medium' };
+            if (!raw) return { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
             const obj = JSON.parse(raw);
+            // Back-compat: remap older measures to new scale
+            let storedMeasure = obj.measure;
+            if (storedMeasure === 'medium') storedMeasure = 'narrow';
+            else if (storedMeasure === 'wide') storedMeasure = 'medium';
             return {
                 size: obj.size && READER_SIZE_MAP[obj.size] ? obj.size : 'm',
                 line: obj.line && READER_LINE_MAP[obj.line] ? obj.line : 'normal',
@@ -3177,10 +3185,10 @@ class AudioDashboard {
                 theme: READER_THEMES.includes(obj.theme) ? obj.theme : 'light',
                 paraStyle: READER_PARA_STYLES.includes(obj.paraStyle) ? obj.paraStyle : 'spaced',
                 justify: READER_JUSTIFY.includes(obj.justify) ? obj.justify : 'left',
-                measure: (obj.measure && READER_MEASURE_MAP[obj.measure]) ? obj.measure : 'medium'
+                measure: (storedMeasure && READER_MEASURE_MAP[storedMeasure]) ? storedMeasure : 'narrow'
             };
         } catch(_) {
-            return { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'medium' };
+            return { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
         }
     }
     setReaderDisplayPrefs(next) {
