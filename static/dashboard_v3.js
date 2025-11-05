@@ -3283,7 +3283,7 @@ class AudioDashboard {
           <div class="reader-popover-header">
             <span class="title">Display Options</span>
             <div class="actions">
-              <button type="button" class="reader-reset" data-reader-reset>Reset</button>
+              <button type="button" class="reader-reset" data-reader-reset>Reset to Defaults</button>
               <button type="button" class="reader-close" aria-label="Close" data-reader-close>×</button>
             </div>
           </div>
@@ -3320,6 +3320,7 @@ class AudioDashboard {
               <div class="reader-group">
                 <h5>Layout</h5>
                 <div class="reader-tiles" data-row="para">${[paraTile('spaced','Spaced'), paraTile('indented','Indented')].join('')}</div>
+                <div class="reader-caption">paragraph style</div>
                 <div class="reader-tiles" data-row="justify">${[
                     `<div class=\"reader-tile\" data-reader-justify=\"left\" aria-pressed=\"${prefs.justify==='left'?'true':'false'}\" role=\"button\" title=\"Ragged-right paragraphs\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div><div class=\"tile-label\">Left</div></div>`,
                     `<div class=\"reader-tile\" data-reader-justify=\"justify\" aria-pressed=\"${prefs.justify==='justify'?'true':'false'}\" role=\"button\" title=\"Fully justified paragraphs\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div><div class=\"tile-label\">Justified</div></div>`
@@ -3330,6 +3331,7 @@ class AudioDashboard {
                     measureTile('wide','Wide'),
                     measureTile('full','Full')
                 ].join('')}</div>
+                <div class="reader-caption">reading width</div>
               </div>
             </div>
           </div>`;
