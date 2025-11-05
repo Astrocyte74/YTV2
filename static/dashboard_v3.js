@@ -101,7 +101,12 @@ const READER_JUSTIFY = ['left','justify'];
 // - Previous 'medium'(70ch) becomes 'narrow'
 // - Previous 'wide'(80ch) becomes 'medium'
 // - New 'wide' at 90ch bridges the gap to 'full'
-const READER_MEASURE_MAP = { narrow: '70ch', medium: '80ch', wide: '90ch', full: '100%' };
+const READER_MEASURE_MAP = {
+    narrow: '70ch',          // old Medium
+    medium: '80ch',          // old Wide
+    wide: 'calc((100% + 80ch)/2)', // midpoint between current wide (80ch) and full (100%)
+    full: '100%'
+};
 
 class AudioDashboard {
     constructor() {
