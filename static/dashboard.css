@@ -605,7 +605,8 @@ body {
 @media (min-width: 1024px) {
   .wall-expander [data-summary-body],
   #wallReaderBody {
-    max-width: 70ch;
+    /* Reader measure is adjustable via --reader-measure */
+    max-width: var(--reader-measure, 70ch);
     margin-left: auto;
     margin-right: auto;
   }
@@ -631,13 +632,11 @@ body {
 .reader-para--indented [data-summary-body] h6,
 .reader-para--indented [data-summary-body] li { text-indent: 0; }
 
-/* Text justification (desktop only to avoid rivers on narrow screens) */
-@media (min-width: 1024px) {
-  .reader-justify--on [data-summary-body] {
-    text-align: justify;
-    text-justify: inter-word;
-    hyphens: auto;
-  }
+/* Text justification (allowed on mobile when enabled) */
+.reader-justify--on [data-summary-body] {
+  text-align: justify;
+  text-justify: inter-word;
+  hyphens: auto;
 }
 
 /* Ensure prose children respect reader line-height */
