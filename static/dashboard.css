@@ -601,6 +601,24 @@ body {
   font-family: var(--reader-font-family);
 }
 
+/* Comfortable reading measure for long-form text (desktop only) */
+@media (min-width: 1024px) {
+  .wall-expander [data-summary-body],
+  #wallReaderBody {
+    max-width: 70ch;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* Hyphenation and improved wrapping for paragraphs in readers */
+.wall-expander [data-summary-body] p,
+#wallReaderBody p {
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  text-wrap: pretty;
+}
+
 /* Ensure prose children respect reader line-height */
 .wall-expander [data-summary-body] p,
 .wall-expander [data-summary-body] li,
