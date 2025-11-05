@@ -2518,13 +2518,8 @@ class AudioDashboard {
             const expandedContent = this.renderExpandedContent(data);
             region.innerHTML = expandedContent.html;
             this.bindExpandedVariantControls(region, expandedContent.variantInfo, expandedContent.defaultVariant);
-            // Apply saved reader prefs and wire Aa popover in list/grid expanders
-            try {
-                const bodyEl = region.querySelector('[data-summary-body]');
-                this.applyReaderDisplayPrefs(region.closest('[data-card]') || region, bodyEl);
-                const aaBtn = region.querySelector('[data-action="reader-display"]');
-                if (aaBtn) aaBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.openReaderDisplayPopover(region.closest('[data-card]') || region, bodyEl, aaBtn); });
-            } catch(_) {}
+            // Ensure normalized HTML only; reader display options are handled in wall reader header
+            try { const bodyEl = region.querySelector('[data-summary-body]'); this.enhanceSummaryHtml(bodyEl); } catch(_) {}
             // Focus expanded wrapper for a11y (title is sr-only)
             const wrapper = region.querySelector('[data-expanded]');
             if (wrapper) {
@@ -2658,8 +2653,7 @@ class AudioDashboard {
             ${controlsHtml}
             <h4 class="sr-only" data-expanded-title>Summary</h4>
             <div class="prose prose-sm sm:prose-base prose-slate dark:prose-invert max-w-none w-full break-words" data-summary-body>${summaryHtml}</div>
-            <div class="flex items-center justify-end gap-2">
-              <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="reader-display" title="Display options" aria-haspopup="dialog" aria-expanded="false">Aa</button>
+            <div class="flex items-center justify-end">
               <button class="ybtn ybtn-ghost px-3 py-1.5 rounded-md" data-action="collapse">Collapse</button>
             </div>
           </div>`;
@@ -3220,13 +3214,6 @@ class AudioDashboard {
         const themeBtn = (id, label) => `<button type="button" class="reader-chip" data-reader-theme="${id}" aria-pressed="${prefs.theme===id?'true':'false'}">${label}</button>`;
         pop.innerHTML = `
             <h4>Display Options</h4>
-            <div class="reader-preview" data-reader-preview>
-                <h5>Preview</h5>
-                <ul>
-                    <li>Readable, balanced line height</li>
-                    <li>Comfortable body font for long text</li>
-                </ul>
-            </div>
             <div class="reader-display-row" data-row="size">${[
                 sizeBtn('s','A','font-size:12px'),
                 sizeBtn('m','A','font-size:14px'),
@@ -3255,22 +3242,7 @@ class AudioDashboard {
         pop.style.top = Math.round(anchorRect.bottom + 8) + 'px';
         pop.style.right = Math.round(Math.max(12, window.innerWidth - anchorRect.right)) + 'px';
         document.body.appendChild(pop);
-        const updatePreview = () => {
-            try {
-                const pv = pop.querySelector('[data-reader-preview]');
-                if (!pv) return;
-                const prefs = this.getReaderDisplayPrefs();
-                const fs = READER_SIZE_MAP[prefs.size] || 1.0;
-                const lh = READER_LINE_MAP[prefs.line] || 1.6;
-                const ff = READER_FAMILY_MAP[prefs.family] || 'inherit';
-                pv.style.setProperty('--reader-font-size', fs + 'rem');
-                pv.style.setProperty('--reader-line', String(lh));
-                pv.style.setProperty('--reader-font-family', ff);
-                pv.classList.remove('reader-theme--light','reader-theme--sepia','reader-theme--dark');
-                pv.classList.add('reader-theme--' + (prefs.theme || 'light'));
-            } catch(_) {}
-        };
-        updatePreview();
+        // no preview block
         const closeAll = () => { try { pop.remove(); } catch(_) {} window.removeEventListener('resize', onAway, true); document.removeEventListener('click', onAway, true); };
         const onAway = (e) => { if (!pop.contains(e.target) && e.target !== anchorBtn) closeAll(); };
         setTimeout(() => { document.addEventListener('click', onAway, true); window.addEventListener('resize', onAway, true); }, 0);
@@ -3289,7 +3261,6 @@ class AudioDashboard {
             if (theme && READER_THEMES.includes(theme)) next.theme = theme;
             const merged = this.setReaderDisplayPrefs(next);
             this.applyReaderDisplayPrefs(container, bodyEl);
-            updatePreview();
             // Update pressed states
             pop.querySelectorAll('[data-reader-size]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-size')===merged.size ? 'true' : 'false'));
             pop.querySelectorAll('[data-reader-line]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-line')===merged.line ? 'true' : 'false'));
