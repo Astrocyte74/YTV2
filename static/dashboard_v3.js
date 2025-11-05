@@ -95,6 +95,8 @@ const READER_FAMILY_MAP = {
     serif: "ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif"
 };
 const READER_THEMES = ['light','sepia','dark'];
+const READER_PARA_STYLES = ['spaced','indented'];
+const READER_JUSTIFY = ['left','justify'];
 
 class AudioDashboard {
     constructor() {
@@ -3165,16 +3167,18 @@ class AudioDashboard {
     getReaderDisplayPrefs() {
         try {
             const raw = localStorage.getItem(this.readerPrefsKey()) || localStorage.getItem('readerDisplayPrefs');
-            if (!raw) return { size: 'm', line: 'normal', family: 'sans', theme: 'light' };
+            if (!raw) return { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left' };
             const obj = JSON.parse(raw);
             return {
                 size: obj.size && READER_SIZE_MAP[obj.size] ? obj.size : 'm',
                 line: obj.line && READER_LINE_MAP[obj.line] ? obj.line : 'normal',
                 family: obj.family && READER_FAMILY_MAP[obj.family] ? obj.family : 'sans',
-                theme: READER_THEMES.includes(obj.theme) ? obj.theme : 'light'
+                theme: READER_THEMES.includes(obj.theme) ? obj.theme : 'light',
+                paraStyle: READER_PARA_STYLES.includes(obj.paraStyle) ? obj.paraStyle : 'spaced',
+                justify: READER_JUSTIFY.includes(obj.justify) ? obj.justify : 'left'
             };
         } catch(_) {
-            return { size: 'm', line: 'normal', family: 'sans', theme: 'light' };
+            return { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left' };
         }
     }
     setReaderDisplayPrefs(next) {
@@ -3199,6 +3203,12 @@ class AudioDashboard {
             try { container.classList.remove('reader-theme--light','reader-theme--sepia','reader-theme--dark'); } catch(_) {}
             const theme = this.getReaderDisplayPrefs().theme || 'light';
             try { container.classList.add('reader-theme--' + theme); } catch(_) {}
+            // Paragraph style
+            const para = this.getReaderDisplayPrefs().paraStyle || 'spaced';
+            try { container.classList.toggle('reader-para--indented', para === 'indented'); } catch(_) {}
+            // Justification (CSS applies only on desktop)
+            const just = this.getReaderDisplayPrefs().justify || 'left';
+            try { container.classList.toggle('reader-justify--on', just === 'justify'); } catch(_) {}
         }
     }
     openReaderDisplayPopover(container, bodyEl, anchorBtn) {
@@ -3212,6 +3222,8 @@ class AudioDashboard {
         const familyBtn = (id, label, style='') => `<button type="button" class="reader-chip" data-reader-family="${id}" aria-pressed="${prefs.family===id?'true':'false'}" style="${style}">${label}</button>`;
         const lineBtn = (id, label) => `<button type="button" class="reader-chip" data-reader-line="${id}" aria-pressed="${prefs.line===id?'true':'false'}">${label}</button>`;
         const themeBtn = (id, label) => `<button type="button" class="reader-chip" data-reader-theme="${id}" aria-pressed="${prefs.theme===id?'true':'false'}">${label}</button>`;
+        const paraBtn = (id, label) => `<button type="button" class="reader-chip" data-reader-para="${id}" aria-pressed="${prefs.paraStyle===id?'true':'false'}">${label}</button>`;
+        const justifyBtn = (id, label) => `<button type="button" class="reader-chip" data-reader-justify="${id}" aria-pressed="${prefs.justify===id?'true':'false'}">${label}</button>`;
         pop.innerHTML = `
             <h4>Display Options</h4>
             <div class="reader-display-row" data-row="size">${[
@@ -3230,10 +3242,18 @@ class AudioDashboard {
                 familyBtn('sans','Sans','font-family: Inter, system-ui, sans-serif'),
                 familyBtn('serif','Serif','font-family: Georgia, serif')
             ].join('')}</div>
+            <div class="reader-display-row" data-row="para">${[
+                paraBtn('spaced','Spaced'),
+                paraBtn('indented','Indented')
+            ].join('')}</div>
             <div class="reader-display-row" data-row="theme">${[
                 themeBtn('light','Light'),
                 themeBtn('sepia','Sepia'),
                 themeBtn('dark','Dark')
+            ].join('')}</div>
+            <div class="reader-display-row" data-row="justify">${[
+                justifyBtn('left','Left'),
+                justifyBtn('justify','Justified')
             ].join('')}</div>
         `;
         // Position relative to anchor
@@ -3254,11 +3274,15 @@ class AudioDashboard {
             const line = btn.getAttribute('data-reader-line');
             const family = btn.getAttribute('data-reader-family');
             const theme = btn.getAttribute('data-reader-theme');
+            const para = btn.getAttribute('data-reader-para');
+            const justify = btn.getAttribute('data-reader-justify');
             let next = {};
             if (size && READER_SIZE_MAP[size]) next.size = size;
             if (line && READER_LINE_MAP[line]) next.line = line;
             if (family && READER_FAMILY_MAP[family]) next.family = family;
             if (theme && READER_THEMES.includes(theme)) next.theme = theme;
+            if (para && READER_PARA_STYLES.includes(para)) next.paraStyle = para;
+            if (justify && READER_JUSTIFY.includes(justify)) next.justify = justify;
             const merged = this.setReaderDisplayPrefs(next);
             this.applyReaderDisplayPrefs(container, bodyEl);
             // Update pressed states
@@ -3266,6 +3290,8 @@ class AudioDashboard {
             pop.querySelectorAll('[data-reader-line]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-line')===merged.line ? 'true' : 'false'));
             pop.querySelectorAll('[data-reader-family]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-family')===merged.family ? 'true' : 'false'));
             pop.querySelectorAll('[data-reader-theme]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-theme')===merged.theme ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-para]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-para')===merged.paraStyle ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-justify]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-justify')===merged.justify ? 'true' : 'false'));
             // Light telemetry on change
             try { this.sendTelemetry && this.sendTelemetry('reader_display_change', merged); } catch(_) {}
         });

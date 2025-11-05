@@ -619,6 +619,27 @@ body {
   text-wrap: pretty;
 }
 
+/* Paragraph style: indented (applied at container via .reader-para--indented) */
+.reader-para--indented [data-summary-body] p { margin: 0.55rem 0; }
+.reader-para--indented [data-summary-body] p + p { text-indent: 1.25em; }
+.reader-para--indented [data-summary-body] .kp-takeaway,
+.reader-para--indented [data-summary-body] h1,
+.reader-para--indented [data-summary-body] h2,
+.reader-para--indented [data-summary-body] h3,
+.reader-para--indented [data-summary-body] h4,
+.reader-para--indented [data-summary-body] h5,
+.reader-para--indented [data-summary-body] h6,
+.reader-para--indented [data-summary-body] li { text-indent: 0; }
+
+/* Text justification (desktop only to avoid rivers on narrow screens) */
+@media (min-width: 1024px) {
+  .reader-justify--on [data-summary-body] {
+    text-align: justify;
+    text-justify: inter-word;
+    hyphens: auto;
+  }
+}
+
 /* Ensure prose children respect reader line-height */
 .wall-expander [data-summary-body] p,
 .wall-expander [data-summary-body] li,
