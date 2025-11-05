@@ -3280,12 +3280,18 @@ class AudioDashboard {
         const justifyMini = `
           <div class="justify-mini"><span class="jline"></span><span class="jline"></span><span class="jline"></span></div>`;
         pop.innerHTML = `
+          <div class="reader-popover-header">
+            <span class="title">Display Options</span>
+            <div class="actions">
+              <button type="button" class="reader-reset" data-reader-reset>Reset</button>
+              <button type="button" class="reader-close" aria-label="Close" data-reader-close>×</button>
+            </div>
+          </div>
           <div class="reader-panel">
             <div class="reader-group">
               <h5>Typography</h5>
-              <div class="reader-display-row" data-row="size">${sizeSeg}</div>
+              <div class="reader-display-row reader-row-inline" data-row="typo-main">${sizeSeg}${familySeg}</div>
               <div class="reader-display-row" data-row="line">${lineSeg}</div>
-              <div class="reader-display-row" data-row="family">${familySeg}</div>
             </div>
             <div class="reader-group">
               <h5>Layout</h5>
@@ -3378,6 +3384,8 @@ class AudioDashboard {
                 if (jr) jr.setAttribute('data-justify-state', 'left');
             });
         }
+        const closeBtn = pop.querySelector('[data-reader-close]');
+        if (closeBtn) closeBtn.addEventListener('click', () => { closeAll(); });
     }
 
     async submitReprocess() {
