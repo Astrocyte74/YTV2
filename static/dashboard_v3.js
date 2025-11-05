@@ -3277,6 +3277,8 @@ class AudioDashboard {
             <div class="tile-preview"><div class="tile-preview-inner">${'<div class=\\"strip\\"></div>'.repeat(3)}</div></div>
             <div class="tile-label">${label}</div>
           </div>`;
+        const justifyMini = `
+          <div class="justify-mini"><span class="jline"></span><span class="jline"></span><span class="jline"></span></div>`;
         pop.innerHTML = `
           <div class="reader-panel">
             <div class="reader-group">
@@ -3288,7 +3290,7 @@ class AudioDashboard {
             <div class="reader-group">
               <h5>Layout</h5>
               <div class="reader-tiles" data-row="para">${[paraTile('spaced','Spaced'), paraTile('indented','Indented')].join('')}</div>
-              <div class="reader-display-row" data-row="justify">${justifySeg}</div>
+              <div class="reader-display-row" data-row="justify" data-justify-state="${prefs.justify}">${justifySeg}${justifyMini}</div>
               <div class="reader-tiles" data-row="measure">${[
                   measureTile('narrow','Narrow'),
                   measureTile('medium','Medium'),
@@ -3304,6 +3306,7 @@ class AudioDashboard {
                   themeTile('dark','Dark')
               ].join('')}</div>
             </div>
+            <div class="reader-footer"><span></span><button type="button" class="reader-reset" data-reader-reset>Reset to defaults</button></div>
           </div>`;
         // Position relative to anchor
         const anchorRect = anchorBtn.getBoundingClientRect();
@@ -3344,9 +3347,37 @@ class AudioDashboard {
             pop.querySelectorAll('[data-reader-para]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-para')===merged.paraStyle ? 'true' : 'false'));
             pop.querySelectorAll('[data-reader-justify]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-justify')===merged.justify ? 'true' : 'false'));
             pop.querySelectorAll('[data-reader-measure]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-measure')===merged.measure ? 'true' : 'false'));
+            // Update micro preview for justification
+            const jr = pop.querySelector('[data-row="justify"]');
+            if (jr) jr.setAttribute('data-justify-state', merged.justify === 'justify' ? 'justify' : 'left');
             // Light telemetry on change
             try { this.sendTelemetry && this.sendTelemetry('reader_display_change', merged); } catch(_) {}
         });
+        // Reset handler
+        const resetBtn = pop.querySelector('[data-reader-reset]');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => {
+                // Derive default theme from current container
+                let baseTheme = 'light';
+                try {
+                    if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
+                    else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
+                } catch(_) {}
+                const defaults = { size: 'm', line: 'normal', family: 'sans', theme: baseTheme, paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
+                const merged = this.setReaderDisplayPrefs(defaults);
+                this.applyReaderDisplayPrefs(container, bodyEl);
+                // Update UI state
+                ['size','line','family','theme','para','justify','measure'].forEach(key => {
+                  pop.querySelectorAll('[data-reader-' + key + ']').forEach(el => {
+                    const val = el.getAttribute('data-reader-' + key);
+                    const want = String(merged[key === 'para' ? 'paraStyle' : key]);
+                    el.setAttribute('aria-pressed', val === want ? 'true' : 'false');
+                  });
+                });
+                const jr = pop.querySelector('[data-row="justify"]');
+                if (jr) jr.setAttribute('data-justify-state', 'left');
+            });
+        }
     }
 
     async submitReprocess() {
