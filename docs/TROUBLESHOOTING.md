@@ -18,6 +18,18 @@ The ingest endpoints require `X-INGEST-TOKEN` and are separate from legacy Beare
 - NAS calls include header `X-INGEST-TOKEN: $INGEST_TOKEN`
 - Check `/health/ingest` for `token_set: true`
 
+## 500 during audio/image upload (Errno 28: No space left on device)
+Uploads write to `/app/data/exports` on the attached Render disk. If the disk is full, uploads will 500 and may leave zero‑byte artifacts.
+
+Fix:
+- Increase disk size on the Render service (Disks → the volume mounted at `/app/data`). 2–10 GB is typical.
+- Remove zero‑byte files under `/app/data/exports/audio` and `/app/data/exports/images`.
+- Retry the upload. Handlers write via temp+rename and reject zero‑size writes. Response JSON includes `size`; also `HEAD` on the public URL should report non‑zero `Content-Length`.
+
+Quick checks:
+- `GET /health/ingest` → token + DB flags
+- `HEAD /exports/audio/<file>.mp3` → 200 and non‑zero `Content-Length`
+
 ## Verify PostgreSQL connectivity
 Quick check from your workstation:
 ```

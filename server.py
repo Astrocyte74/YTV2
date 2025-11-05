@@ -117,7 +117,7 @@ try:
 except Exception as e:
     pass  # Continue if .envrc sourcing fails
 
-# Feature toggle for V2 template as default
+## Feature toggle for V2 template as default
 USE_V2_DEFAULT = os.getenv("USE_V2_DEFAULT", "1") == "1"  # default ON
 
 # Set up logging
@@ -130,6 +130,24 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Log minimal diagnostics about DEBUG_TOKEN (without revealing the secret)
+try:
+    _raw_dbg = os.getenv('DEBUG_TOKEN') or ''
+    if _raw_dbg:
+        import hashlib as _hashlib
+        _stripped = _raw_dbg.strip()
+        _changed = (len(_raw_dbg) != len(_stripped))
+        _sha = _hashlib.sha256(_stripped.encode()).hexdigest()
+        logger.info("🔐 DEBUG_TOKEN configured: len=%s strip_len=%s changed=%s sha256=%s",
+                    len(_raw_dbg), len(_stripped), _changed, _sha)
+    else:
+        logger.info("🔐 DEBUG_TOKEN not set")
+except Exception:
+    logger.exception("Failed to log DEBUG_TOKEN diagnostics")
+
+# Deployment commit for traceability in responses. Prefer env override when available.
+COMMIT_SHA = os.getenv('DEPLOY_COMMIT', '').strip() or 'feature/image-display-controls'
 
 # --------------------------
 # Auth and Rate Limiting
@@ -649,6 +667,25 @@ def extract_html_report_metadata(file_path: Path) -> Dict:
 
 class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     """HTTP request handler with modern template system"""
+    
+    def _debug_auth_ok(self) -> bool:
+        """Verify debug token for admin-only endpoints.
+
+        Accepts either Authorization: Bearer <DEBUG_TOKEN> or X-Debug-Token: <DEBUG_TOKEN>.
+        When DEBUG_TOKEN is unset, deny access (secure default).
+        """
+        token = (os.getenv('DEBUG_TOKEN') or '').strip()
+        if not token:
+            return False
+        auth = (self.headers.get('Authorization', '') or '').strip()
+        if auth.startswith('Bearer ') and auth[7:] == token:
+            return True
+        # Accept common casings for the debug header
+        for h in ('X-Debug-Token', 'X-DEBUG-TOKEN', 'X-Debug'):
+            val = self.headers.get(h)
+            if isinstance(val, str) and val.strip() == token:
+                return True
+        return False
     
     @staticmethod
     def _maybe_parse_dict_string(value):
@@ -1273,6 +1310,111 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_my_delete_quiz()
         else:
             self.send_error(404, "DELETE endpoint not found")
+
+    def do_HEAD(self):
+        """Provide HEAD for static /exports routes so clients can probe file existence."""
+        try:
+            path = self.path.split('?', 1)[0]
+            if path.startswith('/exports/by_video/'):
+                return self.head_audio_by_video()
+            if path.startswith('/exports/'):
+                return self.head_audio_file()
+            # Default for other routes
+            return super().do_HEAD()
+        except Exception as e:
+            logger.error(f"HEAD error for {self.path}: {e}")
+            try:
+                self.send_error(500, "HEAD error")
+            except Exception:
+                pass
+
+    def head_audio_file(self):
+        """HEAD handler mirroring serve_audio_file without writing body."""
+        try:
+            from pathlib import Path
+            request_path = self.path.split('?', 1)[0]
+            if not request_path.startswith('/exports/'):
+                self.send_error(404, "Not found")
+                return
+            root = Path('/app/data/exports').resolve()
+            rel = request_path[len('/exports/'):].lstrip('/')
+            fs_path = (root / rel).resolve()
+            if not str(fs_path).startswith(str(root)):
+                self.send_error(403, "Forbidden")
+                return
+            # Legacy flat path fallback into audio/
+            if not fs_path.is_file():
+                rel_norm = rel.replace('\\', '/').lstrip('/')
+                if '/' not in rel_norm:
+                    alt = (root / 'audio' / rel_norm).resolve()
+                    if str(alt).startswith(str(root)) and alt.is_file():
+                        fs_path = alt
+                if not fs_path.is_file():
+                    alt2 = (root / 'audio' / f"yt:{rel_norm}").resolve()
+                    if str(alt2).startswith(str(root)) and alt2.is_file():
+                        fs_path = alt2
+            if fs_path.is_file():
+                ctype, _ = mimetypes.guess_type(str(fs_path))
+                ctype = ctype or 'application/octet-stream'
+                self.send_response(200)
+                self.send_header('Content-type', ctype)
+                self.send_header('Content-Length', str(fs_path.stat().st_size))
+                self.send_header('Cache-Control', 'public, max-age=3600')
+                self.end_headers()
+            else:
+                self.send_error(404, 'Export not found')
+        except Exception as e:
+            logger.error(f"HEAD export error {self.path}: {e}")
+            self.send_error(500, 'Error handling HEAD for export')
+
+    def head_audio_by_video(self):
+        """HEAD handler for /exports/by_video/<video_id>.mp3 without writing body."""
+        try:
+            from pathlib import Path
+            request_path = self.path.split('?', 1)[0]
+            parts = request_path.split('/')
+            if len(parts) < 4:
+                self.send_error(400, 'Invalid by_video path')
+                return
+            video_id_with_ext = parts[-1]
+            video_id = video_id_with_ext.replace('.mp3', '')
+            clean_id = video_id.replace('yt:', '').replace(':', '')
+            search_dirs = [Path('/app/data/exports')]
+            audio_subdir = Path('/app/data/exports/audio')
+            if audio_subdir.exists():
+                search_dirs.append(audio_subdir)
+            patterns = [
+                f'{clean_id}.mp3',
+                f'audio_{video_id}_*.mp3',
+                f'{video_id}_*.mp3',
+                f'*{video_id}*.mp3',
+                f'*{clean_id}*.mp3',
+            ]
+            best = None
+            best_mtime = -1
+            for d in search_dirs:
+                if not d.exists():
+                    continue
+                for pat in patterns:
+                    for p in d.glob(pat):
+                        try:
+                            mt = p.stat().st_mtime
+                            if mt > best_mtime:
+                                best_mtime = mt
+                                best = p
+                        except OSError:
+                            continue
+            if not best:
+                self.send_error(404, f'Audio not found for video_id {video_id}')
+                return
+            self.send_response(200)
+            self.send_header('Content-type', 'audio/mpeg')
+            self.send_header('Content-Length', str(best.stat().st_size))
+            self.send_header('Cache-Control', 'public, max-age=600')
+            self.end_headers()
+        except Exception as e:
+            logger.error(f"HEAD by_video error {self.path}: {e}")
+            self.send_error(500, 'Error resolving audio by video id (HEAD)')
     
     def serve_dashboard(self):
         """Serve the modern dashboard using templates"""
@@ -1701,6 +1843,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'text/html; charset=utf-8')
             self.send_header('Cache-Control', 'no-cache')
+            self.send_header('X-Commit', COMMIT_SHA)
             self.end_headers()
             self.wfile.write(html_content.encode('utf-8'))
                 
@@ -1724,6 +1867,50 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 summary_html = summary_data.get('html', '')
                 summary_variant = summary_data.get('type', 'comprehensive')
 
+            # Extract enriched summary variants when present (from Postgres aggregator)
+            enriched_variants = report_data.get('summary_variants') or []
+
+            # Compute has_audio more robustly: trust DB flag, but also
+            # infer from variants/media when present so single JSON mirrors list
+            media_block = report_data.get('media') or {}
+            media_meta = report_data.get('media_metadata') or {}
+            audio_url_from_media = None
+            try:
+                if isinstance(media_block, str):
+                    import json as _json
+                    media_block = _json.loads(media_block)
+                if isinstance(media_block, dict):
+                    audio_url_from_media = media_block.get('audio_url')
+            except Exception:
+                pass
+
+            audio_variant_present = False
+            audio_url_from_variants = None
+            for v in (enriched_variants or []):
+                if isinstance(v, dict):
+                    variant_id = str(v.get('variant', '')).lower()
+                    if v.get('kind') == 'audio' or variant_id.startswith('audio'):
+                        audio_variant_present = True
+                        if not audio_url_from_variants and v.get('audio_url'):
+                            audio_url_from_variants = v.get('audio_url')
+
+            has_audio_flag = bool(report_data.get('has_audio', False))
+            mp3_dur = 0
+            try:
+                if isinstance(media_meta, str):
+                    import json as _json
+                    media_meta = _json.loads(media_meta)
+                if isinstance(media_meta, dict):
+                    val = media_meta.get('mp3_duration_seconds')
+                    if isinstance(val, str) and val.isdigit():
+                        mp3_dur = int(val)
+                    elif isinstance(val, (int, float)):
+                        mp3_dur = int(val)
+            except Exception:
+                pass
+
+            computed_has_audio = has_audio_flag or bool(audio_url_from_media) or bool(audio_url_from_variants) or (audio_variant_present and mp3_dur > 0)
+
             # Create JSON response in the format expected by dashboard
             json_response = {
                 "video": {
@@ -1737,13 +1924,19 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "summary": {
                     "text": summary_text,
                     "html": summary_html,
-                    "type": summary_variant
+                    "type": summary_variant,
+                    # Surface variants inline for consumers expecting nested placement
+                    "variants": enriched_variants
                 },
                 "thumbnail_url": report_data.get('thumbnail_url', ''),
                 "analysis": report_data.get('analysis_json') or report_data.get('analysis', {}),
                 "subcategories_json": report_data.get('subcategories_json'),
-                "has_audio": report_data.get('has_audio', False),
-                "summary_type": report_data.get('summary_type_latest', 'unknown')
+                "has_audio": bool(computed_has_audio),
+                "summary_type": report_data.get('summary_type_latest', 'unknown'),
+                # Also expose variants at the top-level to match list responses
+                "summary_variants": enriched_variants,
+                # Embed commit for deploy verification (header may be stripped upstream)
+                "deployment_commit": COMMIT_SHA
             }
 
             # Send JSON response
@@ -1928,15 +2121,16 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         try:
             from pathlib import Path
 
-            # e.g. self.path == "/exports/audio/s_cD7g74kFE.mp3" or "/exports/s_cD7g74kFE.mp3"
-            if not self.path.startswith('/exports/'):
+            # e.g. "/exports/audio/foo.mp3?v=123" or "/exports/foo.mp3"
+            request_path = self.path.split('?', 1)[0]
+            if not request_path.startswith('/exports/'):
                 self.send_error(404, "Not found")
                 return
 
             root = Path("/app/data/exports").resolve()
 
             # strip leading prefix and build filesystem path
-            rel = self.path[len("/exports/"):].lstrip("/")  # "audio/s_cD7g74kFE.mp3" or "s_cD7g74kFE.mp3"
+            rel = request_path[len("/exports/"):].lstrip("/")  # "audio/<file>.mp3" or "<file>.mp3"
             fs_path = (root / rel).resolve()
 
             # path traversal guard
@@ -1988,8 +2182,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         Route: /exports/by_video/<video_id>.mp3 (extension optional)
         """
         try:
-            # Extract video_id from path
-            parts = self.path.split('/')
+            # Extract video_id from path (strip query params)
+            request_path = self.path.split('?', 1)[0]
+            parts = request_path.split('/')
             if len(parts) < 4:
                 self.send_error(400, "Invalid by_video path")
                 return
@@ -2333,6 +2528,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_filters(query_params)
             elif path == '/api/reports':
                 self.serve_api_reports_v2(query_params)
+            elif path.startswith('/api/debug/content'):
+                self.handle_debug_content()
+            elif path == '/api/health/storage':
+                self.handle_storage_health()
             elif path.startswith('/api/reports/'):
                 self.serve_api_report_detail()
             elif path == '/api/health':
@@ -2349,6 +2548,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_report_events()
             elif path == '/api/metrics':
                 self.serve_api_metrics()
+            elif path == '/api/version':
+                self.serve_api_version()
             elif path.startswith('/api/backup/'):
                 self.send_error(410, "Endpoint removed")
             elif path == '/api/download-database':
@@ -2457,6 +2658,25 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"error": "metrics proxy error", "message": str(e)}).encode())
 
+    def serve_api_version(self):
+        """GET /api/version - returns running deployment commit and basics."""
+        try:
+            payload = {
+                'deployment_commit': COMMIT_SHA,
+                'branch': os.getenv('RENDER_GIT_BRANCH') or 'feature/image-display-controls',
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            }
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(payload).encode())
+        except Exception as e:
+            logger.error(f"Error serving /api/version: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error':'version failed','message':str(e)}).encode())
+
     def serve_api_filters(self, query_params: Dict[str, List[str]]):
         """Serve Phase 2 filters API endpoint with faceted search"""
         try:
@@ -2500,6 +2720,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # Send response
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
+            self.send_header('X-Commit', COMMIT_SHA)
             self.send_header('Cache-Control', 'public, max-age=60')  # Cache for 1 minute
             self.end_headers()
             
@@ -2663,12 +2884,14 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 # SQLite format: already a dict
                 results = search_result
 
-            # Add deployment verification flag
+            # Add deployment verification flag and embed commit for environments stripping headers
             results['deployment_version'] = 'v2025-09-11-sorting-fix'
+            results['deployment_commit'] = COMMIT_SHA
             
             # Send response
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
+            self.send_header('X-Commit', COMMIT_SHA)
             self.send_header('Cache-Control', 'no-cache')  # Don't cache filtered results
             self.end_headers()
             
@@ -2709,6 +2932,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 if report_data:
                     self.send_response(200)
                     self.send_header('Content-type', 'application/json')
+                    self.send_header('X-Commit', COMMIT_SHA)
                     self.end_headers()
                     self.wfile.write(json.dumps(report_data, ensure_ascii=False, indent=2).encode())
                     return
@@ -3227,24 +3451,33 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def handle_upload_audio(self):
         """Upload audio files from NAS (legacy compatibility)."""
         try:
-            # Check sync secret for authentication
+            # Auth: accept either Bearer SYNC_SECRET or X-INGEST-TOKEN
             sync_secret = os.getenv('SYNC_SECRET')
-            if not sync_secret:
-                self.send_error(500, "Sync not configured")
-                return
+            ingest_token = os.getenv('INGEST_TOKEN')
 
+            auth_ok = False
             auth_header = self.headers.get('Authorization', '')
-            if not auth_header.startswith('Bearer ') or auth_header[7:] != sync_secret:
-                logger.warning(f"Audio upload rejected: Invalid auth from {self.client_address[0]}")
+            if sync_secret and auth_header.startswith('Bearer ') and auth_header[7:] == sync_secret:
+                auth_ok = True
+            elif ingest_token and self.headers.get('X-INGEST-TOKEN') == ingest_token:
+                auth_ok = True
+
+            if not auth_ok:
+                logger.warning(
+                    "Audio upload rejected: Unauthorized (from %s). Provided headers: Authorization=%s, X-INGEST-TOKEN=%s",
+                    self.client_address[0],
+                    'present' if auth_header else 'absent',
+                    'present' if self.headers.get('X-INGEST-TOKEN') else 'absent'
+                )
                 self.send_error(401, "Unauthorized")
                 return
-            
+
             # Parse multipart form data
             content_type = self.headers.get('Content-Type', '')
             if not content_type.startswith('multipart/form-data'):
                 self.send_error(400, "Expected multipart/form-data")
                 return
-            
+
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length == 0:
                 self.send_error(400, "No data received")
@@ -3252,40 +3485,71 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             if content_length > 25 * 1024 * 1024:  # 25MB limit for audio
                 self.send_error(413, "Audio file too large")
                 return
-            
-            post_data = self.rfile.read(content_length)
-            
-            # Parse form data
+
+            # Parse form data (streaming)
             import cgi
-            import io
-            
             form_data = cgi.FieldStorage(
-                fp=io.BytesIO(post_data),
+                fp=self.rfile,
                 headers=self.headers,
-                environ={'REQUEST_METHOD': 'POST'}
+                environ={
+                    'REQUEST_METHOD': 'POST',
+                    'CONTENT_TYPE': content_type,
+                    'CONTENT_LENGTH': str(content_length),
+                }
             )
-            
+
             if 'audio' not in form_data:
                 self.send_error(400, "No audio file provided")
                 return
-            
+
             audio_field = form_data['audio']
-            if not audio_field.filename:
+            if not getattr(audio_field, 'filename', None):
                 self.send_error(400, "No audio filename provided")
                 return
-            
-            # Save audio file to persistent storage
+
+            # Save audio file to persistent storage atomically
             exports_root = Path('/app/data/exports') if Path('/app/data').exists() else Path('./exports')
             audio_dir = exports_root / 'audio'
             audio_dir.mkdir(parents=True, exist_ok=True)
 
             audio_path = audio_dir / audio_field.filename
-            with open(audio_path, 'wb') as f:
-                audio_field.file.seek(0)
-                f.write(audio_field.file.read())
-            
-            logger.info(f"✅ Audio file uploaded: {audio_field.filename}")
-            
+            tmp_path = audio_path.with_suffix(audio_path.suffix + '.tmp')
+            with open(tmp_path, 'wb') as f:
+                try:
+                    audio_field.file.seek(0)
+                except Exception:
+                    pass
+                # Stream copy to avoid large memory use
+                while True:
+                    chunk = audio_field.file.read(8192)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except Exception:
+                    pass
+            os.replace(tmp_path, audio_path)  # atomic
+
+            size = audio_path.stat().st_size
+            if size <= 0:
+                # cleanup and error
+                try:
+                    if tmp_path.exists():
+                        tmp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                try:
+                    # Remove zero-byte final file to avoid misleading HEAD 200 with 0 size
+                    audio_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise ValueError("zero-size upload")
+            logger.info(f"✅ Audio file uploaded: {audio_field.filename} ({size} bytes)")
+
+            public_url = f"/exports/audio/{audio_field.filename}"
+
             # Send success response
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
@@ -3294,11 +3558,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 'success': True,
                 'message': 'Audio uploaded successfully',
                 'filename': audio_field.filename,
-                'size': audio_path.stat().st_size
+                'relative_path': public_url,
+                'public_url': public_url,
+                'size': size,
             }).encode())
-            
+
         except Exception as e:
-            logger.error(f"Audio upload error: {e}")
+            logger.exception("Audio upload error")
             self.send_error(500, f"Audio upload failed: {str(e)}")
 
     def handle_upload_image(self):
@@ -3344,17 +3610,17 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(413, "Image file too large")
                 return
 
-            post_data = self.rfile.read(content_length)
-
-            # Parse form data
+            # Parse form data (streaming)
             import cgi
-            import io
             from os.path import basename
-
             form_data = cgi.FieldStorage(
-                fp=io.BytesIO(post_data),
+                fp=self.rfile,
                 headers=self.headers,
-                environ={'REQUEST_METHOD': 'POST'}
+                environ={
+                    'REQUEST_METHOD': 'POST',
+                    'CONTENT_TYPE': content_type,
+                    'CONTENT_LENGTH': str(content_length),
+                }
             )
 
             if 'image' not in form_data:
@@ -3373,9 +3639,34 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
             filename = basename(img_field.filename)
             img_path = images_dir / filename
-            with open(img_path, 'wb') as f:
-                img_field.file.seek(0)
-                f.write(img_field.file.read())
+            tmp_path = img_path.with_suffix(img_path.suffix + '.tmp')
+            with open(tmp_path, 'wb') as f:
+                try:
+                    img_field.file.seek(0)
+                except Exception:
+                    pass
+                while True:
+                    chunk = img_field.file.read(8192)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except Exception:
+                    pass
+            os.replace(tmp_path, img_path)
+            if img_path.stat().st_size <= 0:
+                try:
+                    if tmp_path.exists():
+                        tmp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                try:
+                    img_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise ValueError("zero-size upload")
 
             public_url = f"/exports/images/{filename}"
             logger.info(f"🖼️ Image file uploaded: {filename} -> {public_url}")
@@ -3392,7 +3683,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             }).encode())
 
         except Exception as e:
-            logger.error(f"Image upload error: {e}")
+            logger.exception("Image upload error")
             self.send_error(500, f"Image upload failed: {str(e)}")
     
     def handle_content_api(self):
@@ -3947,6 +4238,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def handle_debug_content(self):
         """Handle GET /api/debug/content?video_id=X - Direct video lookup for debugging."""
         try:
+            # Admin gate
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
             # Parse query parameters
             import urllib.parse
             qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -3973,7 +4271,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(json.dumps({"row": row}).encode())
+            # Datetime-safe serialization
+            self.wfile.write(json.dumps({"row": row}, default=str).encode())
 
         except Exception as e:
             logger.error(f"Error in debug_content: {e}")
@@ -3981,6 +4280,91 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"error": f"internal error: {str(e)}"}).encode())
+
+    def handle_storage_health(self):
+        """GET /api/health/storage - disk usage + exports sanity (admin-only).
+
+        Returns JSON with total/used/free bytes, used_pct, and a small sample of recent files
+        and zero-byte files under exports/. 401 when DEBUG_TOKEN is missing/invalid.
+        503 when used_pct >= 98 to allow external alerting.
+        """
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            # Determine export root
+            exports_root = Path('/app/data/exports') if Path('/app/data').exists() else Path('./exports')
+            disk_root = Path('/app/data') if Path('/app/data').exists() else exports_root
+
+            import shutil, time
+            usage = shutil.disk_usage(str(disk_root))
+            used_pct = (usage.used / usage.total) * 100 if usage.total else 0.0
+
+            zero_byte_files = []
+            recent_files = []
+            try:
+                # Walk with caps to avoid heavy scans
+                for p in exports_root.rglob('*'):
+                    if not p.is_file():
+                        continue
+                    try:
+                        st = p.stat()
+                    except Exception:
+                        continue
+                    if st.st_size == 0 and len(zero_byte_files) < 100:
+                        zero_byte_files.append({
+                            'path': str(p.relative_to(exports_root)),
+                            'size': 0,
+                            'mtime': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(st.st_mtime))
+                        })
+                    recent_files.append((st.st_mtime, p, st.st_size))
+                    if len(recent_files) > 5000:
+                        recent_files.sort(reverse=True)
+                        recent_files = recent_files[:1000]
+            except Exception:
+                pass
+
+            recent_files.sort(reverse=True)
+            recent_sample = []
+            for mtime, p, size in recent_files[:25]:
+                recent_sample.append({
+                    'path': str(p.relative_to(exports_root)),
+                    'size': int(size),
+                    'mtime': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(mtime))
+                })
+
+            payload = {
+                'total_bytes': int(usage.total),
+                'used_bytes': int(usage.used),
+                'free_bytes': int(usage.free),
+                'used_pct': round(used_pct, 2),
+                'threshold_pct': 95,
+                'exports_root': str(exports_root),
+                'exports': {
+                    'zero_byte_files': zero_byte_files,
+                    'recent_files': recent_sample
+                }
+            }
+
+            status = 200
+            if used_pct >= 98.0:
+                status = 503
+
+            self.send_response(status)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, indent=2).encode())
+
+        except Exception as e:
+            logger.error(f"Error serving storage health: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "storage health failed", "message": str(e)}).encode())
 
     def handle_ingest_audio(self):
         """Handle POST /ingest/audio - Audio file upload from NAS."""

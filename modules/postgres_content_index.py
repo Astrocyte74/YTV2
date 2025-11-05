@@ -325,6 +325,21 @@ class PostgreSQLContentIndex:
         )
         source_label = self.SOURCE_LABELS.get(inferred_source, inferred_source.title())
 
+        # Pass through audio/media flags from content row
+        has_audio = bool(row.get('has_audio'))
+        media_json = row.get('media') or {}
+        if isinstance(media_json, str):
+            try:
+                media_json = json.loads(media_json)
+            except json.JSONDecodeError:
+                media_json = {}
+        media_metadata_json = row.get('media_metadata') or {}
+        if isinstance(media_metadata_json, str):
+            try:
+                media_metadata_json = json.loads(media_metadata_json)
+            except json.JSONDecodeError:
+                media_metadata_json = {}
+
         # Summary metadata (only attached for detailed view, but we pass through here)
         summary_variant = row.get('summary_variant') or 'comprehensive'
         summary_text = row.get('summary_text')
@@ -365,16 +380,21 @@ class PostgreSQLContentIndex:
                 'named_entities': named_entities
             },
             'media': {
-                'has_audio': bool(row.get('has_audio', False)),  # Explicit default to False
+                'has_audio': bool(row.get('has_audio', False)),
                 'audio_duration_seconds': analysis_json.get('audio_duration_seconds', 0),
                 'has_transcript': analysis_json.get('has_transcript', False),
                 'transcript_chars': analysis_json.get('transcript_chars', 0),
+                # Surface audio_url from content.media when available
+                'audio_url': (media_json.get('audio_url') if isinstance(media_json, dict) else None),
                 # Mirror image URL inside media for convenience (optional consumer)
                 'summary_image_url': row.get('summary_image_url') or None
             },
             'media_metadata': {
                 'video_duration_seconds': row.get('duration_seconds') or 0,
-                'mp3_duration_seconds': analysis_json.get('audio_duration_seconds', 0)
+                # Prefer authoritative mp3 duration from media_metadata, fallback to analysis_json
+                'mp3_duration_seconds': (
+                    (int(media_metadata_json.get('mp3_duration_seconds')) if isinstance(media_metadata_json, dict) and str(media_metadata_json.get('mp3_duration_seconds', '')).strip() not in ('', 'None') else None)
+                ) or analysis_json.get('audio_duration_seconds', 0)
             },
             'file_stem': self._generate_file_stem(row.get('video_id'), row.get('title')),
             'video_id': row.get('video_id') or '',
@@ -446,6 +466,21 @@ class PostgreSQLContentIndex:
                 headline_value = item.get('headline')
                 if headline_value:
                     cleaned_entry['headline'] = str(headline_value)
+
+                # Pass through audio enrichment when present on the source item
+                try:
+                    if kind_value == 'audio':
+                        au = item.get('audio_url')
+                        if isinstance(au, str) and au.strip():
+                            cleaned_entry['audio_url'] = au.strip()
+                        dur = item.get('duration')
+                        # Accept both str and int; coerce to int when possible
+                        if isinstance(dur, str) and dur.isdigit():
+                            cleaned_entry['duration'] = int(dur)
+                        elif isinstance(dur, (int, float)):
+                            cleaned_entry['duration'] = int(dur)
+                except Exception:
+                    pass
 
                 cleaned_variants.append(cleaned_entry)
 
@@ -522,7 +557,14 @@ class PostgreSQLContentIndex:
                             'html', vs.html,
                             'generated_at', vs.created_at,
                             'kind', CASE WHEN vs.variant LIKE 'audio%%' THEN 'audio' ELSE 'text' END,
-                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END
+                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END,
+                            -- Surface audio_url and duration alongside audio variants using content JSONB
+                            'audio_url', CASE WHEN vs.variant LIKE 'audio%%'
+                                              THEN COALESCE(c.media->>'audio_url', c.analysis_json->>'audio_url')
+                                              ELSE NULL END,
+                            'duration', CASE WHEN vs.variant LIKE 'audio%%'
+                                             THEN NULLIF((c.media_metadata->>'mp3_duration_seconds'), '')::int
+                                             ELSE NULL END
                         )
                         ORDER BY {variant_order_sql}, vs.created_at DESC
                     ) AS summary_variants
@@ -799,7 +841,13 @@ class PostgreSQLContentIndex:
                             'html', vs.html,
                             'generated_at', vs.created_at,
                             'kind', CASE WHEN vs.variant LIKE 'audio%%' THEN 'audio' ELSE 'text' END,
-                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END
+                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END,
+                            'audio_url', CASE WHEN vs.variant LIKE 'audio%%'
+                                              THEN COALESCE(c.media->>'audio_url', c.analysis_json->>'audio_url')
+                                              ELSE NULL END,
+                            'duration', CASE WHEN vs.variant LIKE 'audio%%'
+                                             THEN NULLIF((c.media_metadata->>'mp3_duration_seconds'), '')::int
+                                             ELSE NULL END
                         )
                         ORDER BY {variant_order_sql}, vs.created_at DESC
                     ) AS summary_variants
