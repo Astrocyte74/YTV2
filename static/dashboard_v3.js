@@ -87,6 +87,15 @@ const VARIANT_META_MAP = REPROCESS_VARIANTS.reduce((map, variant) => {
 
 const TEXT_VARIANT_ORDER = REPROCESS_VARIANTS.filter((variant) => variant.kind === 'text').map((variant) => variant.id);
 
+// Reader display preferences (MVP): size, line, family, theme
+const READER_SIZE_MAP = { s: 0.95, m: 1.0, l: 1.1, xl: 1.2, xxl: 1.3 };
+const READER_LINE_MAP = { tight: 1.45, normal: 1.6, loose: 1.8 };
+const READER_FAMILY_MAP = {
+    sans: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif",
+    serif: "ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif"
+};
+const READER_THEMES = ['light','sepia','dark'];
+
 class AudioDashboard {
     constructor() {
         this.currentAudio = null;
@@ -3147,6 +3156,113 @@ class AudioDashboard {
         return spaced.charAt(0).toUpperCase() + spaced.slice(1);
     }
 
+    // === Reader Display Options (MVP) ===
+    getReaderDisplayPrefs() {
+        try {
+            const raw = localStorage.getItem('readerDisplayPrefs');
+            if (!raw) return { size: 'm', line: 'normal', family: 'sans', theme: 'light' };
+            const obj = JSON.parse(raw);
+            return {
+                size: obj.size && READER_SIZE_MAP[obj.size] ? obj.size : 'm',
+                line: obj.line && READER_LINE_MAP[obj.line] ? obj.line : 'normal',
+                family: obj.family && READER_FAMILY_MAP[obj.family] ? obj.family : 'sans',
+                theme: READER_THEMES.includes(obj.theme) ? obj.theme : 'light'
+            };
+        } catch(_) {
+            return { size: 'm', line: 'normal', family: 'sans', theme: 'light' };
+        }
+    }
+    setReaderDisplayPrefs(next) {
+        try {
+            const cur = this.getReaderDisplayPrefs();
+            const merged = { ...cur, ...next };
+            localStorage.setItem('readerDisplayPrefs', JSON.stringify(merged));
+            return merged;
+        } catch(_) { return this.getReaderDisplayPrefs(); }
+    }
+    applyReaderDisplayPrefs(container, bodyEl) {
+        const prefs = this.getReaderDisplayPrefs();
+        if (bodyEl) {
+            const fs = READER_SIZE_MAP[prefs.size] || 1.0;
+            const lh = READER_LINE_MAP[prefs.line] || 1.6;
+            const ff = READER_FAMILY_MAP[prefs.family] || 'inherit';
+            try { bodyEl.style.setProperty('--reader-font-size', fs + 'rem'); } catch(_) {}
+            try { bodyEl.style.setProperty('--reader-line', String(lh)); } catch(_) {}
+            try { bodyEl.style.setProperty('--reader-font-family', ff); } catch(_) {}
+        }
+        if (container) {
+            try { container.classList.remove('reader-theme--light','reader-theme--sepia','reader-theme--dark'); } catch(_) {}
+            const theme = this.getReaderDisplayPrefs().theme || 'light';
+            try { container.classList.add('reader-theme--' + theme); } catch(_) {}
+        }
+    }
+    openReaderDisplayPopover(container, bodyEl, anchorBtn) {
+        // Close any existing
+        try { document.querySelectorAll('.reader-display-popover').forEach(el => el.remove()); } catch(_) {}
+        const prefs = this.getReaderDisplayPrefs();
+        const pop = document.createElement('div');
+        pop.className = 'reader-display-popover';
+        pop.setAttribute('role', 'dialog');
+        const sizeBtn = (id, label, style='') => `<button type="button" class="reader-chip" data-reader-size="${id}" aria-pressed="${prefs.size===id?'true':'false'}" style="${style}">${label}</button>`;
+        const familyBtn = (id, label, style='') => `<button type="button" class="reader-chip" data-reader-family="${id}" aria-pressed="${prefs.family===id?'true':'false'}" style="${style}">${label}</button>`;
+        const lineBtn = (id, label) => `<button type="button" class="reader-chip" data-reader-line="${id}" aria-pressed="${prefs.line===id?'true':'false'}">${label}</button>`;
+        const themeBtn = (id, label) => `<button type="button" class="reader-chip" data-reader-theme="${id}" aria-pressed="${prefs.theme===id?'true':'false'}">${label}</button>`;
+        pop.innerHTML = `
+            <h4>Display Options</h4>
+            <div class="reader-display-row" data-row="size">${[
+                sizeBtn('s','A','font-size:12px'),
+                sizeBtn('m','A','font-size:14px'),
+                sizeBtn('l','A','font-size:16px'),
+                sizeBtn('xl','A','font-size:18px'),
+                sizeBtn('xxl','A','font-size:20px')
+            ].join('')}</div>
+            <div class="reader-display-row" data-row="line">${[
+                lineBtn('tight','Tight'),
+                lineBtn('normal','Normal'),
+                lineBtn('loose','Loose')
+            ].join('')}</div>
+            <div class="reader-display-row" data-row="family">${[
+                familyBtn('sans','Sans','font-family: Inter, system-ui, sans-serif'),
+                familyBtn('serif','Serif','font-family: Georgia, serif')
+            ].join('')}</div>
+            <div class="reader-display-row" data-row="theme">${[
+                themeBtn('light','Light'),
+                themeBtn('sepia','Sepia'),
+                themeBtn('dark','Dark')
+            ].join('')}</div>
+        `;
+        // Position relative to anchor
+        const anchorRect = anchorBtn.getBoundingClientRect();
+        pop.style.position = 'fixed';
+        pop.style.top = Math.round(anchorRect.bottom + 8) + 'px';
+        pop.style.right = Math.round(Math.max(12, window.innerWidth - anchorRect.right)) + 'px';
+        document.body.appendChild(pop);
+        const closeAll = () => { try { pop.remove(); } catch(_) {} window.removeEventListener('resize', onAway, true); document.removeEventListener('click', onAway, true); };
+        const onAway = (e) => { if (!pop.contains(e.target) && e.target !== anchorBtn) closeAll(); };
+        setTimeout(() => { document.addEventListener('click', onAway, true); window.addEventListener('resize', onAway, true); }, 0);
+        // Handlers
+        pop.addEventListener('click', (e) => {
+            const btn = e.target.closest('button.reader-chip');
+            if (!btn) return;
+            const size = btn.getAttribute('data-reader-size');
+            const line = btn.getAttribute('data-reader-line');
+            const family = btn.getAttribute('data-reader-family');
+            const theme = btn.getAttribute('data-reader-theme');
+            let next = {};
+            if (size && READER_SIZE_MAP[size]) next.size = size;
+            if (line && READER_LINE_MAP[line]) next.line = line;
+            if (family && READER_FAMILY_MAP[family]) next.family = family;
+            if (theme && READER_THEMES.includes(theme)) next.theme = theme;
+            const merged = this.setReaderDisplayPrefs(next);
+            this.applyReaderDisplayPrefs(container, bodyEl);
+            // Update pressed states
+            pop.querySelectorAll('[data-reader-size]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-size')===merged.size ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-line]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-line')===merged.line ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-family]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-family')===merged.family ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-theme]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-theme')===merged.theme ? 'true' : 'false'));
+        });
+    }
+
     async submitReprocess() {
         if (!this.pendingReprocess) return;
         const videoId = this.pendingReprocess.videoId;
@@ -3773,8 +3889,29 @@ class AudioDashboard {
         if (!modal || !body || !item) return;
         titleEl.textContent = item.title || 'Summary';
         body.innerHTML = this.renderWallReaderSection(item);
+        // Apply saved reader display preferences
+        try { this.applyReaderDisplayPrefs(modal, body); } catch(_) {}
         // Normalize NAS HTML for headings/lists on mobile modal
         try { this.enhanceSummaryHtml(body); } catch (_) {}
+        // Inject Display Options (Aa) control
+        try {
+            const headerRight = modal.querySelector('.mobile-reader-header .flex.items-center.gap-2');
+            if (headerRight) {
+                const aaBtn = document.createElement('button');
+                aaBtn.type = 'button';
+                aaBtn.className = 'ybtn ybtn-ghost px-2 py-1.5 rounded-md';
+                aaBtn.setAttribute('aria-haspopup', 'dialog');
+                aaBtn.setAttribute('aria-expanded', 'false');
+                aaBtn.title = 'Display options';
+                aaBtn.dataset.action = 'reader-display';
+                aaBtn.textContent = 'Aa';
+                aaBtn.addEventListener('click', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    this.openReaderDisplayPopover(modal, body, aaBtn);
+                });
+                headerRight.prepend(aaBtn);
+            }
+        } catch(_) {}
         modal.classList.remove('hidden');
         modal.classList.add('flex');
         const onClose = () => {
@@ -3904,6 +4041,7 @@ class AudioDashboard {
                     <h4 class="wall-expander__title">${this.escapeHtml(item.title || 'Summary')}</h4>
                 </div>
                 <div class="flex items-center gap-2">
+                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="reader-display" title="Display options" aria-haspopup="dialog" aria-expanded="false">Aa</button>
                     <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-page" title="Open page">Open</button>
                     <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -3941,6 +4079,8 @@ class AudioDashboard {
         try {
             const body = section.querySelector('[data-summary-body]');
             this.enhanceSummaryHtml(body);
+            // Apply saved reader display preferences to inline reader
+            this.applyReaderDisplayPrefs(section, body);
         } catch (_) {}
         // Highlight the source card and set caret position (relative to expander)
         try {
@@ -3973,6 +4113,7 @@ class AudioDashboard {
             this._wallConnectorHandlers.forEach(h => window.addEventListener(h.type, h.fn, h.opts));
         } catch(_) {}
         const closeBtn = section.querySelector('[data-action="wall-reader-close"]');
+        const displayBtn = section.querySelector('[data-action="reader-display"]');
         const openBtn = section.querySelector('[data-action="wall-reader-open-page"]');
         const menuBtn = section.querySelector('[data-action="menu"]');
         const onClose = () => {
@@ -4015,6 +4156,13 @@ class AudioDashboard {
             if (nextId) { onClose(); this.openWallRowReader(nextId, nextCard); }
         };
         if (closeBtn) closeBtn.addEventListener('click', onClose);
+        if (displayBtn) {
+            const bodyEl = section.querySelector('[data-summary-body]');
+            displayBtn.addEventListener('click', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                this.openReaderDisplayPopover(section, bodyEl, displayBtn);
+            });
+        }
         if (openBtn) openBtn.addEventListener('click', () => {
             window.location.href = `/${encodeURIComponent(id)}.json?v=2`;
         });
