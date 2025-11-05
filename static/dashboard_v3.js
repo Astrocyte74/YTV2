@@ -3773,6 +3773,8 @@ class AudioDashboard {
         if (!modal || !body || !item) return;
         titleEl.textContent = item.title || 'Summary';
         body.innerHTML = this.renderWallReaderSection(item);
+        // Normalize NAS HTML for headings/lists on mobile modal
+        try { this.enhanceSummaryHtml(body); } catch (_) {}
         modal.classList.remove('hidden');
         modal.classList.add('flex');
         const onClose = () => {
