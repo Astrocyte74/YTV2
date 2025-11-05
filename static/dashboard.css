@@ -547,6 +547,75 @@ body {
     background: rgba(148,163,184,0.15);
     border-color: rgba(148,163,184,0.35);
 }
+
+/* Reader Display Options (scoped, lightweight MVP) */
+.reader-display-popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.5rem;
+  min-width: 220px;
+  background: rgba(255,255,255,0.98);
+  border: 1px solid rgba(226,232,240,0.9);
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 32px rgba(2,8,23,0.18);
+  padding: 0.75rem;
+  z-index: 70;
+}
+.dark .reader-display-popover {
+  background: rgba(15,23,42,0.98);
+  border-color: rgba(71,85,105,0.55);
+}
+.reader-display-popover h4 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+}
+.reader-display-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; }
+.reader-display-row:last-child { margin-bottom: 0; }
+.reader-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(226,232,240,0.9);
+  background: rgba(255,255,255,0.7);
+  color: #334155;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+.reader-chip:hover, .reader-chip:focus-visible { background: rgba(14,165,233,0.08); border-color: rgba(14,165,233,0.45); outline: none; }
+.reader-chip[aria-pressed="true"] { background: #0ea5e9; color: white; border-color: transparent; }
+.dark .reader-chip { background: rgba(2,6,23,0.6); color: #e2e8f0; border-color: rgba(71,85,105,0.55); }
+.dark .reader-chip[aria-pressed="true"] { background: #0ea5e9; color: white; }
+
+/* Reader CSS variables (scoped to reader body containers) */
+.wall-expander [data-summary-body],
+#wallReaderBody {
+  --reader-font-size: 1rem; /* base 16px */
+  --reader-line: 1.6;
+  --reader-font-family: inherit;
+  font-size: var(--reader-font-size);
+  line-height: var(--reader-line);
+  font-family: var(--reader-font-family);
+}
+
+/* Reader theme (scoped lightly to content body) */
+.wall-expander.reader-theme--sepia [data-summary-body],
+#wallReaderModal.reader-theme--sepia #wallReaderBody {
+  background: rgba(245, 235, 215, 0.55);
+  color: #2b2b2b;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+.wall-expander.reader-theme--dark [data-summary-body],
+#wallReaderModal.reader-theme--dark #wallReaderBody {
+  background: rgba(7, 16, 32, 0.7);
+  color: #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
 .dark .wall-expander .summary-card__menu-btn {
     background: rgba(15, 23, 42, 0.55);
     border-color: rgba(148, 163, 184, 0.35);
