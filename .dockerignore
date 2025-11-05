@@ -1,0 +1,29 @@
+# Shrink build context for faster Docker builds on Render
+.git
+.github
+.gitignore
+.DS_Store
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.dump
+.venv
+venv
+node_modules
+dist
+build
+coverage
+.cache
+
+# Large runtime folders not needed at build time
+exports
+data
+downloads
+archive
+archive_render
+
+# Editor/AI artifacts
+.claude
+**GIT_TASKS*setup-guides
