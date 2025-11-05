@@ -594,7 +594,9 @@ body {
 
 /* New tiled/segmented UI */
 .reader-panel { display: grid; grid-template-columns: 1fr; gap: 0.9rem; }
-.reader-group h5 { margin: 0 0 0.5rem 0; font-size: 0.78rem; opacity: 0.9; font-weight: 600; }
+.reader-group h5 { margin: 0 0 0.5rem 0; font-size: 0.9rem; opacity: 0.95; font-weight: 600; letter-spacing: 0.01em; }
+.reader-group + .reader-group { border-top: 1px solid rgba(226,232,240,0.6); padding-top: 0.8rem; margin-top: 0.4rem; }
+.dark .reader-group + .reader-group { border-top-color: rgba(71,85,105,0.45); }
 .reader-group .subnote { font-size: 0.72rem; opacity: 0.7; }
 
 .reader-segment { display: inline-flex; border: 1px solid rgba(226,232,240,0.9); border-radius: 0.6rem; background: rgba(248,250,252,0.7); overflow: hidden; }
@@ -607,14 +609,15 @@ body {
 .reader-tiles { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 0.6rem; }
 @media (max-width: 520px) { .reader-tiles { grid-template-columns: repeat(2, minmax(0,1fr)); } }
 
-.reader-tile { display: flex; flex-direction: column; align-items: center; gap: 0.4rem; padding: 0.6rem; border: 1px solid rgba(226,232,240,0.9); border-radius: 0.7rem; background: rgba(248,250,252,0.7); cursor: pointer; }
-.dark .reader-tile { border-color: rgba(71,85,105,0.55); background: rgba(2,6,23,0.6); }
-.reader-tile[aria-pressed="true"] { outline: 2px solid #0ea5e9; outline-offset: 2px; }
-.reader-tile .tile-preview { width: 100%; height: 46px; border-radius: 0.5rem; background: rgba(241,245,249,0.9); display: grid; place-content: center; position: relative; overflow: hidden; }
+.reader-tile { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; padding: 0.5rem; border: 1px solid rgba(226,232,240,0.9); border-radius: 0.7rem; background: rgba(248,250,252,0.82); cursor: pointer; }
+.dark .reader-tile { border-color: rgba(71,85,105,0.55); background: rgba(2,6,23,0.7); }
+.reader-tile[aria-pressed="true"] { outline: 2px solid #38bdf8; outline-offset: 2px; box-shadow: 0 0 0 3px rgba(56,189,248,0.22); }
+.reader-tile .tile-preview { width: 100%; height: 40px; border-radius: 0.5rem; background: rgba(241,245,249,0.96); display: grid; place-content: center; position: relative; overflow: hidden; }
 .dark .reader-tile .tile-preview { background: rgba(30,41,59,0.7); }
-.reader-tile .strip { height: 3px; border-radius: 3px; background: rgba(51,65,85,0.9); margin: 3px 0; }
+.reader-tile .strip { height: 3px; border-radius: 3px; background: rgba(51,65,85,0.9); margin: 3px 0; opacity: 0.9; }
 .dark .reader-tile .strip { background: rgba(203,213,225,0.9); }
 .reader-tile .tile-label { font-size: 0.75rem; font-weight: 600; }
+.reader-tile .subnote { font-size: 0.68rem; opacity: 0.7; margin-top: -0.15rem; }
 
 /* Theme preview tint */
 .reader-tile[data-reader-theme="light"] .tile-preview { background: #f8fafc; }
