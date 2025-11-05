@@ -601,6 +601,26 @@ body {
   font-family: var(--reader-font-family);
 }
 
+/* Ensure prose children respect reader line-height */
+.wall-expander [data-summary-body] p,
+.wall-expander [data-summary-body] li,
+#wallReaderBody p,
+#wallReaderBody li { line-height: var(--reader-line) !important; }
+
+/* Compact preview inside Display Options */
+.reader-preview {
+  border: 1px solid rgba(226,232,240,0.9);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: var(--reader-font-size);
+  line-height: var(--reader-line);
+  font-family: var(--reader-font-family);
+}
+.dark .reader-preview { border-color: rgba(71,85,105,0.55); }
+.reader-preview h5 { margin: 0 0 0.25rem 0; font-weight: 600; font-size: 0.9em; }
+.reader-preview ul { margin: 0; padding-left: 1em; }
+.reader-preview li { margin: 0.1rem 0; }
+
 /* Reader theme (scoped lightly to content body) */
 .wall-expander.reader-theme--sepia [data-summary-body],
 #wallReaderModal.reader-theme--sepia #wallReaderBody {
