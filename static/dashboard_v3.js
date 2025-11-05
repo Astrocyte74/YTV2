@@ -2753,10 +2753,39 @@ class AudioDashboard {
             const onClickAway = (e) => {
                 if (!e.target.closest('[data-kebab-menu]') && !e.target.closest('[data-action="menu"]')) close();
             };
+            // Handle menu item clicks locally (for actions like set-default-variant)
+            const onMenuClick = (e) => {
+                const el = e.target.closest('[data-action]');
+                if (!el) return;
+                const act = el.getAttribute('data-action');
+                if (act === 'set-default-variant') {
+                    const v = (el.getAttribute('data-variant') || '').toLowerCase();
+                    if (v) {
+                        try { localStorage.setItem('readerPreferredVariant', v); } catch(_) {}
+                        // If inline reader is open for this card, switch now
+                        try {
+                            const id = card.getAttribute('data-report-id');
+                            const region = document.querySelector('[data-wall-reader][data-wall-reader-id="' + CSS.escape(id) + '"]');
+                            if (region) {
+                                const controls = region.querySelector('[data-variant-controls]');
+                                const btnVar = controls && controls.querySelector('[data-variant="' + v + '"]');
+                                if (btnVar) btnVar.click();
+                                else this.openWallRowReader(id, card);
+                            }
+                        } catch(_) {}
+                        if (this.showToast) this.showToast(`Default summary set to ${this.prettyVariantLabel(v)}`);
+                    }
+                    close();
+                    e.stopPropagation();
+                    e.preventDefault();
+                    return;
+                }
+            };
             this._menuCleanup = () => close();
             setTimeout(() => {
                 document.addEventListener('keydown', onKey, true);
                 document.addEventListener('click', onClickAway, true);
+                try { menu.addEventListener('click', onMenuClick, true); } catch(_) {}
             }, 0);
         } else {
             menu.classList.add('hidden');
@@ -3584,10 +3613,10 @@ class AudioDashboard {
                 </svg>
             </button>
             <div class="summary-card__menu hidden" data-kebab-menu role="menu">
-                <div class="summary-card__menu-group" role="group" aria-label="Default summary">
-                    <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="key-insights">Set default: Insights</button>
-                    <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="comprehensive">Set default: Comprehensive</button>
-                    <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="bullet-points">Set default: Key Points</button>
+                <div class="summary-card__menu-group" role="group" aria-label="Summary view">
+                    <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="key-insights">View Insights (make default)</button>
+                    <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="comprehensive">View Comprehensive (make default)</button>
+                    <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="bullet-points">View Key Points (make default)</button>
                 </div>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
