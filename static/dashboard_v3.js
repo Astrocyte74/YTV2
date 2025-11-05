@@ -3829,6 +3829,42 @@ class AudioDashboard {
         if (!modal || !body || !item) return;
         titleEl.textContent = item.title || 'Summary';
         body.innerHTML = this.renderWallReaderSection(item);
+        // Header variant controls (modal)
+        try {
+            const fallback = this.computeFallbackSummaryHtml(item) || '';
+            const vinfo = this.extractVariantInfo(item, fallback);
+            const order = (vinfo && vinfo.order) || [];
+            if (order.length > 1) {
+                const headerRight = modal.querySelector('.wall-expander__header .flex.items-center.gap-2');
+                const container = document.createElement('div');
+                container.className = 'flex items-center gap-1 mr-2';
+                order.forEach((vid) => {
+                    const meta = vinfo.map[vid];
+                    if (!meta || meta.kind !== 'text') return;
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.setAttribute('data-variant-header', vid);
+                    btn.className = 'variant-toggle px-2 py-1 text-xs';
+                    btn.innerHTML = `${meta.icon ? `<span class="text-sm">${meta.icon}</span>` : ''}<span>${meta.label}</span>`;
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault(); e.stopPropagation();
+                        const entry = vinfo.map[vid];
+                        if (entry && entry.html) {
+                            body.innerHTML = entry.html;
+                            try { this.enhanceSummaryHtml(body); } catch(_) {}
+                            container.querySelectorAll('[data-variant-header]').forEach(b => b.classList.remove('bg-audio-500','text-white'));
+                            btn.classList.add('bg-audio-500','text-white');
+                        }
+                    });
+                    container.appendChild(btn);
+                });
+                if (headerRight) headerRight.prepend(container);
+                // Activate default
+                const def = vinfo.defaultId || order[0];
+                const defBtn = container.querySelector(`[data-variant-header="${def}"]`);
+                if (defBtn) defBtn.click();
+            }
+        } catch(_) {}
         // Normalize NAS HTML for headings/lists on mobile modal
         try { this.enhanceSummaryHtml(body); } catch (_) {}
         modal.classList.remove('hidden');
@@ -3969,10 +4005,10 @@ class AudioDashboard {
                         </svg>
                     </button>
                     <div class="summary-card__menu hidden" data-kebab-menu role="menu">
-                        <div class="summary-card__menu-group" role="group" aria-label="Default summary">
-                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="key-insights">Set default: Insights</button>
-                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="comprehensive">Set default: Comprehensive</button>
-                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="bullet-points">Set default: Key Points</button>
+                        <div class="summary-card__menu-group" role="group" aria-label="Summary view">
+                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="key-insights">View Insights (make default)</button>
+                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="comprehensive">View Comprehensive (make default)</button>
+                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="set-default-variant" data-variant="bullet-points">View Key Points (make default)</button>
                         </div>
                         <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                         <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
@@ -4003,6 +4039,42 @@ class AudioDashboard {
             const body = section.querySelector('[data-summary-body]');
             this.enhanceSummaryHtml(body);
         } catch (_) {}
+        // Header variant controls (inline)
+        try {
+            const fallback = this.computeFallbackSummaryHtml(item) || '';
+            const vinfo = this.extractVariantInfo(item, fallback);
+            const order = (vinfo && vinfo.order) || [];
+            if (order.length > 1) {
+                const headerRight = section.querySelector('.wall-expander__header .flex.items-center.gap-2');
+                const container = document.createElement('div');
+                container.className = 'flex items-center gap-1 mr-2';
+                order.forEach((vid) => {
+                    const meta = vinfo.map[vid];
+                    if (!meta || meta.kind !== 'text') return;
+                    const btnH = document.createElement('button');
+                    btnH.type = 'button';
+                    btnH.setAttribute('data-variant-header', vid);
+                    btnH.className = 'variant-toggle px-2 py-1 text-xs';
+                    btnH.innerHTML = `${meta.icon ? `<span class=\"text-sm\">${meta.icon}</span>` : ''}<span>${meta.label}</span>`;
+                    btnH.addEventListener('click', (e) => {
+                        e.preventDefault(); e.stopPropagation();
+                        const entry = vinfo.map[vid];
+                        if (entry && entry.html) {
+                            const bodyEl = section.querySelector('[data-summary-body]');
+                            bodyEl.innerHTML = entry.html;
+                            try { this.enhanceSummaryHtml(bodyEl); } catch(_) {}
+                            container.querySelectorAll('[data-variant-header]').forEach(b => b.classList.remove('bg-audio-500','text-white'));
+                            btnH.classList.add('bg-audio-500','text-white');
+                        }
+                    });
+                    container.appendChild(btnH);
+                });
+                if (headerRight) headerRight.prepend(container);
+                const def = vinfo.defaultId || order[0];
+                const defBtn = container.querySelector(`[data-variant-header="${def}"]`);
+                if (defBtn) defBtn.click();
+            }
+        } catch(_) {}
         // Highlight the source card and set caret position (relative to expander)
         try {
             cardEl.classList.add('wall-card--selected');
