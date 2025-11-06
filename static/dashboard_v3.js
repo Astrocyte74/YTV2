@@ -410,6 +410,16 @@ class AudioDashboard {
                 this.handleSearch();
             }, 500));
         }
+        // Header search (desktop)
+        this.searchInputHeader = document.getElementById('searchInputHeader');
+        if (this.searchInputHeader) {
+            this.searchInputHeader.addEventListener('input', this.debounce(() => {
+                const v = this.searchInputHeader.value;
+                if (this.searchInput && this.searchInput.value !== v) this.searchInput.value = v;
+                if (this.searchInputTop && this.searchInputTop.value !== v) this.searchInputTop.value = v;
+                this.handleSearch();
+            }, 500));
+        }
         if (this.sortToolbar) {
             this.sortToolbar.querySelectorAll('[data-sort]').forEach(btn => {
                 btn.addEventListener('click', () => this.setSortMode(btn.dataset.sort));
@@ -6310,9 +6320,9 @@ class AudioDashboard {
 
     handleSearch() {
         this.searchQuery = this.searchInput.value.trim();
-        if (this.searchInputTop && this.searchInputTop.value !== this.searchInput.value) {
-            this.searchInputTop.value = this.searchInput.value;
-        }
+        const v = this.searchInput.value;
+        if (this.searchInputTop && this.searchInputTop.value !== v) this.searchInputTop.value = v;
+        if (this.searchInputHeader && this.searchInputHeader.value !== v) this.searchInputHeader.value = v;
         this.currentPage = 1;
         this.updateHeroBadges();
         this.loadContent();
