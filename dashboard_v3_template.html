@@ -203,16 +203,10 @@
         /* Remove heading bottom margin inside summaries to center-align with chevron */
         #sidebar details > summary h3 { margin: 0; line-height: 1; }
         
-        /* Desktop: show a floating top mini-player when sidebar is collapsed */
-        body.sidebar-collapsed #mobileMiniPlayer {
-            display: block !important; /* override lg:hidden */
-            position: fixed;
-            top: 56px; /* header h-14 */
-            bottom: auto;
-            left: 0;
-            right: 0;
-            transform: translateY(0) !important;
-            z-index: 60;
+        /* Desktop: floating top mini-player (own container) when sidebar collapsed */
+        #topMiniPlayer { display: none; }
+        @media (min-width: 1024px) {
+          body.sidebar-collapsed #topMiniPlayer { display: block; }
         }
         
         /* Desktop: show a top search bar when sidebar is collapsed */
@@ -666,6 +660,32 @@
                                    class="w-full pl-10 pr-4 py-3 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-audio-500 focus:border-audio-500 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm text-slate-800 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400">
                         </div>
                     </div>
+
+                    <!-- Top Mini Player (desktop only; shown when sidebar is collapsed) -->
+                    <div id="topMiniPlayer" class="hidden lg:block">
+                        <div class="mx-auto max-w-3xl rounded-xl border border-slate-200/70 dark:border-slate-700/70 bg-gradient-to-r from-audio-500 to-audio-600 text-white shadow-md">
+                            <div class="flex items-center gap-3 px-4 py-3">
+                                <div class="hidden sm:block w-8 h-8 rounded-md bg-white/15 grid place-items-center">
+                                  <svg class="w-4 h-4 text-white/80" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <p id="topNowPlayingTitle" class="truncate text-sm font-semibold">Select an audio summary</p>
+                                    <div id="topProgressContainer" class="mt-1 h-1.5 w-full bg-white/35 rounded-full cursor-pointer">
+                                        <div id="topProgressBar" class="h-1.5 bg-white rounded-full" style="width:0%"></div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button id="openFiltersTopBtn" class="hidden lg:inline-flex items-center gap-2 rounded-md border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/90 hover:bg-white/15">Filters</button>
+                                    <button id="topPrevBtn" class="p-2 rounded-md bg-white/10 hover:bg-white/20" title="Previous"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
+                                    <button id="topPlayPauseBtn" class="p-2.5 rounded-full bg-white text-audio-600 hover:bg-slate-50" title="Play/Pause">
+                                        <svg id="topPlayIcon" class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                        <svg id="topPauseIcon" class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                                    </button>
+                                    <button id="topNextBtn" class="p-2 rounded-md bg-white/10 hover:bg-white/20" title="Next"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     
                     <!-- Results Header -->
                     <div id="resultsHero" class="relative overflow-hidden rounded-3xl border border-white/70 dark:border-slate-800/70 bg-white/85 dark:bg-slate-900/70 backdrop-blur-xl shadow-2xl shadow-slate-200/40 dark:shadow-black/40">
@@ -860,7 +880,7 @@
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
     <script src="ui_flags.js?v=5"></script>
-    <script src="dashboard_v3.js?v=pg54"></script>
+    <script src="dashboard_v3.js?v=pg55"></script>
 
 </body>
 </html>
