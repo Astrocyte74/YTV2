@@ -373,8 +373,17 @@ class AudioDashboard {
         this.updateImageModeUI();
         
         // Search and filters
-        this.searchInput.addEventListener('input', 
-            this.debounce(() => this.handleSearch(), 500));
+        this.searchInput.addEventListener('input', this.debounce(() => this.handleSearch(), 500));
+        // Optional top search (mobile + desktop collapsed)
+        this.searchInputTop = document.getElementById('searchInputTop');
+        if (this.searchInputTop) {
+            this.searchInputTop.addEventListener('input', this.debounce(() => {
+                if (this.searchInput && this.searchInput.value !== this.searchInputTop.value) {
+                    this.searchInput.value = this.searchInputTop.value;
+                }
+                this.handleSearch();
+            }, 500));
+        }
         if (this.sortToolbar) {
             this.sortToolbar.querySelectorAll('[data-sort]').forEach(btn => {
                 btn.addEventListener('click', () => this.setSortMode(btn.dataset.sort));
@@ -409,10 +418,10 @@ class AudioDashboard {
             });
         }
 
-        // Global: Clear all filters button
+        // Global: Show all (select all) filters button
         const clearAllFiltersBtn = document.getElementById('clearAllFilters');
         if (clearAllFiltersBtn) {
-            clearAllFiltersBtn.addEventListener('click', () => this.clearAllFilters());
+            clearAllFiltersBtn.addEventListener('click', () => this.selectAllFilters());
         }
         
         // Show more languages toggle
@@ -1479,6 +1488,7 @@ class AudioDashboard {
             this.currentFilters = this.computeFiltersFromDOM();
             this.updateHeroBadges();
             console.log('Initialized currentFilters after render:', this.currentFilters);
+            this.updateShowAllButtonVisibility();
             
         } catch (error) {
             console.error('Failed to load filters:', error);
@@ -6227,6 +6237,9 @@ class AudioDashboard {
 
     handleSearch() {
         this.searchQuery = this.searchInput.value.trim();
+        if (this.searchInputTop && this.searchInputTop.value !== this.searchInput.value) {
+            this.searchInputTop.value = this.searchInput.value;
+        }
         this.currentPage = 1;
         this.updateHeroBadges();
         this.loadContent();
@@ -6307,6 +6320,7 @@ class AudioDashboard {
         
         this.currentPage = 1;
         this.loadContent();
+        this.updateShowAllButtonVisibility();
     }
 
     applyFilterFromChip(filterType, filterValue, parentCategory = null) {
@@ -6371,6 +6385,26 @@ class AudioDashboard {
         });
         this.currentFilters = {};
         this.loadContent();
+    }
+
+    selectAllFilters() {
+        document.querySelectorAll('input[type="checkbox"][data-filter]').forEach(cb => {
+            cb.checked = true;
+        });
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.currentPage = 1;
+        this.updateHeroBadges();
+        this.updateShowAllButtonVisibility();
+        this.loadContent();
+    }
+
+    updateShowAllButtonVisibility() {
+        const btn = document.getElementById('clearAllFilters');
+        if (!btn) return;
+        const inputs = Array.from(document.querySelectorAll('input[type="checkbox"][data-filter]'));
+        if (!inputs.length) { btn.classList.add('hidden'); return; }
+        const allChecked = inputs.every(cb => cb.checked);
+        if (allChecked) btn.classList.add('hidden'); else btn.classList.remove('hidden');
     }
 
     showFilterAppliedFeedback(filterType, filterValue) {

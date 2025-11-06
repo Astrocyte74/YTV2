@@ -202,6 +202,21 @@
         details > summary { list-style: none; }
         /* Remove heading bottom margin inside summaries to center-align with chevron */
         #sidebar details > summary h3 { margin: 0; line-height: 1; }
+        
+        /* Desktop: show a floating top mini-player when sidebar is collapsed */
+        body.sidebar-collapsed #mobileMiniPlayer {
+            display: block !important; /* override lg:hidden */
+            position: fixed;
+            top: 56px; /* header h-14 */
+            bottom: auto;
+            left: 0;
+            right: 0;
+            transform: translateY(0) !important;
+            z-index: 60;
+        }
+        
+        /* Desktop: show a top search bar when sidebar is collapsed */
+        body.sidebar-collapsed #topSearchBar { display: block !important; }
         .filter-shell summary:focus-visible {
             outline: 2px solid rgba(14,165,233,0.6);
             outline-offset: 4px;
@@ -411,7 +426,7 @@
                         </div>
 
                         <div class="flex justify-end">
-                            <button id="clearAllFilters" class="text-xs font-medium text-audio-600 dark:text-audio-300 hover:text-audio-700 dark:hover:text-audio-200 transition-colors">Clear all filters</button>
+                            <button id="clearAllFilters" class="text-xs font-medium text-audio-600 dark:text-audio-300 hover:text-audio-700 dark:hover:text-audio-200 transition-colors">Show all</button>
                         </div>
 
                         <!-- Sort select moved above results header (mobile-only) -->
@@ -637,6 +652,20 @@
                     <div class="h-full w-full bg-gradient-to-br from-audio-500/25 via-indigo-500/20 to-transparent blur-3xl opacity-80 dark:opacity-60"></div>
                 </div>
                 <div id="contentShell" class="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+                    <!-- Top Search (always on mobile; on desktop only when sidebar collapsed) -->
+                    <div id="topSearchBar" class="block lg:hidden">
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <svg class="h-5 w-5 text-slate-400 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                            </div>
+                            <input type="text" id="searchInputTop"
+                                   placeholder="Search summaries..."
+                                   class="w-full pl-10 pr-4 py-3 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-audio-500 focus:border-audio-500 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm text-slate-800 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400">
+                        </div>
+                    </div>
                     
                     <!-- Results Header -->
                     <div id="resultsHero" class="relative overflow-hidden rounded-3xl border border-white/70 dark:border-slate-800/70 bg-white/85 dark:bg-slate-900/70 backdrop-blur-xl shadow-2xl shadow-slate-200/40 dark:shadow-black/40">
