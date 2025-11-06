@@ -4142,6 +4142,23 @@ class AudioDashboard {
                     window.location.href = `/${encodeURIComponent(id)}.json?v=2`;
                 });
             }
+            // Add refresh control for mobile modal
+            try {
+                const headerRight = modal.querySelector('.mobile-reader-header .flex.items-center.gap-2');
+                if (headerRight) {
+                    const rbtn = document.createElement('button');
+                    rbtn.className = 'ybtn ybtn-ghost px-2 py-1.5 rounded-md';
+                    rbtn.setAttribute('title', 'Refresh');
+                    rbtn.setAttribute('aria-label', 'Refresh');
+                    rbtn.textContent = '↻';
+                    rbtn.addEventListener('click', (e) => {
+                        e.preventDefault(); e.stopPropagation();
+                        // Reload the page in mobile web-app context
+                        try { location.reload(); } catch(_) { window.location.href = window.location.href; }
+                    });
+                    headerRight.insertBefore(rbtn, headerRight.firstChild);
+                }
+            } catch(_) {}
             if (menuBtn) {
                 menuBtn.addEventListener('click', () => this.toggleKebabMenu(modal, true, menuBtn));
                 const menu = modal.querySelector('[data-kebab-menu]');
@@ -4291,6 +4308,19 @@ class AudioDashboard {
         const displayBtn = section.querySelector('[data-action="reader-display"]');
         const openBtn = section.querySelector('[data-action="wall-reader-open-page"]');
         const menuBtn = section.querySelector('[data-action="menu"]');
+        // Inject a refresh button into header actions
+        try {
+            const actions = section.querySelector('.wall-expander__header .flex.items-center.gap-2');
+            if (actions) {
+                const rbtn = document.createElement('button');
+                rbtn.className = 'ybtn ybtn-ghost px-2 py-1.5 rounded-md';
+                rbtn.setAttribute('title', 'Refresh');
+                rbtn.setAttribute('aria-label', 'Refresh');
+                rbtn.textContent = '↻';
+                rbtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.openWallRowReader(id, cardEl); });
+                actions.insertBefore(rbtn, actions.firstChild);
+            }
+        } catch(_) {}
         const onClose = () => {
             if (!section || !section.parentElement) return;
             // Animate collapse
