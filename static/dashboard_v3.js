@@ -341,6 +341,8 @@ class AudioDashboard {
             this.mobileProgressContainer.addEventListener('touchstart', (e) => this.beginProgressDrag(e, true), { passive: true });
         }
         if (this.settingsToggle) this.settingsToggle.addEventListener('click', (e) => { e.stopPropagation(); this.toggleSettings(); });
+        const refreshBtn = document.getElementById('refreshBtn');
+        if (refreshBtn) refreshBtn.addEventListener('click', (e) => { e.preventDefault(); try { location.reload(); } catch(_) { window.location.href = window.location.href; } });
         if (this.settingsMenu) document.addEventListener('click', (e) => { if (!e.target.closest('#settingsMenu') && !e.target.closest('#settingsToggle')) this.closeSettings(); });
         if (this.themeButtons) this.themeButtons.forEach(btn => btn.addEventListener('click', () => this.setTheme(btn.dataset.theme)));
         if (this.cancelDeleteBtn) this.cancelDeleteBtn.addEventListener('click', () => this.closeConfirm());
