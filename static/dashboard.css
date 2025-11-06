@@ -613,10 +613,11 @@ body {
   .mobile-reader-header h3 { max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mobile-reader-header .flex.items-center.gap-2 { flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
   /* Inline wall reader header tweaks for mobile */
-  .wall-expander__header { align-items: flex-start; }
-  .wall-expander__header > .flex.items-center.gap-3 { max-width: 55%; }
+  .wall-expander__header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .wall-expander__header > .flex.items-center.gap-3 { width: 100%; max-width: 100%; }
   .wall-expander__header .wall-expander__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .wall-expander__header > .flex.items-center.gap-2 { max-width: 45%; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+  .wall-expander__header > .flex.items-center.gap-2 { width: 100%; flex-wrap: wrap; gap: 6px; justify-content: flex-start; }
+  .wall-expander__header > .flex.items-center.gap-2 button { flex: 0 0 auto; }
   .wall-expander__header [data-action="wall-reader-open-page"] { font-size: 0; padding: 6px; }
   .wall-expander__header [data-action="wall-reader-open-page"]::after { content: '↗'; font-size: 14px; }
 }
