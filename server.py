@@ -117,8 +117,13 @@ try:
 except Exception as e:
     pass  # Continue if .envrc sourcing fails
 
+def _env_flag(name: str, default: str = "0") -> bool:
+    """Parse truthy env values consistently."""
+    value = (os.getenv(name, default) or "").strip().lower()
+    return value in ("1", "true", "yes", "on")
+
 ## Feature toggle for V2 template as default
-USE_V2_DEFAULT = os.getenv("USE_V2_DEFAULT", "1") == "1"  # default ON
+USE_V2_DEFAULT = _env_flag("USE_V2_DEFAULT", "1")  # default ON
 
 # Set up logging
 logging.basicConfig(
@@ -172,6 +177,7 @@ def _parse_csv_env(value: str) -> list[str]:
 
 ALLOWED_ORIGINS_CFG = _parse_csv_env(ALLOWED_ORIGINS_ENV)
 GOOGLE_CLIENT_IDS = _parse_csv_env(GOOGLE_CLIENT_IDS_ENV)
+DASHBOARD_AUTOPLAY_ON_LOAD = _env_flag("DASHBOARD_AUTOPLAY_ON_LOAD", "1")
 
 RL_USER_PER_MIN = int(os.getenv('RL_USER_PER_MIN', '5'))
 RL_IP_PER_MIN = int(os.getenv('RL_IP_PER_MIN', '10'))
@@ -1527,12 +1533,17 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "basic_user": os.getenv('NGROK_BASIC_USER', ''),
                     "basic_pass": os.getenv('NGROK_BASIC_PASS', ''),
                 }
+                dashboard_config = {
+                    "autoPlayOnLoad": bool(DASHBOARD_AUTOPLAY_ON_LOAD)
+                }
 
                 # Replace template placeholders (safe replacement for templates with {})
                 dashboard_html = template_content.replace(
                     '{reports_data}', json.dumps(reports_data, ensure_ascii=False)
                 ).replace(
                     '{nas_config}', json.dumps(nas_config)
+                ).replace(
+                    '{dashboard_config}', json.dumps(dashboard_config)
                 )
                 
                 self.send_response(200)

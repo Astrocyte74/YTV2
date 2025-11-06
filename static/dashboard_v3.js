@@ -116,6 +116,13 @@ class AudioDashboard {
         this.isPlaying = false;
         // Read UI feature flags (non-breaking if missing)
         this.flags = (typeof window !== 'undefined' && window.UI_FLAGS) ? window.UI_FLAGS : {};
+        this.config = (typeof window !== 'undefined' && window.DASHBOARD_CONFIG) ? window.DASHBOARD_CONFIG : {};
+        const autoPlayConfig = this.config && this.config.autoPlayOnLoad;
+        this.autoPlayOnLoad = autoPlayConfig === undefined;
+        if (autoPlayConfig !== undefined) {
+            const normalized = String(autoPlayConfig).toLowerCase();
+            this.autoPlayOnLoad = !['false','0','no','off'].includes(normalized);
+        }
         this.currentFilters = {};
         this.currentPage = 1;
         this.currentSort = 'added_desc';
@@ -769,7 +776,11 @@ class AudioDashboard {
             if (!this.currentAudio) {
                 const playableItems = this.getPlayableItems(this.currentItems);
                 if (playableItems.length) {
-                    this.setCurrentFromItem(playableItems[0]);
+                    if (this.autoPlayOnLoad) {
+                        this.setCurrentFromItem(playableItems[0]);
+                    } else {
+                        this.showNowPlayingPlaceholder();
+                    }
                 } else {
                     this.showNowPlayingPlaceholder();
                 }
@@ -2195,8 +2206,15 @@ class AudioDashboard {
             this.updateResultsInfo(paginationMeta);
             const playableItems = this.rebuildPlaylist(this.currentItems);
             if (playableItems.length > 0) {
-                this.currentTrackIndex = 0;
-                this.setCurrentFromItem(playableItems[0]);
+                if (this.currentAudio && this.playlist.includes(this.currentAudio.id)) {
+                    this.currentTrackIndex = this.playlist.indexOf(this.currentAudio.id);
+                } else if (this.autoPlayOnLoad) {
+                    this.currentTrackIndex = 0;
+                    this.setCurrentFromItem(playableItems[0]);
+                } else {
+                    this.currentTrackIndex = 0;
+                    this.showNowPlayingPlaceholder();
+                }
             } else {
                 this.currentTrackIndex = -1;
                 this.showNowPlayingPlaceholder();
@@ -7043,7 +7061,11 @@ class AudioDashboard {
                     const id = this.playlist[this.currentTrackIndex];
                     const item = playableItems.find(x => x.file_stem === id) || playableItems[0];
                     if (item) {
-                        this.setCurrentFromItem(item);
+                        if (this.autoPlayOnLoad) {
+                            this.setCurrentFromItem(item);
+                        } else {
+                            this.showNowPlayingPlaceholder();
+                        }
                     }
                 } else {
                     this.currentTrackIndex = -1;
