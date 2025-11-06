@@ -206,6 +206,18 @@ class AudioDashboard {
         this.mobileCurrentTimeEl = document.getElementById('mobileCurrentTime');
         this.mobileNowPlayingTitle = document.getElementById('mobileNowPlayingTitle');
         this.mobileNowPlayingThumb = document.getElementById('mobileNowPlayingThumb');
+
+        // Top mini-player (desktop collapsed) elements
+        this.topMiniPlayer = document.getElementById('topMiniPlayer');
+        this.topPlayPauseBtn = document.getElementById('topPlayPauseBtn');
+        this.topPlayIcon = document.getElementById('topPlayIcon');
+        this.topPauseIcon = document.getElementById('topPauseIcon');
+        this.topPrevBtn = document.getElementById('topPrevBtn');
+        this.topNextBtn = document.getElementById('topNextBtn');
+        this.topProgressContainer = document.getElementById('topProgressContainer');
+        this.topProgressBar = document.getElementById('topProgressBar');
+        this.topNowPlayingTitle = document.getElementById('topNowPlayingTitle');
+        this.openFiltersTopBtn = document.getElementById('openFiltersTopBtn');
         this.volumeBtn = document.getElementById('volumeBtn');
         this.volumeOnIcon = document.getElementById('volumeOnIcon');
         this.volumeOffIcon = document.getElementById('volumeOffIcon');
@@ -335,6 +347,9 @@ class AudioDashboard {
         this.prevBtn.addEventListener('click', () => this.playPrevious());
         this.nextBtn.addEventListener('click', () => this.playNext());
         this.progressContainer.addEventListener('click', (e) => this.seekTo(e));
+        if (this.topProgressContainer) {
+            this.topProgressContainer.addEventListener('click', (e) => this.seekToIn(this.topProgressContainer, e));
+        }
         this.progressContainer.addEventListener('mousedown', (e) => this.beginProgressDrag(e, false));
         if (this.volumeBtn) this.volumeBtn.addEventListener('click', () => this.toggleMute());
         
@@ -342,6 +357,17 @@ class AudioDashboard {
         if (this.mobilePlayPauseBtn) this.mobilePlayPauseBtn.addEventListener('click', () => this.togglePlayPause());
         if (this.mobilePrevBtn) this.mobilePrevBtn.addEventListener('click', () => this.playPrevious());
         if (this.mobileNextBtn) this.mobileNextBtn.addEventListener('click', () => this.playNext());
+        // Top mini-player controls
+        if (this.topPlayPauseBtn) this.topPlayPauseBtn.addEventListener('click', () => this.togglePlayPause());
+        if (this.topPrevBtn) this.topPrevBtn.addEventListener('click', () => this.playPrevious());
+        if (this.topNextBtn) this.topNextBtn.addEventListener('click', () => this.playNext());
+        if (this.openFiltersTopBtn) this.openFiltersTopBtn.addEventListener('click', () => {
+            this.sidebarCollapsed = false;
+            localStorage.setItem('ytv2.sidebarCollapsed', '0');
+            this.applySidebarCollapsedState();
+            // focus the search field in sidebar if present
+            setTimeout(() => { try { this.searchInput?.focus(); } catch(_){} }, 50);
+        });
         if (this.mobileProgressContainer) {
             this.mobileProgressContainer.addEventListener('click', (e) => this.seekToMobile(e));
             this.mobileProgressContainer.addEventListener('mousedown', (e) => this.beginProgressDrag(e, true));
@@ -5120,6 +5146,39 @@ class AudioDashboard {
                 this.mobilePauseIcon.classList.add('hidden');
             }
         }
+        // Update top mini-player play button
+        if (this.topPlayIcon && this.topPauseIcon) {
+            if (this.isPlaying) {
+                this.topPlayIcon.classList.add('hidden');
+                this.topPauseIcon.classList.remove('hidden');
+            } else {
+                this.topPlayIcon.classList.remove('hidden');
+                this.topPauseIcon.classList.add('hidden');
+            }
+        }
+        // Enable/disable top prev/next based on playlist
+        if (this.topPrevBtn) {
+            const enablePrev = !!this.currentAudio && Array.isArray(this.playlist) && this.playlist.length > 1;
+            this.topPrevBtn.disabled = !enablePrev;
+            this.topPrevBtn.classList.toggle('opacity-60', !enablePrev);
+            this.topPrevBtn.classList.toggle('cursor-not-allowed', !enablePrev);
+        }
+        if (this.topNextBtn) {
+            const enableNext = !!this.currentAudio && Array.isArray(this.playlist) && this.playlist.length > 1;
+            this.topNextBtn.disabled = !enableNext;
+            this.topNextBtn.classList.toggle('opacity-60', !enableNext);
+            this.topNextBtn.classList.toggle('cursor-not-allowed', !enableNext);
+        }
+
+        // Show/hide top mini-player when sidebar collapsed (desktop)
+        if (this.topMiniPlayer) {
+            const collapsed = document.body.classList.contains('sidebar-collapsed');
+            if (collapsed && this.currentAudio) {
+                this.topMiniPlayer.classList.remove('hidden');
+            } else {
+                this.topMiniPlayer.classList.add('hidden');
+            }
+        }
         
         // Show/hide mobile mini-player
         if (this.mobileMiniPlayer) {
@@ -5338,6 +5397,12 @@ class AudioDashboard {
             const progress = (currentTime / duration) * 100;
             this.progressBar.style.width = `${progress}%`;
             this.currentTimeEl.textContent = this.formatDuration(currentTime);
+            if (this.topProgressBar) {
+                this.topProgressBar.style.width = `${progress}%`;
+            }
+            if (this.topNowPlayingTitle && this.currentAudio) {
+                this.topNowPlayingTitle.textContent = this.currentAudio.title;
+            }
             
             // Update now playing preview
             if (this.nowPlayingProgress) {
@@ -6108,7 +6173,12 @@ class AudioDashboard {
     }
 
     seekTo(event) {
-        const rect = this.progressContainer.getBoundingClientRect();
+        this.seekToIn(this.progressContainer, event);
+    }
+
+    seekToIn(container, event) {
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
         const raw = (event.clientX - rect.left) / rect.width;
         const percentage = Math.max(0, Math.min(1, raw));
         const duration = this.audioElement.duration;
