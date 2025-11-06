@@ -209,6 +209,9 @@
           #topUtilityBar { display: none; }
           body.sidebar-collapsed #topUtilityBar { display: block; }
         }
+
+        /* Tighten spacing when no current audio (mini-player hidden) */
+        body:not(.has-current-audio) #topMiniPlayer { display: none; }
         
         /* Desktop: show a top search bar when sidebar is collapsed */
         body.sidebar-collapsed #topSearchBar { display: block !important; }
@@ -649,10 +652,10 @@
                 <div id="contentShell" class="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
                     <!-- Top Utility Bar: mini-player (left) + search (right) -->
-                    <div id="topUtilityBar" class="sticky top-16 z-40">
-                      <div class="mx-auto flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div id="topUtilityBar" class="z-40" style="position: sticky; top: 64px;">
+                      <div class="mx-auto flex flex-col gap-3 lg:flex-row lg:flex-nowrap lg:items-center lg:justify-between">
                         <!-- Mini player (left) -->
-                        <div id="topMiniPlayer" class="lg:max-w-[640px] rounded-xl border border-slate-200/70 dark:border-slate-700/70 bg-gradient-to-r from-audio-500 to-audio-600 text-white shadow-md">
+                        <div id="topMiniPlayer" class="lg:max-w-[560px] rounded-xl border border-slate-200/70 dark:border-slate-700/70 bg-gradient-to-r from-audio-500 to-audio-600 text-white shadow-md">
                           <div class="flex items-center gap-3 px-4 py-3">
                             <div class="hidden sm:block w-8 h-8 rounded-md bg-white/15 grid place-items-center">
                               <svg class="w-4 h-4 text-white/80" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
@@ -676,7 +679,7 @@
                         </div>
 
                         <!-- Search (right) -->
-                        <div class="flex-1">
+                        <div class="flex-1 lg:flex lg:justify-end">
                           <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                               <svg class="h-5 w-5 text-slate-400 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -685,7 +688,7 @@
                             </div>
                             <input type="text" id="searchInputTop"
                                    placeholder="Search summaries..."
-                                   class="w-full lg:max-w-[520px] ml-auto pl-10 pr-4 py-3 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-audio-500 focus:border-audio-500 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm text-slate-800 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400">
+                                   class="w-full lg:w-[480px] pl-10 pr-4 py-3 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-audio-500 focus:border-audio-500 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm text-slate-800 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400">
                           </div>
                         </div>
                       </div>
