@@ -3335,14 +3335,31 @@ class AudioDashboard {
               </div>
             </div>
           </div>`;
-        // Position relative to anchor
-        const anchorRect = anchorBtn.getBoundingClientRect();
-        pop.style.position = 'fixed';
-        pop.style.top = Math.round(anchorRect.bottom + 8) + 'px';
-        pop.style.right = Math.round(Math.max(12, window.innerWidth - anchorRect.right)) + 'px';
+        // Position relative to anchor (desktop) or as bottom sheet (mobile)
+        const isMobile = (window.innerWidth || 0) <= 640;
+        let scrim = null;
+        if (isMobile) {
+            try {
+                scrim = document.createElement('div');
+                scrim.className = 'reader-sheet-scrim';
+                document.body.appendChild(scrim);
+                pop.classList.add('reader-sheet');
+                pop.style.position = 'fixed';
+                pop.style.left = '0';
+                pop.style.right = '0';
+                pop.style.top = 'auto';
+                pop.style.bottom = '0';
+            } catch(_) {}
+        } else {
+            const anchorRect = anchorBtn.getBoundingClientRect();
+            pop.style.position = 'fixed';
+            pop.style.top = Math.round(anchorRect.bottom + 8) + 'px';
+            pop.style.right = Math.round(Math.max(12, window.innerWidth - anchorRect.right)) + 'px';
+        }
         document.body.appendChild(pop);
         // no preview block
-        const closeAll = () => { try { pop.remove(); } catch(_) {} window.removeEventListener('resize', onAway, true); document.removeEventListener('click', onAway, true); };
+        const closeAll = () => { try { pop.remove(); } catch(_) {} if (scrim) { try { scrim.remove(); } catch(_) {} scrim = null; } window.removeEventListener('resize', onAway, true); document.removeEventListener('click', onAway, true); };
+        if (scrim) scrim.addEventListener('click', closeAll);
         const onAway = (e) => { if (!pop.contains(e.target) && e.target !== anchorBtn) closeAll(); };
         setTimeout(() => { document.addEventListener('click', onAway, true); window.addEventListener('resize', onAway, true); }, 0);
         // Handlers
