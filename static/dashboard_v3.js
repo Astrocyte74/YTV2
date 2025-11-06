@@ -1407,6 +1407,7 @@ class AudioDashboard {
         this.currentAudio = null;
         this.isPlaying = false;
         this.resetAudioElement();
+        document.body.classList.remove('has-current-audio');
 
         if (this.nowPlayingPreview) this.nowPlayingPreview.classList.remove('hidden');
 
@@ -5110,6 +5111,7 @@ class AudioDashboard {
 
     updatePlayButton() {
         const hasTrack = !!this.currentAudio;
+        document.body.classList.toggle('has-current-audio', hasTrack);
         if (this.playPauseBtn) {
             this.playPauseBtn.disabled = !hasTrack;
             this.playPauseBtn.classList.toggle('opacity-60', !hasTrack);
@@ -5303,6 +5305,7 @@ class AudioDashboard {
             src: audioSrc
         };
         this.isPlaying = false;
+        document.body.classList.add('has-current-audio');
 
         this.resetAudioElement();
         if (this.audioElement) {
