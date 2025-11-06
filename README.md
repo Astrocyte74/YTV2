@@ -27,6 +27,9 @@ NGROK_BASE_URL=https://<your-ngrok-subdomain>.ngrok-free.app
 NGROK_BASIC_USER=optional_basic_user
 NGROK_BASIC_PASS=optional_basic_pass
 
+# Optional (UI behaviour)
+DASHBOARD_AUTOPLAY_ON_LOAD=1  # set to 0/false to keep audio idle until a user clicks
+
 # Optional locally (Render sets the port)
 PORT=10000
 ```
@@ -72,6 +75,7 @@ YTV2-Dashboard/
 ## Notes
 - The backend normalizes a `content_source` slug per item (e.g., `youtube`, `reddit`) and returns a user‑friendly `source_label`.
 - If you see 500s, check `docs/TROUBLESHOOTING.md` for placeholder/percent issues and the logging guidance.
+- To keep the audio player idle until a user clicks, set `DASHBOARD_AUTOPLAY_ON_LOAD=0`.
 
 ## UI Feature Flags
 - File: `ui_flags.js` (root). This is loaded by the HTML template and is the authoritative source for runtime flags.
