@@ -203,15 +203,10 @@
         /* Remove heading bottom margin inside summaries to center-align with chevron */
         #sidebar details > summary h3 { margin: 0; line-height: 1; }
         
-        /* Top utility bar visibility rules */
-        #topUtilityBar { display: block; }
-        @media (min-width: 1024px) {
-          #topUtilityBar { display: none; }
-          body.sidebar-collapsed #topUtilityBar { display: block; }
+        /* Footer mini-player: reserve space when visible */
+        body.has-current-audio main {
+            padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
         }
-
-        /* Tighten spacing when no current audio (mini-player hidden) */
-        body:not(.has-current-audio) #topMiniPlayer { display: none; }
         
         /* Desktop: show a top search bar when sidebar is collapsed */
         body.sidebar-collapsed #topSearchBar { display: block !important; }
@@ -664,36 +659,7 @@
                 </div>
                 <div id="contentShell" class="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
-                    <!-- Top Utility Bar: mini-player (left) + search (right) -->
-                    <div id="topUtilityBar" class="sticky top-20 z-40 mb-4">
-                      <div class="mx-auto flex flex-col gap-3 lg:flex-row lg:flex-nowrap lg:items-center lg:justify-between">
-                        <!-- Mini player (left) -->
-                        <div id="topMiniPlayer" class="lg:max-w-[560px] rounded-xl border border-slate-200/70 dark:border-slate-700/70 bg-gradient-to-r from-audio-500 to-audio-600 text-white shadow-md mb-3">
-                          <div class="flex items-center gap-3 px-4 py-3">
-                            <div class="hidden sm:block w-8 h-8 rounded-md bg-white/15 grid place-items-center">
-                              <svg class="w-4 h-4 text-white/80" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
-                            </div>
-                            <div class="min-w-0 flex-1">
-                              <p id="topNowPlayingTitle" class="truncate text-sm font-semibold">Select an audio summary</p>
-                              <div id="topProgressContainer" class="mt-1 h-1.5 w-full bg-white/35 rounded-full cursor-pointer">
-                                <div id="topProgressBar" class="h-1.5 bg-white rounded-full" style="width:0%"></div>
-                              </div>
-                            </div>
-                            <div class="flex items-center gap-2">
-                              <button id="openFiltersTopBtn" class="inline-flex items-center gap-2 rounded-md border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/90 hover:bg-white/15">Filters</button>
-                              <button id="topPrevBtn" class="p-2 rounded-md bg-white/10 hover:bg-white/20" title="Previous"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg></button>
-                              <button id="topPlayPauseBtn" class="p-2.5 rounded-full bg-white text-audio-600 hover:bg-slate-50" title="Play/Pause">
-                                <svg id="topPlayIcon" class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                                <svg id="topPauseIcon" class="w-5 h-5 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-                              </button>
-                              <button id="topNextBtn" class="p-2 rounded-md bg-white/10 hover:bg-white/20" title="Next"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg></button>
-                            </div>
-                          </div>
-                        </div>
-
-                        <!-- (search removed; header search is authoritative) -->
-                      </div>
-                    </div>
+                    <!-- (Top utility bar removed; mini-player now lives in footer) -->
                     
                     <!-- Results Header -->
                     <div id="resultsHero" class="relative overflow-hidden rounded-3xl border border-white/70 dark:border-slate-800/70 bg-white/85 dark:bg-slate-900/70 backdrop-blur-xl shadow-2xl shadow-slate-200/40 dark:shadow-black/40">
@@ -848,9 +814,9 @@
           </div>
         </div>
 
-        <!-- Mobile Mini Player (bottom sticky) -->
-        <div id="mobileMiniPlayer" class="lg:hidden fixed bottom-0 left-0 right-0 bg-gradient-to-r from-audio-500 to-audio-600 text-white p-4 shadow-xl z-40 transform translate-y-full transition-transform hidden border-t border-white/20">
-            <div class="flex items-center gap-4">
+        <!-- Footer Mini Player (bottom sticky on all viewports) -->
+        <div id="mobileMiniPlayer" class="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-audio-500 to-audio-600 text-white px-4 py-3 shadow-xl z-50 transform translate-y-full transition-transform hidden border-t border-white/20">
+            <div class="mx-auto max-w-4xl flex items-center gap-4">
                 <div class="w-12 h-12 rounded-lg overflow-hidden bg-white/20 flex-shrink-0 ring-2 ring-white/30">
                     <img id="mobileNowPlayingThumb" alt="thumbnail" class="w-full h-full object-cover" />
                     <!-- Placeholder when no thumbnail -->
@@ -888,7 +854,7 @@
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
     <script src="ui_flags.js?v=5"></script>
-    <script src="dashboard_v3.js?v=pg57"></script>
+    <script src="dashboard_v3.js?v=pg58"></script>
 
 </body>
 </html>
