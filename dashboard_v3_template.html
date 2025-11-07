@@ -259,7 +259,7 @@
         <!-- Header -->
         <header class="bg-white/80 dark:bg-slate-800/90 backdrop-blur-md border-b border-slate-200/50 dark:border-slate-700/50 sticky top-0 z-40">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex items-center justify-between h-16">
+                <div class="flex items-center justify-between h-20">
                     <div class="flex items-center space-x-3">
                         <div class="text-2xl">🎧</div>
                         <div>
@@ -285,8 +285,8 @@
                             <button id="gridViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">Grid</button>
                             <button id="wallViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">Wall</button>
                         </div>
-                        <!-- Header Search (desktop) -->
-                        <div class="hidden lg:block">
+                        <!-- Header Search -->
+                        <div class="block">
                           <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                               <svg class="h-5 w-5 text-slate-400 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -295,7 +295,7 @@
                             </div>
                             <input type="text" id="searchInputHeader"
                                    placeholder="Search summaries..."
-                                   class="w-[460px] pl-10 pr-4 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-audio-500 focus:border-audio-500 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm text-slate-800 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400">
+                                   class="w-[560px] pl-10 pr-4 py-3 text-base border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-audio-500 focus:border-audio-500 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm text-slate-800 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400">
                           </div>
                         </div>
                         <!-- Image mode segmented control -->
@@ -665,7 +665,7 @@
                 <div id="contentShell" class="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
 
                     <!-- Top Utility Bar: mini-player (left) + search (right) -->
-                    <div id="topUtilityBar" class="sticky top-16 z-40">
+                    <div id="topUtilityBar" class="sticky top-20 z-40 mb-4">
                       <div class="mx-auto flex flex-col gap-3 lg:flex-row lg:flex-nowrap lg:items-center lg:justify-between">
                         <!-- Mini player (left) -->
                         <div id="topMiniPlayer" class="lg:max-w-[560px] rounded-xl border border-slate-200/70 dark:border-slate-700/70 bg-gradient-to-r from-audio-500 to-audio-600 text-white shadow-md mb-3">
@@ -691,19 +691,7 @@
                           </div>
                         </div>
 
-                        <!-- Search (right) -->
-                        <div class="flex-1 lg:flex lg:justify-end">
-                          <div class="relative">
-                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                              <svg class="h-5 w-5 text-slate-400 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                              </svg>
-                            </div>
-                            <input type="text" id="searchInputTop"
-                                   placeholder="Search summaries..."
-                                   class="w-full lg:w-[480px] pl-10 pr-4 py-3 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-audio-500 focus:border-audio-500 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm text-slate-800 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400">
-                          </div>
-                        </div>
+                        <!-- (search removed; header search is authoritative) -->
                       </div>
                     </div>
                     
@@ -900,7 +888,7 @@
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
     <script src="ui_flags.js?v=5"></script>
-    <script src="dashboard_v3.js?v=pg56"></script>
+    <script src="dashboard_v3.js?v=pg57"></script>
 
 </body>
 </html>
