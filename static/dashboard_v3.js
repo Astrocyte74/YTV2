@@ -6195,19 +6195,31 @@ class AudioDashboard {
 
             if (wantSummary) {
                 if (imgSummary) {
-                    if (this.imageMode === 'ai2' && item) {
-                        const ai2 = this.getAi2UrlForItem(item) || '';
-                        if (ai2) {
-                            imgSummary.setAttribute('data-ai2-url', ai2);
-                            if (imgSummary.src !== ai2) imgSummary.src = ai2;
-                        }
-                    }
+                    const ai1 = item && item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
+                    const ai2 = this.getAi2UrlForItem(item) || '';
+                    const target = this.imageMode === 'ai2' ? (ai2 || ai1) : (ai1 || ai2);
+                    if (ai1) try { imgSummary.setAttribute('data-ai1-url', ai1); } catch(_) {}
+                    if (ai2) try { imgSummary.setAttribute('data-ai2-url', ai2); } catch(_) {}
+                    if (target && imgSummary.src !== target) imgSummary.src = target;
                     imgSummary.classList.remove('hidden');
                 }
                 if (imgDefault) imgDefault.classList.add('hidden');
             } else {
-                if (imgDefault) imgDefault.classList.remove('hidden');
-                if (imgSummary) imgSummary.classList.add('hidden');
+                const defaultHasSrc = !!(imgDefault && imgDefault.tagName === 'IMG' ? (imgDefault.getAttribute('src') || '').trim() : imgDefault);
+                if (defaultHasSrc) {
+                    imgDefault && imgDefault.classList.remove('hidden');
+                    imgSummary && imgSummary.classList.add('hidden');
+                } else {
+                    // Fallback to AI if no OG
+                    imgDefault && imgDefault.classList.add('hidden');
+                    if (imgSummary) {
+                        const ai1 = item && item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
+                        const ai2 = this.getAi2UrlForItem(item) || '';
+                        const target = ai1 || ai2 || imgSummary.src;
+                        if (target && imgSummary.src !== target) imgSummary.src = target;
+                        imgSummary.classList.remove('hidden');
+                    }
+                }
             }
         });
     }
@@ -6257,23 +6269,17 @@ class AudioDashboard {
             showSummary = this.shouldShowSummaryByRotate(id);
         }
 
-        // If AI2 selected, try swapping the summary image to the AI2 URL when available
+        // If summary selected, ensure correct target (AI1 vs AI2)
         if (imgSummary && showSummary) {
             try {
                 const wantAi2 = this.imageMode === 'ai2';
-                let ai1 = imgSummary.getAttribute('data-ai1-url') || imgSummary.src || '';
-                let ai2 = imgSummary.getAttribute('data-ai2-url') || '';
-                // If AI2 missing on the element, attempt to compute from currentItems
-                if (wantAi2 && !ai2) {
-                    const rid = card.getAttribute('data-report-id') || '';
-                    const item = (this.currentItems || []).find(x => x.file_stem === rid);
-                    const computed = item ? this.getAi2UrlForItem(item) : '';
-                    if (computed) {
-                        ai2 = computed;
-                        try { imgSummary.setAttribute('data-ai2-url', computed); } catch(_) {}
-                    }
-                }
-                const target = wantAi2 && ai2 ? ai2 : ai1;
+                const rid = card.getAttribute('data-report-id') || String(index);
+                const item = (this.currentItems || []).find(x => x.file_stem === rid) || {};
+                let ai1 = imgSummary.getAttribute('data-ai1-url') || (item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '') || '';
+                let ai2 = imgSummary.getAttribute('data-ai2-url') || this.getAi2UrlForItem(item) || '';
+                const target = wantAi2 ? (ai2 || ai1) : (ai1 || ai2);
+                if (ai1) try { imgSummary.setAttribute('data-ai1-url', ai1); } catch(_) {}
+                if (ai2) try { imgSummary.setAttribute('data-ai2-url', ai2); } catch(_) {}
                 if (target && imgSummary.src !== target) imgSummary.src = target;
             } catch (_) {}
         }
@@ -6282,8 +6288,15 @@ class AudioDashboard {
             imgDefault.classList.add('hidden');
             imgSummary.classList.remove('hidden');
         } else {
-            imgSummary.classList.add('hidden');
-            imgDefault.classList.remove('hidden');
+            // OG mode: show default if present, otherwise fall back to summary
+            const defaultHasSrc = !!(imgDefault && imgDefault.tagName === 'IMG' ? (imgDefault.getAttribute('src') || '').trim() : imgDefault);
+            if (defaultHasSrc) {
+                imgSummary.classList.add('hidden');
+                imgDefault.classList.remove('hidden');
+            } else {
+                imgDefault && imgDefault.classList.add('hidden');
+                imgSummary && imgSummary.classList.remove('hidden');
+            }
         }
     }
 
