@@ -6073,7 +6073,9 @@ class AudioDashboard {
         const summaryType = item.summary_variant || item.summary_type || 'unknown';
         const canonicalUrl = item.canonical_url || item.url || '';
         const { slug: contentSource, label: sourceLabel } = this.inferSource({ ...item, canonical_url: canonicalUrl });
-        return { ...item, title, channel, analysis, file_stem: fileStem, summary_type: summaryType, content_source: contentSource, source_label: sourceLabel, canonical_url: canonicalUrl };
+        // Surface AI2 URL at top-level if present in analysis for easier detection
+        const summary_image_ai2_url = analysis && typeof analysis.summary_image_ai2_url === 'string' ? analysis.summary_image_ai2_url : (item.summary_image_ai2_url || null);
+        return { ...item, title, channel, analysis, file_stem: fileStem, summary_type: summaryType, content_source: contentSource, source_label: sourceLabel, canonical_url: canonicalUrl, summary_image_ai2_url };
     }
 
     // Normalize NAS-relative asset URLs (e.g., "exports/...") to absolute path "/exports/..."
@@ -6203,8 +6205,18 @@ class AudioDashboard {
         if (imgSummary && showSummary) {
             try {
                 const wantAi2 = this.imageMode === 'ai2';
-                const ai1 = imgSummary.getAttribute('data-ai1-url') || imgSummary.src || '';
-                const ai2 = imgSummary.getAttribute('data-ai2-url') || '';
+                let ai1 = imgSummary.getAttribute('data-ai1-url') || imgSummary.src || '';
+                let ai2 = imgSummary.getAttribute('data-ai2-url') || '';
+                // If AI2 missing on the element, attempt to compute from currentItems
+                if (wantAi2 && !ai2) {
+                    const rid = card.getAttribute('data-report-id') || '';
+                    const item = (this.currentItems || []).find(x => x.file_stem === rid);
+                    const computed = item ? this.getAi2UrlForItem(item) : '';
+                    if (computed) {
+                        ai2 = computed;
+                        try { imgSummary.setAttribute('data-ai2-url', computed); } catch(_) {}
+                    }
+                }
                 const target = wantAi2 && ai2 ? ai2 : ai1;
                 if (target && imgSummary.src !== target) imgSummary.src = target;
             } catch (_) {}
