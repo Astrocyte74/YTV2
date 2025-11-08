@@ -347,6 +347,17 @@
                                 <input id="hoverSwitchToggle" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-audio-600 focus:ring-audio-500" disabled>
                                 <span>Hover switches image (coming soon)</span>
                             </label>
+
+                            <div class="mt-2 border-t border-slate-200 dark:border-slate-700"></div>
+                            <div class="px-3 py-2 text-xs uppercase tracking-wide text-slate-400">Admin</div>
+                            <button id="adminTokenSetBtn" class="flex items-center w-full gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+                                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18m9-9H3"/></svg>
+                                <span>Set admin token…</span>
+                            </button>
+                            <button id="adminTokenClearBtn" class="flex items-center w-full gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+                                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6v12m8-12v12M5 6l1 14a2 2 0 002 2h8a2 2 0 002-2l1-14"/></svg>
+                                <span>Clear admin token</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -854,7 +865,7 @@
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
     <script src="ui_flags.js?v=5"></script>
-    <script src="dashboard_v3.js?v=pg66"></script>
+    <script src="dashboard_v3.js?v=pg67"></script>
 
 </body>
 </html>
