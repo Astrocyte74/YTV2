@@ -495,7 +495,7 @@ class AudioDashboard {
 
         // Ensure kebab action for image-new always triggers (capture phase to beat other handlers)
         document.addEventListener('click', (e) => {
-            const el = e.target.closest('[data-action="image-new"]');
+            const el = e.target.closest('[data-action="images-manage"]');
             if (!el) return;
             e.preventDefault();
             e.stopPropagation();
@@ -509,7 +509,7 @@ class AudioDashboard {
             if (id) this.handleCreateImagePrompt(id);
         }, true);
         const imageNewHandler = (e) => {
-            const el = e.target.closest && e.target.closest('[data-action="image-new"]');
+            const el = e.target.closest && e.target.closest('[data-action="images-manage"]');
             if (!el) return;
             e.preventDefault();
             e.stopPropagation();
@@ -520,7 +520,7 @@ class AudioDashboard {
                 const menu = el.closest('[data-kebab-menu][data-report-id]');
                 if (menu && menu.getAttribute) id = menu.getAttribute('data-report-id');
             }
-            if (id) this.handleCreateImagePrompt(id);
+            if (id) this.handleManageImages(id);
         };
         document.addEventListener('pointerup', imageNewHandler, true);
         document.addEventListener('mousedown', imageNewHandler, true);
@@ -2571,7 +2571,7 @@ class AudioDashboard {
             this.sendTelemetry('cta_listen', { id });
         }
         if (action === 'read') { this.handleRead(id); this.sendTelemetry('cta_read', { id }); }
-        if (action === 'image-new') { this.handleCreateImagePrompt(id); }
+        if (action === 'image-new' || action === 'images-manage') { this.handleManageImages(id); }
         if (action === 'watch') {
             const source = card.dataset.source || 'youtube';
             const videoId = card.dataset.videoId || '';
@@ -4046,7 +4046,7 @@ class AudioDashboard {
             </button>
             <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
-                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="image-new">Create image…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
             </div>
@@ -4210,7 +4210,7 @@ class AudioDashboard {
             </button>
             <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
-                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="image-new">Create image…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
             </div>`;
@@ -4446,7 +4446,7 @@ class AudioDashboard {
                     </button>
             <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
-                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="image-new">Create image…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
             </div>
@@ -4750,7 +4750,7 @@ class AudioDashboard {
                         </button>
             <div class="summary-card__menu hidden" data-kebab-menu role="menu">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
-                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="image-new">Create image…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
             </div>
@@ -7351,6 +7351,199 @@ class AudioDashboard {
                     }
                 });
             }
+        });
+    }
+
+    // --- Manage Images (AI1/AI2) ---
+    async handleManageImages(reportId) {
+        try {
+            const item = (this.currentItems || []).find(x => x.file_stem === reportId) || {};
+            const a = item.analysis || {};
+            const a1Default = a.summary_image_prompt_last_used || a.summary_image_prompt || '';
+            const a2Default = a.summary_image_ai2_prompt_last_used || a.summary_image_ai2_prompt || '';
+            await this.openManageImagesModal(reportId, item, a1Default, a2Default);
+        } catch (e) {
+            console.error('handleManageImages error', e);
+            this.showToast('Failed to open images manager', 'error');
+        }
+    }
+
+    async openManageImagesModal(reportId, item, a1Default, a2Default) {
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+            const panel = document.createElement('div');
+            panel.className = 'w-full max-w-3xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl';
+
+            const a1VariantsAll = (item.analysis?.summary_image_variants || []);
+            const a1Variants = a1VariantsAll.filter(v => {
+                const m = (v.image_mode || '').toLowerCase();
+                const tmpl = (v.template || '').toLowerCase();
+                const ps = (v.prompt_source || '').toLowerCase();
+                const url = v.url || '';
+                const isAi2 = m === 'ai2' || tmpl === 'ai2_freestyle' || (ps && ps.startsWith('ai2')) || /(?:^|\/)AI2_/i.test(url);
+                return !isAi2;
+            });
+            const ai2Urls = this.getAi2VariantUrls(item);
+            const a2Variants = ai2Urls.map(u => ({ url: u, image_mode: 'ai2' }));
+            const a1Selected = item.summary_image_url || item.analysis?.summary_image_selected_url || '';
+            const a2Selected = item.summary_image_ai2_url || item.analysis?.summary_image_ai2_url || '';
+
+            const htmlRow = (v, idx, selected, mode) => {
+                const url = this.normalizeAssetUrl(v.url || '');
+                const isSel = selected && url && (url === this.normalizeAssetUrl(selected));
+                const when = this.formatRelativeTime(v.created_at);
+                const preview = (v.prompt || '').slice(0, 120);
+                return `
+                  <div class="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 dark:bg-slate-700 flex-shrink-0">
+                      <img src="${url}" alt="variant" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <div class="text-xs text-slate-500 dark:text-slate-400">${when || ''} ${isSel ? ' • <span class=\'text-emerald-600 dark:text-emerald-400\'>Selected</span>' : ''}</div>
+                      <div class="text-sm text-slate-700 dark:text-slate-200 truncate">${this.escapeHtml(preview)}</div>
+                      <div class="mt-2 flex items-center gap-2">
+                        <button type="button" data-use-prompt data-mode="${mode}" data-index="${idx}" class="px-2 py-1 text-xs rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">Use this prompt</button>
+                        ${isSel ? '' : `<button type=\"button\" data-select-image data-mode=\"${mode}\" data-index=\"${idx}\" class=\"px-2 py-1 text-xs rounded-md bg-audio-600 text-white hover:bg-audio-700\">Select this image</button>`}
+                      </div>
+                    </div>
+                  </div>`;
+            };
+
+            const a1Rows = a1Variants.map((v,i)=>htmlRow(v,i,a1Selected,'ai1')).join('') || '<div class="px-2 py-3 text-xs text-slate-500">No AI1 variants yet.</div>';
+            const a2Rows = a2Variants.map((v,i)=>htmlRow(v,i,a2Selected,'ai2')).join('') || '<div class="px-2 py-3 text-xs text-slate-500">No AI2 variants yet.</div>';
+
+            panel.innerHTML = `
+              <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Manage images</h3>
+                <button type="button" data-close class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close">✕</button>
+              </div>
+              <div class="p-4">
+                <div class="flex items-center gap-2 mb-3">
+                  <button data-tab="ai1" class="px-3 py-1.5 text-sm rounded-md bg-slate-200 dark:bg-slate-700">AI1</button>
+                  <button data-tab="ai2" class="px-3 py-1.5 text-sm rounded-md">AI2</button>
+                </div>
+                <div data-pane="ai1">
+                  <label class="block text-sm mb-1">AI1 prompt</label>
+                  <textarea data-input-ai1 rows="4" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2">${this.escapeHtml(a1Default)}</textarea>
+                  <div class="mt-2"><button data-save-ai1 class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Regenerate AI1</button></div>
+                  <div class="mt-3 text-xs uppercase tracking-wide text-slate-400">AI1 variants</div>
+                  <div class="max-h-56 overflow-auto pr-1 space-y-2" data-list-ai1>${a1Rows}</div>
+                </div>
+                <div data-pane="ai2" class="hidden">
+                  <label class="block text-sm mb-1">AI2 prompt</label>
+                  <textarea data-input-ai2 rows="4" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2">${this.escapeHtml(a2Default)}</textarea>
+                  <div class="mt-2"><button data-save-ai2 class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Regenerate AI2</button></div>
+                  <div class="mt-3 text-xs uppercase tracking-wide text-slate-400">AI2 variants</div>
+                  <div class="max-h-56 overflow-auto pr-1 space-y-2" data-list-ai2>${a2Rows}</div>
+                </div>
+              </div>
+              <div class="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <div class="text-sm text-slate-600 dark:text-slate-300">Dashboard default:
+                  <label class="ml-2 mr-2"><input type="radio" name="dispMode" value="og"> OG</label>
+                  <label class="mr-2"><input type="radio" name="dispMode" value="ai1"> AI1</label>
+                  <label class="mr-2"><input type="radio" name="dispMode" value="ai2"> AI2</label>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button type="button" data-close2 class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Close</button>
+                </div>
+              </div>`;
+            overlay.appendChild(panel);
+            document.body.appendChild(overlay);
+
+            const paneA1 = panel.querySelector('[data-pane="ai1"]');
+            const paneA2 = panel.querySelector('[data-pane="ai2"]');
+            const tabA1 = panel.querySelector('[data-tab="ai1"]');
+            const tabA2 = panel.querySelector('[data-tab="ai2"]');
+            const inputA1 = panel.querySelector('[data-input-ai1]');
+            const inputA2 = panel.querySelector('[data-input-ai2]');
+            const saveA1 = panel.querySelector('[data-save-ai1]');
+            const saveA2 = panel.querySelector('[data-save-ai2]');
+            const listA1 = panel.querySelector('[data-list-ai1]');
+            const listA2 = panel.querySelector('[data-list-ai2]');
+            const radios = panel.querySelectorAll('input[name="dispMode"]');
+            const closeBtns = [panel.querySelector('[data-close]'), panel.querySelector('[data-close2]')].filter(Boolean);
+
+            // Preselect display mode if present
+            try {
+                const currentMode = (item.analysis && item.analysis.summary_image_display_mode) || 'og';
+                radios.forEach(r => { r.checked = (r.value === currentMode); });
+            } catch(_) {}
+
+            const setTab = (which) => {
+                const a1on = which === 'ai1';
+                paneA1.classList.toggle('hidden', !a1on);
+                paneA2.classList.toggle('hidden', a1on);
+                tabA1.classList.toggle('bg-slate-200', a1on); tabA1.classList.toggle('dark:bg-slate-700', a1on);
+                tabA2.classList.toggle('bg-slate-200', !a1on); tabA2.classList.toggle('dark:bg-slate-700', !a1on);
+            };
+            setTab('ai1');
+            tabA1.addEventListener('click', ()=> setTab('ai1'));
+            tabA2.addEventListener('click', ()=> setTab('ai2'));
+
+            const onSavePrompt = async (mode, text) => {
+                const token = await this.getReprocessToken();
+                if (!token) { this.showToast('Token required', 'warn'); return; }
+                const res = await fetch('/api/set-image-prompt', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ video_id: reportId, prompt: text, mode })
+                });
+                if (!res.ok) { this.showToast(`Failed to save ${mode} prompt`, 'error'); return; }
+                this.showToast(`${mode.toUpperCase()} prompt saved`, 'success');
+            };
+            saveA1.addEventListener('click', ()=> onSavePrompt('ai1', (inputA1.value||'').trim()));
+            saveA2.addEventListener('click', ()=> onSavePrompt('ai2', (inputA2.value||'').trim()));
+
+            const onSelectVariant = async (mode, url) => {
+                const token = await this.getReprocessToken();
+                if (!token) { this.showToast('Token required', 'warn'); return; }
+                const res = await fetch('/api/select-image-variant', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ video_id: reportId, url, mode })
+                });
+                if (!res.ok) { this.showToast(`Failed to select ${mode} image`, 'error'); return; }
+                this.showToast(`${mode.toUpperCase()} image selected`, 'success');
+                this.updateCardSummaryImage(reportId, url);
+            };
+            const listClick = (listEl, mode, variantsArr) => {
+                listEl.addEventListener('click', (e) => {
+                    const useBtn = e.target.closest('[data-use-prompt]');
+                    const selBtn = e.target.closest('[data-select-image]');
+                    if (!useBtn && !selBtn) return;
+                    const idx = Number((useBtn || selBtn).dataset.index);
+                    const v = variantsArr[idx];
+                    if (!v) return;
+                    if (useBtn) {
+                        const prompt = v.prompt || '';
+                        (mode === 'ai1' ? (inputA1.value = prompt) : (inputA2.value = prompt));
+                        return;
+                    }
+                    if (selBtn) onSelectVariant(mode, v.url);
+                });
+            };
+            listClick(listA1, 'ai1', a1Variants);
+            listClick(listA2, 'ai2', a2Variants);
+
+            // Save display mode when radio changes
+            radios.forEach(r => {
+                r.addEventListener('change', async (e) => {
+                    const mode = e.target.value;
+                    try {
+                        const token = await this.getReprocessToken();
+                        if (!token) { this.showToast('Token required', 'warn'); return; }
+                        const res = await fetch('/api/set-image-display-mode', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ video_id: reportId, mode })
+                        });
+                        if (!res.ok) throw new Error('bad');
+                        this.showToast('Default display updated', 'success');
+                    } catch(_) { this.showToast('Failed to update default display', 'error'); }
+                });
+            });
+
+            const finish = () => { try { document.body.removeChild(overlay); } catch(_) {}; resolve(); };
+            overlay.addEventListener('click', (e)=>{ if (e.target === overlay) finish(); });
+            closeBtns.forEach(btn => btn && btn.addEventListener('click', finish));
         });
     }
 

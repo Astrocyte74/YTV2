@@ -1275,6 +1275,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_set_image_prompt()
         elif self.path == '/api/select-image-variant':
             self.handle_select_image_variant()
+        elif self.path == '/api/set-image-display-mode':
+            self.handle_set_image_display_mode()
         # New ingest endpoints for NAS sync (T-Y020C)
         elif self.path == '/ingest/report':
             self.handle_ingest_report()
@@ -4541,7 +4543,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def handle_set_image_prompt(self):
         """POST /api/set-image-prompt — admin-only. Set a custom prompt for NAS image generation.
 
-        Body: { "video_id": "<id>", "prompt": "..." }
+        Body: { "video_id": "<id>", "prompt": "...", "mode": "ai1|ai2" }
         Auth: DEBUG_TOKEN via Authorization: Bearer <token> or X-Debug-Token.
         """
         try:
@@ -4564,6 +4566,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
             video_id = (data.get('video_id') or '').strip()
             prompt = (data.get('prompt') or '').strip()
+            mode = (data.get('mode') or 'ai1').strip().lower()
             if not video_id:
                 self.send_response(400)
                 self.set_cors_headers()
@@ -4582,7 +4585,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "content index unavailable"}).encode())
                 return
 
-            content_index.update_summary_image_prompt(video_id, prompt)
+            if mode == 'ai2' and hasattr(content_index, 'update_summary_image_ai2_prompt'):
+                content_index.update_summary_image_ai2_prompt(video_id, prompt)
+            else:
+                content_index.update_summary_image_prompt(video_id, prompt)
 
             # Optional: broadcast a lightweight event (clients may ignore)
             try:
@@ -4607,7 +4613,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def handle_select_image_variant(self):
         """POST /api/select-image-variant — admin-only. Switch selected image.
 
-        Body: { "video_id": "<id>", "url": "/exports/images/...png" }
+        Body: { "video_id": "<id>", "url": "/exports/images/...png", "mode": "ai1|ai2" }
         Auth: DEBUG_TOKEN
         """
         try:
@@ -4630,6 +4636,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
             video_id = (data.get('video_id') or '').strip()
             url = (data.get('url') or '').strip()
+            mode = (data.get('mode') or 'ai1').strip().lower()
             if not video_id or not url:
                 self.send_response(400)
                 self.set_cors_headers()
@@ -4647,15 +4654,77 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "content index unavailable"}).encode())
                 return
 
-            content_index.update_selected_image_url(video_id, url)
+            if mode == 'ai2' and hasattr(content_index, 'update_selected_image_ai2_url'):
+                content_index.update_selected_image_ai2_url(video_id, url)
+            else:
+                content_index.update_selected_image_url(video_id, url)
 
             self.send_response(200)
             self.set_cors_headers()
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(json.dumps({"ok": True, "selected_url": url}).encode())
+            self.wfile.write(json.dumps({"ok": True, "selected_url": url, "mode": mode}).encode())
         except Exception as e:
             logger.exception("select-image-variant failed")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+
+    def handle_set_image_display_mode(self):
+        """POST /api/set-image-display-mode — set per-card preferred display mode.
+
+        Body: { "video_id": "<id>", "mode": "og|ai1|ai2" }
+        Auth: DEBUG_TOKEN
+        """
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            length = int(self.headers.get('Content-Length', 0))
+            data = {}
+            if length:
+                try:
+                    raw = self.rfile.read(length)
+                    data = json.loads(raw.decode('utf-8'))
+                except Exception:
+                    pass
+
+            video_id = (data.get('video_id') or '').strip()
+            mode = (data.get('mode') or '').strip().lower()
+            if mode not in ('og', 'ai1', 'ai2'):
+                mode = 'og'
+            if not video_id:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id required"}).encode())
+                return
+
+            content_index = getattr(self.server, 'content_index', None)
+            if not content_index or not hasattr(content_index, 'update_summary_image_display_mode'):
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "content index unavailable"}).encode())
+                return
+
+            content_index.update_summary_image_display_mode(video_id, mode)
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True, "video_id": video_id, "mode": mode}).encode())
+        except Exception as e:
+            logger.exception("set-image-display-mode failed")
             self.send_response(500)
             self.set_cors_headers()
             self.send_header('Content-type', 'application/json')

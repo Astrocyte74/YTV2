@@ -1668,6 +1668,34 @@ class PostgreSQLContentIndex:
             if conn:
                 conn.close()
 
+    def update_summary_image_ai2_prompt(self, video_id: str, prompt: str) -> None:
+        """Set analysis_json.summary_image_ai2_prompt for a content row.
+
+        Mirrors update_summary_image_prompt but for AI2 freestyle pipeline.
+        """
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            update_sql = """
+            UPDATE content
+            SET analysis_json = jsonb_set(
+                COALESCE(analysis_json, '{}'::jsonb),
+                '{summary_image_ai2_prompt}',
+                to_jsonb(%s::text),
+                true
+            ),
+            updated_at = NOW()
+            WHERE video_id = %s
+            """
+            cur.execute(update_sql, [prompt or '', video_id])
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Error updating summary_image_ai2_prompt for %s: %s", video_id, e)
+        finally:
+            if conn:
+                conn.close()
+
     def update_selected_image_url(self, video_id: str, url: str) -> None:
         """Set the selected image URL for a content row and mirror to summary_image_url."""
         conn = None
@@ -1690,6 +1718,59 @@ class PostgreSQLContentIndex:
             conn.commit()
         except Exception as e:
             logger.error("Error updating selected image for %s: %s", video_id, e)
+        finally:
+            if conn:
+                conn.close()
+
+    def update_selected_image_ai2_url(self, video_id: str, url: str) -> None:
+        """Set the selected AI2 image URL for a content row (analysis_json only)."""
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            update_sql = """
+            UPDATE content
+            SET analysis_json = jsonb_set(
+                    COALESCE(analysis_json, '{}'::jsonb),
+                    '{summary_image_ai2_url}',
+                    to_jsonb(%s::text),
+                    true
+                ),
+                updated_at = NOW()
+            WHERE video_id = %s
+            """
+            cur.execute(update_sql, [url or '', video_id])
+            conn.commit()
+        except Exception as e:
+            logger.error("Error updating selected AI2 image for %s: %s", video_id, e)
+        finally:
+            if conn:
+                conn.close()
+
+    def update_summary_image_display_mode(self, video_id: str, mode: str) -> None:
+        """Persist preferred dashboard display mode in analysis_json.summary_image_display_mode."""
+        mode = (mode or '').strip().lower()
+        if mode not in ('og', 'ai1', 'ai2'):
+            mode = 'og'
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            update_sql = """
+            UPDATE content
+            SET analysis_json = jsonb_set(
+                    COALESCE(analysis_json, '{}'::jsonb),
+                    '{summary_image_display_mode}',
+                    to_jsonb(%s::text),
+                    true
+                ),
+                updated_at = NOW()
+            WHERE video_id = %s
+            """
+            cur.execute(update_sql, [mode, video_id])
+            conn.commit()
+        except Exception as e:
+            logger.error("Error updating summary_image_display_mode for %s: %s", video_id, e)
         finally:
             if conn:
                 conn.close()
