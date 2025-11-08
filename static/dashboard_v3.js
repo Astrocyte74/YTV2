@@ -4311,11 +4311,12 @@ class AudioDashboard {
                             <circle cx="19" cy="12" r="1.5"></circle>
                         </svg>
                     </button>
-                    <div class="summary-card__menu hidden" data-kebab-menu role="menu">
-                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
-                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
-                        <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
-                    </div>
+            <div class="summary-card__menu hidden" data-kebab-menu role="menu">
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="image-new">Create image…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
+            </div>
                     <button class="wall-expander__close" aria-label="Close" data-action="wall-reader-close">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
@@ -4613,11 +4614,12 @@ class AudioDashboard {
                                 <circle cx="19" cy="12" r="1.5"></circle>
                             </svg>
                         </button>
-                        <div class="summary-card__menu hidden" data-kebab-menu role="menu">
-                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
-                            <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
-                            <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
-                        </div>
+            <div class="summary-card__menu hidden" data-kebab-menu role="menu">
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="image-new">Create image…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
+            </div>
                         <div class="summary-card__popover hidden" data-delete-popover>
                             <div class="summary-card__popover-panel">
                                 <p>Delete this summary?</p>
