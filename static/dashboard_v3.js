@@ -4061,16 +4061,18 @@ class AudioDashboard {
         const hasThumb = Boolean(item.thumbnail_url);
         const summaryImageUrl = item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
         const ai2Url = this.getAi2UrlForItem(item) || '';
-        const hasSummaryArt = Boolean(summaryImageUrl);
+        const hasSummaryArt = Boolean(summaryImageUrl || ai2Url);
         let mediaImgs = '';
         let toggleBtn = '';
         if (hasThumb && hasSummaryArt) {
             const thumb = `<img data-role="thumb-default" src="${item.thumbnail_url}" alt="" loading="lazy" class="stream-card__thumb">`;
-            const summaryEl = `<img data-role="thumb-summary" src="${summaryImageUrl}" data-ai1-url="${summaryImageUrl}" data-ai2-url="${ai2Url}" alt="" loading="lazy" class="stream-card__thumb hidden">`;
+            const srcPick = summaryImageUrl || ai2Url;
+            const summaryEl = `<img data-role="thumb-summary" src="${srcPick}" data-ai1-url="${summaryImageUrl || ''}" data-ai2-url="${ai2Url || ''}" alt="" loading="lazy" class="stream-card__thumb hidden">`;
             mediaImgs = thumb + summaryEl;
             toggleBtn = `<button class="summary-card__toggle" data-action="toggle-image" title="Toggle image" aria-pressed="false" aria-label="Toggle image">🖼️</button>`;
         } else if (!hasThumb && hasSummaryArt) {
-            mediaImgs = `<img data-role="thumb-summary" src="${summaryImageUrl}" data-ai1-url="${summaryImageUrl}" data-ai2-url="${ai2Url}" alt="" loading="lazy" class="stream-card__thumb">`;
+            const srcPick = summaryImageUrl || ai2Url;
+            mediaImgs = `<img data-role="thumb-summary" src="${srcPick}" data-ai1-url="${summaryImageUrl || ''}" data-ai2-url="${ai2Url || ''}" alt="" loading="lazy" class="stream-card__thumb">`;
         } else if (hasThumb && !hasSummaryArt) {
             mediaImgs = `<img data-role="thumb-default" src="${item.thumbnail_url}" alt="" loading="lazy" class="stream-card__thumb">`;
         } else {
@@ -4137,16 +4139,18 @@ class AudioDashboard {
         const hasThumb = Boolean(item.thumbnail_url);
         const summaryImageUrl = item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
         const ai2Url = this.getAi2UrlForItem(item) || '';
-        const hasSummaryArt = Boolean(summaryImageUrl);
+        const hasSummaryArt = Boolean(summaryImageUrl || ai2Url);
         let mediaImgs = '';
         let toggleBtn = '';
         if (hasThumb && hasSummaryArt) {
             const thumb = `<img data-role="thumb-default" src="${item.thumbnail_url}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl">`;
-            const summaryEl = `<img data-role="thumb-summary" src="${summaryImageUrl}" data-ai1-url="${summaryImageUrl}" data-ai2-url="${ai2Url}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl hidden">`;
+            const srcPick = summaryImageUrl || ai2Url;
+            const summaryEl = `<img data-role="thumb-summary" src="${srcPick}" data-ai1-url="${summaryImageUrl || ''}" data-ai2-url="${ai2Url || ''}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl hidden">`;
             mediaImgs = thumb + summaryEl;
             toggleBtn = `<button class="summary-card__toggle" data-action="toggle-image" title="Toggle image" aria-pressed="false" aria-label="Toggle image">🖼️</button>`;
         } else if (!hasThumb && hasSummaryArt) {
-            mediaImgs = `<img data-role="thumb-summary" src="${summaryImageUrl}" data-ai1-url="${summaryImageUrl}" data-ai2-url="${ai2Url}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl">`;
+            const srcPick = summaryImageUrl || ai2Url;
+            mediaImgs = `<img data-role="thumb-summary" src="${srcPick}" data-ai1-url="${summaryImageUrl || ''}" data-ai2-url="${ai2Url || ''}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl">`;
         } else if (hasThumb && !hasSummaryArt) {
             mediaImgs = `<img data-role="thumb-default" src="${item.thumbnail_url}" alt="" loading="lazy" class="w-full h-full object-cover rounded-xl">`;
         } else {
@@ -4212,16 +4216,18 @@ class AudioDashboard {
         const hasThumb = Boolean(item.thumbnail_url);
         const summaryImageUrl = item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
         const ai2Url = this.getAi2UrlForItem(item) || '';
-        const hasSummaryArt = Boolean(summaryImageUrl);
+        const hasSummaryArt = Boolean(summaryImageUrl || ai2Url);
         let mediaImgs = '';
         let toggleBtn = '';
         if (hasThumb && hasSummaryArt) {
             const thumb = `<img data-role="thumb-default" src="${item.thumbnail_url}" alt="" loading="lazy" class="wall-card__thumb">`;
-            const summaryEl = `<img data-role="thumb-summary" src="${summaryImageUrl}" data-ai1-url="${summaryImageUrl}" data-ai2-url="${ai2Url}" alt="" loading="lazy" class="wall-card__thumb hidden">`;
+            const srcPick = summaryImageUrl || ai2Url;
+            const summaryEl = `<img data-role="thumb-summary" src="${srcPick}" data-ai1-url="${summaryImageUrl || ''}" data-ai2-url="${ai2Url || ''}" alt="" loading="lazy" class="wall-card__thumb hidden">`;
             mediaImgs = thumb + summaryEl;
             toggleBtn = `<button class="summary-card__toggle" data-action="toggle-image" title="Toggle image" aria-pressed="false" aria-label="Toggle image">🖼️</button>`;
         } else if (!hasThumb && hasSummaryArt) {
-            mediaImgs = `<img data-role="thumb-summary" src="${summaryImageUrl}" data-ai1-url="${summaryImageUrl}" data-ai2-url="${ai2Url}" alt="" loading="lazy" class="wall-card__thumb">`;
+            const srcPick = summaryImageUrl || ai2Url;
+            mediaImgs = `<img data-role="thumb-summary" src="${srcPick}" data-ai1-url="${summaryImageUrl || ''}" data-ai2-url="${ai2Url || ''}" alt="" loading="lazy" class="wall-card__thumb">`;
         } else if (hasThumb && !hasSummaryArt) {
             mediaImgs = `<img data-role="thumb-default" src="${item.thumbnail_url}" alt="" loading="lazy" class="wall-card__thumb">`;
         } else {
@@ -4720,12 +4726,12 @@ class AudioDashboard {
         // Media: default thumbnail plus optional AI summary image(s)
         const summaryImageUrl = normalizedItem.summary_image_url ? this.normalizeAssetUrl(normalizedItem.summary_image_url) : '';
         const ai2Url = this.getAi2UrlForItem(normalizedItem) || '';
-        const hasSummaryArt = Boolean(summaryImageUrl);
+        const hasSummaryArt = Boolean(summaryImageUrl || ai2Url);
         const thumbnailEl = normalizedItem.thumbnail_url
             ? `<img data-role="thumb-default" src="${normalizedItem.thumbnail_url}" alt="" loading="lazy">`
             : '';
         const summaryEl = hasSummaryArt
-            ? `<img data-role="thumb-summary" src="${summaryImageUrl}" data-ai1-url="${summaryImageUrl}" data-ai2-url="${ai2Url}" alt="" loading="lazy" class="hidden">`
+            ? `<img data-role="thumb-summary" src="${summaryImageUrl || ai2Url}" data-ai1-url="${summaryImageUrl || ''}" data-ai2-url="${ai2Url || ''}" alt="" loading="lazy" class="hidden">`
             : '';
         const toggleBtn = hasSummaryArt
             ? `<button class="summary-card__toggle" data-action="toggle-image" title="Toggle image" aria-pressed="false" aria-label="Toggle image">🖼️</button>`
