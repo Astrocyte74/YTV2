@@ -377,7 +377,12 @@ class PostgreSQLContentIndex:
                                        or '',
                 'language': language,
                 'key_topics': topics,
-                'named_entities': named_entities
+                'named_entities': named_entities,
+                # Image prompt + variants pass-through for UI
+                'summary_image_prompt': analysis_json.get('summary_image_prompt'),
+                'summary_image_prompt_last_used': analysis_json.get('summary_image_prompt_last_used'),
+                'summary_image_selected_url': analysis_json.get('summary_image_selected_url'),
+                'summary_image_variants': analysis_json.get('summary_image_variants')
             },
             'media': {
                 'has_audio': bool(row.get('has_audio', False)),
@@ -1657,6 +1662,32 @@ class PostgreSQLContentIndex:
             conn.commit()
         except Exception as e:
             logger.error(f"Error updating summary_image_prompt for %s: %s", video_id, e)
+        finally:
+            if conn:
+                conn.close()
+
+    def update_selected_image_url(self, video_id: str, url: str) -> None:
+        """Set the selected image URL for a content row and mirror to summary_image_url."""
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            update_sql = """
+            UPDATE content
+            SET analysis_json = jsonb_set(
+                    COALESCE(analysis_json, '{}'::jsonb),
+                    '{summary_image_selected_url}',
+                    to_jsonb(%s::text),
+                    true
+                ),
+                summary_image_url = %s,
+                updated_at = NOW()
+            WHERE video_id = %s
+            """
+            cur.execute(update_sql, [url or '', url or '', video_id])
+            conn.commit()
+        except Exception as e:
+            logger.error("Error updating selected image for %s: %s", video_id, e)
         finally:
             if conn:
                 conn.close()
