@@ -430,12 +430,32 @@ class AudioDashboard {
         // Header search (desktop)
         this.searchInputHeader = document.getElementById('searchInputHeader');
         if (this.searchInputHeader) {
+            const toggleClear = () => {
+                try {
+                    if (!this.searchClearHeader) return;
+                    const has = !!this.searchInputHeader.value;
+                    this.searchClearHeader.classList.toggle('hidden', !has);
+                } catch(_) {}
+            };
             this.searchInputHeader.addEventListener('input', this.debounce(() => {
                 const v = this.searchInputHeader.value;
                 if (this.searchInput && this.searchInput.value !== v) this.searchInput.value = v;
                 if (this.searchInputTop && this.searchInputTop.value !== v) this.searchInputTop.value = v;
+                toggleClear();
                 this.handleSearch();
             }, 500));
+            // initial state
+            toggleClear();
+        }
+        if (this.searchClearHeader && this.searchInputHeader) {
+            this.searchClearHeader.addEventListener('click', () => {
+                this.searchInputHeader.value = '';
+                if (this.searchInput) this.searchInput.value = '';
+                if (this.searchInputTop) this.searchInputTop.value = '';
+                this.searchQuery = '';
+                this.loadContent();
+                try { this.searchClearHeader.classList.add('hidden'); } catch(_) {}
+            });
         }
         if (this.sortToolbar) {
             this.sortToolbar.querySelectorAll('[data-sort]').forEach(btn => {
@@ -7679,3 +7699,5 @@ document.addEventListener('DOMContentLoaded', () => {
     })();
     */
 });
+        // Header search clear
+        this.searchClearHeader = document.getElementById('searchClearHeader');
