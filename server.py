@@ -1273,6 +1273,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_delete_request()
         elif self.path == '/api/set-image-prompt':
             self.handle_set_image_prompt()
+        elif self.path == '/api/select-image-variant':
+            self.handle_select_image_variant()
         # New ingest endpoints for NAS sync (T-Y020C)
         elif self.path == '/ingest/report':
             self.handle_ingest_report()
@@ -4596,6 +4598,64 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"ok": True, "video_id": video_id}).encode())
         except Exception as e:
             logger.exception("set-image-prompt failed")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+
+    def handle_select_image_variant(self):
+        """POST /api/select-image-variant — admin-only. Switch selected image.
+
+        Body: { "video_id": "<id>", "url": "/exports/images/...png" }
+        Auth: DEBUG_TOKEN
+        """
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            length = int(self.headers.get('Content-Length', 0))
+            data = {}
+            if length:
+                try:
+                    raw = self.rfile.read(length)
+                    data = json.loads(raw.decode('utf-8'))
+                except Exception:
+                    pass
+
+            video_id = (data.get('video_id') or '').strip()
+            url = (data.get('url') or '').strip()
+            if not video_id or not url:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id and url required"}).encode())
+                return
+
+            content_index = getattr(self.server, 'content_index', None)
+            if not content_index or not hasattr(content_index, 'update_selected_image_url'):
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "content index unavailable"}).encode())
+                return
+
+            content_index.update_selected_image_url(video_id, url)
+
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True, "selected_url": url}).encode())
+        except Exception as e:
+            logger.exception("select-image-variant failed")
             self.send_response(500)
             self.set_cors_headers()
             self.send_header('Content-type', 'application/json')

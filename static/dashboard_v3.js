@@ -6829,7 +6829,13 @@ class AudioDashboard {
 
     async handleCreateImagePrompt(reportId) {
         try {
-            const defaultPrompt = '';
+            // Prefill with last-used; fallback to pending override
+            let defaultPrompt = '';
+            try {
+                const item = (this.currentItems || []).find(x => x.file_stem === reportId);
+                const a = item && item.analysis ? item.analysis : {};
+                defaultPrompt = a.summary_image_prompt_last_used || a.summary_image_prompt || '';
+            } catch(_) {}
             const promptText = await this.promptForImagePrompt(defaultPrompt);
             if (!promptText && promptText !== '') return; // canceled
             const token = this.getReprocessToken();
