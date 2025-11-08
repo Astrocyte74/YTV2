@@ -6796,10 +6796,9 @@ class AudioDashboard {
 
     async handleCreateImagePrompt(reportId) {
         try {
-            const current = this.currentItems?.find?.(x => x.file_stem === reportId);
             const defaultPrompt = '';
-            const promptText = window.prompt('Enter a custom image prompt for this summary', defaultPrompt);
-            if (promptText === null) return; // user canceled
+            const promptText = await this.promptForImagePrompt(defaultPrompt);
+            if (!promptText && promptText !== '') return; // canceled
             const token = this.getReprocessToken();
             if (!token) { this.showToast('Token required', 'warn'); return; }
             const res = await fetch('/api/set-image-prompt', {
@@ -6821,6 +6820,53 @@ class AudioDashboard {
             console.error('handleCreateImagePrompt error', e);
             this.showToast('Failed to save image prompt', 'error');
         }
+    }
+
+    promptForImagePrompt(defaultText = '') {
+        return new Promise((resolve) => {
+            // Build lightweight modal
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4';
+            overlay.setAttribute('role', 'dialog');
+            overlay.setAttribute('aria-modal', 'true');
+
+            const panel = document.createElement('div');
+            panel.className = 'w-full max-w-xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl';
+            panel.innerHTML = `
+              <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Create image</h3>
+                <button type="button" data-close class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close">✕</button>
+              </div>
+              <div class="p-4 space-y-3">
+                <label class="block text-sm text-slate-600 dark:text-slate-300 mb-1">Custom prompt</label>
+                <textarea data-input rows="5" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-audio-500" placeholder="Describe the illustration you want..."></textarea>
+                <p class="text-xs text-slate-500 dark:text-slate-400">NAS will use this prompt the next time it regenerates the summary image.</p>
+              </div>
+              <div class="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-end gap-2">
+                <button type="button" data-cancel class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200">Cancel</button>
+                <button type="button" data-save class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Save</button>
+              </div>`;
+            overlay.appendChild(panel);
+            document.body.appendChild(overlay);
+
+            const input = panel.querySelector('[data-input]');
+            const save = panel.querySelector('[data-save]');
+            const cancel = panel.querySelector('[data-cancel]');
+            const close = panel.querySelector('[data-close]');
+            input.value = defaultText || '';
+            setTimeout(() => input.focus(), 10);
+
+            const cleanup = () => {
+                try { document.body.removeChild(overlay); } catch(_) {}
+            };
+            const finish = (val) => { cleanup(); resolve(val); };
+
+            save.addEventListener('click', () => finish(input.value.trim()));
+            cancel.addEventListener('click', () => finish(null));
+            close.addEventListener('click', () => finish(null));
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) finish(null); });
+            panel.addEventListener('keydown', (e) => { if (e.key === 'Escape') finish(null); });
+        });
     }
 
     encodeBase64(value) {
