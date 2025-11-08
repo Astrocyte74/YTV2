@@ -453,6 +453,17 @@ class AudioDashboard {
             const id = card?.dataset?.reportId;
             if (id) this.handleCreateImagePrompt(id);
         }, true);
+        const imageNewHandler = (e) => {
+            const el = e.target.closest && e.target.closest('[data-action="image-new"]');
+            if (!el) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const card = el.closest('[data-report-id]');
+            const id = card && card.dataset ? card.dataset.reportId : null;
+            if (id) this.handleCreateImagePrompt(id);
+        };
+        document.addEventListener('pointerup', imageNewHandler, true);
+        document.addEventListener('mousedown', imageNewHandler, true);
         
         // Show more sort options toggle
         const toggleMoreSorts = document.getElementById('toggleMoreSorts');
