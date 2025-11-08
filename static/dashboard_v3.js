@@ -319,6 +319,9 @@ class AudioDashboard {
         this.imgModeThumbSettingBtn = document.getElementById('imgModeThumbSettingBtn');
         this.imgModeAiSettingBtn = document.getElementById('imgModeAiSettingBtn');
         this.imgModeRotateSettingBtn = document.getElementById('imgModeRotateSettingBtn');
+        // Admin token controls (Settings)
+        this.adminTokenSetBtn = document.getElementById('adminTokenSetBtn');
+        this.adminTokenClearBtn = document.getElementById('adminTokenClearBtn');
 
         // Image mode and hover-switch state
         this.imageMode = localStorage.getItem('ytv2.imageMode') || 'thumbnail';
@@ -396,6 +399,20 @@ class AudioDashboard {
         if (this.imgModeThumbSettingBtn) this.imgModeThumbSettingBtn.addEventListener('click', () => this.setImageMode('thumbnail'));
         if (this.imgModeAiSettingBtn) this.imgModeAiSettingBtn.addEventListener('click', () => this.setImageMode('ai'));
         if (this.imgModeRotateSettingBtn) this.imgModeRotateSettingBtn.addEventListener('click', () => this.setImageMode('rotate'));
+        // Admin token controls
+        if (this.adminTokenSetBtn) this.adminTokenSetBtn.addEventListener('click', () => {
+            this.closeSettings();
+            const token = this.getReprocessToken(true);
+            if (token) {
+                this.showToast('Admin token saved locally', 'success');
+            } else {
+                this.showToast('Admin token not set', 'info');
+            }
+        });
+        if (this.adminTokenClearBtn) this.adminTokenClearBtn.addEventListener('click', () => {
+            this.closeSettings();
+            this.resetStoredReprocessToken();
+        });
         this.updateImageModeUI();
         
         // Search and filters
@@ -3743,10 +3760,12 @@ class AudioDashboard {
         const channelInitial = this.escapeHtml((channelName.trim().charAt(0) || '?').toUpperCase());
 
         const sourceBadge = this.renderSourceBadge(source, item.source_label || null);
+        const pendingChip = this.renderPendingImageOverrideChip(item);
         const languageChip = this.renderLanguageChip(item.analysis?.language);
         const summaryTypeChip = this.renderSummaryTypeChip(item.summary_type);
         const nowPlayingPill = isPlaying ? '<div class="summary-card__badge"><span class="summary-pill summary-pill--playing">Now playing</span></div>' : '';
-        const identityMetaParts = [sourceBadge, languageChip, summaryTypeChip, nowPlayingPill].filter(Boolean);
+        const pendingChip = this.renderPendingImageOverrideChip(normalizedItem);
+        const identityMetaParts = [sourceBadge, languageChip, summaryTypeChip, pendingChip, nowPlayingPill].filter(Boolean);
         const identityMetaClassic = identityMetaParts.length ? `<div class="flex flex-wrap gap-1">${identityMetaParts.join('')}</div>` : '';
         const identityMetaMinimal = (() => {
             const bits = [];
@@ -4015,6 +4034,7 @@ class AudioDashboard {
                                 <div class="stream-card__channel-line">
                                     <button class="stream-card__channel-name" data-filter-chip="channel" data-filter-value="${safeChannel}" title="Filter by ${safeChannel}">${safeChannel}</button>
                                     ${sourceBadge || ''}
+                                    ${pendingChip || ''}
                                     ${nowPlayingInline}
                                 </div>
                             </div>
@@ -4067,6 +4087,7 @@ class AudioDashboard {
 
         const visibleLimitG = (this.flags && this.flags.twChipsVisible) || 4;
         const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, visibleLimitG);
+        const pendingChip = this.renderPendingImageOverrideChip(item);
         const snippet = this.getSummarySnippet(item, 180);
         return `
             <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
@@ -4080,6 +4101,7 @@ class AudioDashboard {
                 </div>
                 <div class="mosaic-card__content">
                     <div class="mosaic-card__main">
+                        ${pendingChip ? `<div class="mb-1">${pendingChip}</div>` : ''}
                         ${chipBar}
                         <h3 class="mosaic-card__title line-clamp-2 text-slate-900 dark:text-slate-100">${title}</h3>
                         <div class="mosaic-card__divider" role="presentation"></div>
@@ -4103,6 +4125,7 @@ class AudioDashboard {
         // Remove inline reader button in wall mode; clicking the card opens reader
         mediaActions = `<div class="stream-card__media-actions">${mediaActions || ''}</div>`;
         const chipRail = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 3);
+        const pendingChip = this.renderPendingImageOverrideChip(item);
         const menuMarkup = `
             <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -4140,7 +4163,7 @@ class AudioDashboard {
                 ${menuMarkup}
                 <div class="wall-card__media">${toggleBtn}${mediaImgs}</div>
                 <div class="wall-card__overlay">
-                    <div class="wall-card__meta">${chipRail || ''}</div>
+                    <div class="wall-card__meta">${chipRail || ''}${pendingChip ? `<div class=\"inline-block ml-2\">${pendingChip}</div>` : ''}</div>
                     <h3 class="wall-card__title">${title}</h3>
                     <div class="wall-card__actions">${mediaActions || ''}</div>
                 </div>
@@ -6763,6 +6786,18 @@ class AudioDashboard {
         return '';
     }
 
+    renderPendingImageOverrideChip(itemOrNormalized) {
+        try {
+            const a = (itemOrNormalized && itemOrNormalized.analysis) ? itemOrNormalized.analysis : {};
+            const pending = a && typeof a === 'object' && a.summary_image_prompt
+                && a.summary_image_prompt !== a.summary_image_prompt_last_used;
+            if (!pending) return '';
+            return '<span class="summary-pill summary-pill--pending" title="Custom image prompt pending">Pending override</span>';
+        } catch (_) {
+            return '';
+        }
+    }
+
     getReprocessToken(forcePrompt = false) {
         if (!forcePrompt && this.reprocessToken) {
             return this.reprocessToken;
@@ -6836,7 +6871,7 @@ class AudioDashboard {
                 const a = item && item.analysis ? item.analysis : {};
                 defaultPrompt = a.summary_image_prompt_last_used || a.summary_image_prompt || '';
             } catch(_) {}
-            const promptText = await this.promptForImagePrompt(defaultPrompt);
+            const promptText = await this.promptForImagePrompt(defaultPrompt, reportId);
             if (!promptText && promptText !== '') return; // canceled
             const token = this.getReprocessToken();
             if (!token) { this.showToast('Token required', 'warn'); return; }
@@ -6861,7 +6896,7 @@ class AudioDashboard {
         }
     }
 
-    promptForImagePrompt(defaultText = '') {
+    promptForImagePrompt(defaultText = '', reportId = null) {
         return new Promise((resolve) => {
             // Build lightweight modal
             const overlay = document.createElement('div');
@@ -6872,6 +6907,46 @@ class AudioDashboard {
 
             const panel = document.createElement('div');
             panel.className = 'w-full max-w-xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl';
+            // Variants list (if any)
+            let variantsMarkup = '';
+            try {
+                if (reportId && Array.isArray(this.currentItems)) {
+                    const item = this.currentItems.find(x => x.file_stem === reportId);
+                    const variants = item && item.analysis && Array.isArray(item.analysis.summary_image_variants)
+                        ? item.analysis.summary_image_variants : [];
+                    if (variants.length) {
+                        const rows = variants.map((v, i) => {
+                            const url = this.normalizeAssetUrl(v.url || '');
+                            const preview = this.truncateText((v.prompt || '').replace(/\s+/g, ' ').trim(), 120);
+                            const when = this.formatRelativeTime(v.created_at);
+                            const model = v.model || '';
+                            const seed = (v.seed != null) ? ` • seed ${v.seed}` : '';
+                            return `
+                              <div class="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent">
+                                <div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 dark:bg-slate-700 flex-shrink-0">
+                                  <a href="${url}" target="_blank" rel="noopener">
+                                    <img src="${url}" alt="variant" class="w-full h-full object-cover" loading="lazy">
+                                  </a>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                  <div class="text-xs text-slate-500 dark:text-slate-400">${when || ''}${model ? ` • ${this.escapeHtml(model)}` : ''}${seed}</div>
+                                  <div class="text-sm text-slate-700 dark:text-slate-200 truncate">${this.escapeHtml(preview || '')}</div>
+                                  <div class="mt-2 flex items-center gap-2">
+                                    <button type="button" data-use-prompt data-index="${i}" class="px-2 py-1 text-xs rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">Use this prompt</button>
+                                    <button type="button" data-select-image data-index="${i}" class="px-2 py-1 text-xs rounded-md bg-audio-600 text-white hover:bg-audio-700">Select this image</button>
+                                  </div>
+                                </div>
+                              </div>`;
+                        }).join('');
+                        variantsMarkup = `
+                          <div class="px-4 pb-3">
+                            <div class="text-xs uppercase tracking-wide text-slate-400 mb-2">Previous images</div>
+                            <div class="max-h-56 overflow-auto pr-1 space-y-2" data-variants>${rows}</div>
+                          </div>`;
+                    }
+                }
+            } catch(_) {}
+
             panel.innerHTML = `
               <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                 <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Create image</h3>
@@ -6882,6 +6957,7 @@ class AudioDashboard {
                 <textarea data-input rows="5" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-audio-500" placeholder="Describe the illustration you want..."></textarea>
                 <p class="text-xs text-slate-500 dark:text-slate-400">NAS will use this prompt the next time it regenerates the summary image.</p>
               </div>
+              ${variantsMarkup}
               <div class="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-end gap-2">
                 <button type="button" data-cancel class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200">Cancel</button>
                 <button type="button" data-save class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Save</button>
@@ -6893,6 +6969,7 @@ class AudioDashboard {
             const save = panel.querySelector('[data-save]');
             const cancel = panel.querySelector('[data-cancel]');
             const close = panel.querySelector('[data-close]');
+            const variantsEl = panel.querySelector('[data-variants]');
             input.value = defaultText || '';
             setTimeout(() => input.focus(), 10);
 
@@ -6906,6 +6983,60 @@ class AudioDashboard {
             close.addEventListener('click', () => finish(null));
             overlay.addEventListener('click', (e) => { if (e.target === overlay) finish(null); });
             panel.addEventListener('keydown', (e) => { if (e.key === 'Escape') finish(null); });
+
+            // Variants interactions
+            if (variantsEl && reportId) {
+                variantsEl.addEventListener('click', async (e) => {
+                    const useBtn = e.target.closest('[data-use-prompt]');
+                    const selectBtn = e.target.closest('[data-select-image]');
+                    if (!useBtn && !selectBtn) return;
+                    e.preventDefault();
+                    const idx = Number((useBtn || selectBtn).dataset.index);
+                    const item = (this.currentItems || []).find(x => x.file_stem === reportId);
+                    const variants = item && item.analysis && Array.isArray(item.analysis.summary_image_variants)
+                        ? item.analysis.summary_image_variants : [];
+                    const selected = variants[idx];
+                    if (!selected) return;
+                    if (useBtn) {
+                        input.value = selected.prompt || '';
+                        input.focus();
+                        input.setSelectionRange(input.value.length, input.value.length);
+                        return;
+                    }
+                    if (selectBtn) {
+                        const token = this.getReprocessToken();
+                        if (!token) { this.showToast('Token required', 'warn'); return; }
+                        try {
+                            const res = await fetch('/api/select-image-variant', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${token}`
+                                },
+                                body: JSON.stringify({ video_id: reportId, url: selected.url })
+                            });
+                            if (!res.ok) {
+                                const msg = await res.text().catch(()=> '');
+                                console.error('select-image-variant failed', res.status, msg);
+                                this.showToast(`Failed to select image (${res.status})`, 'error');
+                                return;
+                            }
+                            this.showToast('Selected image updated', 'success');
+                            // Update in-memory item and the card DOM inline
+                            try {
+                                if (item) {
+                                    item.summary_image_url = selected.url;
+                                    if (item.analysis) item.analysis.summary_image_selected_url = selected.url;
+                                }
+                            } catch(_) {}
+                            this.updateCardSummaryImage(reportId, selected.url);
+                        } catch (err) {
+                            console.error('select-image-variant error', err);
+                            this.showToast('Failed to select image', 'error');
+                        }
+                    }
+                });
+            }
         });
     }
 
@@ -6925,6 +7056,27 @@ class AudioDashboard {
             return Buffer.from(value, 'utf8').toString('base64');
         }
         return value;
+    }
+
+    updateCardSummaryImage(reportId, url) {
+        try {
+            const normalized = this.normalizeAssetUrl(url);
+            const card = document.querySelector(`[data-report-id="${CSS.escape(reportId)}"]`);
+            if (!card) return;
+            const img = card.querySelector('[data-role="thumb-summary"]');
+            if (img) {
+                img.src = normalized;
+                img.classList.remove('hidden');
+            }
+            // Also update any inline reader image if open
+            const inline = document.querySelector(`[data-expand-region] [data-role="thumb-summary"]`);
+            if (inline) {
+                inline.src = normalized;
+                inline.classList.remove('hidden');
+            }
+        } catch (_) {
+            // no-op
+        }
     }
 
     /**
