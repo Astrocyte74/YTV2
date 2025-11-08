@@ -382,7 +382,9 @@ class PostgreSQLContentIndex:
                 'summary_image_prompt': analysis_json.get('summary_image_prompt'),
                 'summary_image_prompt_last_used': analysis_json.get('summary_image_prompt_last_used'),
                 'summary_image_selected_url': analysis_json.get('summary_image_selected_url'),
-                'summary_image_variants': analysis_json.get('summary_image_variants')
+                'summary_image_variants': analysis_json.get('summary_image_variants'),
+                # AI2 support: expose explicit AI2 URL when present
+                'summary_image_ai2_url': analysis_json.get('summary_image_ai2_url')
             },
             'media': {
                 'has_audio': bool(row.get('has_audio', False)),
