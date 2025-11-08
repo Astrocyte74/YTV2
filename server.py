@@ -1271,6 +1271,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(410, "Endpoint removed (use /ingest/* with PostgreSQL)")
         elif self.path.startswith('/api/delete'):
             self.handle_delete_request()
+        elif self.path == '/api/set-image-prompt':
+            self.handle_set_image_prompt()
         # New ingest endpoints for NAS sync (T-Y020C)
         elif self.path == '/ingest/report':
             self.handle_ingest_report()
@@ -4532,7 +4534,73 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_response(500)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(json.dumps({"error": f"internal error: {str(e)}"}).encode())
+        self.wfile.write(json.dumps({"error": f"internal error: {str(e)}"}).encode())
+
+    def handle_set_image_prompt(self):
+        """POST /api/set-image-prompt — admin-only. Set a custom prompt for NAS image generation.
+
+        Body: { "video_id": "<id>", "prompt": "..." }
+        Auth: DEBUG_TOKEN via Authorization: Bearer <token> or X-Debug-Token.
+        """
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            length = int(self.headers.get('Content-Length', 0))
+            data = {}
+            if length:
+                try:
+                    raw = self.rfile.read(length)
+                    data = json.loads(raw.decode('utf-8'))
+                except Exception:
+                    pass
+
+            video_id = (data.get('video_id') or '').strip()
+            prompt = (data.get('prompt') or '').strip()
+            if not video_id:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id required"}).encode())
+                return
+
+            # Update in Postgres
+            content_index = getattr(self.server, 'content_index', None)
+            if not content_index or not hasattr(content_index, 'update_summary_image_prompt'):
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "content index unavailable"}).encode())
+                return
+
+            content_index.update_summary_image_prompt(video_id, prompt)
+
+            # Optional: broadcast a lightweight event (clients may ignore)
+            try:
+                payload = {"video_id": video_id, "event": "image_prompt_set", "ts": datetime.utcnow().isoformat() + 'Z'}
+                report_event_stream.broadcast('image-prompt-set', payload)
+            except Exception:
+                pass
+
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True, "video_id": video_id}).encode())
+        except Exception as e:
+            logger.exception("set-image-prompt failed")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
 
     def set_cors_headers(self, allow_all_origins=False):
         """Set CORS headers for cross-origin requests"""
