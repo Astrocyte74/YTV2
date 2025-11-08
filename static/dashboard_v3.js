@@ -278,6 +278,7 @@ class AudioDashboard {
         this.settingsToggle = document.getElementById('settingsToggle');
         this.settingsMenu = document.getElementById('settingsMenu');
         this.themeButtons = this.settingsMenu ? this.settingsMenu.querySelectorAll('[data-theme]') : [];
+        this.settingsAccordions = this.settingsMenu ? this.settingsMenu.querySelectorAll('details.settings-accordion') : [];
         this.themeMode = localStorage.getItem('ytv2.theme') || 'system';
         this.sidebarCollapsed = localStorage.getItem('ytv2.sidebarCollapsed') === '1';
         this._collapsedForMobile = null;
@@ -381,6 +382,11 @@ class AudioDashboard {
         if (refreshBtn) refreshBtn.addEventListener('click', (e) => { e.preventDefault(); try { location.reload(); } catch(_) { window.location.href = window.location.href; } });
         if (this.settingsMenu) document.addEventListener('click', (e) => { if (!e.target.closest('#settingsMenu') && !e.target.closest('#settingsToggle')) this.closeSettings(); });
         if (this.themeButtons) this.themeButtons.forEach(btn => btn.addEventListener('click', () => this.setTheme(btn.dataset.theme)));
+        // Settings accordion: restore open state and persist on toggle
+        this.restoreSettingsAccordion();
+        if (this.settingsAccordions && this.settingsAccordions.length) {
+            this.settingsAccordions.forEach(sec => sec.addEventListener('toggle', () => this.persistSettingsAccordion()));
+        }
         if (this.cancelDeleteBtn) this.cancelDeleteBtn.addEventListener('click', () => this.closeConfirm());
         if (this.confirmDeleteBtn) this.confirmDeleteBtn.addEventListener('click', () => this.confirmDelete());
 
@@ -1531,6 +1537,36 @@ class AudioDashboard {
     // Settings / Theme
     toggleSettings() { if (!this.settingsMenu) return; this.settingsMenu.classList.toggle('hidden'); }
     closeSettings() { if (!this.settingsMenu) return; this.settingsMenu.classList.add('hidden'); }
+
+    restoreSettingsAccordion() {
+        if (!this.settingsAccordions) return;
+        let map = {};
+        try { map = JSON.parse(localStorage.getItem('ytv2.settingsAccordion') || '{}'); } catch(_) {}
+        this.settingsAccordions.forEach((sec) => {
+            const key = sec.getAttribute('data-settings-section') || '';
+            if (!key) return;
+            if (map.hasOwnProperty(key)) {
+                sec.open = !!map[key];
+            }
+            // Rotate chevron
+            try {
+                const chev = sec.querySelector('summary svg');
+                if (chev) chev.style.transform = sec.open ? 'rotate(180deg)' : 'rotate(0deg)';
+                sec.addEventListener('toggle', () => { if (chev) chev.style.transform = sec.open ? 'rotate(180deg)' : 'rotate(0deg)'; });
+            } catch(_) {}
+        });
+    }
+
+    persistSettingsAccordion() {
+        if (!this.settingsAccordions) return;
+        const map = {};
+        this.settingsAccordions.forEach((sec) => {
+            const key = sec.getAttribute('data-settings-section') || '';
+            if (!key) return;
+            map[key] = !!sec.open;
+        });
+        try { localStorage.setItem('ytv2.settingsAccordion', JSON.stringify(map)); } catch(_) {}
+    }
     setTheme(mode) { 
         this.themeMode = mode || 'system'; 
         localStorage.setItem('ytv2.theme', this.themeMode); 
