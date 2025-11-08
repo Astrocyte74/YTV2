@@ -1633,6 +1633,34 @@ class PostgreSQLContentIndex:
             if conn:
                 conn.close()
 
+    def update_summary_image_prompt(self, video_id: str, prompt: str) -> None:
+        """Set analysis_json.summary_image_prompt for a content row.
+
+        NAS will read this field to override its image-generation prompt.
+        """
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            update_sql = """
+            UPDATE content
+            SET analysis_json = jsonb_set(
+                COALESCE(analysis_json, '{}'::jsonb),
+                '{summary_image_prompt}',
+                to_jsonb(%s::text),
+                true
+            ),
+            updated_at = NOW()
+            WHERE video_id = %s
+            """
+            cur.execute(update_sql, [prompt or '', video_id])
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Error updating summary_image_prompt for %s: %s", video_id, e)
+        finally:
+            if conn:
+                conn.close()
+
     def delete_content(self, video_id: str) -> dict:
         """Delete a video and its summaries by YouTube video_id."""
         conn = None

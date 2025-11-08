@@ -2453,6 +2453,7 @@ class AudioDashboard {
             this.sendTelemetry('cta_listen', { id });
         }
         if (action === 'read') { this.handleRead(id); this.sendTelemetry('cta_read', { id }); }
+        if (action === 'image-new') { this.handleCreateImagePrompt(id); }
         if (action === 'watch') {
             const source = card.dataset.source || 'youtube';
             const videoId = card.dataset.videoId || '';
@@ -3926,6 +3927,7 @@ class AudioDashboard {
             </button>
             <div class="summary-card__menu hidden" data-kebab-menu role="menu">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="image-new">Create image…</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
             </div>
@@ -6788,6 +6790,35 @@ class AudioDashboard {
             text = 'Token cached locally for quick access.';
         }
         this.reprocessFootnote.textContent = text;
+    }
+
+    async handleCreateImagePrompt(reportId) {
+        try {
+            const current = this.currentItems?.find?.(x => x.file_stem === reportId);
+            const defaultPrompt = '';
+            const promptText = window.prompt('Enter a custom image prompt for this summary', defaultPrompt);
+            if (promptText === null) return; // user canceled
+            const token = this.getReprocessToken();
+            if (!token) { this.showToast('Token required', 'warn'); return; }
+            const res = await fetch('/api/set-image-prompt', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ video_id: reportId, prompt: promptText })
+            });
+            if (!res.ok) {
+                const msg = await res.text().catch(()=>'');
+                this.showToast(`Failed to save image prompt (${res.status})`, 'error');
+                console.error('set-image-prompt failed', res.status, msg);
+                return;
+            }
+            this.showToast('Image prompt saved. NAS will regenerate on next pass.', 'success');
+        } catch (e) {
+            console.error('handleCreateImagePrompt error', e);
+            this.showToast('Failed to save image prompt', 'error');
+        }
     }
 
     encodeBase64(value) {
