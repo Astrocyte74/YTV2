@@ -6160,6 +6160,8 @@ class AudioDashboard {
         localStorage.setItem('ytv2.imageMode', mode);
         this.updateImageModeUI();
         this.applyImageModeToAllCards();
+        // Fallback: aggressively ensure mode is reflected for all cards
+        try { this.forceSwapAllCardsForCurrentMode(); } catch(_) {}
         // Temporary debug: show which URL we will use for the first visible card
         try {
             if (mode === 'ai2') {
@@ -6173,6 +6175,41 @@ class AudioDashboard {
                 }
             }
         } catch (_) {}
+    }
+
+    // Aggressive swap to ensure the selected mode is reflected even when
+    // some cards were missing data-ai2-url at render time.
+    forceSwapAllCardsForCurrentMode() {
+        if (!this.contentGrid) return;
+        const cards = this.contentGrid.querySelectorAll('[data-card]');
+        cards.forEach(card => {
+            const media = card.querySelector('.summary-card__media, .stream-card__media, .mosaic-card__media, .wall-card__media, .relative.w-full.h-40');
+            if (!media) return;
+            const imgDefault = media.querySelector('[data-role="thumb-default"]');
+            const imgSummary = media.querySelector('[data-role="thumb-summary"]');
+            if (!imgSummary && !imgDefault) return;
+
+            const rid = card.getAttribute('data-report-id') || '';
+            const item = (this.currentItems || []).find(x => x.file_stem === rid) || null;
+            const wantSummary = this.imageMode === 'ai' || this.imageMode === 'ai2' || (this.imageMode === 'rotate' && this.shouldShowSummaryByRotate(rid));
+
+            if (wantSummary) {
+                if (imgSummary) {
+                    if (this.imageMode === 'ai2' && item) {
+                        const ai2 = this.getAi2UrlForItem(item) || '';
+                        if (ai2) {
+                            imgSummary.setAttribute('data-ai2-url', ai2);
+                            if (imgSummary.src !== ai2) imgSummary.src = ai2;
+                        }
+                    }
+                    imgSummary.classList.remove('hidden');
+                }
+                if (imgDefault) imgDefault.classList.add('hidden');
+            } else {
+                if (imgDefault) imgDefault.classList.remove('hidden');
+                if (imgSummary) imgSummary.classList.add('hidden');
+            }
+        });
     }
 
     applyImageModeToAllCards() {
