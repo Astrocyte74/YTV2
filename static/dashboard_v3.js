@@ -329,6 +329,8 @@ class AudioDashboard {
         // Image mode and hover-switch state
         this.imageMode = localStorage.getItem('ytv2.imageMode') || 'thumbnail';
         this.hoverSwitchEnabled = localStorage.getItem('ytv2.hoverSwitch') === '1';
+        // Rotation step counter for image rotate mode
+        this.rotateCounter = 0;
     }
 
     bindEvents() {
@@ -6125,6 +6127,24 @@ class AudioDashboard {
         return '';
     }
 
+    getAi2VariantUrls(item) {
+        try {
+            const urls = [];
+            const push = (u) => { if (u && typeof u === 'string' && u.trim() && !urls.includes(u)) urls.push(this.normalizeAssetUrl(u)); };
+            const direct = item?.summary_image_ai2_url || item?.analysis?.summary_image_ai2_url;
+            push(direct);
+            const variants = (item && item.analysis && Array.isArray(item.analysis.summary_image_variants)) ? item.analysis.summary_image_variants : [];
+            variants.forEach(v => {
+                const u = v?.url || '';
+                const mode = (v?.image_mode || '').toLowerCase();
+                const templ = (v?.template || '').toLowerCase();
+                const psrc = (v?.prompt_source || '').toLowerCase();
+                if ((mode === 'ai2') || templ === 'ai2_freestyle' || (psrc && psrc.startsWith('ai2')) || /(?:^|\/)AI2_/i.test(u || '')) push(u);
+            });
+            return urls.filter(Boolean);
+        } catch (_) { return []; }
+    }
+
     // --- Global image mode controls ---
     updateImageModeUI() {
         const sets = [
@@ -6156,25 +6176,17 @@ class AudioDashboard {
     }
 
     setImageMode(mode) {
+        const prev = this.imageMode;
         this.imageMode = mode;
         localStorage.setItem('ytv2.imageMode', mode);
         this.updateImageModeUI();
         this.applyImageModeToAllCards();
         // Fallback: aggressively ensure mode is reflected for all cards
         try { this.forceSwapAllCardsForCurrentMode(); } catch(_) {}
-        // Temporary debug: show which URL we will use for the first visible card
-        try {
-            if (mode === 'ai2') {
-                const first = this.contentGrid && this.contentGrid.querySelector('[data-card]');
-                const rid = first ? first.getAttribute('data-report-id') : null;
-                if (rid && Array.isArray(this.currentItems)) {
-                    const item = this.currentItems.find(x => x.file_stem === rid);
-                    const ai2 = item ? this.getAi2UrlForItem(item) : '';
-                    if (ai2) this.showToast('AI2 detected: ' + ai2, 'info');
-                    else this.showToast('AI2 not found for first card', 'warn');
-                }
-            }
-        } catch (_) {}
+        // Increment rotation step if staying in rotate mode
+        if (mode === 'rotate') {
+            this.rotateCounter = (prev === 'rotate') ? (this.rotateCounter + 1) : 0;
+        }
     }
 
     // Aggressive swap to ensure the selected mode is reflected even when
@@ -6262,11 +6274,38 @@ class AudioDashboard {
         if (toggleBtn) toggleBtn.classList.remove('hidden');
 
         let showSummary = false;
-        if (this.imageMode === 'ai' || this.imageMode === 'ai2') showSummary = true;
-        else if (this.imageMode === 'thumbnail') showSummary = false;
-        else if (this.imageMode === 'rotate') {
-            const id = card.getAttribute('data-report-id') || String(index);
-            showSummary = this.shouldShowSummaryByRotate(id);
+        if (this.imageMode === 'rotate') {
+            // Rotate across OG, A1, and all AI2 variants when available
+            const rid = card.getAttribute('data-report-id') || String(index);
+            const item = (this.currentItems || []).find(x => x.file_stem === rid) || {};
+            const ogAvailable = !!imgDefault && (imgDefault.tagName !== 'IMG' || (imgDefault.getAttribute('src') || '').trim());
+            const a1 = item && item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
+            const ai2List = this.getAi2VariantUrls(item);
+            const options = [];
+            if (ogAvailable) options.push({ kind: 'og' });
+            if (a1) options.push({ kind: 'url', url: a1 });
+            ai2List.forEach(u => options.push({ kind: 'url', url: u }));
+            if (options.length) {
+                const idx = (this.rotateCounter + Math.abs(this.hashCode(rid))) % options.length;
+                const pick = options[idx];
+                if (pick.kind === 'og') {
+                    showSummary = false;
+                } else {
+                    showSummary = true;
+                    if (imgSummary && pick.url) {
+                        if (imgSummary.src !== pick.url) imgSummary.src = pick.url;
+                        try { imgSummary.setAttribute('data-ai1-url', a1 || ''); } catch(_) {}
+                        try { imgSummary.setAttribute('data-ai2-url', pick.url); } catch(_) {}
+                    }
+                }
+            } else {
+                // Fallback to previous 50% logic
+                showSummary = this.shouldShowSummaryByRotate(rid);
+            }
+        } else if (this.imageMode === 'ai' || this.imageMode === 'ai2') {
+            showSummary = true;
+        } else if (this.imageMode === 'thumbnail') {
+            showSummary = false;
         }
 
         // If summary selected, ensure correct target (AI1 vs AI2)
@@ -6298,6 +6337,14 @@ class AudioDashboard {
                 imgSummary && imgSummary.classList.remove('hidden');
             }
         }
+    }
+
+    hashCode(s) {
+        try {
+            let h = 0;
+            for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+            return h >>> 0;
+        } catch (_) { return 0; }
     }
 
     wireImageErrorHandlers(card) {
