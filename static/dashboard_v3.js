@@ -6087,15 +6087,31 @@ class AudioDashboard {
         return `/${trimmed}`;
     }
 
-    // Find an AI2 image URL in variants using filename prefix convention (AI2_*)
+    // Find an AI2 image URL using preferred metadata (image_mode="ai2")
+    // with fallbacks to template/prompt_source and filename prefix (AI2_)
     getAi2UrlForItem(item) {
         try {
+            // 1) Direct field (preferred if API provides it)
+            const direct = item?.summary_image_ai2_url || item?.analysis?.summary_image_ai2_url;
+            if (typeof direct === 'string' && direct.trim()) return this.normalizeAssetUrl(direct);
+
+            // 2) Variant metadata
             const variants = (item && item.analysis && Array.isArray(item.analysis.summary_image_variants)) ? item.analysis.summary_image_variants : [];
             for (let i = variants.length - 1; i >= 0; i--) {
-                const u = variants[i]?.url || '';
-                if (typeof u === 'string' && /(?:^|\/)AI2_/i.test(u)) {
-                    return this.normalizeAssetUrl(u);
+                const v = variants[i] || {};
+                const u = v.url || '';
+                const mode = (v.image_mode || '').toLowerCase();
+                const templ = (v.template || '').toLowerCase();
+                const psrc = (v.prompt_source || '').toLowerCase();
+                if ((mode === 'ai2') || templ === 'ai2_freestyle' || psrc.startsWith('ai2')) {
+                    if (typeof u === 'string' && u.trim()) return this.normalizeAssetUrl(u);
                 }
+            }
+
+            // 3) Filename prefix fallback
+            for (let i = variants.length - 1; i >= 0; i--) {
+                const u = variants[i]?.url || '';
+                if (typeof u === 'string' && /(?:^|\/)AI2_/i.test(u)) return this.normalizeAssetUrl(u);
             }
         } catch (_) {}
         return '';
