@@ -4136,6 +4136,7 @@ class AudioDashboard {
         const title = this.escapeHtml(item.title);
         const hasThumb = Boolean(item.thumbnail_url);
         const summaryImageUrl = item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
+        const ai2Url = this.getAi2UrlForItem(item) || '';
         const hasSummaryArt = Boolean(summaryImageUrl);
         let mediaImgs = '';
         let toggleBtn = '';
@@ -4210,6 +4211,7 @@ class AudioDashboard {
         const title = this.escapeHtml(item.title);
         const hasThumb = Boolean(item.thumbnail_url);
         const summaryImageUrl = item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
+        const ai2Url = this.getAi2UrlForItem(item) || '';
         const hasSummaryArt = Boolean(summaryImageUrl);
         let mediaImgs = '';
         let toggleBtn = '';
