@@ -400,9 +400,9 @@ class AudioDashboard {
         if (this.imgModeAiSettingBtn) this.imgModeAiSettingBtn.addEventListener('click', () => this.setImageMode('ai'));
         if (this.imgModeRotateSettingBtn) this.imgModeRotateSettingBtn.addEventListener('click', () => this.setImageMode('rotate'));
         // Admin token controls
-        if (this.adminTokenSetBtn) this.adminTokenSetBtn.addEventListener('click', () => {
+        if (this.adminTokenSetBtn) this.adminTokenSetBtn.addEventListener('click', async () => {
             this.closeSettings();
-            const token = this.getReprocessToken(true);
+            const token = await this.getReprocessToken(true);
             if (token) {
                 this.showToast('Admin token saved locally', 'success');
             } else {
@@ -3571,7 +3571,7 @@ class AudioDashboard {
             return;
         }
         const regenerateAudio = summaryTypes.some((type) => type.startsWith('audio'));
-        const token = this.getReprocessToken();
+        const token = await this.getReprocessToken();
         if (!token) {
             this.showToast('Reprocess token required', 'warn');
             if (this.confirmReprocessBtn) {
@@ -6797,7 +6797,7 @@ class AudioDashboard {
         }
     }
 
-    getReprocessToken(forcePrompt = false) {
+    async getReprocessToken(forcePrompt = false) {
         if (!forcePrompt && this.reprocessToken) {
             return this.reprocessToken;
         }
@@ -6822,7 +6822,7 @@ class AudioDashboard {
             return this.reprocessToken;
         }
 
-        const entered = typeof window !== 'undefined' ? window.prompt('Enter reprocess token') : null;
+        const entered = await this.promptForReprocessToken();
         if (entered) {
             this.reprocessToken = entered.trim();
             this.reprocessTokenSource = 'prompt';
@@ -6833,6 +6833,54 @@ class AudioDashboard {
 
         this.updateReprocessFootnote();
         return null;
+    }
+
+    promptForReprocessToken() {
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+            overlay.style.zIndex = '1000';
+            overlay.setAttribute('role', 'dialog');
+            overlay.setAttribute('aria-modal', 'true');
+
+            const panel = document.createElement('div');
+            panel.className = 'w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl';
+            const hint = `Paste your admin token (DEBUG_TOKEN). Find it in Render → Environment → DEBUG_TOKEN. This is saved locally in this browser.`;
+            const detected = (typeof window !== 'undefined' && window.REPROCESS_TOKEN) ? '<span class="text-xs text-emerald-600 dark:text-emerald-400">A server-provided token is available.</span>' : '';
+            panel.innerHTML = `
+              <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Set admin token</h3>
+                <button type="button" data-close class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close">✕</button>
+              </div>
+              <div class="p-4 space-y-3">
+                <p class="text-sm text-slate-600 dark:text-slate-300">${hint}</p>
+                ${detected}
+                <label class="block text-sm text-slate-600 dark:text-slate-300 mb-1" for="adminTokenInput">Admin token</label>
+                <input id="adminTokenInput" type="text" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-audio-500" placeholder="Paste DEBUG_TOKEN here" />
+                <p class="text-xs text-slate-500 dark:text-slate-400">Tip: You can change or clear this later in Settings → Admin.</p>
+              </div>
+              <div class="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-end gap-2">
+                <button type="button" data-cancel class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200">Cancel</button>
+                <button type="button" data-save class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Save</button>
+              </div>`;
+            overlay.appendChild(panel);
+            document.body.appendChild(overlay);
+
+            const input = panel.querySelector('#adminTokenInput');
+            const save = panel.querySelector('[data-save]');
+            const cancel = panel.querySelector('[data-cancel]');
+            const close = panel.querySelector('[data-close]');
+            setTimeout(() => input && input.focus(), 10);
+
+            const cleanup = () => { try { document.body.removeChild(overlay); } catch(_) {} };
+            const finish = (val) => { cleanup(); resolve(val); };
+
+            save.addEventListener('click', () => finish(input.value.trim()));
+            cancel.addEventListener('click', () => finish(null));
+            close.addEventListener('click', () => finish(null));
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) finish(null); });
+            panel.addEventListener('keydown', (e) => { if (e.key === 'Escape') finish(null); if (e.key === 'Enter') finish(input.value.trim()); });
+        });
     }
 
     resetStoredReprocessToken() {
@@ -6872,7 +6920,7 @@ class AudioDashboard {
             } catch(_) {}
             const promptText = await this.promptForImagePrompt(defaultPrompt, reportId);
             if (!promptText && promptText !== '') return; // canceled
-            const token = this.getReprocessToken();
+            const token = await this.getReprocessToken();
             if (!token) { this.showToast('Token required', 'warn'); return; }
             const res = await fetch('/api/set-image-prompt', {
                 method: 'POST',
@@ -7003,7 +7051,7 @@ class AudioDashboard {
                         return;
                     }
                     if (selectBtn) {
-                        const token = this.getReprocessToken();
+                        const token = await this.getReprocessToken();
                         if (!token) { this.showToast('Token required', 'warn'); return; }
                         try {
                             const res = await fetch('/api/select-image-variant', {
