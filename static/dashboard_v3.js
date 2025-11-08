@@ -3764,7 +3764,6 @@ class AudioDashboard {
         const languageChip = this.renderLanguageChip(item.analysis?.language);
         const summaryTypeChip = this.renderSummaryTypeChip(item.summary_type);
         const nowPlayingPill = isPlaying ? '<div class="summary-card__badge"><span class="summary-pill summary-pill--playing">Now playing</span></div>' : '';
-        const pendingChip = this.renderPendingImageOverrideChip(normalizedItem);
         const identityMetaParts = [sourceBadge, languageChip, summaryTypeChip, pendingChip, nowPlayingPill].filter(Boolean);
         const identityMetaClassic = identityMetaParts.length ? `<div class="flex flex-wrap gap-1">${identityMetaParts.join('')}</div>` : '';
         const identityMetaMinimal = (() => {
@@ -7063,17 +7062,24 @@ class AudioDashboard {
             const normalized = this.normalizeAssetUrl(url);
             const card = document.querySelector(`[data-report-id="${CSS.escape(reportId)}"]`);
             if (!card) return;
-            const img = card.querySelector('[data-role="thumb-summary"]');
-            if (img) {
-                img.src = normalized;
-                img.classList.remove('hidden');
+            const summaryImg = card.querySelector('[data-role="thumb-summary"]');
+            const defaultImg = card.querySelector('[data-role="thumb-default"]');
+            if (summaryImg) {
+                summaryImg.src = normalized;
+                summaryImg.classList.remove('hidden');
+            }
+            if (defaultImg) {
+                defaultImg.classList.add('hidden');
+            }
+            const toggleBtn = card.querySelector('[data-action="toggle-image"]');
+            if (toggleBtn) {
+                toggleBtn.setAttribute('aria-pressed', 'true');
             }
             // Also update any inline reader image if open
             const inline = document.querySelector(`[data-expand-region] [data-role="thumb-summary"]`);
-            if (inline) {
-                inline.src = normalized;
-                inline.classList.remove('hidden');
-            }
+            if (inline) { inline.src = normalized; inline.classList.remove('hidden'); }
+            const inlineDefault = document.querySelector(`[data-expand-region] [data-role="thumb-default"]`);
+            if (inlineDefault) { inlineDefault.classList.add('hidden'); }
         } catch (_) {
             // no-op
         }
