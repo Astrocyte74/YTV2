@@ -6091,7 +6091,7 @@ class AudioDashboard {
             const variants = (item && item.analysis && Array.isArray(item.analysis.summary_image_variants)) ? item.analysis.summary_image_variants : [];
             for (let i = variants.length - 1; i >= 0; i--) {
                 const u = variants[i]?.url || '';
-                if (typeof u === 'string' && /(\\/|^)AI2_/i.test(u)) {
+                if (typeof u === 'string' && /(?:^|\/)AI2_/i.test(u)) {
                     return this.normalizeAssetUrl(u);
                 }
             }
