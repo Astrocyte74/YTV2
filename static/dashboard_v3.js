@@ -6160,6 +6160,19 @@ class AudioDashboard {
         localStorage.setItem('ytv2.imageMode', mode);
         this.updateImageModeUI();
         this.applyImageModeToAllCards();
+        // Temporary debug: show which URL we will use for the first visible card
+        try {
+            if (mode === 'ai2') {
+                const first = this.contentGrid && this.contentGrid.querySelector('[data-card]');
+                const rid = first ? first.getAttribute('data-report-id') : null;
+                if (rid && Array.isArray(this.currentItems)) {
+                    const item = this.currentItems.find(x => x.file_stem === rid);
+                    const ai2 = item ? this.getAi2UrlForItem(item) : '';
+                    if (ai2) this.showToast('AI2 detected: ' + ai2, 'info');
+                    else this.showToast('AI2 not found for first card', 'warn');
+                }
+            }
+        } catch (_) {}
     }
 
     applyImageModeToAllCards() {
