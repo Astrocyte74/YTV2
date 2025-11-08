@@ -6961,9 +6961,14 @@ class AudioDashboard {
                     const item = this.currentItems.find(x => x.file_stem === reportId);
                     const variants = item && item.analysis && Array.isArray(item.analysis.summary_image_variants)
                         ? item.analysis.summary_image_variants : [];
+                    const selectedUrlRaw = (item && (item.summary_image_url || (item.analysis && item.analysis.summary_image_selected_url))) || '';
+                    const selectedUrl = this.normalizeAssetUrl(selectedUrlRaw || '');
                     if (variants.length) {
-                        const rows = variants.map((v, i) => {
-                            const url = this.normalizeAssetUrl(v.url || '');
+                        let rows = variants.map((v, i) => {
+                            const vUrlRaw = v.url || '';
+                            const url = this.normalizeAssetUrl(vUrlRaw);
+                            const isSelected = selectedUrl && url && (url === selectedUrl);
+                            const previewUrl = this.normalizeAssetUrl(url || selectedUrl || item.thumbnail_url || '');
                             const preview = this.truncateText((v.prompt || '').replace(/\s+/g, ' ').trim(), 120);
                             const when = this.formatRelativeTime(v.created_at);
                             const model = v.model || '';
@@ -6971,20 +6976,29 @@ class AudioDashboard {
                             return `
                               <div class="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 border border-transparent">
                                 <div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 dark:bg-slate-700 flex-shrink-0">
-                                  <a href="${url}" target="_blank" rel="noopener">
-                                    <img src="${url}" alt="variant" class="w-full h-full object-cover" loading="lazy">
+                                  <a href="${previewUrl}" target="_blank" rel="noopener">
+                                    <img src="${previewUrl}" alt="image variant" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'">
                                   </a>
                                 </div>
                                 <div class="flex-1 min-w-0">
-                                  <div class="text-xs text-slate-500 dark:text-slate-400">${when || ''}${model ? ` • ${this.escapeHtml(model)}` : ''}${seed}</div>
+                                  <div class="text-xs text-slate-500 dark:text-slate-400">${when || ''}${model ? ` • ${this.escapeHtml(model)}` : ''}${seed} ${isSelected ? ' • <span class=\'text-emerald-600 dark:text-emerald-400 font-medium\'>Current</span>' : ''}</div>
                                   <div class="text-sm text-slate-700 dark:text-slate-200 truncate">${this.escapeHtml(preview || '')}</div>
                                   <div class="mt-2 flex items-center gap-2">
                                     <button type="button" data-use-prompt data-index="${i}" class="px-2 py-1 text-xs rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">Use this prompt</button>
-                                    <button type="button" data-select-image data-index="${i}" class="px-2 py-1 text-xs rounded-md bg-audio-600 text-white hover:bg-audio-700">Select this image</button>
+                                    ${isSelected ? '' : `<button type=\"button\" data-select-image data-index=\"${i}\" class=\"px-2 py-1 text-xs rounded-md bg-audio-600 text-white hover:bg-audio-700\">Select this image</button>`}
                                   </div>
                                 </div>
                               </div>`;
                         }).join('');
+                        const olderCount = (() => {
+                            try { return variants.filter(v => this.normalizeAssetUrl(v.url || '') !== selectedUrl).length; } catch(_) { return 0; }
+                        })();
+                        if (!olderCount) {
+                            rows += `
+                              <div class="px-2 py-3 text-xs text-slate-500 dark:text-slate-400">
+                                No previous AI images yet. Once NAS regenerates, your history will appear here.
+                              </div>`;
+                        }
                         variantsMarkup = `
                           <div class="px-4 pb-3">
                             <div class="text-xs uppercase tracking-wide text-slate-400 mb-2">Previous images</div>
