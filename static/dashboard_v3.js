@@ -4081,6 +4081,7 @@ class AudioDashboard {
             </button>
             <div class="summary-card__menu hidden" data-kebab-menu role="menu">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="image-new">Create image…</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
             </div>`;
