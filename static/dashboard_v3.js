@@ -449,8 +449,13 @@ class AudioDashboard {
             if (!el) return;
             e.preventDefault();
             e.stopPropagation();
+            let id = null;
             const card = el.closest('[data-report-id]');
-            const id = card?.dataset?.reportId;
+            if (card && card.dataset) id = card.dataset.reportId;
+            if (!id) {
+                const menu = el.closest('[data-kebab-menu][data-report-id]');
+                if (menu && menu.getAttribute) id = menu.getAttribute('data-report-id');
+            }
             if (id) this.handleCreateImagePrompt(id);
         }, true);
         const imageNewHandler = (e) => {
@@ -458,8 +463,13 @@ class AudioDashboard {
             if (!el) return;
             e.preventDefault();
             e.stopPropagation();
+            let id = null;
             const card = el.closest('[data-report-id]');
-            const id = card && card.dataset ? card.dataset.reportId : null;
+            if (card && card.dataset) id = card.dataset.reportId;
+            if (!id) {
+                const menu = el.closest('[data-kebab-menu][data-report-id]');
+                if (menu && menu.getAttribute) id = menu.getAttribute('data-report-id');
+            }
             if (id) this.handleCreateImagePrompt(id);
         };
         document.addEventListener('pointerup', imageNewHandler, true);
@@ -3947,7 +3957,7 @@ class AudioDashboard {
                     <circle cx="19" cy="12" r="1.5"></circle>
                 </svg>
             </button>
-            <div class="summary-card__menu hidden" data-kebab-menu role="menu">
+            <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="image-new">Create image…</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
@@ -4101,7 +4111,7 @@ class AudioDashboard {
                     <circle cx="19" cy="12" r="1.5"></circle>
                 </svg>
             </button>
-            <div class="summary-card__menu hidden" data-kebab-menu role="menu">
+            <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="image-new">Create image…</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
@@ -4334,7 +4344,7 @@ class AudioDashboard {
                             <circle cx="19" cy="12" r="1.5"></circle>
                         </svg>
                     </button>
-            <div class="summary-card__menu hidden" data-kebab-menu role="menu">
+            <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="image-new">Create image…</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
