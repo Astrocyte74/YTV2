@@ -6838,7 +6838,8 @@ class AudioDashboard {
         return new Promise((resolve) => {
             // Build lightweight modal
             const overlay = document.createElement('div');
-            overlay.className = 'fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4';
+            overlay.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+            overlay.style.zIndex = '1000';
             overlay.setAttribute('role', 'dialog');
             overlay.setAttribute('aria-modal', 'true');
 
