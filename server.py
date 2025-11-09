@@ -1306,6 +1306,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         elif self.path == '/api/content' or self.path.startswith('/api/content/'):
             # Legacy SQLite content endpoints removed
             self.send_error(410, "Endpoint removed (use /ingest/* with PostgreSQL)")
+        elif self.path == '/api/delete-image-variant':
+            self.handle_delete_image_variant()
+        elif self.path == '/api/delete-all-ai-images':
+            self.handle_delete_all_ai_images()
         elif self.path.startswith('/api/delete'):
             self.handle_delete_request()
         elif self.path == '/api/set-image-prompt':
@@ -1314,10 +1318,6 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_select_image_variant()
         elif self.path == '/api/set-image-display-mode':
             self.handle_set_image_display_mode()
-        elif self.path == '/api/delete-image-variant':
-            self.handle_delete_image_variant()
-        elif self.path == '/api/delete-all-ai-images':
-            self.handle_delete_all_ai_images()
         # New ingest endpoints for NAS sync (T-Y020C)
         elif self.path == '/ingest/report':
             self.handle_ingest_report()
