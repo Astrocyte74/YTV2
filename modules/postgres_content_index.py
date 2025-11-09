@@ -381,7 +381,11 @@ class PostgreSQLContentIndex:
                 'named_entities': named_entities,
                 # Image prompt + variants pass-through for UI
                 'summary_image_prompt': analysis_json.get('summary_image_prompt'),
+                'summary_image_prompt_original': analysis_json.get('summary_image_prompt_original'),
                 'summary_image_prompt_last_used': analysis_json.get('summary_image_prompt_last_used'),
+                'summary_image_ai2_prompt': analysis_json.get('summary_image_ai2_prompt'),
+                'summary_image_ai2_prompt_original': analysis_json.get('summary_image_ai2_prompt_original'),
+                'summary_image_ai2_prompt_last_used': analysis_json.get('summary_image_ai2_prompt_last_used'),
                 'summary_image_selected_url': analysis_json.get('summary_image_selected_url'),
                 'summary_image_variants': analysis_json.get('summary_image_variants'),
                 # AI2 support: expose explicit AI2 URL when present
@@ -2042,6 +2046,64 @@ class PostgreSQLContentIndex:
             except Exception:
                 pass
             return out
+        finally:
+            if conn:
+                conn.close()
+
+    def ensure_original_prompt(self, video_id: str, mode: str, fallback_prompt: str = '') -> bool:
+        """Ensure an original prompt field exists. Does nothing if already set.
+
+        mode: 'ai1' or 'ai2'
+        fallback_prompt: used when no prior prompt exists.
+        Returns True if an update was applied.
+        """
+        mode = (mode or '').strip().lower()
+        if mode not in ('ai1', 'ai2'):
+            mode = 'ai1'
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT analysis_json FROM content WHERE video_id=%s", (video_id,))
+            row = cur.fetchone()
+            if not row:
+                return False
+            analysis = row.get('analysis_json') or {}
+            if isinstance(analysis, str):
+                try:
+                    analysis = json.loads(analysis)
+                except Exception:
+                    analysis = {}
+
+            if mode == 'ai2':
+                orig_key = 'summary_image_ai2_prompt_original'
+                curr_key = 'summary_image_ai2_prompt'
+            else:
+                orig_key = 'summary_image_prompt_original'
+                curr_key = 'summary_image_prompt'
+
+            existing_orig = str(analysis.get(orig_key) or '')
+            if existing_orig:
+                return False
+            # Prefer current prompt if present; otherwise fallback
+            val = str(analysis.get(curr_key) or '').strip() or (fallback_prompt or '').strip()
+            if not val:
+                return False
+            analysis[orig_key] = val
+            cur.execute(
+                "UPDATE content SET analysis_json=%s, updated_at=NOW() WHERE video_id=%s",
+                (psycopg2.extras.Json(analysis), video_id)
+            )
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error("ensure_original_prompt error for %s: %s", video_id, e)
+            try:
+                if conn:
+                    conn.rollback()
+            except Exception:
+                pass
+            return False
         finally:
             if conn:
                 conn.close()

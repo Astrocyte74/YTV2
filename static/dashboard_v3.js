@@ -7474,6 +7474,7 @@ class AudioDashboard {
                 <div data-pane="ai1">
                   <label class="block text-sm mb-1">AI1 prompt</label>
                   <textarea data-input-ai1 rows="4" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2">${this.escapeHtml(a1Default)}</textarea>
+                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai1-line style="${(a.summary_image_prompt_original||'').trim() ? '' : 'display:none'}">Default: <span data-default-ai1>${this.escapeHtml((a.summary_image_prompt_original||'').trim() || '')}</span></div>
                   <div class="mt-2 flex items-center gap-2"><button data-save-ai1 class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Regenerate AI1</button><button data-use-default-ai1 class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Use default prompt</button></div>
                   <div class="mt-3 text-xs uppercase tracking-wide text-slate-400">AI1 variants</div>
                   <div class="max-h-56 overflow-auto pr-1 space-y-2" data-list-ai1>${a1Rows}</div>
@@ -7481,6 +7482,7 @@ class AudioDashboard {
                 <div data-pane="ai2" class="hidden">
                   <label class="block text-sm mb-1">AI2 prompt</label>
                   <textarea data-input-ai2 rows="4" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2">${this.escapeHtml(a2Default)}</textarea>
+                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai2-line style="${(a.summary_image_ai2_prompt_original||'').trim() ? '' : 'display:none'}">Default: <span data-default-ai2>${this.escapeHtml((a.summary_image_ai2_prompt_original||'').trim() || '')}</span></div>
                   <div class="mt-2 flex items-center gap-2"><button data-save-ai2 class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Regenerate AI2</button><button data-use-default-ai2 class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Use default prompt</button></div>
                   <div class="mt-3 text-xs uppercase tracking-wide text-slate-400">AI2 variants</div>
                   <div class="max-h-56 overflow-auto pr-1 space-y-2" data-list-ai2>${a2Rows}</div>
@@ -7502,6 +7504,8 @@ class AudioDashboard {
             const saveA2 = panel.querySelector('[data-save-ai2]');
             const useDefaultA1 = panel.querySelector('[data-use-default-ai1]');
             const useDefaultA2 = panel.querySelector('[data-use-default-ai2]');
+            const defaultA1Line = panel.querySelector('[data-default-ai1-line]');
+            const defaultA2Line = panel.querySelector('[data-default-ai2-line]');
             const listA1 = panel.querySelector('[data-list-ai1]');
             const listA2 = panel.querySelector('[data-list-ai2]');
             const closeBtns = [panel.querySelector('[data-close]'), panel.querySelector('[data-close2]')].filter(Boolean);
@@ -7530,8 +7534,8 @@ class AudioDashboard {
             };
             saveA1.addEventListener('click', ()=> onSavePrompt('ai1', (inputA1.value||'').trim()));
             saveA2.addEventListener('click', ()=> onSavePrompt('ai2', (inputA2.value||'').trim()));
-            if (useDefaultA1) useDefaultA1.addEventListener('click', ()=> { inputA1.value = (a.summary_image_prompt || a1Default || ''); });
-            if (useDefaultA2) useDefaultA2.addEventListener('click', ()=> { inputA2.value = (a.summary_image_ai2_prompt || a2Default || ''); });
+            if (useDefaultA1) useDefaultA1.addEventListener('click', ()=> { inputA1.value = (a.summary_image_prompt_original || a.summary_image_prompt || a1Default || ''); });
+            if (useDefaultA2) useDefaultA2.addEventListener('click', ()=> { inputA2.value = (a.summary_image_ai2_prompt_original || a.summary_image_ai2_prompt || a2Default || ''); });
 
             // Simple in-modal confirmation UI (instead of window.confirm)
             const confirmModal = (message, confirmLabel = 'Delete') => new Promise((resolve) => {
