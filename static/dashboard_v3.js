@@ -7366,7 +7366,7 @@ class AudioDashboard {
                 const tmpl = (v.template || '').toLowerCase();
                 const ps = (v.prompt_source || '').toLowerCase();
                 const url = v.url || '';
-                return m === 'ai2' || tmpl === 'ai2_freestyle' || (ps && ps.startsWith('ai2')) || /(?:^|\\/)AI2_/i.test(url);
+                return m === 'ai2' || tmpl === 'ai2_freestyle' || (ps && ps.startsWith('ai2')) || /(?:^|\/)AI2_/i.test(url);
             };
             let a1Default = a.summary_image_prompt || '';
             if (!a1Default) {
