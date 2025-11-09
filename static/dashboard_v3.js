@@ -7417,10 +7417,10 @@ class AudioDashboard {
                 const when = this.formatRelativeTime(v.created_at);
                 const preview = (v.prompt || '').slice(0, 120);
                 return `
-                  <div class="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 relative">
-                    <div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 dark:bg-slate-700 flex-shrink-0 relative">
+                  <div class="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 relative" data-variant-row data-url="${url}">
+                    <div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 dark:bg-slate-700 flex-shrink-0 relative" data-thumb>
                       <img src="${url}" alt="variant" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'" />
-                      ${isSel ? '<span class=\'absolute top-1 left-1 px-1.5 py-0.5 text-[10px] rounded bg-emerald-600 text-white\'>Selected</span>' : ''}
+                      ${isSel ? '<span class=\'y-badge-selected absolute top-1 left-1 px-1.5 py-0.5 text-[10px] rounded bg-emerald-600 text-white\'>Selected</span>' : ''}
                     </div>
                     <div class="flex-1 min-w-0">
                       <div class="text-xs text-slate-500 dark:text-slate-400">${when || ''}</div>
@@ -7510,6 +7510,29 @@ class AudioDashboard {
             saveA1.addEventListener('click', ()=> onSavePrompt('ai1', (inputA1.value||'').trim()));
             saveA2.addEventListener('click', ()=> onSavePrompt('ai2', (inputA2.value||'').trim()));
 
+            const refreshSelectionUI = (listEl, selectedUrl) => {
+                const selNorm = this.normalizeAssetUrl(selectedUrl || '');
+                listEl.querySelectorAll('[data-variant-row]').forEach(row => {
+                    const rowUrl = this.normalizeAssetUrl(row.getAttribute('data-url') || '');
+                    const thumb = row.querySelector('[data-thumb]');
+                    let badge = row.querySelector('.y-badge-selected');
+                    const selectBtn = row.querySelector('[data-select-image]');
+                    const isSel = selNorm && rowUrl && rowUrl === selNorm;
+                    if (isSel) {
+                        if (!badge && thumb) {
+                            badge = document.createElement('span');
+                            badge.className = 'y-badge-selected absolute top-1 left-1 px-1.5 py-0.5 text-[10px] rounded bg-emerald-600 text-white';
+                            badge.textContent = 'Selected';
+                            thumb.appendChild(badge);
+                        }
+                        if (selectBtn) selectBtn.style.display = 'none';
+                    } else {
+                        if (badge) badge.remove();
+                        if (selectBtn) selectBtn.style.display = '';
+                    }
+                });
+            };
+
             const onSelectVariant = async (mode, url) => {
                 const token = await this.getReprocessToken();
                 if (!token) { this.showToast('Token required', 'warn'); return; }
@@ -7543,6 +7566,12 @@ class AudioDashboard {
                     }
                 } catch(_) {}
                 this.updateCardSummaryImage(reportId, normalized);
+                // Update selection badges/buttons in the active list
+                if (mode === 'ai2') {
+                    refreshSelectionUI(listA2, normalized);
+                } else {
+                    refreshSelectionUI(listA1, normalized);
+                }
             };
             const listClick = (listEl, mode, variantsArr) => {
                 listEl.addEventListener('click', (e) => {
