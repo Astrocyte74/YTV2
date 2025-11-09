@@ -7428,6 +7428,7 @@ class AudioDashboard {
                       <div class="mt-2 flex items-center gap-2">
                         <button type="button" data-use-prompt data-mode="${mode}" data-index="${idx}" class="px-2 py-1 text-xs rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">Use this prompt</button>
                         <button type="button" data-select-image data-mode="${mode}" data-index="${idx}" class="px-2 py-1 text-xs rounded-md bg-audio-600 text-white hover:bg-audio-700" style="${isSel ? 'display:none' : ''}">Select this image</button>
+                        <button type="button" data-delete-image data-mode="${mode}" data-index="${idx}" class="px-2 py-1 text-xs rounded-md border border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">Delete</button>
                       </div>
                     </div>
                   </div>`;
@@ -7446,7 +7447,10 @@ class AudioDashboard {
             panel.innerHTML = `
               <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                 <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Manage images</h3>
-                <button type="button" data-close class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close">✕</button>
+                <div class="flex items-center gap-2">
+                  <button type="button" data-delete-all class="px-2 py-1 text-xs rounded-md border border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">Delete all AI images…</button>
+                  <button type="button" data-close class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close">✕</button>
+                </div>
               </div>
               <div class="p-4">
                 <div class="flex items-center gap-2 mb-3">
@@ -7485,6 +7489,7 @@ class AudioDashboard {
             const listA1 = panel.querySelector('[data-list-ai1]');
             const listA2 = panel.querySelector('[data-list-ai2]');
             const closeBtns = [panel.querySelector('[data-close]'), panel.querySelector('[data-close2]')].filter(Boolean);
+            const deleteAllBtn = panel.querySelector('[data-delete-all]');
 
             const setTab = (which) => {
                 const a1on = which === 'ai1';
@@ -7509,6 +7514,72 @@ class AudioDashboard {
             };
             saveA1.addEventListener('click', ()=> onSavePrompt('ai1', (inputA1.value||'').trim()));
             saveA2.addEventListener('click', ()=> onSavePrompt('ai2', (inputA2.value||'').trim()));
+
+            const onDeleteVariant = async (mode, url) => {
+                if (!url) return;
+                if (!confirm('Delete this image? This removes the variant and unlinks the file on the server.')) return;
+                const token = await this.getReprocessToken();
+                if (!token) { this.showToast('Token required', 'warn'); return; }
+                const res = await fetch('/api/delete-image-variant', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ video_id: reportId, url })
+                });
+                if (!res.ok) { this.showToast('Failed to delete image', 'error'); return; }
+                const j = await res.json().catch(()=>({}));
+                // Update in-memory pointers if this was the selected one
+                try {
+                    const itemRef = (this.currentItems || []).find(x => x.file_stem === reportId);
+                    if (itemRef) {
+                        const norm = this.normalizeAssetUrl(url);
+                        if (mode === 'ai2') {
+                            if (itemRef.analysis && itemRef.analysis.summary_image_ai2_url && this.normalizeAssetUrl(itemRef.analysis.summary_image_ai2_url) === norm) {
+                                itemRef.analysis.summary_image_ai2_url = '';
+                            }
+                        } else {
+                            if (itemRef.summary_image_url && this.normalizeAssetUrl(itemRef.summary_image_url) === norm) {
+                                itemRef.summary_image_url = '';
+                            }
+                            if (itemRef.analysis && itemRef.analysis.summary_image_selected_url && this.normalizeAssetUrl(itemRef.analysis.summary_image_selected_url) === norm) {
+                                itemRef.analysis.summary_image_selected_url = '';
+                            }
+                        }
+                    }
+                } catch(_) {}
+                // Remove the row from the list UI
+                const listEl = mode === 'ai2' ? listA2 : listA1;
+                const rowEl = listEl.querySelector(`[data-variant-row][data-url="${CSS.escape(this.normalizeAssetUrl(url))}"]`);
+                if (rowEl) rowEl.remove();
+                // Ensure cards reflect current mode and fallbacks
+                try { this.forceSwapAllCardsForCurrentMode(); } catch(_) {}
+                this.showToast('Image deleted', 'success');
+            };
+
+            if (deleteAllBtn) {
+                deleteAllBtn.addEventListener('click', async () => {
+                    if (!confirm('Delete ALL AI images for this card? This removes AI1 and AI2 variants and unlinks files.')) return;
+                    const token = await this.getReprocessToken();
+                    if (!token) { this.showToast('Token required', 'warn'); return; }
+                    const res = await fetch('/api/delete-all-ai-images', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ video_id: reportId, modes: ['ai1','ai2'] })
+                    });
+                    if (!res.ok) { this.showToast('Failed to delete AI images', 'error'); return; }
+                    // Clear lists
+                    listA1.innerHTML = '<div class="px-2 py-3 text-xs text-slate-500">No AI1 variants yet.</div>';
+                    listA2.innerHTML = '<div class="px-2 py-3 text-xs text-slate-500">No AI2 variants yet.</div>';
+                    try {
+                        const itemRef = (this.currentItems || []).find(x => x.file_stem === reportId);
+                        if (itemRef) {
+                            if (!itemRef.analysis) itemRef.analysis = {};
+                            itemRef.summary_image_url = '';
+                            itemRef.analysis.summary_image_selected_url = '';
+                            itemRef.analysis.summary_image_ai2_url = '';
+                        }
+                    } catch(_) {}
+                    try { this.forceSwapAllCardsForCurrentMode(); } catch(_) {}
+                    this.showToast('All AI images deleted', 'success');
+                });
+            }
 
             const refreshSelectionUI = (listEl, selectedUrl) => {
                 const selNorm = this.normalizeAssetUrl(selectedUrl || '');
@@ -7577,8 +7648,9 @@ class AudioDashboard {
                 listEl.addEventListener('click', (e) => {
                     const useBtn = e.target.closest('[data-use-prompt]');
                     const selBtn = e.target.closest('[data-select-image]');
-                    if (!useBtn && !selBtn) return;
-                    const btn = useBtn || selBtn;
+                    const delBtn = e.target.closest('[data-delete-image]');
+                    if (!useBtn && !selBtn && !delBtn) return;
+                    const btn = useBtn || selBtn || delBtn;
                     let idx = Number(btn.dataset.index);
                     let v = variantsArr[idx];
                     if (!v || Number.isNaN(idx)) {
@@ -7595,7 +7667,8 @@ class AudioDashboard {
                         (mode === 'ai1' ? (inputA1.value = prompt) : (inputA2.value = prompt));
                         return;
                     }
-                    if (selBtn) onSelectVariant(mode, v.url);
+                    if (selBtn) { onSelectVariant(mode, v.url); return; }
+                    if (delBtn) { onDeleteVariant(mode, v.url); return; }
                 });
             };
             listClick(listA1, 'ai1', a1Variants);
