@@ -7359,9 +7359,28 @@ class AudioDashboard {
         try {
             const item = (this.currentItems || []).find(x => x.file_stem === reportId) || {};
             const a = item.analysis || {};
-            const a1Default = a.summary_image_prompt_last_used || a.summary_image_prompt || '';
-            const a2Default = a.summary_image_ai2_prompt_last_used || a.summary_image_ai2_prompt || '';
-            await this.openManageImagesModal(reportId, item, a1Default, a2Default);
+            // Derive better defaults per mode
+            const allVars = Array.isArray(a.summary_image_variants) ? a.summary_image_variants : [];
+            const isAi2 = (v) => {
+                const m = (v.image_mode || '').toLowerCase();
+                const tmpl = (v.template || '').toLowerCase();
+                const ps = (v.prompt_source || '').toLowerCase();
+                const url = v.url || '';
+                return m === 'ai2' || tmpl === 'ai2_freestyle' || (ps && ps.startsWith('ai2')) || /(?:^|\\/)AI2_/i.test(url);
+            };
+            let a1Default = a.summary_image_prompt || '';
+            if (!a1Default) {
+                const lastA1 = [...allVars].reverse().find(v => !isAi2(v) && v.prompt);
+                if (lastA1) a1Default = lastA1.prompt;
+                else if (a.summary_image_prompt_last_used) a1Default = a.summary_image_prompt_last_used;
+            }
+            let a2Default = a.summary_image_ai2_prompt || '';
+            if (!a2Default) {
+                const lastA2 = [...allVars].reverse().find(v => isAi2(v) && v.prompt);
+                if (lastA2) a2Default = lastA2.prompt;
+                else if (a.summary_image_prompt_last_used && isAi2(allVars[allVars.length-1]||{})) a2Default = a.summary_image_prompt_last_used;
+            }
+            await this.openManageImagesModal(reportId, item, a1Default || '', a2Default || '');
         } catch (e) {
             console.error('handleManageImages error', e);
             this.showToast('Failed to open images manager', 'error');
@@ -7384,8 +7403,11 @@ class AudioDashboard {
                 const isAi2 = m === 'ai2' || tmpl === 'ai2_freestyle' || (ps && ps.startsWith('ai2')) || /(?:^|\/)AI2_/i.test(url);
                 return !isAi2;
             });
+            // Map URLs to prompts from variants for AI2
+            const urlToPrompt = new Map();
+            a1VariantsAll.forEach(v => { if (v.url) urlToPrompt.set(this.normalizeAssetUrl(v.url), v.prompt || ''); });
             const ai2Urls = this.getAi2VariantUrls(item);
-            const a2Variants = ai2Urls.map(u => ({ url: u, image_mode: 'ai2' }));
+            const a2Variants = ai2Urls.map(u => ({ url: u, image_mode: 'ai2', prompt: urlToPrompt.get(this.normalizeAssetUrl(u)) || '' }));
             const a1Selected = item.summary_image_url || item.analysis?.summary_image_selected_url || '';
             const a2Selected = item.summary_image_ai2_url || item.analysis?.summary_image_ai2_url || '';
 
@@ -7395,12 +7417,13 @@ class AudioDashboard {
                 const when = this.formatRelativeTime(v.created_at);
                 const preview = (v.prompt || '').slice(0, 120);
                 return `
-                  <div class="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
-                    <div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 dark:bg-slate-700 flex-shrink-0">
+                  <div class="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 relative">
+                    <div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 dark:bg-slate-700 flex-shrink-0 relative">
                       <img src="${url}" alt="variant" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'" />
+                      ${isSel ? '<span class=\'absolute top-1 left-1 px-1.5 py-0.5 text-[10px] rounded bg-emerald-600 text-white\'>Selected</span>' : ''}
                     </div>
                     <div class="flex-1 min-w-0">
-                      <div class="text-xs text-slate-500 dark:text-slate-400">${when || ''} ${isSel ? ' • <span class=\'text-emerald-600 dark:text-emerald-400\'>Selected</span>' : ''}</div>
+                      <div class="text-xs text-slate-500 dark:text-slate-400">${when || ''}</div>
                       <div class="text-sm text-slate-700 dark:text-slate-200 truncate">${this.escapeHtml(preview)}</div>
                       <div class="mt-2 flex items-center gap-2">
                         <button type="button" data-use-prompt data-mode="${mode}" data-index="${idx}" class="px-2 py-1 text-xs rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">Use this prompt</button>
@@ -7410,7 +7433,14 @@ class AudioDashboard {
                   </div>`;
             };
 
-            const a1Rows = a1Variants.map((v,i)=>htmlRow(v,i,a1Selected,'ai1')).join('') || '<div class="px-2 py-3 text-xs text-slate-500">No AI1 variants yet.</div>';
+            let a1Rows = a1Variants.map((v,i)=>htmlRow(v,i,a1Selected,'ai1')).join('');
+            if (!a1Rows) {
+                if (a1Selected) {
+                    a1Rows = htmlRow({ url: a1Selected, prompt: a1Default || '' }, 0, a1Selected, 'ai1');
+                } else {
+                    a1Rows = '<div class="px-2 py-3 text-xs text-slate-500">No AI1 variants yet.</div>';
+                }
+            }
             const a2Rows = a2Variants.map((v,i)=>htmlRow(v,i,a2Selected,'ai2')).join('') || '<div class="px-2 py-3 text-xs text-slate-500">No AI2 variants yet.</div>';
 
             panel.innerHTML = `
@@ -7438,15 +7468,8 @@ class AudioDashboard {
                   <div class="max-h-56 overflow-auto pr-1 space-y-2" data-list-ai2>${a2Rows}</div>
                 </div>
               </div>
-              <div class="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                <div class="text-sm text-slate-600 dark:text-slate-300">Dashboard default:
-                  <label class="ml-2 mr-2"><input type="radio" name="dispMode" value="og"> OG</label>
-                  <label class="mr-2"><input type="radio" name="dispMode" value="ai1"> AI1</label>
-                  <label class="mr-2"><input type="radio" name="dispMode" value="ai2"> AI2</label>
-                </div>
-                <div class="flex items-center gap-2">
-                  <button type="button" data-close2 class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Close</button>
-                </div>
+              <div class="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-end">
+                <button type="button" data-close2 class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Close</button>
               </div>`;
             overlay.appendChild(panel);
             document.body.appendChild(overlay);
@@ -7461,14 +7484,7 @@ class AudioDashboard {
             const saveA2 = panel.querySelector('[data-save-ai2]');
             const listA1 = panel.querySelector('[data-list-ai1]');
             const listA2 = panel.querySelector('[data-list-ai2]');
-            const radios = panel.querySelectorAll('input[name="dispMode"]');
             const closeBtns = [panel.querySelector('[data-close]'), panel.querySelector('[data-close2]')].filter(Boolean);
-
-            // Preselect display mode if present
-            try {
-                const currentMode = (item.analysis && item.analysis.summary_image_display_mode) || 'og';
-                radios.forEach(r => { r.checked = (r.value === currentMode); });
-            } catch(_) {}
 
             const setTab = (which) => {
                 const a1on = which === 'ai1';
@@ -7503,7 +7519,30 @@ class AudioDashboard {
                 });
                 if (!res.ok) { this.showToast(`Failed to select ${mode} image`, 'error'); return; }
                 this.showToast(`${mode.toUpperCase()} image selected`, 'success');
-                this.updateCardSummaryImage(reportId, url);
+                // Update in-memory and DOM attributes per mode
+                const normalized = this.normalizeAssetUrl(url);
+                try {
+                    const itemRef = (this.currentItems || []).find(x => x.file_stem === reportId);
+                    if (itemRef) {
+                        if (mode === 'ai2') {
+                            if (!itemRef.analysis) itemRef.analysis = {};
+                            itemRef.analysis.summary_image_ai2_url = normalized;
+                        } else {
+                            itemRef.summary_image_url = normalized;
+                            if (!itemRef.analysis) itemRef.analysis = {};
+                            itemRef.analysis.summary_image_selected_url = normalized;
+                        }
+                    }
+                    const card = document.querySelector(`[data-report-id="${CSS.escape(reportId)}"]`);
+                    if (card) {
+                        const img = card.querySelector('[data-role="thumb-summary"]');
+                        if (img) {
+                            if (mode === 'ai2') img.setAttribute('data-ai2-url', normalized);
+                            else img.setAttribute('data-ai1-url', normalized);
+                        }
+                    }
+                } catch(_) {}
+                this.updateCardSummaryImage(reportId, normalized);
             };
             const listClick = (listEl, mode, variantsArr) => {
                 listEl.addEventListener('click', (e) => {
