@@ -4592,7 +4592,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
             # Optional: broadcast a lightweight event (clients may ignore)
             try:
-                payload = {"video_id": video_id, "event": "image_prompt_set", "ts": datetime.utcnow().isoformat() + 'Z'}
+                payload = {"video_id": video_id, "event": "image_prompt_set", "mode": mode, "ts": datetime.utcnow().isoformat() + 'Z'}
                 report_event_stream.broadcast('image-prompt-set', payload)
             except Exception:
                 pass
