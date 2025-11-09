@@ -7427,7 +7427,7 @@ class AudioDashboard {
                       <div class="text-sm text-slate-700 dark:text-slate-200 truncate">${this.escapeHtml(preview)}</div>
                       <div class="mt-2 flex items-center gap-2">
                         <button type="button" data-use-prompt data-mode="${mode}" data-index="${idx}" class="px-2 py-1 text-xs rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">Use this prompt</button>
-                        ${isSel ? '' : `<button type=\"button\" data-select-image data-mode=\"${mode}\" data-index=\"${idx}\" class=\"px-2 py-1 text-xs rounded-md bg-audio-600 text-white hover:bg-audio-700\">Select this image</button>`}
+                        <button type="button" data-select-image data-mode="${mode}" data-index="${idx}" class="px-2 py-1 text-xs rounded-md bg-audio-600 text-white hover:bg-audio-700" style="${isSel ? 'display:none' : ''}">Select this image</button>
                       </div>
                     </div>
                   </div>`;
@@ -7578,8 +7578,17 @@ class AudioDashboard {
                     const useBtn = e.target.closest('[data-use-prompt]');
                     const selBtn = e.target.closest('[data-select-image]');
                     if (!useBtn && !selBtn) return;
-                    const idx = Number((useBtn || selBtn).dataset.index);
-                    const v = variantsArr[idx];
+                    const btn = useBtn || selBtn;
+                    let idx = Number(btn.dataset.index);
+                    let v = variantsArr[idx];
+                    if (!v || Number.isNaN(idx)) {
+                        try {
+                            const row = btn.closest('[data-variant-row]');
+                            const rowUrl = this.normalizeAssetUrl(row?.getAttribute('data-url') || '');
+                            const findIdx = variantsArr.findIndex(x => this.normalizeAssetUrl(x.url || '') === rowUrl);
+                            if (findIdx >= 0) { idx = findIdx; v = variantsArr[findIdx]; }
+                        } catch(_) {}
+                    }
                     if (!v) return;
                     if (useBtn) {
                         const prompt = v.prompt || '';
