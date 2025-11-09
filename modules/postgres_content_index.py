@@ -1852,10 +1852,23 @@ class PostgreSQLContentIndex:
             target_norm = self._normalize_image_url_path(url)
             keep: List[Dict[str, Any]] = []
             removed: List[str] = []
+            deleted_prompt: Optional[str] = None
+            deleted_is_ai2: Optional[bool] = None
             for v in variants:
-                vurl = self._normalize_image_url_path(str(v.get('url') or ''))
+                raw_url = str(v.get('url') or '')
+                vurl = self._normalize_image_url_path(raw_url)
                 if vurl and vurl == target_norm:
-                    removed.append(v.get('url') or vurl)
+                    removed.append(raw_url or vurl)
+                    # Capture prompt for defaulting if needed
+                    try:
+                        p = v.get('prompt')
+                        if isinstance(p, str) and p.strip():
+                            deleted_prompt = p.strip()
+                            deleted_is_ai2 = self._is_ai2_variant(v)
+                        else:
+                            deleted_prompt = deleted_prompt or None
+                    except Exception:
+                        pass
                 else:
                     keep.append(v)
 
@@ -1875,6 +1888,19 @@ class PostgreSQLContentIndex:
             if target_norm and self._normalize_image_url_path(top_ai1) == target_norm:
                 new_top_ai1 = None
                 cleared.append('summary_image_url')
+
+            # If prompt fields are empty, preserve the deleted variant's prompt as default
+            try:
+                if deleted_prompt and deleted_is_ai2 is True:
+                    cur_prompt = str(analysis.get('summary_image_ai2_prompt') or '')
+                    if not cur_prompt:
+                        analysis['summary_image_ai2_prompt'] = deleted_prompt
+                elif deleted_prompt and deleted_is_ai2 is False:
+                    cur_prompt = str(analysis.get('summary_image_prompt') or '')
+                    if not cur_prompt:
+                        analysis['summary_image_prompt'] = deleted_prompt
+            except Exception:
+                pass
 
             # Write back
             analysis['summary_image_variants'] = keep
@@ -1938,11 +1964,29 @@ class PostgreSQLContentIndex:
 
             removed: List[str] = []
             keep: List[Dict[str, Any]] = []
+            last_a1_prompt: Optional[str] = None
+            last_ai2_prompt: Optional[str] = None
+            last_a1_created: Optional[str] = None
+            last_ai2_created: Optional[str] = None
             for v in variants:
                 vurl = v.get('url') or ''
                 is_ai2 = self._is_ai2_variant(v)
                 if (mode_ai2 and is_ai2) or (mode_ai1 and not is_ai2):
                     removed.append(vurl)
+                    # Track prompt for defaulting if prompt fields are empty
+                    try:
+                        p = v.get('prompt')
+                        c = v.get('created_at')
+                        if isinstance(p, str) and p.strip():
+                            if is_ai2:
+                                # choose latest by created_at if possible
+                                if not last_ai2_created or (isinstance(c, str) and c > last_ai2_created):
+                                    last_ai2_prompt, last_ai2_created = p.strip(), c if isinstance(c, str) else last_ai2_created
+                            else:
+                                if not last_a1_created or (isinstance(c, str) and c > last_a1_created):
+                                    last_a1_prompt, last_a1_created = p.strip(), c if isinstance(c, str) else last_a1_created
+                    except Exception:
+                        pass
                 else:
                     keep.append(v)
 
@@ -1959,6 +2003,19 @@ class PostgreSQLContentIndex:
                 if analysis.get('summary_image_selected_url'):
                     analysis['summary_image_selected_url'] = ''
                     cleared.append('analysis.summary_image_selected_url')
+
+            # If prompt fields are empty, preserve a prompt from deleted variants
+            try:
+                if mode_ai2:
+                    cur_prompt_ai2 = str(analysis.get('summary_image_ai2_prompt') or '')
+                    if not cur_prompt_ai2 and last_ai2_prompt:
+                        analysis['summary_image_ai2_prompt'] = last_ai2_prompt
+                if mode_ai1:
+                    cur_prompt_a1 = str(analysis.get('summary_image_prompt') or '')
+                    if not cur_prompt_a1 and last_a1_prompt:
+                        analysis['summary_image_prompt'] = last_a1_prompt
+            except Exception:
+                pass
 
             analysis['summary_image_variants'] = keep
             cur.execute(
