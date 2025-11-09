@@ -377,7 +377,14 @@ class PostgreSQLContentIndex:
                                        or '',
                 'language': language,
                 'key_topics': topics,
-                'named_entities': named_entities
+                'named_entities': named_entities,
+                # Image prompt + variants pass-through for UI
+                'summary_image_prompt': analysis_json.get('summary_image_prompt'),
+                'summary_image_prompt_last_used': analysis_json.get('summary_image_prompt_last_used'),
+                'summary_image_selected_url': analysis_json.get('summary_image_selected_url'),
+                'summary_image_variants': analysis_json.get('summary_image_variants'),
+                # AI2 support: expose explicit AI2 URL when present
+                'summary_image_ai2_url': analysis_json.get('summary_image_ai2_url')
             },
             'media': {
                 'has_audio': bool(row.get('has_audio', False)),
@@ -1629,6 +1636,141 @@ class PostgreSQLContentIndex:
 
         except Exception as e:
             logger.error(f"Error updating audio URL for {video_id}: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+    def update_summary_image_prompt(self, video_id: str, prompt: str) -> None:
+        """Set analysis_json.summary_image_prompt for a content row.
+
+        NAS will read this field to override its image-generation prompt.
+        """
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            update_sql = """
+            UPDATE content
+            SET analysis_json = jsonb_set(
+                COALESCE(analysis_json, '{}'::jsonb),
+                '{summary_image_prompt}',
+                to_jsonb(%s::text),
+                true
+            ),
+            updated_at = NOW()
+            WHERE video_id = %s
+            """
+            cur.execute(update_sql, [prompt or '', video_id])
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Error updating summary_image_prompt for %s: %s", video_id, e)
+        finally:
+            if conn:
+                conn.close()
+
+    def update_summary_image_ai2_prompt(self, video_id: str, prompt: str) -> None:
+        """Set analysis_json.summary_image_ai2_prompt for a content row.
+
+        Mirrors update_summary_image_prompt but for AI2 freestyle pipeline.
+        """
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            update_sql = """
+            UPDATE content
+            SET analysis_json = jsonb_set(
+                COALESCE(analysis_json, '{}'::jsonb),
+                '{summary_image_ai2_prompt}',
+                to_jsonb(%s::text),
+                true
+            ),
+            updated_at = NOW()
+            WHERE video_id = %s
+            """
+            cur.execute(update_sql, [prompt or '', video_id])
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Error updating summary_image_ai2_prompt for %s: %s", video_id, e)
+        finally:
+            if conn:
+                conn.close()
+
+    def update_selected_image_url(self, video_id: str, url: str) -> None:
+        """Set the selected image URL for a content row and mirror to summary_image_url."""
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            update_sql = """
+            UPDATE content
+            SET analysis_json = jsonb_set(
+                    COALESCE(analysis_json, '{}'::jsonb),
+                    '{summary_image_selected_url}',
+                    to_jsonb(%s::text),
+                    true
+                ),
+                summary_image_url = %s,
+                updated_at = NOW()
+            WHERE video_id = %s
+            """
+            cur.execute(update_sql, [url or '', url or '', video_id])
+            conn.commit()
+        except Exception as e:
+            logger.error("Error updating selected image for %s: %s", video_id, e)
+        finally:
+            if conn:
+                conn.close()
+
+    def update_selected_image_ai2_url(self, video_id: str, url: str) -> None:
+        """Set the selected AI2 image URL for a content row (analysis_json only)."""
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            update_sql = """
+            UPDATE content
+            SET analysis_json = jsonb_set(
+                    COALESCE(analysis_json, '{}'::jsonb),
+                    '{summary_image_ai2_url}',
+                    to_jsonb(%s::text),
+                    true
+                ),
+                updated_at = NOW()
+            WHERE video_id = %s
+            """
+            cur.execute(update_sql, [url or '', video_id])
+            conn.commit()
+        except Exception as e:
+            logger.error("Error updating selected AI2 image for %s: %s", video_id, e)
+        finally:
+            if conn:
+                conn.close()
+
+    def update_summary_image_display_mode(self, video_id: str, mode: str) -> None:
+        """Persist preferred dashboard display mode in analysis_json.summary_image_display_mode."""
+        mode = (mode or '').strip().lower()
+        if mode not in ('og', 'ai1', 'ai2'):
+            mode = 'og'
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            update_sql = """
+            UPDATE content
+            SET analysis_json = jsonb_set(
+                    COALESCE(analysis_json, '{}'::jsonb),
+                    '{summary_image_display_mode}',
+                    to_jsonb(%s::text),
+                    true
+                ),
+                updated_at = NOW()
+            WHERE video_id = %s
+            """
+            cur.execute(update_sql, [mode, video_id])
+            conn.commit()
+        except Exception as e:
+            logger.error("Error updating summary_image_display_mode for %s: %s", video_id, e)
         finally:
             if conn:
                 conn.close()

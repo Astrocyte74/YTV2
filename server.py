@@ -117,8 +117,13 @@ try:
 except Exception as e:
     pass  # Continue if .envrc sourcing fails
 
+def _env_flag(name: str, default: str = "0") -> bool:
+    """Parse truthy env values consistently."""
+    value = (os.getenv(name, default) or "").strip().lower()
+    return value in ("1", "true", "yes", "on")
+
 ## Feature toggle for V2 template as default
-USE_V2_DEFAULT = os.getenv("USE_V2_DEFAULT", "1") == "1"  # default ON
+USE_V2_DEFAULT = _env_flag("USE_V2_DEFAULT", "1")  # default ON
 
 # Set up logging
 logging.basicConfig(
@@ -187,6 +192,7 @@ def _parse_csv_env(value: str) -> list[str]:
 
 ALLOWED_ORIGINS_CFG = _parse_csv_env(ALLOWED_ORIGINS_ENV)
 GOOGLE_CLIENT_IDS = _parse_csv_env(GOOGLE_CLIENT_IDS_ENV)
+DASHBOARD_AUTOPLAY_ON_LOAD = _env_flag("DASHBOARD_AUTOPLAY_ON_LOAD", "1")
 
 RL_USER_PER_MIN = int(os.getenv('RL_USER_PER_MIN', '5'))
 RL_IP_PER_MIN = int(os.getenv('RL_IP_PER_MIN', '10'))
@@ -1302,6 +1308,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(410, "Endpoint removed (use /ingest/* with PostgreSQL)")
         elif self.path.startswith('/api/delete'):
             self.handle_delete_request()
+        elif self.path == '/api/set-image-prompt':
+            self.handle_set_image_prompt()
+        elif self.path == '/api/select-image-variant':
+            self.handle_select_image_variant()
+        elif self.path == '/api/set-image-display-mode':
+            self.handle_set_image_display_mode()
         # New ingest endpoints for NAS sync (T-Y020C)
         elif self.path == '/ingest/report':
             self.handle_ingest_report()
@@ -1564,12 +1576,17 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "basic_user": os.getenv('NGROK_BASIC_USER', ''),
                     "basic_pass": os.getenv('NGROK_BASIC_PASS', ''),
                 }
+                dashboard_config = {
+                    "autoPlayOnLoad": bool(DASHBOARD_AUTOPLAY_ON_LOAD)
+                }
 
                 # Replace template placeholders (safe replacement for templates with {})
                 dashboard_html = template_content.replace(
                     '{reports_data}', json.dumps(reports_data, ensure_ascii=False)
                 ).replace(
                     '{nas_config}', json.dumps(nas_config)
+                ).replace(
+                    '{dashboard_config}', json.dumps(dashboard_config)
                 )
                 
                 self.send_response(200)
@@ -3278,6 +3295,46 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         except Exception as e:
                             errors.append(f"Failed to delete audio {audio_path}: {e}")
         
+        # Remove cached JSON reports if present (Render disk or local dev)
+        try:
+            json_dirs = [
+                Path('/app/data/reports'),
+                Path('./data/reports')
+            ]
+            for jdir in json_dirs:
+                if not jdir.exists():
+                    continue
+                jpath = jdir / f"{report_id}.json"
+                if jpath.is_file():
+                    try:
+                        jpath.unlink()
+                        deleted_files.append(str(jpath))
+                        logger.info("Deleted cached JSON report: %s", jpath)
+                    except Exception as e:
+                        errors.append(f"Failed to delete JSON {jpath}: {e}")
+        except Exception as e:
+            errors.append(f"JSON cleanup error: {e}")
+
+        # Remove generated summary images if present
+        try:
+            img_dirs = [
+                Path('/app/data/exports/images'),
+                Path('./exports/images')
+            ]
+            for idir in img_dirs:
+                if not idir.exists():
+                    continue
+                for ext in ('.png', '.jpg', '.jpeg', '.webp'):
+                    for p in idir.glob(f"{report_id}_*{ext}"):
+                        try:
+                            p.unlink()
+                            deleted_files.append(str(p))
+                            logger.info("Deleted summary image: %s", p)
+                        except Exception as e:
+                            errors.append(f"Failed to delete image {p}: {e}")
+        except Exception as e:
+            errors.append(f"Image cleanup error: {e}")
+
         # (SQLite deletion removed in Postgres-only mode)
 
         # Delete from PostgreSQL database if using PostgreSQL backend
@@ -4518,7 +4575,198 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_response(500)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(json.dumps({"error": f"internal error: {str(e)}"}).encode())
+        self.wfile.write(json.dumps({"error": f"internal error: {str(e)}"}).encode())
+
+    def handle_set_image_prompt(self):
+        """POST /api/set-image-prompt — admin-only. Set a custom prompt for NAS image generation.
+
+        Body: { "video_id": "<id>", "prompt": "...", "mode": "ai1|ai2" }
+        Auth: DEBUG_TOKEN via Authorization: Bearer <token> or X-Debug-Token.
+        """
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            length = int(self.headers.get('Content-Length', 0))
+            data = {}
+            if length:
+                try:
+                    raw = self.rfile.read(length)
+                    data = json.loads(raw.decode('utf-8'))
+                except Exception:
+                    pass
+
+            video_id = (data.get('video_id') or '').strip()
+            prompt = (data.get('prompt') or '').strip()
+            mode = (data.get('mode') or 'ai1').strip().lower()
+            if not video_id:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id required"}).encode())
+                return
+
+            # Update in Postgres
+            content_index = getattr(self.server, 'content_index', None)
+            if not content_index or not hasattr(content_index, 'update_summary_image_prompt'):
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "content index unavailable"}).encode())
+                return
+
+            if mode == 'ai2' and hasattr(content_index, 'update_summary_image_ai2_prompt'):
+                content_index.update_summary_image_ai2_prompt(video_id, prompt)
+            else:
+                content_index.update_summary_image_prompt(video_id, prompt)
+
+            # Optional: broadcast a lightweight event (clients may ignore)
+            try:
+                payload = {"video_id": video_id, "event": "image_prompt_set", "mode": mode, "ts": datetime.utcnow().isoformat() + 'Z'}
+                report_event_stream.broadcast('image-prompt-set', payload)
+            except Exception:
+                pass
+
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True, "video_id": video_id}).encode())
+        except Exception as e:
+            logger.exception("set-image-prompt failed")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+
+    def handle_select_image_variant(self):
+        """POST /api/select-image-variant — admin-only. Switch selected image.
+
+        Body: { "video_id": "<id>", "url": "/exports/images/...png", "mode": "ai1|ai2" }
+        Auth: DEBUG_TOKEN
+        """
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            length = int(self.headers.get('Content-Length', 0))
+            data = {}
+            if length:
+                try:
+                    raw = self.rfile.read(length)
+                    data = json.loads(raw.decode('utf-8'))
+                except Exception:
+                    pass
+
+            video_id = (data.get('video_id') or '').strip()
+            url = (data.get('url') or '').strip()
+            mode = (data.get('mode') or 'ai1').strip().lower()
+            if not video_id or not url:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id and url required"}).encode())
+                return
+
+            content_index = getattr(self.server, 'content_index', None)
+            if not content_index or not hasattr(content_index, 'update_selected_image_url'):
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "content index unavailable"}).encode())
+                return
+
+            if mode == 'ai2' and hasattr(content_index, 'update_selected_image_ai2_url'):
+                content_index.update_selected_image_ai2_url(video_id, url)
+            else:
+                content_index.update_selected_image_url(video_id, url)
+
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True, "selected_url": url, "mode": mode}).encode())
+        except Exception as e:
+            logger.exception("select-image-variant failed")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+
+    def handle_set_image_display_mode(self):
+        """POST /api/set-image-display-mode — set per-card preferred display mode.
+
+        Body: { "video_id": "<id>", "mode": "og|ai1|ai2" }
+        Auth: DEBUG_TOKEN
+        """
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            length = int(self.headers.get('Content-Length', 0))
+            data = {}
+            if length:
+                try:
+                    raw = self.rfile.read(length)
+                    data = json.loads(raw.decode('utf-8'))
+                except Exception:
+                    pass
+
+            video_id = (data.get('video_id') or '').strip()
+            mode = (data.get('mode') or '').strip().lower()
+            if mode not in ('og', 'ai1', 'ai2'):
+                mode = 'og'
+            if not video_id:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id required"}).encode())
+                return
+
+            content_index = getattr(self.server, 'content_index', None)
+            if not content_index or not hasattr(content_index, 'update_summary_image_display_mode'):
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "content index unavailable"}).encode())
+                return
+
+            content_index.update_summary_image_display_mode(video_id, mode)
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True, "video_id": video_id, "mode": mode}).encode())
+        except Exception as e:
+            logger.exception("set-image-display-mode failed")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
 
     def set_cors_headers(self, allow_all_origins=False):
         """Set CORS headers for cross-origin requests"""
