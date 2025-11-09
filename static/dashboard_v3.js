@@ -7516,9 +7516,29 @@ class AudioDashboard {
             saveA1.addEventListener('click', ()=> onSavePrompt('ai1', (inputA1.value||'').trim()));
             saveA2.addEventListener('click', ()=> onSavePrompt('ai2', (inputA2.value||'').trim()));
 
+            // Simple in-modal confirmation UI (instead of window.confirm)
+            const confirmModal = (message, confirmLabel = 'Delete') => new Promise((resolve) => {
+                const ov = document.createElement('div');
+                ov.className = 'fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4';
+                const box = document.createElement('div');
+                box.className = 'w-full max-w-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl p-4';
+                box.innerHTML = `
+                  <div class="text-sm text-slate-700 dark:text-slate-200">${this.escapeHtml(message)}</div>
+                  <div class="mt-4 flex items-center justify-end gap-2">
+                    <button type="button" data-cancel class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Cancel</button>
+                    <button type="button" data-ok class="px-3 py-1.5 rounded-md bg-red-600 text-white hover:bg-red-700">${this.escapeHtml(confirmLabel)}</button>
+                  </div>`;
+                ov.appendChild(box);
+                document.body.appendChild(ov);
+                const done = (v) => { try { ov.remove(); } catch(_) {}; resolve(v); };
+                box.querySelector('[data-cancel]')?.addEventListener('click', ()=>done(false));
+                box.querySelector('[data-ok]')?.addEventListener('click', ()=>done(true));
+            });
+
             const onDeleteVariant = async (mode, url) => {
                 if (!url) return;
-                if (!confirm('Delete this image? This removes the variant and unlinks the file on the server.')) return;
+                const ok = await confirmModal('Delete this image? This removes the variant and unlinks the file on the server.');
+                if (!ok) return;
                 const token = await this.getReprocessToken();
                 if (!token) { this.showToast('Token required', 'warn'); return; }
                 const res = await fetch('/api/delete-image-variant', {
@@ -7554,6 +7574,15 @@ class AudioDashboard {
                 const listEl = mode === 'ai2' ? listA2 : listA1;
                 const rowEl = listEl.querySelector(`[data-variant-row][data-url="${CSS.escape(this.normalizeAssetUrl(url))}"]`);
                 if (rowEl) rowEl.remove();
+                // Auto-select fallback if variants remain
+                try {
+                    const listEl2 = mode === 'ai2' ? listA2 : listA1;
+                    const rows = Array.from(listEl2.querySelectorAll('[data-variant-row]'));
+                    const remaining = rows.map(r => this.normalizeAssetUrl(r.getAttribute('data-url') || '')).filter(Boolean);
+                    if (remaining.length > 0) {
+                        await onSelectVariant(mode, remaining[0], true);
+                    }
+                } catch(_) {}
                 // Ensure cards reflect current mode and fallbacks
                 try { this.forceSwapAllCardsForCurrentMode(); } catch(_) {}
                 this.showToast('Image deleted', 'success');
@@ -7561,7 +7590,8 @@ class AudioDashboard {
 
             if (deleteAllBtn) {
                 deleteAllBtn.addEventListener('click', async () => {
-                    if (!confirm('Delete ALL AI images for this card? This removes AI1 and AI2 variants and unlinks files.')) return;
+                    const ok = await confirmModal('Delete ALL AI images for this card? This removes AI1 and AI2 variants and unlinks files.', 'Delete all');
+                    if (!ok) return;
                     const token = await this.getReprocessToken();
                     if (!token) { this.showToast('Token required', 'warn'); return; }
                     const res = await fetch('/api/delete-all-ai-images', {
@@ -7613,7 +7643,7 @@ class AudioDashboard {
                 });
             };
 
-            const onSelectVariant = async (mode, url) => {
+            const onSelectVariant = async (mode, url, silent = false) => {
                 const token = await this.getReprocessToken();
                 if (!token) { this.showToast('Token required', 'warn'); return; }
                 const res = await fetch('/api/select-image-variant', {
@@ -7621,7 +7651,7 @@ class AudioDashboard {
                     body: JSON.stringify({ video_id: videoId, url, mode })
                 });
                 if (!res.ok) { this.showToast(`Failed to select ${mode} image`, 'error'); return; }
-                this.showToast(`${mode.toUpperCase()} image selected`, 'success');
+                if (!silent) this.showToast(`${mode.toUpperCase()} image selected`, 'success');
                 // Update in-memory and DOM attributes per mode
                 const normalized = this.normalizeAssetUrl(url);
                 try {
