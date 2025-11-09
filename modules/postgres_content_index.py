@@ -1968,10 +1968,11 @@ class PostgreSQLContentIndex:
 
             removed: List[str] = []
             keep: List[Dict[str, Any]] = []
-            last_a1_prompt: Optional[str] = None
-            last_ai2_prompt: Optional[str] = None
-            last_a1_created: Optional[str] = None
-            last_ai2_created: Optional[str] = None
+            # Track earliest (original) prompts by mode
+            first_a1_prompt: Optional[str] = None
+            first_ai2_prompt: Optional[str] = None
+            first_a1_created: Optional[str] = None
+            first_ai2_created: Optional[str] = None
             for v in variants:
                 vurl = v.get('url') or ''
                 is_ai2 = self._is_ai2_variant(v)
@@ -1983,12 +1984,12 @@ class PostgreSQLContentIndex:
                         c = v.get('created_at')
                         if isinstance(p, str) and p.strip():
                             if is_ai2:
-                                # choose latest by created_at if possible
-                                if not last_ai2_created or (isinstance(c, str) and c > last_ai2_created):
-                                    last_ai2_prompt, last_ai2_created = p.strip(), c if isinstance(c, str) else last_ai2_created
+                                # choose earliest by created_at if possible
+                                if not first_ai2_created or (isinstance(c, str) and c < first_ai2_created):
+                                    first_ai2_prompt, first_ai2_created = p.strip(), c if isinstance(c, str) else first_ai2_created
                             else:
-                                if not last_a1_created or (isinstance(c, str) and c > last_a1_created):
-                                    last_a1_prompt, last_a1_created = p.strip(), c if isinstance(c, str) else last_a1_created
+                                if not first_a1_created or (isinstance(c, str) and c < first_a1_created):
+                                    first_a1_prompt, first_a1_created = p.strip(), c if isinstance(c, str) else first_a1_created
                     except Exception:
                         pass
                 else:
@@ -2008,16 +2009,16 @@ class PostgreSQLContentIndex:
                     analysis['summary_image_selected_url'] = ''
                     cleared.append('analysis.summary_image_selected_url')
 
-            # If prompt fields are empty, preserve a prompt from deleted variants
+            # If prompt fields are empty, preserve the earliest prompt from deleted variants
             try:
                 if mode_ai2:
                     cur_prompt_ai2 = str(analysis.get('summary_image_ai2_prompt') or '')
-                    if not cur_prompt_ai2 and last_ai2_prompt:
-                        analysis['summary_image_ai2_prompt'] = last_ai2_prompt
+                    if not cur_prompt_ai2 and first_ai2_prompt:
+                        analysis['summary_image_ai2_prompt'] = first_ai2_prompt
                 if mode_ai1:
                     cur_prompt_a1 = str(analysis.get('summary_image_prompt') or '')
-                    if not cur_prompt_a1 and last_a1_prompt:
-                        analysis['summary_image_prompt'] = last_a1_prompt
+                    if not cur_prompt_a1 and first_a1_prompt:
+                        analysis['summary_image_prompt'] = first_a1_prompt
             except Exception:
                 pass
 
@@ -2085,8 +2086,27 @@ class PostgreSQLContentIndex:
             existing_orig = str(analysis.get(orig_key) or '')
             if existing_orig:
                 return False
-            # Prefer current prompt if present; otherwise fallback
-            val = str(analysis.get(curr_key) or '').strip() or (fallback_prompt or '').strip()
+            # Prefer earliest prompt from variants for this mode, then current, then fallback
+            val = ''
+            try:
+                variants = analysis.get('summary_image_variants')
+                if isinstance(variants, list):
+                    first_prompt = None
+                    first_created = None
+                    for v in variants:
+                        is_ai2 = self._is_ai2_variant(v)
+                        if (mode == 'ai2' and is_ai2) or (mode == 'ai1' and not is_ai2):
+                            p = v.get('prompt')
+                            c = v.get('created_at')
+                            if isinstance(p, str) and p.strip():
+                                if not first_created or (isinstance(c, str) and c < first_created):
+                                    first_prompt, first_created = p.strip(), c if isinstance(c, str) else first_created
+                    if first_prompt:
+                        val = first_prompt
+            except Exception:
+                pass
+            if not val:
+                val = str(analysis.get(curr_key) or '').strip() or (fallback_prompt or '').strip()
             if not val:
                 return False
             analysis[orig_key] = val
