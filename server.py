@@ -4626,6 +4626,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "content index unavailable"}).encode())
                 return
 
+            # Ensure original prompt is preserved the first time for this mode
+            try:
+                if hasattr(content_index, 'ensure_original_prompt'):
+                    content_index.ensure_original_prompt(video_id, mode, prompt)
+            except Exception:
+                pass
+
             if mode == 'ai2' and hasattr(content_index, 'update_summary_image_ai2_prompt'):
                 content_index.update_summary_image_ai2_prompt(video_id, prompt)
             else:
