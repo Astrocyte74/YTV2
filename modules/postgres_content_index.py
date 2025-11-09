@@ -2128,6 +2128,125 @@ class PostgreSQLContentIndex:
             if conn:
                 conn.close()
 
+    def _earliest_prompt_from_variants(self, analysis: Any, mode: str) -> str:
+        try:
+            variants = analysis.get('summary_image_variants') if isinstance(analysis, dict) else None
+            if not isinstance(variants, list):
+                return ''
+            first_prompt = None
+            first_created = None
+            for v in variants:
+                is_ai2 = self._is_ai2_variant(v)
+                if (mode == 'ai2' and is_ai2) or (mode == 'ai1' and not is_ai2):
+                    p = v.get('prompt')
+                    c = v.get('created_at')
+                    if isinstance(p, str) and p.strip():
+                        if not first_created or (isinstance(c, str) and c < first_created):
+                            first_prompt, first_created = p.strip(), c if isinstance(c, str) else first_created
+            return first_prompt or ''
+        except Exception:
+            return ''
+
+    def backfill_original_prompts(self, mode: str = 'both', limit: int = 100, video_ids: Optional[List[str]] = None, dry_run: bool = True) -> Dict[str, Any]:
+        """Backfill summary_image_*_prompt_original fields.
+
+        - mode: 'ai1' | 'ai2' | 'both'
+        - limit: max rows per mode when video_ids not provided
+        - video_ids: explicit list of video_ids to process
+        - dry_run: compute changes but do not write
+        Returns: dict with counts and sample updates
+        """
+        mode = (mode or 'both').lower()
+        if mode not in ('ai1', 'ai2', 'both'):
+            mode = 'both'
+        conn = None
+        results = { 'processed': 0, 'updated': 0, 'skipped': 0, 'dry_run': bool(dry_run), 'examples': [] }
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+
+            candidates: Dict[str, List[str]] = {}
+            if video_ids:
+                for vid in video_ids:
+                    candidates.setdefault(str(vid), [])
+                    if mode in ('ai1','both'):
+                        candidates[str(vid)].append('ai1')
+                    if mode in ('ai2','both'):
+                        candidates[str(vid)].append('ai2')
+            else:
+                if mode in ('ai1','both'):
+                    cur.execute("""
+                        SELECT video_id, analysis_json
+                        FROM content
+                        WHERE COALESCE((analysis_json->>'summary_image_prompt_original')::text, '') = ''
+                        LIMIT %s
+                    """, (limit,))
+                    for row in cur.fetchall() or []:
+                        candidates.setdefault(row['video_id'], []).append('ai1')
+                if mode in ('ai2','both'):
+                    cur.execute("""
+                        SELECT video_id, analysis_json
+                        FROM content
+                        WHERE COALESCE((analysis_json->>'summary_image_ai2_prompt_original')::text, '') = ''
+                        LIMIT %s
+                    """, (limit,))
+                    for row in cur.fetchall() or []:
+                        candidates.setdefault(row['video_id'], []).append('ai2')
+
+            # Process
+            for vid, modes in candidates.items():
+                # Fetch once
+                cur.execute("SELECT analysis_json FROM content WHERE video_id=%s", (vid,))
+                r = cur.fetchone()
+                if not r:
+                    results['skipped'] += 1
+                    continue
+                analysis = r.get('analysis_json') or {}
+                if isinstance(analysis, str):
+                    try: analysis = json.loads(analysis)
+                    except Exception: analysis = {}
+
+                analysis_out = analysis.copy()
+                did_update = False
+                preview = { 'video_id': vid, 'set': {} }
+
+                for m in list(set(modes)):
+                    if m == 'ai2':
+                        orig_key = 'summary_image_ai2_prompt_original'
+                        curr_key = 'summary_image_ai2_prompt'
+                    else:
+                        orig_key = 'summary_image_prompt_original'
+                        curr_key = 'summary_image_prompt'
+                    if str(analysis_out.get(orig_key) or '').strip():
+                        continue
+                    val = self._earliest_prompt_from_variants(analysis_out, m) or str(analysis_out.get(curr_key) or '').strip()
+                    if not val:
+                        continue
+                    preview['set'][orig_key] = val
+                    if not dry_run:
+                        analysis_out[orig_key] = val
+                        did_update = True
+
+                results['processed'] += 1
+                if did_update and not dry_run:
+                    cur.execute("UPDATE content SET analysis_json=%s, updated_at=NOW() WHERE video_id=%s", (psycopg2.extras.Json(analysis_out), vid))
+                    results['updated'] += 1
+                else:
+                    results['skipped'] += 1 if not preview['set'] else 0
+                if preview['set']:
+                    if len(results['examples']) < 10:
+                        results['examples'].append(preview)
+
+            if not dry_run:
+                conn.commit()
+            return results
+        except Exception as e:
+            logger.exception("backfill_original_prompts failed: %s", e)
+            return { 'error': str(e) }
+        finally:
+            if conn:
+                conn.close()
+
     def delete_content(self, video_id: str) -> dict:
         """Delete a video and its summaries by YouTube video_id."""
         conn = None

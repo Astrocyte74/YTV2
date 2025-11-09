@@ -1310,6 +1310,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_delete_image_variant()
         elif self.path == '/api/delete-all-ai-images':
             self.handle_delete_all_ai_images()
+        elif self.path == '/api/admin/backfill-original-prompts':
+            self.handle_backfill_original_prompts()
         elif self.path.startswith('/api/delete'):
             self.handle_delete_request()
         elif self.path == '/api/set-image-prompt':
@@ -4773,6 +4775,57 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"ok": True, "video_id": video_id, "mode": mode}).encode())
         except Exception as e:
             logger.exception("set-image-display-mode failed")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+
+    def handle_backfill_original_prompts(self):
+        """POST /api/admin/backfill-original-prompts — admin-only (DEBUG_TOKEN).
+
+        Body: { mode?: 'ai1'|'ai2'|'both', limit?: 100, video_ids?: [..], dry_run?: true }
+        Returns JSON with processed/updated/skipped and examples.
+        """
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            length = int(self.headers.get('Content-Length', 0))
+            data = {}
+            if length:
+                try:
+                    raw = self.rfile.read(length)
+                    data = json.loads(raw.decode('utf-8'))
+                except Exception:
+                    pass
+            mode = (data.get('mode') or 'both').strip().lower()
+            limit = int(data.get('limit') or 100)
+            video_ids = data.get('video_ids') if isinstance(data.get('video_ids'), list) else None
+            dry_run = bool(data.get('dry_run') if 'dry_run' in data else True)
+
+            content_index = getattr(self.server, 'content_index', None)
+            if not content_index or not hasattr(content_index, 'backfill_original_prompts'):
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "content index unavailable"}).encode())
+                return
+
+            result = content_index.backfill_original_prompts(mode=mode, limit=limit, video_ids=video_ids, dry_run=dry_run)
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(result).encode())
+        except Exception as e:
+            logger.exception("backfill-original-prompts failed")
             self.send_response(500)
             self.set_cors_headers()
             self.send_header('Content-type', 'application/json')
