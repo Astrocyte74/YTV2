@@ -7524,7 +7524,11 @@ class AudioDashboard {
                     method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({ video_id: reportId, url })
                 });
-                if (!res.ok) { this.showToast('Failed to delete image', 'error'); return; }
+                if (!res.ok) {
+                    let msg = 'Failed to delete image';
+                    try { const j = await res.json(); if (j && j.error) msg += `: ${j.error}`; } catch(_) {}
+                    this.showToast(msg, 'error'); return;
+                }
                 const j = await res.json().catch(()=>({}));
                 // Update in-memory pointers if this was the selected one
                 try {
@@ -7563,7 +7567,11 @@ class AudioDashboard {
                         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                         body: JSON.stringify({ video_id: reportId, modes: ['ai1','ai2'] })
                     });
-                    if (!res.ok) { this.showToast('Failed to delete AI images', 'error'); return; }
+                    if (!res.ok) {
+                        let msg = 'Failed to delete AI images';
+                        try { const j = await res.json(); if (j && j.error) msg += `: ${j.error}`; } catch(_) {}
+                        this.showToast(msg, 'error'); return;
+                    }
                     // Clear lists
                     listA1.innerHTML = '<div class="px-2 py-3 text-xs text-slate-500">No AI1 variants yet.</div>';
                     listA2.innerHTML = '<div class="px-2 py-3 text-xs text-slate-500">No AI2 variants yet.</div>';
