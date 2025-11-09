@@ -7563,22 +7563,7 @@ class AudioDashboard {
             listClick(listA1, 'ai1', a1Variants);
             listClick(listA2, 'ai2', a2Variants);
 
-            // Save display mode when radio changes
-            radios.forEach(r => {
-                r.addEventListener('change', async (e) => {
-                    const mode = e.target.value;
-                    try {
-                        const token = await this.getReprocessToken();
-                        if (!token) { this.showToast('Token required', 'warn'); return; }
-                        const res = await fetch('/api/set-image-display-mode', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                            body: JSON.stringify({ video_id: reportId, mode })
-                        });
-                        if (!res.ok) throw new Error('bad');
-                        this.showToast('Default display updated', 'success');
-                    } catch(_) { this.showToast('Failed to update default display', 'error'); }
-                });
-            });
+            // Default display radio removed for now
 
             const finish = () => { try { document.body.removeChild(overlay); } catch(_) {}; resolve(); };
             overlay.addEventListener('click', (e)=>{ if (e.target === overlay) finish(); });
