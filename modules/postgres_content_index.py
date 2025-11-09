@@ -11,6 +11,7 @@ import logging
 from collections import defaultdict, Counter
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 try:
     import psycopg2
@@ -1771,6 +1772,219 @@ class PostgreSQLContentIndex:
             conn.commit()
         except Exception as e:
             logger.error("Error updating summary_image_display_mode for %s: %s", video_id, e)
+        finally:
+            if conn:
+                conn.close()
+
+    # --- Image variant deletion helpers ---
+    def _normalize_image_url_path(self, url: str) -> str:
+        """Normalize image URL to a comparable path string.
+
+        - Strips scheme/host if http(s)
+        - Drops query/fragment
+        - Ensures leading '/'
+        - Returns '' for falsy inputs
+        """
+        if not url or not isinstance(url, str):
+            return ''
+        u = url.strip()
+        if not u:
+            return ''
+        try:
+            if u.startswith('http://') or u.startswith('https://'):
+                p = urlparse(u)
+                u = p.path or ''
+            # Drop query string if present (defensive)
+            if '?' in u:
+                u = u.split('?', 1)[0]
+            if '#' in u:
+                u = u.split('#', 1)[0]
+            if not u.startswith('/'):
+                u = '/' + u
+            return u
+        except Exception:
+            return ('/' + u) if not u.startswith('/') else u
+
+    def _is_ai2_variant(self, v: Dict[str, Any]) -> bool:
+        """Mirror the UI's AI2 detection logic for a variant row."""
+        try:
+            mode = str((v.get('image_mode') or '')).lower()
+            templ = str((v.get('template') or '')).lower()
+            psrc = str((v.get('prompt_source') or '')).lower()
+            url = str((v.get('url') or '')).strip()
+            if mode == 'ai2':
+                return True
+            if templ == 'ai2_freestyle':
+                return True
+            if psrc.startswith('ai2'):
+                return True
+            # Filename prefix fallback
+            return bool(url) and ('/AI2_' in url or url.strip().upper().endswith('/AI2_' + os.path.basename(url)))
+        except Exception:
+            return False
+
+    def delete_image_variant(self, video_id: str, url: str) -> Dict[str, Any]:
+        """Remove a single image variant by URL and clear pointers if they match.
+
+        Returns a dict with details including removed URLs for file cleanup.
+        """
+        conn = None
+        out = { 'ok': False, 'removed_urls': [], 'cleared': [] }
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT analysis_json, summary_image_url FROM content WHERE video_id=%s", (video_id,))
+            row = cur.fetchone()
+            if not row:
+                return out
+
+            analysis = row.get('analysis_json') or {}
+            if isinstance(analysis, str):
+                try:
+                    analysis = json.loads(analysis)
+                except Exception:
+                    analysis = {}
+
+            variants = analysis.get('summary_image_variants')
+            if not isinstance(variants, list):
+                variants = []
+
+            target_norm = self._normalize_image_url_path(url)
+            keep: List[Dict[str, Any]] = []
+            removed: List[str] = []
+            for v in variants:
+                vurl = self._normalize_image_url_path(str(v.get('url') or ''))
+                if vurl and vurl == target_norm:
+                    removed.append(v.get('url') or vurl)
+                else:
+                    keep.append(v)
+
+            # Pointers
+            cleared = []
+            a_ai2 = str(analysis.get('summary_image_ai2_url') or '')
+            a_ai1_sel = str(analysis.get('summary_image_selected_url') or '')
+            top_ai1 = str(row.get('summary_image_url') or '')
+
+            if target_norm and self._normalize_image_url_path(a_ai2) == target_norm:
+                analysis['summary_image_ai2_url'] = ''
+                cleared.append('analysis.summary_image_ai2_url')
+            if target_norm and self._normalize_image_url_path(a_ai1_sel) == target_norm:
+                analysis['summary_image_selected_url'] = ''
+                cleared.append('analysis.summary_image_selected_url')
+            new_top_ai1 = top_ai1
+            if target_norm and self._normalize_image_url_path(top_ai1) == target_norm:
+                new_top_ai1 = None
+                cleared.append('summary_image_url')
+
+            # Write back
+            analysis['summary_image_variants'] = keep
+            cur.execute(
+                """
+                UPDATE content
+                SET analysis_json = %s,
+                    summary_image_url = %s,
+                    updated_at = NOW()
+                WHERE video_id = %s
+                """,
+                (psycopg2.extras.Json(analysis), new_top_ai1, video_id)
+            )
+            conn.commit()
+            out['ok'] = True
+            out['removed_urls'] = removed
+            out['cleared'] = cleared
+            out['variants_remaining'] = len(keep)
+            return out
+        except Exception as e:
+            logger.error("Error deleting image variant for %s: %s", video_id, e)
+            try:
+                if conn:
+                    conn.rollback()
+            except Exception:
+                pass
+            return out
+        finally:
+            if conn:
+                conn.close()
+
+    def delete_all_ai_images(self, video_id: str, modes: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Remove all AI image variants by mode(s) and clear pointers.
+
+        modes: subset of ['ai1','ai2']; default both.
+        Returns a dict with removed URLs and counts.
+        """
+        modes = modes or ['ai1', 'ai2']
+        mode_ai1 = 'ai1' in modes
+        mode_ai2 = 'ai2' in modes
+        conn = None
+        out = { 'ok': False, 'removed_urls': [], 'cleared': [] }
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT analysis_json, summary_image_url FROM content WHERE video_id=%s", (video_id,))
+            row = cur.fetchone()
+            if not row:
+                return out
+
+            analysis = row.get('analysis_json') or {}
+            if isinstance(analysis, str):
+                try:
+                    analysis = json.loads(analysis)
+                except Exception:
+                    analysis = {}
+
+            variants = analysis.get('summary_image_variants')
+            if not isinstance(variants, list):
+                variants = []
+
+            removed: List[str] = []
+            keep: List[Dict[str, Any]] = []
+            for v in variants:
+                vurl = v.get('url') or ''
+                is_ai2 = self._is_ai2_variant(v)
+                if (mode_ai2 and is_ai2) or (mode_ai1 and not is_ai2):
+                    removed.append(vurl)
+                else:
+                    keep.append(v)
+
+            cleared = []
+            # Clear pointers according to modes
+            if mode_ai2 and analysis.get('summary_image_ai2_url'):
+                analysis['summary_image_ai2_url'] = ''
+                cleared.append('analysis.summary_image_ai2_url')
+            new_top_ai1 = row.get('summary_image_url')
+            if mode_ai1 and new_top_ai1:
+                new_top_ai1 = None
+                cleared.append('summary_image_url')
+                # Also clear selected pointer mirror if present
+                if analysis.get('summary_image_selected_url'):
+                    analysis['summary_image_selected_url'] = ''
+                    cleared.append('analysis.summary_image_selected_url')
+
+            analysis['summary_image_variants'] = keep
+            cur.execute(
+                """
+                UPDATE content
+                SET analysis_json = %s,
+                    summary_image_url = %s,
+                    updated_at = NOW()
+                WHERE video_id = %s
+                """,
+                (psycopg2.extras.Json(analysis), new_top_ai1, video_id)
+            )
+            conn.commit()
+            out['ok'] = True
+            out['removed_urls'] = removed
+            out['cleared'] = cleared
+            out['variants_remaining'] = len(keep)
+            return out
+        except Exception as e:
+            logger.error("Error deleting all AI images for %s: %s", video_id, e)
+            try:
+                if conn:
+                    conn.rollback()
+            except Exception:
+                pass
+            return out
         finally:
             if conn:
                 conn.close()
