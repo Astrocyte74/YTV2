@@ -7395,6 +7395,7 @@ class AudioDashboard {
             panel.className = 'w-full max-w-3xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl';
 
             const a1VariantsAll = (item.analysis?.summary_image_variants || []);
+            const videoId = (item.video_id || reportId || '').trim();
             const a1Variants = a1VariantsAll.filter(v => {
                 const m = (v.image_mode || '').toLowerCase();
                 const tmpl = (v.template || '').toLowerCase();
@@ -7507,7 +7508,7 @@ class AudioDashboard {
                 if (!token) { this.showToast('Token required', 'warn'); return; }
                 const res = await fetch('/api/set-image-prompt', {
                     method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ video_id: reportId, prompt: text, mode })
+                    body: JSON.stringify({ video_id: videoId, prompt: text, mode })
                 });
                 if (!res.ok) { this.showToast(`Failed to save ${mode} prompt`, 'error'); return; }
                 this.showToast(`${mode.toUpperCase()} prompt saved`, 'success');
@@ -7522,7 +7523,7 @@ class AudioDashboard {
                 if (!token) { this.showToast('Token required', 'warn'); return; }
                 const res = await fetch('/api/delete-image-variant', {
                     method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ video_id: reportId, url })
+                    body: JSON.stringify({ video_id: videoId, url })
                 });
                 if (!res.ok) {
                     let msg = 'Failed to delete image';
@@ -7565,7 +7566,7 @@ class AudioDashboard {
                     if (!token) { this.showToast('Token required', 'warn'); return; }
                     const res = await fetch('/api/delete-all-ai-images', {
                         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                        body: JSON.stringify({ video_id: reportId, modes: ['ai1','ai2'] })
+                        body: JSON.stringify({ video_id: videoId, modes: ['ai1','ai2'] })
                     });
                     if (!res.ok) {
                         let msg = 'Failed to delete AI images';
@@ -7617,7 +7618,7 @@ class AudioDashboard {
                 if (!token) { this.showToast('Token required', 'warn'); return; }
                 const res = await fetch('/api/select-image-variant', {
                     method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ video_id: reportId, url, mode })
+                    body: JSON.stringify({ video_id: videoId, url, mode })
                 });
                 if (!res.ok) { this.showToast(`Failed to select ${mode} image`, 'error'); return; }
                 this.showToast(`${mode.toUpperCase()} image selected`, 'success');
