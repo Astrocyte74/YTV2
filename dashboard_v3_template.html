@@ -12,7 +12,7 @@
     <!-- Shared styles across dashboard and report pages -->
     <link rel="stylesheet" href="/static/shared.css?v=20251104a">
     <!-- Dashboard specific styles -->
-    <link rel="stylesheet" href="dashboard.css?v=20251104a">
+    <link rel="stylesheet" href="dashboard.css?v=20251108a">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -61,6 +61,9 @@
     </script>
     <script>
         window.NAS_CONFIG = {nas_config};
+    </script>
+    <script>
+        window.DASHBOARD_CONFIG = {dashboard_config};
     </script>
     
     <!-- Google Fonts -->
@@ -199,6 +202,14 @@
         details > summary { list-style: none; }
         /* Remove heading bottom margin inside summaries to center-align with chevron */
         #sidebar details > summary h3 { margin: 0; line-height: 1; }
+        
+        /* Footer mini-player: reserve space when visible */
+        body.has-current-audio main {
+            padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+        }
+        
+        /* Desktop: show a top search bar when sidebar is collapsed */
+        body.sidebar-collapsed #topSearchBar { display: block !important; }
         .filter-shell summary:focus-visible {
             outline: 2px solid rgba(14,165,233,0.6);
             outline-offset: 4px;
@@ -243,7 +254,7 @@
         <!-- Header -->
         <header class="bg-white/80 dark:bg-slate-800/90 backdrop-blur-md border-b border-slate-200/50 dark:border-slate-700/50 sticky top-0 z-40">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex items-center justify-between h-16">
+                <div class="flex items-center justify-between h-20">
                     <div class="flex items-center space-x-3">
                         <div class="text-2xl">🎧</div>
                         <div>
@@ -260,23 +271,38 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                             </svg>
                         </button>
-                        <div class="hidden lg:flex items-center gap-2 p-1 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/85 dark:bg-slate-950/60 backdrop-blur shadow-inner">
-                            <button id="listViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">List</button>
-                            <button id="gridViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">Grid</button>
-                            <button id="wallViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">Wall</button>
+                        <!-- Mobile refresh button -->
+                        <button id="refreshBtn" class="lg:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors" title="Refresh">
+                            <span class="text-base">↻</span>
+                        </button>
+                        <!-- View toggle moved near settings -->
+                        <!-- Header Search -->
+                        <div class="block">
+                          <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                              <svg class="h-5 w-5 text-slate-400 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                              </svg>
+                            </div>
+                            <input type="text" id="searchInputHeader"
+                                   placeholder="Search summaries..."
+                                   class="w-[560px] pl-10 pr-12 py-3 text-base border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-audio-500 focus:border-audio-500 bg-white/80 dark:bg-slate-700/80 backdrop-blur-sm text-slate-800 dark:text-slate-100 placeholder-slate-500 dark:placeholder-slate-400">
+                            <button id="searchClearHeader" title="Clear search" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:text-slate-300 dark:hover:text-slate-100 hidden z-10">
+                              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                            </button>
+                          </div>
                         </div>
-                        <!-- Image mode segmented control -->
-                        <div class="hidden lg:flex items-center gap-1 p-1 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/85 dark:bg-slate-950/60 backdrop-blur shadow-inner">
-                            <span class="px-2 text-xs text-slate-500 dark:text-slate-300 select-none">Image</span>
-                            <button id="imgModeThumbBtn" class="px-3 py-1.5 rounded-full text-sm font-medium transition-all">Thumbnail</button>
-                            <button id="imgModeAiBtn" class="px-3 py-1.5 rounded-full text-sm font-medium transition-all">AI</button>
-                            <button id="imgModeRotateBtn" class="px-3 py-1.5 rounded-full text-sm font-medium transition-all">Rotate</button>
-                        </div>
+                        <!-- Header image controls removed (kept in Settings) -->
                         <button id="queueToggle" class="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                             </svg>
                         </button>
+                        <div class="hidden lg:flex items-center gap-2 p-1 rounded-full border border-white/60 dark:border-slate-700/70 bg-white/85 dark:bg-slate-950/60 backdrop-blur shadow-inner">
+                            <button id="listViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">List</button>
+                            <button id="gridViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">Grid</button>
+                            <button id="wallViewBtn" class="view-toggle px-3 py-1.5 rounded-full text-sm font-medium transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-audio-400">Wall</button>
+                        </div>
                         <button id="settingsToggle" class="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -284,41 +310,85 @@
                             </svg>
                         </button>
                         <!-- Settings dropdown -->
-                        <div id="settingsMenu" class="hidden absolute right-4 top-16 z-50 w-56 bg-white/95 dark:bg-slate-800/95 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg p-2">
-                            <div class="px-3 py-2 text-xs uppercase tracking-wide text-slate-400">Theme</div>
-                            <button data-theme="system" class="flex items-center w-full gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
-                                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M9 17v3h6v-3"/></svg>
-                                <span>System</span>
-                                <span class="ml-auto text-xs text-slate-400" id="themeCheck-system"></span>
-                            </button>
-                            <button data-theme="light" class="flex items-center w-full gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
-                                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/></svg>
-                                <span>Light</span>
-                                <span class="ml-auto text-xs text-slate-400" id="themeCheck-light"></span>
-                            </button>
-                            <button data-theme="dark" class="flex items-center w-full gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
-                                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
-                                <span>Dark</span>
-                                <span class="ml-auto text-xs text-slate-400" id="themeCheck-dark"></span>
-                            </button>
-                            <div class="mt-2 border-t border-slate-200 dark:border-slate-700"></div>
-                            <div class="px-3 py-2 text-xs uppercase tracking-wide text-slate-400">View</div>
-                            <div class="flex items-center gap-2 px-3 py-2">
-                                <button id="viewListSettingBtn" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">List</button>
-                                <button id="viewGridSettingBtn" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">Grid</button>
-                                <button id="viewWallSettingBtn" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">Wall</button>
-                            </div>
-                            <div class="mt-2 border-t border-slate-200 dark:border-slate-700"></div>
-                            <div class="px-3 py-2 text-xs uppercase tracking-wide text-slate-400">Images</div>
-                            <div class="flex items-center gap-2 px-3 py-2">
-                                <button id="imgModeThumbSettingBtn" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">Thumbnail</button>
-                                <button id="imgModeAiSettingBtn" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">AI</button>
-                                <button id="imgModeRotateSettingBtn" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">Rotate</button>
-                            </div>
-                            <label class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-700 dark:text-slate-200">
-                                <input id="hoverSwitchToggle" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-audio-600 focus:ring-audio-500" disabled>
-                                <span>Hover switches image (coming soon)</span>
-                            </label>
+                        <div id="settingsMenu" class="hidden absolute right-4 top-16 z-50 w-64 bg-white/95 dark:bg-slate-800/95 backdrop-blur border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg p-2">
+                            <!-- Theme -->
+                            <details class="settings-accordion" data-settings-section="theme">
+                              <summary class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-xs uppercase tracking-wide text-slate-400 cursor-pointer">
+                                <span>Theme</span>
+                                <svg class="w-4 h-4 ml-auto rotate-0 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 9l4 4 4-4"/></svg>
+                              </summary>
+                              <div class="px-1 pb-2 space-y-1">
+                                <button data-theme="system" class="flex items-center w-full gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+                                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M9 17v3h6v-3"/></svg>
+                                    <span>System</span>
+                                    <span class="ml-auto text-xs text-slate-400" id="themeCheck-system"></span>
+                                </button>
+                                <button data-theme="light" class="flex items-center w-full gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+                                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/></svg>
+                                    <span>Light</span>
+                                    <span class="ml-auto text-xs text-slate-400" id="themeCheck-light"></span>
+                                </button>
+                                <button data-theme="dark" class="flex items-center w-full gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+                                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+                                    <span>Dark</span>
+                                    <span class="ml-auto text-xs text-slate-400" id="themeCheck-dark"></span>
+                                </button>
+                              </div>
+                            </details>
+
+                            <!-- View -->
+                            <details class="settings-accordion" data-settings-section="view">
+                              <summary class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-xs uppercase tracking-wide text-slate-400 cursor-pointer">
+                                <span>View</span>
+                                <svg class="w-4 h-4 ml-auto rotate-0 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 9l4 4 4-4"/></svg>
+                              </summary>
+                              <div class="px-1 pb-2">
+                                <div class="flex items-center gap-2 px-3 py-2">
+                                  <button id="viewListSettingBtn" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">List</button>
+                                  <button id="viewGridSettingBtn" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">Grid</button>
+                                  <button id="viewWallSettingBtn" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">Wall</button>
+                                </div>
+                              </div>
+                            </details>
+
+                            <!-- Images -->
+                            <details class="settings-accordion" data-settings-section="images">
+                              <summary class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-xs uppercase tracking-wide text-slate-400 cursor-pointer">
+                                <span>Images</span>
+                                <svg class="w-4 h-4 ml-auto rotate-0 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 9l4 4 4-4"/></svg>
+                              </summary>
+                              <div class="px-1 pb-2 space-y-1">
+                                <div class="flex items-center gap-2 px-3 py-2">
+                                  <button id="imgModeThumbSettingBtn" title="OG (original from source)" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">OG</button>
+                                  <button id="imgModeAiSettingBtn" title="A1 (AI theme created)" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">A1</button>
+                                  <button id="imgModeAi2SettingBtn" title="AI2 (AI Free-Style)" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">AI2</button>
+                                  <button id="imgModeRotateSettingBtn" title="Rotate (alternate OG/A1 per card)" class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">Rotate</button>
+                                </div>
+                                <label class="flex items-center gap-3 px-3 py-2 rounded-lg text-slate-700 dark:text-slate-200">
+                                  <input id="hoverSwitchToggle" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-audio-600 focus:ring-audio-500" disabled>
+                                  <span>Hover switches image (coming soon)</span>
+                                </label>
+                              </div>
+                            </details>
+
+                            <!-- Admin -->
+                            <details class="settings-accordion" data-settings-section="admin">
+                              <summary class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-xs uppercase tracking-wide text-slate-400 cursor-pointer">
+                                <span>Admin</span>
+                                <svg class="w-4 h-4 ml-auto rotate-0 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 9l4 4 4-4"/></svg>
+                              </summary>
+                              <div class="px-1 pb-1 space-y-1">
+                                <div id="adminTokenSourceLabel" class="px-3 pt-1 text-xs text-slate-500 dark:text-slate-400"></div>
+                                <button id="adminTokenSetBtn" class="flex items-center w-full gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+                                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18m9-9H3"/></svg>
+                                  <span>Set admin token…</span>
+                                </button>
+                                <button id="adminTokenClearBtn" class="flex items-center w-full gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+                                  <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6v12m8-12v12M5 6l1 14a2 2 0 002 2h8a2 2 0 002-2l1-14"/></svg>
+                                  <span>Clear admin token</span>
+                                </button>
+                              </div>
+                            </details>
                         </div>
                     </div>
                 </div>
@@ -404,7 +474,7 @@
                         </div>
 
                         <div class="flex justify-end">
-                            <button id="clearAllFilters" class="text-xs font-medium text-audio-600 dark:text-audio-300 hover:text-audio-700 dark:hover:text-audio-200 transition-colors">Clear all filters</button>
+                            <button id="clearAllFilters" class="text-xs font-medium text-audio-600 dark:text-audio-300 hover:text-audio-700 dark:hover:text-audio-200 transition-colors">Show all</button>
                         </div>
 
                         <!-- Sort select moved above results header (mobile-only) -->
@@ -630,6 +700,8 @@
                     <div class="h-full w-full bg-gradient-to-br from-audio-500/25 via-indigo-500/20 to-transparent blur-3xl opacity-80 dark:opacity-60"></div>
                 </div>
                 <div id="contentShell" class="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+                    <!-- (Top utility bar removed; mini-player now lives in footer) -->
                     
                     <!-- Results Header -->
                     <div id="resultsHero" class="relative overflow-hidden rounded-3xl border border-white/70 dark:border-slate-800/70 bg-white/85 dark:bg-slate-900/70 backdrop-blur-xl shadow-2xl shadow-slate-200/40 dark:shadow-black/40">
@@ -784,9 +856,9 @@
           </div>
         </div>
 
-        <!-- Mobile Mini Player (bottom sticky) -->
-        <div id="mobileMiniPlayer" class="lg:hidden fixed bottom-0 left-0 right-0 bg-gradient-to-r from-audio-500 to-audio-600 text-white p-4 shadow-xl z-40 transform translate-y-full transition-transform hidden border-t border-white/20">
-            <div class="flex items-center gap-4">
+        <!-- Footer Mini Player (bottom sticky on all viewports) -->
+        <div id="mobileMiniPlayer" class="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-audio-500 to-audio-600 text-white px-4 py-3 shadow-xl z-50 transform translate-y-full transition-transform hidden border-t border-white/20">
+            <div class="mx-auto max-w-4xl flex items-center gap-4">
                 <div class="w-12 h-12 rounded-lg overflow-hidden bg-white/20 flex-shrink-0 ring-2 ring-white/30">
                     <img id="mobileNowPlayingThumb" alt="thumbnail" class="w-full h-full object-cover" />
                     <!-- Placeholder when no thumbnail -->
@@ -824,7 +896,7 @@
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
     <script src="ui_flags.js?v=5"></script>
-    <script src="dashboard_v3.js?v=pg36"></script>
+    <script src="dashboard_v3.js?v=pg91"></script>
 
 </body>
 </html>
