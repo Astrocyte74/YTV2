@@ -3471,6 +3471,12 @@ class AudioDashboard {
             ${segBtn('data-reader-justify="left"', 'Left', prefs.justify==='left')}
             ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify==='justify')}
           </div>`;
+        const themeSeg = `
+          <div class="reader-segment" role="radiogroup" aria-label="Theme">
+            ${segBtn('data-reader-theme="light"', 'Light', prefs.theme==='light')}
+            ${segBtn('data-reader-theme="sepia"', 'Sepia', prefs.theme==='sepia')}
+            ${segBtn('data-reader-theme="dark"', 'Dark', prefs.theme==='dark')}
+          </div>`;
         const paraTile = (id, label) => `
           <div class="reader-tile" data-reader-para="${id}" aria-pressed="${prefs.paraStyle===id?'true':'false'}" role="button" aria-label="${label}" title="${label}">
             <div class="tile-preview">${id==='indented' ? '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.6\\" stroke-linecap=\\"round\\"><path d=\\"M8 6h11\\"/><path d=\\"M5 10h14\\"/><path d=\\"M5 14h14\\"/><path d=\\"M5 18h14\\"/></svg>' : '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.4\\" stroke-linecap=\\"round\\"><rect x=\\"5\\" y=\\"5\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/><rect x=\\"5\\" y=\\"15\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/></svg>'}</div>
@@ -3500,6 +3506,9 @@ class AudioDashboard {
               <button type="button" class="reader-close" aria-label="Close" data-reader-close>×</button>
             </div>
           </div>
+          <div class="reader-preview-row">
+            <div class="reader-live-preview" id="readerPreview">The quick brown fox jumps over the lazy dog. The five boxing wizards jump quickly. A mad boxer shot a quick, gloved jab to the jaw of his dizzy opponent. Pack my box with five dozen liquor jugs.</div>
+          </div>
           <div class="reader-panel reader-grid">
             <div class="reader-col">
               <div class="reader-group">
@@ -3516,9 +3525,6 @@ class AudioDashboard {
                   <div class="reader-field-label">Line Spacing</div>
                   <div class="reader-display-row" data-row="line">${lineSeg}</div>
                 </div>
-                <div class="reader-field">
-                  <div class="reader-live-preview" id="readerPreview">The quick brown fox jumps over the lazy dog.</div>
-                </div>
               </div>
             </div>
             <div class="reader-col">
@@ -3527,21 +3533,15 @@ class AudioDashboard {
                 <div class="reader-display-row" data-row="para"><div class="reader-segment" role="radiogroup" aria-label="Paragraph style">${segBtn('data-reader-para=\"spaced\"', 'Spaced', prefs.paraStyle==='spaced')}${segBtn('data-reader-para=\"indented\"', 'Indented', prefs.paraStyle==='indented')}</div></div>
                 <div class="reader-display-row" data-row="justify"><div class="reader-segment" role="radiogroup" aria-label="Justification">${segBtn('data-reader-justify=\"left\"','Left', prefs.justify==='left')}${segBtn('data-reader-justify=\"justify\"','Justified', prefs.justify==='justify')}</div></div>
                 <div class="reader-display-row" data-row="measure"><div class="reader-segment" role="radiogroup" aria-label="Reading width">${segBtn('data-reader-measure=\"narrow\"', 'Narrow', prefs.measure==='narrow')}${segBtn('data-reader-measure=\"medium\"', 'Medium', prefs.measure==='medium')}${segBtn('data-reader-measure=\"wide\"', 'Wide', prefs.measure==='wide')}${segBtn('data-reader-measure=\"full\"', 'Full', prefs.measure==='full')}</div></div>
-              </div>
-            </div>
-          </div>
-          <div class="reader-theme-row">
-            <div class="reader-group">
-              <h5>Theme</h5>
-              <div class="reader-tiles" data-row="theme">${[
-                  themeTile('light','Light'),
-                  themeTile('sepia','Sepia'),
-                  themeTile('dark','Dark')
-              ].join('')}</div>
-              <div class="mt-2 flex items-center justify-center gap-2 text-sm">
-                <label class="inline-flex items-center gap-2">
-                  <input type="checkbox" data-reader-system ${prefs.systemTheme ? 'checked' : ''} /> Match System Theme
-                </label>
+                <div class="reader-field">
+                  <div class="reader-field-label">Theme</div>
+                  <div class="reader-display-row" data-row="theme">${themeSeg}</div>
+                  <div class="mt-2 flex items-center gap-2 text-sm">
+                    <label class="inline-flex items-center gap-2">
+                      <input type="checkbox" data-reader-system ${prefs.systemTheme ? 'checked' : ''} /> Match System Theme
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
           </div>`;
@@ -3567,7 +3567,20 @@ class AudioDashboard {
             pop.style.right = Math.round(Math.max(12, window.innerWidth - anchorRect.right)) + 'px';
         }
         document.body.appendChild(pop);
-        // no preview block
+        // Initialize preview theme class
+        try {
+          const prev = pop.querySelector('#readerPreview');
+          if (prev) {
+            let baseTheme = 'light';
+            try {
+              if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
+              else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
+            } catch(_) {}
+            const effectiveTheme = (prefs.systemTheme ? baseTheme : (prefs.theme || baseTheme));
+            prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
+            prev.classList.add('preview-theme--' + effectiveTheme);
+          }
+        } catch(_) {}
         const closeAll = () => { try { pop.remove(); } catch(_) {} if (scrim) { try { scrim.remove(); } catch(_) {} scrim = null; } window.removeEventListener('resize', onAway, true); document.removeEventListener('click', onAway, true); };
         if (scrim) scrim.addEventListener('click', closeAll);
         const onAway = (e) => { if (!pop.contains(e.target) && e.target !== anchorBtn) closeAll(); };
@@ -3615,6 +3628,14 @@ class AudioDashboard {
                 prev.style.fontSize = fs + 'rem';
                 prev.style.lineHeight = String(lh);
                 prev.style.fontFamily = ff;
+                let baseTheme = 'light';
+                try {
+                  if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
+                  else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
+                } catch(_) {}
+                const effectiveTheme = (merged.systemTheme ? baseTheme : merged.theme);
+                prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
+                prev.classList.add('preview-theme--' + effectiveTheme);
               }
               const chip = pop.querySelector('[data-size-chip]');
               if (chip) chip.style.fontSize = (READER_SIZE_MAP[merged.size]||1.0) + 'rem';
@@ -3658,6 +3679,16 @@ class AudioDashboard {
                 if (jr) jr.setAttribute('data-justify-state', 'left');
                 const sys = pop.querySelector('[data-reader-system]');
                 if (sys) sys.checked = false;
+                try {
+                  const prev = pop.querySelector('#readerPreview');
+                  if (prev) {
+                    prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
+                    prev.classList.add('preview-theme--' + baseTheme);
+                    prev.style.fontSize = (READER_SIZE_MAP[merged.size]||1.0) + 'rem';
+                    prev.style.lineHeight = String(READER_LINE_MAP[merged.line]||1.6);
+                    prev.style.fontFamily = (READER_FAMILY_MAP[merged.family]||'inherit');
+                  }
+                } catch(_) {}
             });
         }
         // System theme checkbox
@@ -3666,6 +3697,21 @@ class AudioDashboard {
             sysCb.addEventListener('change', () => {
                 this.setReaderDisplayPrefs({ systemTheme: !!sysCb.checked });
                 this.applyReaderDisplayPrefs(container, bodyEl);
+                // Update preview theme class to follow system
+                try {
+                  const prev = pop.querySelector('#readerPreview');
+                  if (prev) {
+                    let baseTheme = 'light';
+                    try {
+                      if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
+                      else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
+                    } catch(_) {}
+                    const prefsNow = this.getReaderDisplayPrefs();
+                    const eff = prefsNow.systemTheme ? baseTheme : (prefsNow.theme || baseTheme);
+                    prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
+                    prev.classList.add('preview-theme--' + eff);
+                  }
+                } catch(_) {}
             });
         }
         const closeBtn = pop.querySelector('[data-reader-close]');

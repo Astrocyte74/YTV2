@@ -677,6 +677,12 @@ body {
 /* Live preview line */
 .reader-live-preview { border: 1px dashed rgba(148,163,184,0.35); border-radius: 0.5rem; padding: 12px 14px; color: inherit; opacity: 0.9; box-shadow: 0 1px 0 rgba(0,0,0,0.03); }
 .dark .reader-live-preview { border-color: rgba(71,85,105,0.45); }
+/* Full-width, multiline preview row */
+.reader-preview-row { width: 100%; margin-bottom: 0.75rem; }
+.reader-live-preview { width: 100%; white-space: normal; }
+.preview-theme--light { background: #ffffff; color: #0f172a; }
+.preview-theme--sepia { background: #efe6d6; color: #1f2937; }
+.preview-theme--dark { background: #111827; color: #e5e7eb; }
 
 /* Micro captions for extra clarity */
 .reader-caption { font-size: 0.68rem; line-height: 1.2; margin-top: 6px; color: rgba(0,0,0,0.45); }
