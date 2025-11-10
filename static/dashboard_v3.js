@@ -7442,6 +7442,13 @@ class AudioDashboard {
                 }
             });
             const ai2Urls = this.getAi2VariantUrls(item);
+            // Track known URLs for highlight of newly-added variants
+            try {
+                const known = new Set();
+                (a1VariantsAll || []).forEach(v => { if (v && v.url) known.add(this.normalizeAssetUrl(v.url)); });
+                (ai2Urls || []).forEach(u => { if (u) known.add(this.normalizeAssetUrl(u)); });
+                this._imagesModalKnownUrls = known;
+            } catch(_) {}
             const a2Variants = ai2Urls
                 .map(u => ({ url: u, image_mode: 'ai2', prompt: urlToPrompt.get(this.normalizeAssetUrl(u)) || '', created_at: urlToCreated.get(this.normalizeAssetUrl(u)) || '' }))
                 .sort((a,b) => {
@@ -7789,9 +7796,19 @@ class AudioDashboard {
                 try {
                     const itm = freshItem || (this.currentItems || []).find(x => x.file_stem === reportId) || item;
                     const allVars = Array.isArray(itm.analysis?.summary_image_variants) ? itm.analysis.summary_image_variants : [];
+                    const newUrls = new Set();
+                    try {
+                        const prev = this._imagesModalKnownUrls || new Set();
+                        allVars.forEach(v => { const u = v && v.url ? this.normalizeAssetUrl(v.url) : ''; if (u && !prev.has(u)) newUrls.add(u); });
+                    } catch(_) {}
                     // Rebuild AI1 list
                     const a1v = allVars.filter(v => {
-                        const m=(v.image_mode||'').toLowerCase(); const t=(v.template||'').toLowerCase(); const ps=(v.prompt_source||'').toLowerCase(); const u=v.url||''; return !(m==='ai2'||t==='ai2_freestyle'||(ps&&ps.startsWith('ai2'))||/(?:^|\\/)AI2_/i.test(u));
+                        const m=(v.image_mode||'').toLowerCase();
+                        const t=(v.template||'').toLowerCase();
+                        const ps=(v.prompt_source||'').toLowerCase();
+                        const u=(v.url||'').toUpperCase();
+                        const isAi2 = (m==='ai2') || (t==='ai2_freestyle') || (ps && ps.startsWith('ai2')) || u.includes('/AI2_') || u.startsWith('AI2_');
+                        return !isAi2;
                     }).sort((a,b)=>{ const ca=(a.created_at||'')+''; const cb=(b.created_at||'')+''; return ca<cb?1:ca>cb?-1:0; });
                     const renderRow = (v, i, sel, mode) => {
                         const url = this.normalizeAssetUrl(v.url||''); const isSel = sel && url && (url===this.normalizeAssetUrl(sel)); const when=this.formatRelativeTime(v.created_at); const preview=(v.prompt||'').slice(0,120);
@@ -7801,6 +7818,16 @@ class AudioDashboard {
                     let a1Html = a1v.map((v,i)=>renderRow(v,i,a1Sel,'ai1')).join('');
                     if (!a1Html) a1Html = '<div class="px-2 py-3 text-xs text-slate-500">No AI1 variants yet.</div>';
                     listA1.innerHTML = a1Html;
+                    // Highlight newly-added rows (AI1)
+                    try {
+                        listA1.querySelectorAll('[data-variant-row]').forEach(row => {
+                            const u = this.normalizeAssetUrl(row.getAttribute('data-url')||'');
+                            if (newUrls.has(u)) {
+                                row.classList.add('ring','ring-audio-400','ring-offset-1');
+                                setTimeout(()=>{ row.classList.remove('ring','ring-audio-400','ring-offset-1'); }, 1500);
+                            }
+                        });
+                    } catch(_) {}
                     listClick(listA1,'ai1',a1v);
 
                     // Rebuild AI2 list
@@ -7812,11 +7839,29 @@ class AudioDashboard {
                     let a2Html = a2v.map((v,i)=>renderRow(v,i,a2Sel,'ai2')).join('');
                     if (!a2Html) a2Html = '<div class="px-2 py-3 text-xs text-slate-500">No AI2 variants yet.</div>';
                     listA2.innerHTML = a2Html;
+                    // Highlight newly-added rows (AI2)
+                    try {
+                        listA2.querySelectorAll('[data-variant-row]').forEach(row => {
+                            const u = this.normalizeAssetUrl(row.getAttribute('data-url')||'');
+                            if (newUrls.has(u)) {
+                                row.classList.add('ring','ring-audio-400','ring-offset-1');
+                                setTimeout(()=>{ row.classList.remove('ring','ring-audio-400','ring-offset-1'); }, 1500);
+                            }
+                        });
+                    } catch(_) {}
                     listClick(listA2,'ai2',a2v);
 
                     // Flip status to ready for both panes, then hide
                     setStatus('ai1','ready');
                     setStatus('ai2','ready');
+                    // Update known URLs baseline
+                    try {
+                        const known = this._imagesModalKnownUrls || new Set();
+                        allVars.forEach(v => { if (v && v.url) known.add(this.normalizeAssetUrl(v.url)); });
+                        const urls2 = this.getAi2VariantUrls(itm) || [];
+                        urls2.forEach(u => { if (u) known.add(this.normalizeAssetUrl(u)); });
+                        this._imagesModalKnownUrls = known;
+                    } catch(_) {}
                 } catch(_) {}
             };
 
