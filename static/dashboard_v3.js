@@ -493,7 +493,7 @@ class AudioDashboard {
             }
         });
 
-        // Ensure kebab action for image-new always triggers (capture phase to beat other handlers)
+        // Ensure kebab action opens Manage Images (capture phase to beat other handlers)
         document.addEventListener('click', (e) => {
             const el = e.target.closest('[data-action="images-manage"]');
             if (!el) return;
@@ -506,7 +506,7 @@ class AudioDashboard {
                 const menu = el.closest('[data-kebab-menu][data-report-id]');
                 if (menu && menu.getAttribute) id = menu.getAttribute('data-report-id');
             }
-            if (id) this.handleCreateImagePrompt(id);
+            if (id) this.handleManageImages(id);
         }, true);
         const imageNewHandler = (e) => {
             const el = e.target.closest && e.target.closest('[data-action="images-manage"]');
