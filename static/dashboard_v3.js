@@ -3538,8 +3538,8 @@ class AudioDashboard {
                 <div class="reader-tiles" data-row="para">${[paraTile('spaced','Spaced'), paraTile('indented','Indented')].join('')}</div>
                 <div class="reader-caption">paragraph style</div>
                 <div class="reader-tiles" data-row="justify">${[
-                    `<div class=\"reader-tile\" data-reader-justify=\"left\" aria-pressed=\"${prefs.justify==='left'?'true':'false'}\" role=\"button\" title=\"Ragged-right paragraphs\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div><div class=\"tile-label\">Left</div></div>`,
-                    `<div class=\"reader-tile\" data-reader-justify=\"justify\" aria-pressed=\"${prefs.justify==='justify'?'true':'false'}\" role=\"button\" title=\"Fully justified paragraphs\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div><div class=\"tile-label\">Justified</div></div>`
+                    `<div class=\"reader-tile\" data-reader-justify=\"left\" aria-pressed=\"${prefs.justify==='left'?'true':'false'}\" role=\"button\" title=\"Ragged-right paragraphs\" aria-label=\"Left aligned\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div></div>`,
+                    `<div class=\"reader-tile\" data-reader-justify=\"justify\" aria-pressed=\"${prefs.justify==='justify'?'true':'false'}\" role=\"button\" title=\"Fully justified paragraphs\" aria-label=\"Justified\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div></div>`
                 ].join('')}</div>
                 <div class="reader-tiles" data-row="measure">${[
                     measureTile('narrow','Narrow'),

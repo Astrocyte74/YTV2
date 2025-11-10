@@ -634,7 +634,12 @@ body {
 .reader-segment [role="button"] { padding: 0.35rem 0.65rem; font-size: 0.85rem; border-right: 1px solid rgba(226,232,240,0.7); cursor: pointer; transition: background-color .2s ease-out, box-shadow .2s ease-out; }
 .reader-segment [role="button"]:last-child { border-right: none; }
 .dark .reader-segment [role="button"] { border-color: rgba(71,85,105,0.4); }
-.reader-segment [role="button"][aria-pressed="true"] { background: #0ea5e9; color: white; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.3); }
+.reader-segment [role="button"][aria-pressed="true"] {
+  /* Match tile pressed ring/aura for consistency */
+  background-color: rgba(56,149,255,0.16);
+  color: inherit;
+  box-shadow: inset 0 0 0 1px rgba(120,180,255,0.6), 0 0 0 3px rgba(56,189,248,0.18);
+}
 .reader-segment [role="button"]:hover { background: rgba(255,255,255,0.06); }
 .dark .reader-segment [role="button"]:hover { background: rgba(255,255,255,0.05); }
 
@@ -759,7 +764,7 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 @media (min-width: 1024px) {
   .wall-expander [data-summary-body],
   #wallReaderBody {
-    /* Reader measure is adjustable via --reader-measure */
+/* Reader measure is adjustable via --reader-measure */
     max-width: var(--reader-measure, 70ch);
     margin-left: auto;
     margin-right: auto;
@@ -2994,3 +2999,9 @@ input[type="checkbox"][data-category-parent]:indeterminate::after {
         opacity: 1;
     }
 }
+/* Font-size ramp for size segment */
+.reader-segment [data-reader-size="s"] { font-size: 0.9rem; }
+.reader-segment [data-reader-size="m"] { font-size: 1.0rem; }
+.reader-segment [data-reader-size="l"] { font-size: 1.1rem; }
+.reader-segment [data-reader-size="xl"] { font-size: 1.2rem; }
+.reader-segment [data-reader-size="xxl"] { font-size: 1.3rem; }
