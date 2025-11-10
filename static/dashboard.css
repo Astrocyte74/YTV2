@@ -635,10 +635,13 @@ body {
 .reader-segment [role="button"]:last-child { border-right: none; }
 .dark .reader-segment [role="button"] { border-color: rgba(71,85,105,0.4); }
 .reader-segment [role="button"][aria-pressed="true"] {
-  /* Match tile pressed ring/aura for consistency */
-  background-color: rgba(56,149,255,0.16);
-  color: inherit;
-  box-shadow: inset 0 0 0 1px rgba(120,180,255,0.6), 0 0 0 3px rgba(56,189,248,0.18);
+  /* For segmented controls, use a filled button for the selected state */
+  background-color: #0ea5e9; /* audio-500 */
+  color: #fff;
+  box-shadow: none;
+}
+.dark .reader-segment [role="button"][aria-pressed="true"] {
+  background-color: #0284c7; /* audio-600 */
 }
 .reader-segment [role="button"]:hover { background: rgba(255,255,255,0.06); }
 .dark .reader-segment [role="button"]:hover { background: rgba(255,255,255,0.05); }
