@@ -7544,8 +7544,6 @@ class AudioDashboard {
             const defaultA2Line = panel.querySelector('[data-default-ai2-line]');
             const statusA1 = panel.querySelector('[data-status-ai1]');
             const statusA2 = panel.querySelector('[data-status-ai2]');
-            const paneA1 = panel.querySelector('[data-pane="ai1"]');
-            const paneA2 = panel.querySelector('[data-pane="ai2"]');
             this._imagesModalRegenSet = new Set();
             const listA1 = panel.querySelector('[data-list-ai1]');
             const listA2 = panel.querySelector('[data-list-ai2]');
