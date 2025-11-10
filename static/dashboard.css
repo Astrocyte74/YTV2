@@ -3008,3 +3008,5 @@ input[type="checkbox"][data-category-parent]:indeterminate::after {
 .reader-segment [data-reader-size="l"] { font-size: 1.1rem; }
 .reader-segment [data-reader-size="xl"] { font-size: 1.2rem; }
 .reader-segment [data-reader-size="xxl"] { font-size: 1.3rem; }
+.reader-tile .tile-preview svg { width: 22px; height: 22px; opacity: 0.92; }
+.dark .reader-tile .tile-preview svg { opacity: 0.96; }
