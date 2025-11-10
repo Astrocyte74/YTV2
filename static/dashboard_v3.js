@@ -3448,7 +3448,7 @@ class AudioDashboard {
         const pop = document.createElement('div');
         pop.className = 'reader-display-popover';
         pop.setAttribute('role', 'dialog');
-        const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed?'true':'false'}">${label}</span>`;
+        const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed?'true':'false'}" title="${String(label).replace(/<[^>]+>/g,'')}">${label}</span>`;
         const sizeSeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Text size">
             ${segBtn('data-reader-size="s"', 'A', prefs.size==='s')}
@@ -3465,8 +3465,8 @@ class AudioDashboard {
           </div>`;
         const familySeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Font family">
-            ${segBtn('data-reader-family="sans"', 'Sans', prefs.family==='sans')}
-            ${segBtn('data-reader-family="serif"', 'Serif', prefs.family==='serif')}
+            ${segBtn('data-reader-family="sans"', '<span style=\"font-family:system-ui,sans-serif\">Aa</span>', prefs.family==='sans')}
+            ${segBtn('data-reader-family="serif"', '<span style=\"font-family:Georgia,serif\">Aa</span>', prefs.family==='serif')}
           </div>`;
         const justifySeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Justification">
@@ -3525,6 +3525,11 @@ class AudioDashboard {
                     themeTile('sepia','Sepia'),
                     themeTile('dark','Dark')
                 ].join('')}</div>
+                <div class="mt-2 flex items-center gap-2 text-sm">
+                  <label class="inline-flex items-center gap-2">
+                    <input type="checkbox" data-reader-system ${prefs.systemTheme ? 'checked' : ''} /> Match System Theme
+                  </label>
+                </div>
               </div>
             </div>
             <div class="reader-col">
@@ -3630,7 +3635,7 @@ class AudioDashboard {
                     if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
                     else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
                 } catch(_) {}
-                const defaults = { size: 'm', line: 'normal', family: 'sans', theme: baseTheme, paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
+                const defaults = { size: 'm', line: 'normal', family: 'sans', theme: baseTheme, systemTheme: false, paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
                 const merged = this.setReaderDisplayPrefs(defaults);
                 this.applyReaderDisplayPrefs(container, bodyEl);
                 // Update UI state
@@ -3643,6 +3648,16 @@ class AudioDashboard {
                 });
                 const jr = pop.querySelector('[data-row="justify"]');
                 if (jr) jr.setAttribute('data-justify-state', 'left');
+                const sys = pop.querySelector('[data-reader-system]');
+                if (sys) sys.checked = false;
+            });
+        }
+        // System theme checkbox
+        const sysCb = pop.querySelector('[data-reader-system]');
+        if (sysCb) {
+            sysCb.addEventListener('change', () => {
+                this.setReaderDisplayPrefs({ systemTheme: !!sysCb.checked });
+                this.applyReaderDisplayPrefs(container, bodyEl);
             });
         }
         const closeBtn = pop.querySelector('[data-reader-close]');
