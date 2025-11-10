@@ -1083,6 +1083,16 @@ class AudioDashboard {
             this.showToast(`Reprocess finished for ${this.describeVideo(data)}`, 'success');
         }
 
+        // If Manage Images modal is open for this video, mark for modal refresh
+        try {
+            if (this._openImagesModalReportId && this._openImagesModalReportId === videoId) {
+                this._reopenImagesModalVideoId = videoId;
+                if (typeof this._closeImagesModal === 'function') {
+                    try { this._closeImagesModal(); } catch(_) {}
+                }
+            }
+        } catch(_) {}
+
         this.realtimeEventBuffer.push({ videoId, summaryTypes, timestamp, meta: { ...meta, eventName } });
         this.scheduleRealtimeFlush();
         this.requestMetricsRefresh(2000);
@@ -1117,13 +1127,21 @@ class AudioDashboard {
         if (canAutoRefresh && sinceLast > 2000) {
             this.lastRealtimeRefresh = now;
             this.currentPage = 1;
-            Promise.resolve(this.loadContent())
-                .catch((error) => console.error('Realtime refresh failed', error))
-                .finally(() => {
-                    this.realtimePendingCount = 0;
-                    this.hideRealtimeBanner();
-                    this.requestMetricsRefresh(1200);
-                });
+        Promise.resolve(this.loadContent())
+            .catch((error) => console.error('Realtime refresh failed', error))
+            .finally(() => {
+                this.realtimePendingCount = 0;
+                this.hideRealtimeBanner();
+                this.requestMetricsRefresh(1200);
+                // Reopen Manage Images modal if we were waiting on a refresh for it
+                try {
+                    if (this._reopenImagesModalVideoId) {
+                        const vid = this._reopenImagesModalVideoId;
+                        this._reopenImagesModalVideoId = null;
+                        this.handleManageImages(vid);
+                    }
+                } catch(_) {}
+            });
         } else {
             this.showRealtimeBanner(this.realtimePendingCount, eventNames);
             this.requestMetricsRefresh(2000);
@@ -7108,6 +7126,7 @@ class AudioDashboard {
               </div>`;
             overlay.appendChild(panel);
             document.body.appendChild(overlay);
+            this._openImagesModalReportId = reportId;
 
             const input = panel.querySelector('#adminTokenInput');
             const save = panel.querySelector('[data-save]');
@@ -7531,7 +7550,9 @@ class AudioDashboard {
                     body: JSON.stringify({ video_id: videoId, prompt: text, mode })
                 });
                 if (!res.ok) { this.showToast(`Failed to save ${mode} prompt`, 'error'); return; }
-                this.showToast(`${mode.toUpperCase()} prompt saved`, 'success');
+                this.showToast(`${mode.toUpperCase()} prompt saved — watching for new image…`, 'success');
+                // Ensure the modal will refresh when NAS posts the update
+                this._reopenImagesModalVideoId = reportId;
             };
             saveA1.addEventListener('click', ()=> onSavePrompt('ai1', (inputA1.value||'').trim()));
             saveA2.addEventListener('click', ()=> onSavePrompt('ai2', (inputA2.value||'').trim()));
@@ -7737,7 +7758,8 @@ class AudioDashboard {
 
             // Default display radio removed for now
 
-            const finish = () => { try { document.body.removeChild(overlay); } catch(_) {}; resolve(); };
+            const finish = () => { try { document.body.removeChild(overlay); } catch(_) {}; if (this._openImagesModalReportId === reportId) this._openImagesModalReportId = null; resolve(); };
+            this._closeImagesModal = finish;
             overlay.addEventListener('click', (e)=>{ if (e.target === overlay) finish(); });
             closeBtns.forEach(btn => btn && btn.addEventListener('click', finish));
         });
