@@ -7576,6 +7576,37 @@ class AudioDashboard {
                 }
             };
 
+            const startPollingForNewVariants = (videoId) => {
+                try { if (this._imagesModalPollTimer) clearInterval(this._imagesModalPollTimer); } catch(_) {}
+                const startKnown = new Set(this._imagesModalKnownUrls || []);
+                const tick = async () => {
+                    try {
+                        const res = await fetch(`/${encodeURIComponent(videoId)}.json?v=${Date.now()}`);
+                        if (!res.ok) return;
+                        const itm = await res.json();
+                        const urls = new Set();
+                        try {
+                            const vars = Array.isArray(itm.analysis?.summary_image_variants) ? itm.analysis.summary_image_variants : [];
+                            vars.forEach(v => { if (v && v.url) urls.add(this.normalizeAssetUrl(v.url)); });
+                            const ai2 = this.getAi2VariantUrls(itm) || [];
+                            ai2.forEach(u => { if (u) urls.add(this.normalizeAssetUrl(u)); });
+                        } catch(_) {}
+                        // Detect new URLs vs startKnown
+                        let hasNew = false;
+                        urls.forEach(u => { if (!startKnown.has(u)) hasNew = true; });
+                        if (hasNew) {
+                            if (typeof this._imagesModalRefresh === 'function') this._imagesModalRefresh(itm);
+                            // Stop polling
+                            clearInterval(this._imagesModalPollTimer);
+                            this._imagesModalPollTimer = null;
+                        }
+                    } catch(_) {}
+                };
+                this._imagesModalPollTimer = setInterval(tick, 3000);
+                // also run immediately once
+                tick();
+            };
+
             const onSavePrompt = async (mode, text) => {
                 const token = await this.getReprocessToken();
                 if (!token) { this.showToast('Token required', 'warn'); return; }
@@ -7588,6 +7619,8 @@ class AudioDashboard {
                 setStatus(mode, 'regen');
                 // Mark for hot-refresh upon SSE
                 this._openImagesModalReportId = reportId;
+                // Fallback polling in case NAS writes directly to DB without SSE
+                startPollingForNewVariants(videoId);
             };
             saveA1.addEventListener('click', ()=> onSavePrompt('ai1', (inputA1.value||'').trim()));
             saveA2.addEventListener('click', ()=> onSavePrompt('ai2', (inputA2.value||'').trim()));
@@ -7867,7 +7900,7 @@ class AudioDashboard {
 
             // Default display radio removed for now
 
-            const finish = () => { try { document.body.removeChild(overlay); } catch(_) {}; if (this._openImagesModalReportId === reportId) this._openImagesModalReportId = null; resolve(); };
+            const finish = () => { try { document.body.removeChild(overlay); } catch(_) {}; if (this._openImagesModalReportId === reportId) this._openImagesModalReportId = null; try { if (this._imagesModalPollTimer) { clearInterval(this._imagesModalPollTimer); this._imagesModalPollTimer = null; } } catch(_) {}; resolve(); };
             this._closeImagesModal = finish;
             overlay.addEventListener('click', (e)=>{ if (e.target === overlay) finish(); });
             closeBtns.forEach(btn => btn && btn.addEventListener('click', finish));
