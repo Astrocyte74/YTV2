@@ -7544,6 +7544,9 @@ class AudioDashboard {
             const defaultA2Line = panel.querySelector('[data-default-ai2-line]');
             const statusA1 = panel.querySelector('[data-status-ai1]');
             const statusA2 = panel.querySelector('[data-status-ai2]');
+            const paneA1 = panel.querySelector('[data-pane="ai1"]');
+            const paneA2 = panel.querySelector('[data-pane="ai2"]');
+            this._imagesModalRegenSet = new Set();
             const listA1 = panel.querySelector('[data-list-ai1]');
             const listA2 = panel.querySelector('[data-list-ai2]');
             const closeBtns = [panel.querySelector('[data-close]'), panel.querySelector('[data-close2]')].filter(Boolean);
@@ -7574,6 +7577,19 @@ class AudioDashboard {
                 } else {
                     el.classList.add('hidden');
                 }
+            };
+
+            const setBusy = (mode, busy) => {
+                const btn = mode === 'ai2' ? saveA2 : saveA1;
+                const pane = mode === 'ai2' ? paneA2 : paneA1;
+                if (btn) {
+                    btn.disabled = !!busy;
+                    btn.classList.toggle('opacity-60', !!busy);
+                    btn.classList.toggle('cursor-not-allowed', !!busy);
+                    btn.setAttribute('aria-disabled', busy ? 'true' : 'false');
+                }
+                if (pane) pane.setAttribute('aria-busy', busy ? 'true' : 'false');
+                if (busy) this._imagesModalRegenSet.add(mode); else this._imagesModalRegenSet.delete(mode);
             };
 
             const startPollingForNewVariants = (videoId) => {
@@ -7617,6 +7633,7 @@ class AudioDashboard {
                 if (!res.ok) { this.showToast(`Failed to save ${mode} prompt`, 'error'); return; }
                 this.showToast(`${mode.toUpperCase()} prompt saved — watching for new image…`, 'success');
                 setStatus(mode, 'regen');
+                setBusy(mode, true);
                 // Mark for hot-refresh upon SSE
                 this._openImagesModalReportId = reportId;
                 // Fallback polling in case NAS writes directly to DB without SSE
@@ -7828,6 +7845,11 @@ class AudioDashboard {
             this._imagesModalRefresh = (freshItem) => {
                 try {
                     const itm = freshItem || (this.currentItems || []).find(x => x.file_stem === reportId) || item;
+                    // Update in-memory items so card helpers reflect the latest selection
+                    try {
+                        const idx = (this.currentItems || []).findIndex(x => x.file_stem === reportId);
+                        if (idx >= 0) this.currentItems[idx] = itm;
+                    } catch(_) {}
                     const allVars = Array.isArray(itm.analysis?.summary_image_variants) ? itm.analysis.summary_image_variants : [];
                     const newUrls = new Set();
                     try {
@@ -7884,9 +7906,25 @@ class AudioDashboard {
                     } catch(_) {}
                     listClick(listA2,'ai2',a2v);
 
+                    // Update the visible card thumbnail in the grid for this item
+                    try {
+                        const card = document.querySelector(`[data-report-id="${CSS.escape(reportId)}"]`);
+                        if (card) {
+                            const imgSum = card.querySelector('[data-role="thumb-summary"]');
+                            const ai1 = a1Sel ? this.normalizeAssetUrl(a1Sel) : '';
+                            const ai2 = a2Sel ? this.normalizeAssetUrl(a2Sel) : '';
+                            if (imgSum) {
+                                if (ai1) try { imgSum.setAttribute('data-ai1-url', ai1); } catch(_) {}
+                                if (ai2) try { imgSum.setAttribute('data-ai2-url', ai2); } catch(_) {}
+                            }
+                            try { this.applyImageModeToCard(card); } catch(_) {}
+                        }
+                    } catch(_) {}
+
                     // Flip status to ready for both panes, then hide
-                    setStatus('ai1','ready');
-                    setStatus('ai2','ready');
+                    // If a mode was regenerating, flip its status to ready and re-enable
+                    if (this._imagesModalRegenSet.has('ai1')) { setStatus('ai1','ready'); setBusy('ai1', false); }
+                    if (this._imagesModalRegenSet.has('ai2')) { setStatus('ai2','ready'); setBusy('ai2', false); }
                     // Update known URLs baseline
                     try {
                         const known = this._imagesModalKnownUrls || new Set();
