@@ -1083,13 +1083,27 @@ class AudioDashboard {
             this.showToast(`Reprocess finished for ${this.describeVideo(data)}`, 'success');
         }
 
-        // If Manage Images modal is open for this video, mark for modal refresh
+        // If Manage Images modal is open for this video, hot‑refresh it in place
         try {
             if (this._openImagesModalReportId && this._openImagesModalReportId === videoId) {
-                this._reopenImagesModalVideoId = videoId;
-                if (typeof this._closeImagesModal === 'function') {
-                    try { this._closeImagesModal(); } catch(_) {}
-                }
+                const fetchAndRefresh = async () => {
+                    try {
+                        const res = await fetch(`/${encodeURIComponent(videoId)}.json?v=${Date.now()}`);
+                        if (!res.ok) return;
+                        const item = await res.json();
+                        // Update currentItems copy
+                        try {
+                            const idx = (this.currentItems || []).findIndex(x => x.file_stem === (item.file_stem || item.video_id));
+                            if (idx >= 0) this.currentItems[idx] = item; else (this.currentItems || []).push(item);
+                        } catch(_) {}
+                        if (typeof this._imagesModalRefresh === 'function') {
+                            this._imagesModalRefresh(item);
+                        }
+                    } catch(_) {}
+                };
+                // Debounce the refresh a bit to avoid double work
+                clearTimeout(this._imagesModalRefreshTimer);
+                this._imagesModalRefreshTimer = setTimeout(fetchAndRefresh, 400);
             }
         } catch(_) {}
 
@@ -1133,14 +1147,7 @@ class AudioDashboard {
                 this.realtimePendingCount = 0;
                 this.hideRealtimeBanner();
                 this.requestMetricsRefresh(1200);
-                // Reopen Manage Images modal if we were waiting on a refresh for it
-                try {
-                    if (this._reopenImagesModalVideoId) {
-                        const vid = this._reopenImagesModalVideoId;
-                        this._reopenImagesModalVideoId = null;
-                        this.handleManageImages(vid);
-                    }
-                } catch(_) {}
+                // (legacy reopen flow removed; now hot‑refreshes while open)
             });
         } else {
             this.showRealtimeBanner(this.realtimePendingCount, eventNames);
@@ -7495,6 +7502,7 @@ class AudioDashboard {
                   <label class="block text-sm mb-1">AI1 prompt</label>
                   <textarea data-input-ai1 rows="4" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2">${this.escapeHtml(a1Default)}</textarea>
                   <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai1-line style="${(a.summary_image_prompt_original||'').trim() ? '' : 'display:none'}">Default: <span data-default-ai1>${this.escapeHtml((a.summary_image_prompt_original||'').trim() || '')}</span></div>
+                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400 hidden" data-status-ai1><span class="inline-flex items-center gap-1" data-status-ai1-text><svg class="animate-spin h-3 w-3 text-audio-600" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg> Regenerating…</span></div>
                   <div class="mt-2 flex items-center gap-2"><button data-save-ai1 class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Regenerate AI1</button><button data-use-default-ai1 class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Use default prompt</button></div>
                   <div class="mt-3 text-xs uppercase tracking-wide text-slate-400">AI1 variants</div>
                   <div class="max-h-56 overflow-auto pr-1 space-y-2" data-list-ai1>${a1Rows}</div>
@@ -7503,6 +7511,7 @@ class AudioDashboard {
                   <label class="block text-sm mb-1">AI2 prompt</label>
                   <textarea data-input-ai2 rows="4" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2">${this.escapeHtml(a2Default)}</textarea>
                   <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai2-line style="${(a.summary_image_ai2_prompt_original||'').trim() ? '' : 'display:none'}">Default: <span data-default-ai2>${this.escapeHtml((a.summary_image_ai2_prompt_original||'').trim() || '')}</span></div>
+                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400 hidden" data-status-ai2><span class="inline-flex items-center gap-1" data-status-ai2-text><svg class="animate-spin h-3 w-3 text-audio-600" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg> Regenerating…</span></div>
                   <div class="mt-2 flex items-center gap-2"><button data-save-ai2 class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Regenerate AI2</button><button data-use-default-ai2 class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Use default prompt</button></div>
                   <div class="mt-3 text-xs uppercase tracking-wide text-slate-400">AI2 variants</div>
                   <div class="max-h-56 overflow-auto pr-1 space-y-2" data-list-ai2>${a2Rows}</div>
@@ -7526,6 +7535,8 @@ class AudioDashboard {
             const useDefaultA2 = panel.querySelector('[data-use-default-ai2]');
             const defaultA1Line = panel.querySelector('[data-default-ai1-line]');
             const defaultA2Line = panel.querySelector('[data-default-ai2-line]');
+            const statusA1 = panel.querySelector('[data-status-ai1]');
+            const statusA2 = panel.querySelector('[data-status-ai2]');
             const listA1 = panel.querySelector('[data-list-ai1]');
             const listA2 = panel.querySelector('[data-list-ai2]');
             const closeBtns = [panel.querySelector('[data-close]'), panel.querySelector('[data-close2]')].filter(Boolean);
@@ -7542,6 +7553,22 @@ class AudioDashboard {
             tabA1.addEventListener('click', ()=> setTab('ai1'));
             tabA2.addEventListener('click', ()=> setTab('ai2'));
 
+            const setStatus = (mode, kind /* 'regen' | 'ready' | 'hide' */) => {
+                const el = mode === 'ai2' ? statusA2 : statusA1;
+                if (!el) return;
+                const span = el.querySelector('[data-status-' + mode + '-text]') || el.querySelector('[data-status-ai1-text]') || el.querySelector('[data-status-ai2-text]');
+                if (kind === 'regen') {
+                    if (span) span.innerHTML = '<svg class="animate-spin h-3 w-3 text-audio-600" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg> Regenerating…';
+                    el.classList.remove('hidden');
+                } else if (kind === 'ready') {
+                    if (span) span.innerHTML = '<svg class="h-3 w-3 text-emerald-600" viewBox="0 0 24 24"><path fill="currentColor" d="M9 16.2l-3.5-3.5 1.4-1.4L9 13.4l7.1-7.1 1.4 1.4z"/></svg> New image ready';
+                    el.classList.remove('hidden');
+                    setTimeout(()=>{ el.classList.add('hidden'); }, 1800);
+                } else {
+                    el.classList.add('hidden');
+                }
+            };
+
             const onSavePrompt = async (mode, text) => {
                 const token = await this.getReprocessToken();
                 if (!token) { this.showToast('Token required', 'warn'); return; }
@@ -7551,8 +7578,9 @@ class AudioDashboard {
                 });
                 if (!res.ok) { this.showToast(`Failed to save ${mode} prompt`, 'error'); return; }
                 this.showToast(`${mode.toUpperCase()} prompt saved — watching for new image…`, 'success');
-                // Ensure the modal will refresh when NAS posts the update
-                this._reopenImagesModalVideoId = reportId;
+                setStatus(mode, 'regen');
+                // Mark for hot-refresh upon SSE
+                this._openImagesModalReportId = reportId;
             };
             saveA1.addEventListener('click', ()=> onSavePrompt('ai1', (inputA1.value||'').trim()));
             saveA2.addEventListener('click', ()=> onSavePrompt('ai2', (inputA2.value||'').trim()));
@@ -7755,6 +7783,42 @@ class AudioDashboard {
             };
             listClick(listA1, 'ai1', a1Variants);
             listClick(listA2, 'ai2', a2Variants);
+
+            // Expose a hot-refresh function for SSE updates
+            this._imagesModalRefresh = (freshItem) => {
+                try {
+                    const itm = freshItem || (this.currentItems || []).find(x => x.file_stem === reportId) || item;
+                    const allVars = Array.isArray(itm.analysis?.summary_image_variants) ? itm.analysis.summary_image_variants : [];
+                    // Rebuild AI1 list
+                    const a1v = allVars.filter(v => {
+                        const m=(v.image_mode||'').toLowerCase(); const t=(v.template||'').toLowerCase(); const ps=(v.prompt_source||'').toLowerCase(); const u=v.url||''; return !(m==='ai2'||t==='ai2_freestyle'||(ps&&ps.startsWith('ai2'))||/(?:^|\\/)AI2_/i.test(u));
+                    }).sort((a,b)=>{ const ca=(a.created_at||'')+''; const cb=(b.created_at||'')+''; return ca<cb?1:ca>cb?-1:0; });
+                    const renderRow = (v, i, sel, mode) => {
+                        const url = this.normalizeAssetUrl(v.url||''); const isSel = sel && url && (url===this.normalizeAssetUrl(sel)); const when=this.formatRelativeTime(v.created_at); const preview=(v.prompt||'').slice(0,120);
+                        return `<div class="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 relative" data-variant-row data-url="${url}"><div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 dark:bg-slate-700 flex-shrink-0 relative" data-thumb><img src="${url}" alt="variant" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'" />${isSel ? '<span class=\'y-badge-selected absolute top-1 left-1 px-1.5 py-0.5 text-[10px] rounded bg-emerald-600 text-white\'>Selected</span>' : ''}</div><div class="flex-1 min-w-0"><div class="text-xs text-slate-500 dark:text-slate-400">${when||''}</div><div class="text-sm text-slate-700 dark:text-slate-200 truncate">${this.escapeHtml(preview)}</div><div class="mt-2 flex items-center gap-2"><button type="button" data-use-prompt data-mode="${mode}" data-index="${i}" class="px-2 py-1 text-xs rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">Use this prompt</button>${isSel ? '' : `<button type=\"button\" data-select-image data-mode=\"${mode}\" data-index=\"${i}\" class=\"px-2 py-1 text-xs rounded-md bg-audio-600 text-white hover:bg-audio-700\">Select this image</button>`}${mode==='ai1' || mode==='ai2' ? `<button type=\"button\" data-delete-image data-mode=\"${mode}\" data-index=\"${i}\" class=\"px-2 py-1 text-xs rounded-md border border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20\">Delete</button>`: ''}</div></div></div>`;
+                    };
+                    const a1Sel = itm.summary_image_url || itm.analysis?.summary_image_selected_url || '';
+                    let a1Html = a1v.map((v,i)=>renderRow(v,i,a1Sel,'ai1')).join('');
+                    if (!a1Html) a1Html = '<div class="px-2 py-3 text-xs text-slate-500">No AI1 variants yet.</div>';
+                    listA1.innerHTML = a1Html;
+                    listClick(listA1,'ai1',a1v);
+
+                    // Rebuild AI2 list
+                    const urlToPrompt = new Map();
+                    allVars.forEach(v=>{ if (v.url) urlToPrompt.set(this.normalizeAssetUrl(v.url), v.prompt||''); });
+                    const ai2Urls = this.getAi2VariantUrls(itm);
+                    const a2v = ai2Urls.map(u=>({ url:u, image_mode:'ai2', prompt:urlToPrompt.get(this.normalizeAssetUrl(u))||'', created_at:'' }));
+                    const a2Sel = itm.summary_image_ai2_url || itm.analysis?.summary_image_ai2_url || '';
+                    let a2Html = a2v.map((v,i)=>renderRow(v,i,a2Sel,'ai2')).join('');
+                    if (!a2Html) a2Html = '<div class="px-2 py-3 text-xs text-slate-500">No AI2 variants yet.</div>';
+                    listA2.innerHTML = a2Html;
+                    listClick(listA2,'ai2',a2v);
+
+                    // Flip status to ready for both panes, then hide
+                    setStatus('ai1','ready');
+                    setStatus('ai2','ready');
+                } catch(_) {}
+            };
 
             // Default display radio removed for now
 
