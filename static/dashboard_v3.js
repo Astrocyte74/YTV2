@@ -3538,10 +3538,7 @@ class AudioDashboard {
               <div class="reader-group">
                 <h5>Layout</h5>
                 <div class="reader-display-row" data-row="para"><div class="reader-segment" role="radiogroup" aria-label="Paragraph style">${segBtn('data-reader-para=\"spaced\"', 'Spaced', prefs.paraStyle==='spaced')}${segBtn('data-reader-para=\"indented\"', 'Indented', prefs.paraStyle==='indented')}</div></div>
-                <div class="reader-tiles" data-row="justify">${[
-                    `<div class=\"reader-tile\" data-reader-justify=\"left\" aria-pressed=\"${prefs.justify==='left'?'true':'false'}\" role=\"button\" title=\"Ragged-right paragraphs\" aria-label=\"Left aligned\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div></div>`,
-                    `<div class=\"reader-tile\" data-reader-justify=\"justify\" aria-pressed=\"${prefs.justify==='justify'?'true':'false'}\" role=\"button\" title=\"Fully justified paragraphs\" aria-label=\"Justified\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div></div>`
-                ].join('')}</div>
+                <div class="reader-display-row" data-row="justify"><div class="reader-segment" role="radiogroup" aria-label="Justification">${segBtn('data-reader-justify=\"left\"','Left', prefs.justify==='left')}${segBtn('data-reader-justify=\"justify\"','Justified', prefs.justify==='justify')}</div></div>
                 <div class="reader-display-row" data-row="measure"><div class="reader-segment" role="radiogroup" aria-label="Reading width">${segBtn('data-reader-measure=\"narrow\"', 'Narrow', prefs.measure==='narrow')}${segBtn('data-reader-measure=\"medium\"', 'Medium', prefs.measure==='medium')}${segBtn('data-reader-measure=\"wide\"', 'Wide', prefs.measure==='wide')}${segBtn('data-reader-measure=\"full\"', 'Full', prefs.measure==='full')}</div></div>
               </div>
             </div>
