@@ -3448,14 +3448,12 @@ class AudioDashboard {
         const pop = document.createElement('div');
         pop.className = 'reader-display-popover';
         pop.setAttribute('role', 'dialog');
-        const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed?'true':'false'}">${label}</span>`;
+        const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed?'true':'false'}" title="${String(label).replace(/<[^>]+>/g,'')}">${label}</span>`;
         const sizeSeg = `
-          <div class="reader-segment" role="radiogroup" aria-label="Text size">
-            ${segBtn('data-reader-size="s"', 'A', prefs.size==='s')}
-            ${segBtn('data-reader-size="m"', 'A', prefs.size==='m')}
-            ${segBtn('data-reader-size="l"', 'A', prefs.size==='l')}
-            ${segBtn('data-reader-size="xl"', 'A', prefs.size==='xl')}
-            ${segBtn('data-reader-size="xxl"', 'A', prefs.size==='xxl')}
+          <div class="reader-segment" role="group" aria-label="Text size">
+            ${segBtn('data-reader-size-dec', 'A−', false)}
+            <span data-size-chip style="font-size:${(READER_SIZE_MAP[prefs.size]||1.0)}rem; padding:0 .5rem;">A</span>
+            ${segBtn('data-reader-size-inc', 'A+', false)}
           </div>`;
         const lineSeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Line height">
@@ -3465,29 +3463,39 @@ class AudioDashboard {
           </div>`;
         const familySeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Font family">
-            ${segBtn('data-reader-family="sans"', 'Sans', prefs.family==='sans')}
-            ${segBtn('data-reader-family="serif"', 'Serif', prefs.family==='serif')}
+            ${segBtn('data-reader-family="sans"', '<span style=\\"font-family:system-ui,sans-serif\\">Aa</span>', prefs.family==='sans')}
+            ${segBtn('data-reader-family="serif"', '<span style=\\"font-family:Georgia,serif\\">Aa</span>', prefs.family==='serif')}
           </div>`;
         const justifySeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Justification">
             ${segBtn('data-reader-justify="left"', 'Left', prefs.justify==='left')}
             ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify==='justify')}
           </div>`;
+        const themeSeg = `
+          <div class="reader-segment" role="radiogroup" aria-label="Theme">
+            ${segBtn('data-reader-theme="light"', 'Light', prefs.theme==='light')}
+            ${segBtn('data-reader-theme="sepia"', 'Sepia', prefs.theme==='sepia')}
+            ${segBtn('data-reader-theme="dark"', 'Dark', prefs.theme==='dark')}
+          </div>`;
         const paraTile = (id, label) => `
-          <div class="reader-tile" data-reader-para="${id}" aria-pressed="${prefs.paraStyle===id?'true':'false'}" role="button" aria-label="${label}">
-            <div class="tile-preview"><div class="tile-preview-inner">${'<div class=\\"strip\\"></div>'.repeat(3)}</div></div>
-            <div class="tile-label">${label}</div>
+          <div class="reader-tile" data-reader-para="${id}" aria-pressed="${prefs.paraStyle===id?'true':'false'}" role="button" aria-label="${label}" title="${label}">
+            <div class="tile-preview">${id==='indented' ? '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.6\\" stroke-linecap=\\"round\\"><path d=\\"M8 6h11\\"/><path d=\\"M5 10h14\\"/><path d=\\"M5 14h14\\"/><path d=\\"M5 18h14\\"/></svg>' : '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.4\\" stroke-linecap=\\"round\\"><rect x=\\"5\\" y=\\"5\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/><rect x=\\"5\\" y=\\"15\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/></svg>'}</div>
           </div>`;
         const themeTile = (id, label) => `
           <div class="reader-tile" data-reader-theme="${id}" aria-pressed="${prefs.theme===id?'true':'false'}" role="button" aria-label="${label}">
             <div class="tile-preview"><div class="tile-preview-inner">${'<div class=\\"strip\\"></div>'.repeat(3)}</div></div>
             <div class="tile-label">${label}</div>
           </div>`;
-        const measureTile = (id, label) => `
-          <div class="reader-tile" data-reader-measure="${id}" aria-pressed="${prefs.measure===id?'true':'false'}" role="button" aria-label="${label}">
-            <div class="tile-preview"><div class="tile-preview-inner">${'<div class=\\"strip\\"></div>'.repeat(3)}</div></div>
-            <div class="tile-label">${label}</div>
+        const measureTile = (id, label) => {
+          let w = 6, x = 9;
+          if (id === 'medium') { w = 8; x = 8; }
+          if (id === 'wide') { w = 11; x = 6.5; }
+          if (id === 'full') { w = 14; x = 5; }
+          return `
+          <div class="reader-tile" data-reader-measure="${id}" aria-pressed="${prefs.measure===id?'true':'false'}" role="button" aria-label="${label}" title="${label}">
+            <div class="tile-preview"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.2\"><rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"3\"/><rect x=\"${x}\" y=\"7\" width=\"${w}\" height=\"10\" rx=\"1.2\" fill=\"currentColor\"/></svg></div>
           </div>`;
+        };
         const justifyMini = `
           <div class="justify-mini"><span class="jline"></span><span class="jline"></span><span class="jline"></span></div>`;
         pop.innerHTML = `
@@ -3497,6 +3505,9 @@ class AudioDashboard {
               <button type="button" class="reader-reset" data-reader-reset>Reset to Defaults</button>
               <button type="button" class="reader-close" aria-label="Close" data-reader-close>×</button>
             </div>
+          </div>
+          <div class="reader-preview-row">
+            <div class="reader-live-preview" id="readerPreview">The quick brown fox jumps over the lazy dog. The five boxing wizards jump quickly. A mad boxer shot a quick, gloved jab to the jaw of his dizzy opponent. Pack my box with five dozen liquor jugs.</div>
           </div>
           <div class="reader-panel reader-grid">
             <div class="reader-col">
@@ -3514,35 +3525,23 @@ class AudioDashboard {
                   <div class="reader-field-label">Line Spacing</div>
                   <div class="reader-display-row" data-row="line">${lineSeg}</div>
                 </div>
-                <div class="reader-field">
-                  <div class="reader-live-preview" id="readerPreview">The quick brown fox jumps over the lazy dog.</div>
-                </div>
-              </div>
-              <div class="reader-group">
-                <h5>Theme</h5>
-                <div class="reader-tiles" data-row="theme">${[
-                    themeTile('light','Light'),
-                    themeTile('sepia','Sepia'),
-                    themeTile('dark','Dark')
-                ].join('')}</div>
               </div>
             </div>
             <div class="reader-col">
               <div class="reader-group">
                 <h5>Layout</h5>
-                <div class="reader-tiles" data-row="para">${[paraTile('spaced','Spaced'), paraTile('indented','Indented')].join('')}</div>
-                <div class="reader-caption">paragraph style</div>
-                <div class="reader-tiles" data-row="justify">${[
-                    `<div class=\"reader-tile\" data-reader-justify=\"left\" aria-pressed=\"${prefs.justify==='left'?'true':'false'}\" role=\"button\" title=\"Ragged-right paragraphs\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div><div class=\"tile-label\">Left</div></div>`,
-                    `<div class=\"reader-tile\" data-reader-justify=\"justify\" aria-pressed=\"${prefs.justify==='justify'?'true':'false'}\" role=\"button\" title=\"Fully justified paragraphs\"><div class=\"tile-preview\"><div class=\"tile-preview-inner justify-mini\"><span class=\"jline\"></span><span class=\"jline\"></span><span class=\"jline\"></span></div></div><div class=\"tile-label\">Justified</div></div>`
-                ].join('')}</div>
-                <div class="reader-tiles" data-row="measure">${[
-                    measureTile('narrow','Narrow'),
-                    measureTile('medium','Medium'),
-                    measureTile('wide','Wide'),
-                    measureTile('full','Full')
-                ].join('')}</div>
-                <div class="reader-caption">reading width</div>
+                <div class="reader-display-row" data-row="para"><div class="reader-segment" role="radiogroup" aria-label="Paragraph style">${segBtn('data-reader-para=\"spaced\"', 'Spaced', prefs.paraStyle==='spaced')}${segBtn('data-reader-para=\"indented\"', 'Indented', prefs.paraStyle==='indented')}</div></div>
+                <div class="reader-display-row" data-row="justify"><div class="reader-segment" role="radiogroup" aria-label="Justification">${segBtn('data-reader-justify=\"left\"','Left', prefs.justify==='left')}${segBtn('data-reader-justify=\"justify\"','Justified', prefs.justify==='justify')}</div></div>
+                <div class="reader-display-row" data-row="measure"><div class="reader-segment" role="radiogroup" aria-label="Reading width">${segBtn('data-reader-measure=\"narrow\"', 'Narrow', prefs.measure==='narrow')}${segBtn('data-reader-measure=\"medium\"', 'Medium', prefs.measure==='medium')}${segBtn('data-reader-measure=\"wide\"', 'Wide', prefs.measure==='wide')}${segBtn('data-reader-measure=\"full\"', 'Full', prefs.measure==='full')}</div></div>
+                <div class="reader-field">
+                  <div class="reader-field-label">Theme</div>
+                  <div class="reader-display-row" data-row="theme">${themeSeg}</div>
+                  <div class="mt-2 flex items-center gap-2 text-sm">
+                    <label class="inline-flex items-center gap-2">
+                      <input type="checkbox" data-reader-system ${prefs.systemTheme ? 'checked' : ''} /> Match System Theme
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
           </div>`;
@@ -3568,14 +3567,27 @@ class AudioDashboard {
             pop.style.right = Math.round(Math.max(12, window.innerWidth - anchorRect.right)) + 'px';
         }
         document.body.appendChild(pop);
-        // no preview block
+        // Initialize preview theme class
+        try {
+          const prev = pop.querySelector('#readerPreview');
+          if (prev) {
+            let baseTheme = 'light';
+            try {
+              if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
+              else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
+            } catch(_) {}
+            const effectiveTheme = (prefs.systemTheme ? baseTheme : (prefs.theme || baseTheme));
+            prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
+            prev.classList.add('preview-theme--' + effectiveTheme);
+          }
+        } catch(_) {}
         const closeAll = () => { try { pop.remove(); } catch(_) {} if (scrim) { try { scrim.remove(); } catch(_) {} scrim = null; } window.removeEventListener('resize', onAway, true); document.removeEventListener('click', onAway, true); };
         if (scrim) scrim.addEventListener('click', closeAll);
         const onAway = (e) => { if (!pop.contains(e.target) && e.target !== anchorBtn) closeAll(); };
         setTimeout(() => { document.addEventListener('click', onAway, true); window.addEventListener('resize', onAway, true); }, 0);
         // Handlers
         pop.addEventListener('click', (e) => {
-            const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-theme], [data-reader-para], [data-reader-justify], [data-reader-measure]');
+            const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-theme], [data-reader-para], [data-reader-justify], [data-reader-measure], [data-reader-size-inc], [data-reader-size-dec]');
             if (!btn) return;
             const size = btn.getAttribute('data-reader-size');
             const line = btn.getAttribute('data-reader-line');
@@ -3584,8 +3596,20 @@ class AudioDashboard {
             const para = btn.getAttribute('data-reader-para');
             const justify = btn.getAttribute('data-reader-justify');
             const measure = btn.getAttribute('data-reader-measure');
+            const inc = btn.hasAttribute('data-reader-size-inc');
+            const dec = btn.hasAttribute('data-reader-size-dec');
             let next = {};
             if (size && READER_SIZE_MAP[size]) next.size = size;
+            if (inc || dec) {
+                try {
+                    const order = ['s','m','l','xl','xxl'];
+                    const cur = this.getReaderDisplayPrefs().size || 'm';
+                    let idx = Math.max(0, order.indexOf(cur));
+                    if (inc && idx < order.length - 1) idx++;
+                    if (dec && idx > 0) idx--;
+                    next.size = order[idx];
+                } catch(_) {}
+            }
             if (line && READER_LINE_MAP[line]) next.line = line;
             if (family && READER_FAMILY_MAP[family]) next.family = family;
             if (theme && READER_THEMES.includes(theme)) next.theme = theme;
@@ -3604,7 +3628,17 @@ class AudioDashboard {
                 prev.style.fontSize = fs + 'rem';
                 prev.style.lineHeight = String(lh);
                 prev.style.fontFamily = ff;
+                let baseTheme = 'light';
+                try {
+                  if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
+                  else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
+                } catch(_) {}
+                const effectiveTheme = (merged.systemTheme ? baseTheme : merged.theme);
+                prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
+                prev.classList.add('preview-theme--' + effectiveTheme);
               }
+              const chip = pop.querySelector('[data-size-chip]');
+              if (chip) chip.style.fontSize = (READER_SIZE_MAP[merged.size]||1.0) + 'rem';
             } catch(_) {}
             // Update pressed states
             pop.querySelectorAll('[data-reader-size]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-size')===merged.size ? 'true' : 'false'));
@@ -3630,7 +3664,7 @@ class AudioDashboard {
                     if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
                     else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
                 } catch(_) {}
-                const defaults = { size: 'm', line: 'normal', family: 'sans', theme: baseTheme, paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
+                const defaults = { size: 'm', line: 'normal', family: 'sans', theme: baseTheme, systemTheme: false, paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
                 const merged = this.setReaderDisplayPrefs(defaults);
                 this.applyReaderDisplayPrefs(container, bodyEl);
                 // Update UI state
@@ -3643,6 +3677,41 @@ class AudioDashboard {
                 });
                 const jr = pop.querySelector('[data-row="justify"]');
                 if (jr) jr.setAttribute('data-justify-state', 'left');
+                const sys = pop.querySelector('[data-reader-system]');
+                if (sys) sys.checked = false;
+                try {
+                  const prev = pop.querySelector('#readerPreview');
+                  if (prev) {
+                    prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
+                    prev.classList.add('preview-theme--' + baseTheme);
+                    prev.style.fontSize = (READER_SIZE_MAP[merged.size]||1.0) + 'rem';
+                    prev.style.lineHeight = String(READER_LINE_MAP[merged.line]||1.6);
+                    prev.style.fontFamily = (READER_FAMILY_MAP[merged.family]||'inherit');
+                  }
+                } catch(_) {}
+            });
+        }
+        // System theme checkbox
+        const sysCb = pop.querySelector('[data-reader-system]');
+        if (sysCb) {
+            sysCb.addEventListener('change', () => {
+                this.setReaderDisplayPrefs({ systemTheme: !!sysCb.checked });
+                this.applyReaderDisplayPrefs(container, bodyEl);
+                // Update preview theme class to follow system
+                try {
+                  const prev = pop.querySelector('#readerPreview');
+                  if (prev) {
+                    let baseTheme = 'light';
+                    try {
+                      if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
+                      else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
+                    } catch(_) {}
+                    const prefsNow = this.getReaderDisplayPrefs();
+                    const eff = prefsNow.systemTheme ? baseTheme : (prefsNow.theme || baseTheme);
+                    prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
+                    prev.classList.add('preview-theme--' + eff);
+                  }
+                } catch(_) {}
             });
         }
         const closeBtn = pop.querySelector('[data-reader-close]');
