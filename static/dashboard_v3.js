@@ -7395,6 +7395,7 @@ class AudioDashboard {
             panel.className = 'w-full max-w-3xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl';
 
             const a1VariantsAll = (item.analysis?.summary_image_variants || []);
+            const a = item && item.analysis ? item.analysis : {};
             const videoId = (item.video_id || reportId || '').trim();
             const a1Variants = a1VariantsAll.filter(v => {
                 const m = (v.image_mode || '').toLowerCase();
