@@ -3450,12 +3450,10 @@ class AudioDashboard {
         pop.setAttribute('role', 'dialog');
         const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed?'true':'false'}" title="${String(label).replace(/<[^>]+>/g,'')}">${label}</span>`;
         const sizeSeg = `
-          <div class="reader-segment" role="radiogroup" aria-label="Text size">
-            ${segBtn('data-reader-size="s"', 'A', prefs.size==='s')}
-            ${segBtn('data-reader-size="m"', 'A', prefs.size==='m')}
-            ${segBtn('data-reader-size="l"', 'A', prefs.size==='l')}
-            ${segBtn('data-reader-size="xl"', 'A', prefs.size==='xl')}
-            ${segBtn('data-reader-size="xxl"', 'A', prefs.size==='xxl')}
+          <div class="reader-segment" role="group" aria-label="Text size">
+            ${segBtn('data-reader-size-dec', 'A−', false)}
+            <span data-size-chip style="font-size:${(READER_SIZE_MAP[prefs.size]||1.0)}rem; padding:0 .5rem;">A</span>
+            ${segBtn('data-reader-size-inc', 'A+', false)}
           </div>`;
         const lineSeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Line height">
@@ -3474,9 +3472,8 @@ class AudioDashboard {
             ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify==='justify')}
           </div>`;
         const paraTile = (id, label) => `
-          <div class="reader-tile" data-reader-para="${id}" aria-pressed="${prefs.paraStyle===id?'true':'false'}" role="button" aria-label="${label}">
+          <div class="reader-tile" data-reader-para="${id}" aria-pressed="${prefs.paraStyle===id?'true':'false'}" role="button" aria-label="${label}" title="${label}">
             <div class="tile-preview"><div class="tile-preview-inner">${'<div class=\\"strip\\"></div>'.repeat(3)}</div></div>
-            <div class="tile-label">${label}</div>
           </div>`;
         const themeTile = (id, label) => `
           <div class="reader-tile" data-reader-theme="${id}" aria-pressed="${prefs.theme===id?'true':'false'}" role="button" aria-label="${label}">
@@ -3484,9 +3481,8 @@ class AudioDashboard {
             <div class="tile-label">${label}</div>
           </div>`;
         const measureTile = (id, label) => `
-          <div class="reader-tile" data-reader-measure="${id}" aria-pressed="${prefs.measure===id?'true':'false'}" role="button" aria-label="${label}">
+          <div class="reader-tile" data-reader-measure="${id}" aria-pressed="${prefs.measure===id?'true':'false'}" role="button" aria-label="${label}" title="${label}">
             <div class="tile-preview"><div class="tile-preview-inner">${'<div class=\\"strip\\"></div>'.repeat(3)}</div></div>
-            <div class="tile-label">${label}</div>
           </div>`;
         const justifyMini = `
           <div class="justify-mini"><span class="jline"></span><span class="jline"></span><span class="jline"></span></div>`;
@@ -3580,7 +3576,7 @@ class AudioDashboard {
         setTimeout(() => { document.addEventListener('click', onAway, true); window.addEventListener('resize', onAway, true); }, 0);
         // Handlers
         pop.addEventListener('click', (e) => {
-            const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-theme], [data-reader-para], [data-reader-justify], [data-reader-measure]');
+            const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-theme], [data-reader-para], [data-reader-justify], [data-reader-measure], [data-reader-size-inc], [data-reader-size-dec]');
             if (!btn) return;
             const size = btn.getAttribute('data-reader-size');
             const line = btn.getAttribute('data-reader-line');
@@ -3589,8 +3585,20 @@ class AudioDashboard {
             const para = btn.getAttribute('data-reader-para');
             const justify = btn.getAttribute('data-reader-justify');
             const measure = btn.getAttribute('data-reader-measure');
+            const inc = btn.hasAttribute('data-reader-size-inc');
+            const dec = btn.hasAttribute('data-reader-size-dec');
             let next = {};
             if (size && READER_SIZE_MAP[size]) next.size = size;
+            if (inc || dec) {
+                try {
+                    const order = ['s','m','l','xl','xxl'];
+                    const cur = this.getReaderDisplayPrefs().size || 'm';
+                    let idx = Math.max(0, order.indexOf(cur));
+                    if (inc && idx < order.length - 1) idx++;
+                    if (dec && idx > 0) idx--;
+                    next.size = order[idx];
+                } catch(_) {}
+            }
             if (line && READER_LINE_MAP[line]) next.line = line;
             if (family && READER_FAMILY_MAP[family]) next.family = family;
             if (theme && READER_THEMES.includes(theme)) next.theme = theme;
@@ -3610,6 +3618,8 @@ class AudioDashboard {
                 prev.style.lineHeight = String(lh);
                 prev.style.fontFamily = ff;
               }
+              const chip = pop.querySelector('[data-size-chip]');
+              if (chip) chip.style.fontSize = (READER_SIZE_MAP[merged.size]||1.0) + 'rem';
             } catch(_) {}
             // Update pressed states
             pop.querySelectorAll('[data-reader-size]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-size')===merged.size ? 'true' : 'false'));
