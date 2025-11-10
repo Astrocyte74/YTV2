@@ -11,6 +11,7 @@ import logging
 from collections import defaultdict, Counter
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 try:
     import psycopg2
@@ -380,7 +381,11 @@ class PostgreSQLContentIndex:
                 'named_entities': named_entities,
                 # Image prompt + variants pass-through for UI
                 'summary_image_prompt': analysis_json.get('summary_image_prompt'),
+                'summary_image_prompt_original': analysis_json.get('summary_image_prompt_original'),
                 'summary_image_prompt_last_used': analysis_json.get('summary_image_prompt_last_used'),
+                'summary_image_ai2_prompt': analysis_json.get('summary_image_ai2_prompt'),
+                'summary_image_ai2_prompt_original': analysis_json.get('summary_image_ai2_prompt_original'),
+                'summary_image_ai2_prompt_last_used': analysis_json.get('summary_image_ai2_prompt_last_used'),
                 'summary_image_selected_url': analysis_json.get('summary_image_selected_url'),
                 'summary_image_variants': analysis_json.get('summary_image_variants'),
                 # AI2 support: expose explicit AI2 URL when present
@@ -1771,6 +1776,473 @@ class PostgreSQLContentIndex:
             conn.commit()
         except Exception as e:
             logger.error("Error updating summary_image_display_mode for %s: %s", video_id, e)
+        finally:
+            if conn:
+                conn.close()
+
+    # --- Image variant deletion helpers ---
+    def _normalize_image_url_path(self, url: str) -> str:
+        """Normalize image URL to a comparable path string.
+
+        - Strips scheme/host if http(s)
+        - Drops query/fragment
+        - Ensures leading '/'
+        - Returns '' for falsy inputs
+        """
+        if not url or not isinstance(url, str):
+            return ''
+        u = url.strip()
+        if not u:
+            return ''
+        try:
+            if u.startswith('http://') or u.startswith('https://'):
+                p = urlparse(u)
+                u = p.path or ''
+            # Drop query string if present (defensive)
+            if '?' in u:
+                u = u.split('?', 1)[0]
+            if '#' in u:
+                u = u.split('#', 1)[0]
+            if not u.startswith('/'):
+                u = '/' + u
+            return u
+        except Exception:
+            return ('/' + u) if not u.startswith('/') else u
+
+    def _is_ai2_variant(self, v: Dict[str, Any]) -> bool:
+        """Mirror the UI's AI2 detection logic for a variant row."""
+        try:
+            mode = str((v.get('image_mode') or '')).lower()
+            templ = str((v.get('template') or '')).lower()
+            psrc = str((v.get('prompt_source') or '')).lower()
+            url = str((v.get('url') or '')).strip()
+            if mode == 'ai2':
+                return True
+            if templ == 'ai2_freestyle':
+                return True
+            if psrc.startswith('ai2'):
+                return True
+            # Filename prefix fallback
+            return bool(url) and ('/AI2_' in url or url.strip().upper().endswith('/AI2_' + os.path.basename(url)))
+        except Exception:
+            return False
+
+    def delete_image_variant(self, video_id: str, url: str) -> Dict[str, Any]:
+        """Remove a single image variant by URL and clear pointers if they match.
+
+        Returns a dict with details including removed URLs for file cleanup.
+        """
+        conn = None
+        out = { 'ok': False, 'removed_urls': [], 'cleared': [] }
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT analysis_json, summary_image_url FROM content WHERE video_id=%s", (video_id,))
+            row = cur.fetchone()
+            if not row:
+                return out
+
+            analysis = row.get('analysis_json') or {}
+            if isinstance(analysis, str):
+                try:
+                    analysis = json.loads(analysis)
+                except Exception:
+                    analysis = {}
+
+            variants = analysis.get('summary_image_variants')
+            if not isinstance(variants, list):
+                variants = []
+
+            target_norm = self._normalize_image_url_path(url)
+            keep: List[Dict[str, Any]] = []
+            removed: List[str] = []
+            deleted_prompt: Optional[str] = None
+            deleted_is_ai2: Optional[bool] = None
+            for v in variants:
+                raw_url = str(v.get('url') or '')
+                vurl = self._normalize_image_url_path(raw_url)
+                if vurl and vurl == target_norm:
+                    removed.append(raw_url or vurl)
+                    # Capture prompt for defaulting if needed
+                    try:
+                        p = v.get('prompt')
+                        if isinstance(p, str) and p.strip():
+                            deleted_prompt = p.strip()
+                            deleted_is_ai2 = self._is_ai2_variant(v)
+                        else:
+                            deleted_prompt = deleted_prompt or None
+                    except Exception:
+                        pass
+                else:
+                    keep.append(v)
+
+            # Pointers
+            cleared = []
+            a_ai2 = str(analysis.get('summary_image_ai2_url') or '')
+            a_ai1_sel = str(analysis.get('summary_image_selected_url') or '')
+            top_ai1 = str(row.get('summary_image_url') or '')
+
+            if target_norm and self._normalize_image_url_path(a_ai2) == target_norm:
+                analysis['summary_image_ai2_url'] = ''
+                cleared.append('analysis.summary_image_ai2_url')
+            if target_norm and self._normalize_image_url_path(a_ai1_sel) == target_norm:
+                analysis['summary_image_selected_url'] = ''
+                cleared.append('analysis.summary_image_selected_url')
+            new_top_ai1 = top_ai1
+            if target_norm and self._normalize_image_url_path(top_ai1) == target_norm:
+                new_top_ai1 = None
+                cleared.append('summary_image_url')
+
+            # If prompt fields are empty, preserve the deleted variant's prompt as default
+            try:
+                if deleted_prompt and deleted_is_ai2 is True:
+                    cur_prompt = str(analysis.get('summary_image_ai2_prompt') or '')
+                    if not cur_prompt:
+                        analysis['summary_image_ai2_prompt'] = deleted_prompt
+                elif deleted_prompt and deleted_is_ai2 is False:
+                    cur_prompt = str(analysis.get('summary_image_prompt') or '')
+                    if not cur_prompt:
+                        analysis['summary_image_prompt'] = deleted_prompt
+            except Exception:
+                pass
+
+            # Write back
+            analysis['summary_image_variants'] = keep
+            cur.execute(
+                """
+                UPDATE content
+                SET analysis_json = %s,
+                    summary_image_url = %s,
+                    updated_at = NOW()
+                WHERE video_id = %s
+                """,
+                (psycopg2.extras.Json(analysis), new_top_ai1, video_id)
+            )
+            conn.commit()
+            out['ok'] = True
+            out['removed_urls'] = removed
+            out['cleared'] = cleared
+            out['variants_remaining'] = len(keep)
+            return out
+        except Exception as e:
+            logger.error("Error deleting image variant for %s: %s", video_id, e)
+            try:
+                if conn:
+                    conn.rollback()
+            except Exception:
+                pass
+            return out
+        finally:
+            if conn:
+                conn.close()
+
+    def delete_all_ai_images(self, video_id: str, modes: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Remove all AI image variants by mode(s) and clear pointers.
+
+        modes: subset of ['ai1','ai2']; default both.
+        Returns a dict with removed URLs and counts.
+        """
+        modes = modes or ['ai1', 'ai2']
+        mode_ai1 = 'ai1' in modes
+        mode_ai2 = 'ai2' in modes
+        conn = None
+        out = { 'ok': False, 'removed_urls': [], 'cleared': [] }
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT analysis_json, summary_image_url FROM content WHERE video_id=%s", (video_id,))
+            row = cur.fetchone()
+            if not row:
+                return out
+
+            analysis = row.get('analysis_json') or {}
+            if isinstance(analysis, str):
+                try:
+                    analysis = json.loads(analysis)
+                except Exception:
+                    analysis = {}
+
+            variants = analysis.get('summary_image_variants')
+            if not isinstance(variants, list):
+                variants = []
+
+            removed: List[str] = []
+            keep: List[Dict[str, Any]] = []
+            # Track earliest (original) prompts by mode
+            first_a1_prompt: Optional[str] = None
+            first_ai2_prompt: Optional[str] = None
+            first_a1_created: Optional[str] = None
+            first_ai2_created: Optional[str] = None
+            for v in variants:
+                vurl = v.get('url') or ''
+                is_ai2 = self._is_ai2_variant(v)
+                if (mode_ai2 and is_ai2) or (mode_ai1 and not is_ai2):
+                    removed.append(vurl)
+                    # Track prompt for defaulting if prompt fields are empty
+                    try:
+                        p = v.get('prompt')
+                        c = v.get('created_at')
+                        if isinstance(p, str) and p.strip():
+                            if is_ai2:
+                                # choose earliest by created_at if possible
+                                if not first_ai2_created or (isinstance(c, str) and c < first_ai2_created):
+                                    first_ai2_prompt, first_ai2_created = p.strip(), c if isinstance(c, str) else first_ai2_created
+                            else:
+                                if not first_a1_created or (isinstance(c, str) and c < first_a1_created):
+                                    first_a1_prompt, first_a1_created = p.strip(), c if isinstance(c, str) else first_a1_created
+                    except Exception:
+                        pass
+                else:
+                    keep.append(v)
+
+            cleared = []
+            # Clear pointers according to modes
+            if mode_ai2 and analysis.get('summary_image_ai2_url'):
+                analysis['summary_image_ai2_url'] = ''
+                cleared.append('analysis.summary_image_ai2_url')
+            new_top_ai1 = row.get('summary_image_url')
+            if mode_ai1 and new_top_ai1:
+                new_top_ai1 = None
+                cleared.append('summary_image_url')
+                # Also clear selected pointer mirror if present
+                if analysis.get('summary_image_selected_url'):
+                    analysis['summary_image_selected_url'] = ''
+                    cleared.append('analysis.summary_image_selected_url')
+
+            # If prompt fields are empty, preserve the earliest prompt from deleted variants
+            try:
+                if mode_ai2:
+                    cur_prompt_ai2 = str(analysis.get('summary_image_ai2_prompt') or '')
+                    if not cur_prompt_ai2 and first_ai2_prompt:
+                        analysis['summary_image_ai2_prompt'] = first_ai2_prompt
+                if mode_ai1:
+                    cur_prompt_a1 = str(analysis.get('summary_image_prompt') or '')
+                    if not cur_prompt_a1 and first_a1_prompt:
+                        analysis['summary_image_prompt'] = first_a1_prompt
+            except Exception:
+                pass
+
+            analysis['summary_image_variants'] = keep
+            cur.execute(
+                """
+                UPDATE content
+                SET analysis_json = %s,
+                    summary_image_url = %s,
+                    updated_at = NOW()
+                WHERE video_id = %s
+                """,
+                (psycopg2.extras.Json(analysis), new_top_ai1, video_id)
+            )
+            conn.commit()
+            out['ok'] = True
+            out['removed_urls'] = removed
+            out['cleared'] = cleared
+            out['variants_remaining'] = len(keep)
+            return out
+        except Exception as e:
+            logger.error("Error deleting all AI images for %s: %s", video_id, e)
+            try:
+                if conn:
+                    conn.rollback()
+            except Exception:
+                pass
+            return out
+        finally:
+            if conn:
+                conn.close()
+
+    def ensure_original_prompt(self, video_id: str, mode: str, fallback_prompt: str = '') -> bool:
+        """Ensure an original prompt field exists. Does nothing if already set.
+
+        mode: 'ai1' or 'ai2'
+        fallback_prompt: used when no prior prompt exists.
+        Returns True if an update was applied.
+        """
+        mode = (mode or '').strip().lower()
+        if mode not in ('ai1', 'ai2'):
+            mode = 'ai1'
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT analysis_json FROM content WHERE video_id=%s", (video_id,))
+            row = cur.fetchone()
+            if not row:
+                return False
+            analysis = row.get('analysis_json') or {}
+            if isinstance(analysis, str):
+                try:
+                    analysis = json.loads(analysis)
+                except Exception:
+                    analysis = {}
+
+            if mode == 'ai2':
+                orig_key = 'summary_image_ai2_prompt_original'
+                curr_key = 'summary_image_ai2_prompt'
+            else:
+                orig_key = 'summary_image_prompt_original'
+                curr_key = 'summary_image_prompt'
+
+            existing_orig = str(analysis.get(orig_key) or '')
+            if existing_orig:
+                return False
+            # Prefer earliest prompt from variants for this mode, then current, then fallback
+            val = ''
+            try:
+                variants = analysis.get('summary_image_variants')
+                if isinstance(variants, list):
+                    first_prompt = None
+                    first_created = None
+                    for v in variants:
+                        is_ai2 = self._is_ai2_variant(v)
+                        if (mode == 'ai2' and is_ai2) or (mode == 'ai1' and not is_ai2):
+                            p = v.get('prompt')
+                            c = v.get('created_at')
+                            if isinstance(p, str) and p.strip():
+                                if not first_created or (isinstance(c, str) and c < first_created):
+                                    first_prompt, first_created = p.strip(), c if isinstance(c, str) else first_created
+                    if first_prompt:
+                        val = first_prompt
+            except Exception:
+                pass
+            if not val:
+                val = str(analysis.get(curr_key) or '').strip() or (fallback_prompt or '').strip()
+            if not val:
+                return False
+            analysis[orig_key] = val
+            cur.execute(
+                "UPDATE content SET analysis_json=%s, updated_at=NOW() WHERE video_id=%s",
+                (psycopg2.extras.Json(analysis), video_id)
+            )
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error("ensure_original_prompt error for %s: %s", video_id, e)
+            try:
+                if conn:
+                    conn.rollback()
+            except Exception:
+                pass
+            return False
+        finally:
+            if conn:
+                conn.close()
+
+    def _earliest_prompt_from_variants(self, analysis: Any, mode: str) -> str:
+        try:
+            variants = analysis.get('summary_image_variants') if isinstance(analysis, dict) else None
+            if not isinstance(variants, list):
+                return ''
+            first_prompt = None
+            first_created = None
+            for v in variants:
+                is_ai2 = self._is_ai2_variant(v)
+                if (mode == 'ai2' and is_ai2) or (mode == 'ai1' and not is_ai2):
+                    p = v.get('prompt')
+                    c = v.get('created_at')
+                    if isinstance(p, str) and p.strip():
+                        if not first_created or (isinstance(c, str) and c < first_created):
+                            first_prompt, first_created = p.strip(), c if isinstance(c, str) else first_created
+            return first_prompt or ''
+        except Exception:
+            return ''
+
+    def backfill_original_prompts(self, mode: str = 'both', limit: int = 100, video_ids: Optional[List[str]] = None, dry_run: bool = True) -> Dict[str, Any]:
+        """Backfill summary_image_*_prompt_original fields.
+
+        - mode: 'ai1' | 'ai2' | 'both'
+        - limit: max rows per mode when video_ids not provided
+        - video_ids: explicit list of video_ids to process
+        - dry_run: compute changes but do not write
+        Returns: dict with counts and sample updates
+        """
+        mode = (mode or 'both').lower()
+        if mode not in ('ai1', 'ai2', 'both'):
+            mode = 'both'
+        conn = None
+        results = { 'processed': 0, 'updated': 0, 'skipped': 0, 'dry_run': bool(dry_run), 'examples': [] }
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+
+            candidates: Dict[str, List[str]] = {}
+            if video_ids:
+                for vid in video_ids:
+                    candidates.setdefault(str(vid), [])
+                    if mode in ('ai1','both'):
+                        candidates[str(vid)].append('ai1')
+                    if mode in ('ai2','both'):
+                        candidates[str(vid)].append('ai2')
+            else:
+                if mode in ('ai1','both'):
+                    cur.execute("""
+                        SELECT video_id, analysis_json
+                        FROM content
+                        WHERE COALESCE((analysis_json->>'summary_image_prompt_original')::text, '') = ''
+                        LIMIT %s
+                    """, (limit,))
+                    for row in cur.fetchall() or []:
+                        candidates.setdefault(row['video_id'], []).append('ai1')
+                if mode in ('ai2','both'):
+                    cur.execute("""
+                        SELECT video_id, analysis_json
+                        FROM content
+                        WHERE COALESCE((analysis_json->>'summary_image_ai2_prompt_original')::text, '') = ''
+                        LIMIT %s
+                    """, (limit,))
+                    for row in cur.fetchall() or []:
+                        candidates.setdefault(row['video_id'], []).append('ai2')
+
+            # Process
+            for vid, modes in candidates.items():
+                # Fetch once
+                cur.execute("SELECT analysis_json FROM content WHERE video_id=%s", (vid,))
+                r = cur.fetchone()
+                if not r:
+                    results['skipped'] += 1
+                    continue
+                analysis = r.get('analysis_json') or {}
+                if isinstance(analysis, str):
+                    try: analysis = json.loads(analysis)
+                    except Exception: analysis = {}
+
+                analysis_out = analysis.copy()
+                did_update = False
+                preview = { 'video_id': vid, 'set': {} }
+
+                for m in list(set(modes)):
+                    if m == 'ai2':
+                        orig_key = 'summary_image_ai2_prompt_original'
+                        curr_key = 'summary_image_ai2_prompt'
+                    else:
+                        orig_key = 'summary_image_prompt_original'
+                        curr_key = 'summary_image_prompt'
+                    if str(analysis_out.get(orig_key) or '').strip():
+                        continue
+                    val = self._earliest_prompt_from_variants(analysis_out, m) or str(analysis_out.get(curr_key) or '').strip()
+                    if not val:
+                        continue
+                    preview['set'][orig_key] = val
+                    if not dry_run:
+                        analysis_out[orig_key] = val
+                        did_update = True
+
+                results['processed'] += 1
+                if did_update and not dry_run:
+                    cur.execute("UPDATE content SET analysis_json=%s, updated_at=NOW() WHERE video_id=%s", (psycopg2.extras.Json(analysis_out), vid))
+                    results['updated'] += 1
+                else:
+                    results['skipped'] += 1 if not preview['set'] else 0
+                if preview['set']:
+                    if len(results['examples']) < 10:
+                        results['examples'].append(preview)
+
+            if not dry_run:
+                conn.commit()
+            return results
+        except Exception as e:
+            logger.exception("backfill_original_prompts failed: %s", e)
+            return { 'error': str(e) }
         finally:
             if conn:
                 conn.close()
