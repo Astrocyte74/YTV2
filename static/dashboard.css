@@ -643,6 +643,13 @@ body {
 .dark .reader-segment [role="button"][aria-pressed="true"] {
   background-color: #0284c7; /* audio-600 */
 }
+.reader-segment [role="button"][aria-pressed="true"]:hover {
+  background-color: #0ea5e9;
+  color: #fff;
+}
+.dark .reader-segment [role="button"][aria-pressed="true"]:hover {
+  background-color: #0284c7;
+}
 .reader-segment [role="button"]:hover { background: rgba(255,255,255,0.06); }
 .dark .reader-segment [role="button"]:hover { background: rgba(255,255,255,0.05); }
 
