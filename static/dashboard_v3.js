@@ -493,7 +493,7 @@ class AudioDashboard {
             }
         });
 
-        // Ensure kebab action for image-new always triggers (capture phase to beat other handlers)
+        // Ensure kebab action opens Manage Images (capture phase to beat other handlers)
         document.addEventListener('click', (e) => {
             const el = e.target.closest('[data-action="images-manage"]');
             if (!el) return;
@@ -506,7 +506,7 @@ class AudioDashboard {
                 const menu = el.closest('[data-kebab-menu][data-report-id]');
                 if (menu && menu.getAttribute) id = menu.getAttribute('data-report-id');
             }
-            if (id) this.handleCreateImagePrompt(id);
+            if (id) this.handleManageImages(id);
         }, true);
         const imageNewHandler = (e) => {
             const el = e.target.closest && e.target.closest('[data-action="images-manage"]');
@@ -1083,6 +1083,30 @@ class AudioDashboard {
             this.showToast(`Reprocess finished for ${this.describeVideo(data)}`, 'success');
         }
 
+        // If Manage Images modal is open for this video, hot‑refresh it in place
+        try {
+            if (this._openImagesModalReportId && this._openImagesModalReportId === videoId) {
+                const fetchAndRefresh = async () => {
+                    try {
+                        const res = await fetch(`/${encodeURIComponent(videoId)}.json?v=${Date.now()}`);
+                        if (!res.ok) return;
+                        const item = await res.json();
+                        // Update currentItems copy
+                        try {
+                            const idx = (this.currentItems || []).findIndex(x => x.file_stem === (item.file_stem || item.video_id));
+                            if (idx >= 0) this.currentItems[idx] = item; else (this.currentItems || []).push(item);
+                        } catch(_) {}
+                        if (typeof this._imagesModalRefresh === 'function') {
+                            this._imagesModalRefresh(item);
+                        }
+                    } catch(_) {}
+                };
+                // Debounce the refresh a bit to avoid double work
+                clearTimeout(this._imagesModalRefreshTimer);
+                this._imagesModalRefreshTimer = setTimeout(fetchAndRefresh, 400);
+            }
+        } catch(_) {}
+
         this.realtimeEventBuffer.push({ videoId, summaryTypes, timestamp, meta: { ...meta, eventName } });
         this.scheduleRealtimeFlush();
         this.requestMetricsRefresh(2000);
@@ -1117,13 +1141,14 @@ class AudioDashboard {
         if (canAutoRefresh && sinceLast > 2000) {
             this.lastRealtimeRefresh = now;
             this.currentPage = 1;
-            Promise.resolve(this.loadContent())
-                .catch((error) => console.error('Realtime refresh failed', error))
-                .finally(() => {
-                    this.realtimePendingCount = 0;
-                    this.hideRealtimeBanner();
-                    this.requestMetricsRefresh(1200);
-                });
+        Promise.resolve(this.loadContent())
+            .catch((error) => console.error('Realtime refresh failed', error))
+            .finally(() => {
+                this.realtimePendingCount = 0;
+                this.hideRealtimeBanner();
+                this.requestMetricsRefresh(1200);
+                // (legacy reopen flow removed; now hot‑refreshes while open)
+            });
         } else {
             this.showRealtimeBanner(this.realtimePendingCount, eventNames);
             this.requestMetricsRefresh(2000);
@@ -7108,6 +7133,7 @@ class AudioDashboard {
               </div>`;
             overlay.appendChild(panel);
             document.body.appendChild(overlay);
+            this._openImagesModalReportId = reportId;
 
             const input = panel.querySelector('#adminTokenInput');
             const save = panel.querySelector('[data-save]');
@@ -7395,6 +7421,8 @@ class AudioDashboard {
             panel.className = 'w-full max-w-3xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl';
 
             const a1VariantsAll = (item.analysis?.summary_image_variants || []);
+            const a = item && item.analysis ? item.analysis : {};
+            const videoId = (item.video_id || reportId || '').trim();
             const a1Variants = a1VariantsAll.filter(v => {
                 const m = (v.image_mode || '').toLowerCase();
                 const tmpl = (v.template || '').toLowerCase();
@@ -7402,12 +7430,32 @@ class AudioDashboard {
                 const url = v.url || '';
                 const isAi2 = m === 'ai2' || tmpl === 'ai2_freestyle' || (ps && ps.startsWith('ai2')) || /(?:^|\/)AI2_/i.test(url);
                 return !isAi2;
-            });
-            // Map URLs to prompts from variants for AI2
+            }).sort((a,b)=>{ const ca=(a.created_at||'')+''; const cb=(b.created_at||'')+''; return ca<cb?1:ca>cb?-1:0; });
+            // Map URLs to prompts + created_at from variants for AI2
             const urlToPrompt = new Map();
-            a1VariantsAll.forEach(v => { if (v.url) urlToPrompt.set(this.normalizeAssetUrl(v.url), v.prompt || ''); });
+            const urlToCreated = new Map();
+            a1VariantsAll.forEach(v => {
+                if (v.url) {
+                    const nu = this.normalizeAssetUrl(v.url);
+                    urlToPrompt.set(nu, v.prompt || '');
+                    if (v.created_at) urlToCreated.set(nu, String(v.created_at));
+                }
+            });
             const ai2Urls = this.getAi2VariantUrls(item);
-            const a2Variants = ai2Urls.map(u => ({ url: u, image_mode: 'ai2', prompt: urlToPrompt.get(this.normalizeAssetUrl(u)) || '' }));
+            // Track known URLs for highlight of newly-added variants
+            try {
+                const known = new Set();
+                (a1VariantsAll || []).forEach(v => { if (v && v.url) known.add(this.normalizeAssetUrl(v.url)); });
+                (ai2Urls || []).forEach(u => { if (u) known.add(this.normalizeAssetUrl(u)); });
+                this._imagesModalKnownUrls = known;
+            } catch(_) {}
+            const a2Variants = ai2Urls
+                .map(u => ({ url: u, image_mode: 'ai2', prompt: urlToPrompt.get(this.normalizeAssetUrl(u)) || '', created_at: urlToCreated.get(this.normalizeAssetUrl(u)) || '' }))
+                .sort((a,b) => {
+                    const ca = (a.created_at || '') + '';
+                    const cb = (b.created_at || '') + '';
+                    return ca < cb ? 1 : ca > cb ? -1 : 0;
+                });
             const a1Selected = item.summary_image_url || item.analysis?.summary_image_selected_url || '';
             const a2Selected = item.summary_image_ai2_url || item.analysis?.summary_image_ai2_url || '';
 
@@ -7428,6 +7476,7 @@ class AudioDashboard {
                       <div class="mt-2 flex items-center gap-2">
                         <button type="button" data-use-prompt data-mode="${mode}" data-index="${idx}" class="px-2 py-1 text-xs rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">Use this prompt</button>
                         <button type="button" data-select-image data-mode="${mode}" data-index="${idx}" class="px-2 py-1 text-xs rounded-md bg-audio-600 text-white hover:bg-audio-700" style="${isSel ? 'display:none' : ''}">Select this image</button>
+                        <button type="button" data-delete-image data-mode="${mode}" data-index="${idx}" class="px-2 py-1 text-xs rounded-md border border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">Delete</button>
                       </div>
                     </div>
                   </div>`;
@@ -7446,7 +7495,10 @@ class AudioDashboard {
             panel.innerHTML = `
               <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                 <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">Manage images</h3>
-                <button type="button" data-close class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close">✕</button>
+                <div class="flex items-center gap-2">
+                  <button type="button" data-delete-all class="px-2 py-1 text-xs rounded-md border border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">Delete all AI images…</button>
+                  <button type="button" data-close class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close">✕</button>
+                </div>
               </div>
               <div class="p-4">
                 <div class="flex items-center gap-2 mb-3">
@@ -7456,14 +7508,18 @@ class AudioDashboard {
                 <div data-pane="ai1">
                   <label class="block text-sm mb-1">AI1 prompt</label>
                   <textarea data-input-ai1 rows="4" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2">${this.escapeHtml(a1Default)}</textarea>
-                  <div class="mt-2"><button data-save-ai1 class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Regenerate AI1</button></div>
+                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai1-line style="${(a.summary_image_prompt_original||'').trim() ? '' : 'display:none'}">Default: <span data-default-ai1>${this.escapeHtml((a.summary_image_prompt_original||'').trim() || '')}</span></div>
+                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400 hidden" data-status-ai1><span class="inline-flex items-center gap-1" data-status-ai1-text><svg class="animate-spin h-3 w-3 text-audio-600" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg> Regenerating…</span></div>
+                  <div class="mt-2 flex items-center gap-2"><button data-save-ai1 class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Regenerate AI1</button><button data-use-default-ai1 class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Use default prompt</button></div>
                   <div class="mt-3 text-xs uppercase tracking-wide text-slate-400">AI1 variants</div>
                   <div class="max-h-56 overflow-auto pr-1 space-y-2" data-list-ai1>${a1Rows}</div>
                 </div>
                 <div data-pane="ai2" class="hidden">
                   <label class="block text-sm mb-1">AI2 prompt</label>
                   <textarea data-input-ai2 rows="4" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2">${this.escapeHtml(a2Default)}</textarea>
-                  <div class="mt-2"><button data-save-ai2 class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Regenerate AI2</button></div>
+                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai2-line style="${(a.summary_image_ai2_prompt_original||'').trim() ? '' : 'display:none'}">Default: <span data-default-ai2>${this.escapeHtml((a.summary_image_ai2_prompt_original||'').trim() || '')}</span></div>
+                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400 hidden" data-status-ai2><span class="inline-flex items-center gap-1" data-status-ai2-text><svg class="animate-spin h-3 w-3 text-audio-600" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg> Regenerating…</span></div>
+                  <div class="mt-2 flex items-center gap-2"><button data-save-ai2 class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Regenerate AI2</button><button data-use-default-ai2 class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Use default prompt</button></div>
                   <div class="mt-3 text-xs uppercase tracking-wide text-slate-400">AI2 variants</div>
                   <div class="max-h-56 overflow-auto pr-1 space-y-2" data-list-ai2>${a2Rows}</div>
                 </div>
@@ -7482,9 +7538,17 @@ class AudioDashboard {
             const inputA2 = panel.querySelector('[data-input-ai2]');
             const saveA1 = panel.querySelector('[data-save-ai1]');
             const saveA2 = panel.querySelector('[data-save-ai2]');
+            const useDefaultA1 = panel.querySelector('[data-use-default-ai1]');
+            const useDefaultA2 = panel.querySelector('[data-use-default-ai2]');
+            const defaultA1Line = panel.querySelector('[data-default-ai1-line]');
+            const defaultA2Line = panel.querySelector('[data-default-ai2-line]');
+            const statusA1 = panel.querySelector('[data-status-ai1]');
+            const statusA2 = panel.querySelector('[data-status-ai2]');
+            this._imagesModalRegenSet = new Set();
             const listA1 = panel.querySelector('[data-list-ai1]');
             const listA2 = panel.querySelector('[data-list-ai2]');
             const closeBtns = [panel.querySelector('[data-close]'), panel.querySelector('[data-close2]')].filter(Boolean);
+            const deleteAllBtn = panel.querySelector('[data-delete-all]');
 
             const setTab = (which) => {
                 const a1on = which === 'ai1';
@@ -7497,18 +7561,190 @@ class AudioDashboard {
             tabA1.addEventListener('click', ()=> setTab('ai1'));
             tabA2.addEventListener('click', ()=> setTab('ai2'));
 
+            const setStatus = (mode, kind /* 'regen' | 'ready' | 'hide' */) => {
+                const el = mode === 'ai2' ? statusA2 : statusA1;
+                if (!el) return;
+                const span = el.querySelector('[data-status-' + mode + '-text]') || el.querySelector('[data-status-ai1-text]') || el.querySelector('[data-status-ai2-text]');
+                if (kind === 'regen') {
+                    if (span) span.innerHTML = '<svg class="animate-spin h-3 w-3 text-audio-600" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg> Regenerating…';
+                    el.classList.remove('hidden');
+                } else if (kind === 'ready') {
+                    if (span) span.innerHTML = '<svg class="h-3 w-3 text-emerald-600" viewBox="0 0 24 24"><path fill="currentColor" d="M9 16.2l-3.5-3.5 1.4-1.4L9 13.4l7.1-7.1 1.4 1.4z"/></svg> New image ready';
+                    el.classList.remove('hidden');
+                    setTimeout(()=>{ el.classList.add('hidden'); }, 1800);
+                } else {
+                    el.classList.add('hidden');
+                }
+            };
+
+            const setBusy = (mode, busy) => {
+                const btn = mode === 'ai2' ? saveA2 : saveA1;
+                const pane = mode === 'ai2' ? paneA2 : paneA1;
+                if (btn) {
+                    btn.disabled = !!busy;
+                    btn.classList.toggle('opacity-60', !!busy);
+                    btn.classList.toggle('cursor-not-allowed', !!busy);
+                    btn.setAttribute('aria-disabled', busy ? 'true' : 'false');
+                }
+                if (pane) pane.setAttribute('aria-busy', busy ? 'true' : 'false');
+                if (busy) this._imagesModalRegenSet.add(mode); else this._imagesModalRegenSet.delete(mode);
+            };
+
+            const startPollingForNewVariants = (videoId) => {
+                try { if (this._imagesModalPollTimer) clearInterval(this._imagesModalPollTimer); } catch(_) {}
+                const startKnown = new Set(this._imagesModalKnownUrls || []);
+                const tick = async () => {
+                    try {
+                        const res = await fetch(`/${encodeURIComponent(videoId)}.json?v=${Date.now()}`);
+                        if (!res.ok) return;
+                        const itm = await res.json();
+                        const urls = new Set();
+                        try {
+                            const vars = Array.isArray(itm.analysis?.summary_image_variants) ? itm.analysis.summary_image_variants : [];
+                            vars.forEach(v => { if (v && v.url) urls.add(this.normalizeAssetUrl(v.url)); });
+                            const ai2 = this.getAi2VariantUrls(itm) || [];
+                            ai2.forEach(u => { if (u) urls.add(this.normalizeAssetUrl(u)); });
+                        } catch(_) {}
+                        // Detect new URLs vs startKnown
+                        let hasNew = false;
+                        urls.forEach(u => { if (!startKnown.has(u)) hasNew = true; });
+                        if (hasNew) {
+                            if (typeof this._imagesModalRefresh === 'function') this._imagesModalRefresh(itm);
+                            // Stop polling
+                            clearInterval(this._imagesModalPollTimer);
+                            this._imagesModalPollTimer = null;
+                        }
+                    } catch(_) {}
+                };
+                this._imagesModalPollTimer = setInterval(tick, 3000);
+                // also run immediately once
+                tick();
+            };
+
             const onSavePrompt = async (mode, text) => {
                 const token = await this.getReprocessToken();
                 if (!token) { this.showToast('Token required', 'warn'); return; }
                 const res = await fetch('/api/set-image-prompt', {
                     method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ video_id: reportId, prompt: text, mode })
+                    body: JSON.stringify({ video_id: videoId, prompt: text, mode })
                 });
                 if (!res.ok) { this.showToast(`Failed to save ${mode} prompt`, 'error'); return; }
-                this.showToast(`${mode.toUpperCase()} prompt saved`, 'success');
+                this.showToast(`${mode.toUpperCase()} prompt saved — watching for new image…`, 'success');
+                setStatus(mode, 'regen');
+                setBusy(mode, true);
+                // Mark for hot-refresh upon SSE
+                this._openImagesModalReportId = reportId;
+                // Fallback polling in case NAS writes directly to DB without SSE
+                startPollingForNewVariants(videoId);
             };
             saveA1.addEventListener('click', ()=> onSavePrompt('ai1', (inputA1.value||'').trim()));
             saveA2.addEventListener('click', ()=> onSavePrompt('ai2', (inputA2.value||'').trim()));
+            if (useDefaultA1) useDefaultA1.addEventListener('click', ()=> { inputA1.value = (a.summary_image_prompt_original || a.summary_image_prompt || a1Default || ''); });
+            if (useDefaultA2) useDefaultA2.addEventListener('click', ()=> { inputA2.value = (a.summary_image_ai2_prompt_original || a.summary_image_ai2_prompt || a2Default || ''); });
+
+            // Simple in-modal confirmation UI (instead of window.confirm)
+            const confirmModal = (message, confirmLabel = 'Delete') => new Promise((resolve) => {
+                const ov = document.createElement('div');
+                ov.className = 'fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4';
+                const box = document.createElement('div');
+                box.className = 'w-full max-w-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl p-4';
+                box.innerHTML = `
+                  <div class="text-sm text-slate-700 dark:text-slate-200">${this.escapeHtml(message)}</div>
+                  <div class="mt-4 flex items-center justify-end gap-2">
+                    <button type="button" data-cancel class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Cancel</button>
+                    <button type="button" data-ok class="px-3 py-1.5 rounded-md bg-red-600 text-white hover:bg-red-700">${this.escapeHtml(confirmLabel)}</button>
+                  </div>`;
+                ov.appendChild(box);
+                document.body.appendChild(ov);
+                const done = (v) => { try { ov.remove(); } catch(_) {}; resolve(v); };
+                box.querySelector('[data-cancel]')?.addEventListener('click', ()=>done(false));
+                box.querySelector('[data-ok]')?.addEventListener('click', ()=>done(true));
+            });
+
+            const onDeleteVariant = async (mode, url) => {
+                if (!url) return;
+                const ok = await confirmModal('Delete this image? This removes the variant and unlinks the file on the server.');
+                if (!ok) return;
+                const token = await this.getReprocessToken();
+                if (!token) { this.showToast('Token required', 'warn'); return; }
+                const res = await fetch('/api/delete-image-variant', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ video_id: videoId, url })
+                });
+                if (!res.ok) {
+                    let msg = 'Failed to delete image';
+                    try { const j = await res.json(); if (j && j.error) msg += `: ${j.error}`; } catch(_) {}
+                    this.showToast(msg, 'error'); return;
+                }
+                const j = await res.json().catch(()=>({}));
+                // Update in-memory pointers if this was the selected one
+                try {
+                    const itemRef = (this.currentItems || []).find(x => x.file_stem === reportId);
+                    if (itemRef) {
+                        const norm = this.normalizeAssetUrl(url);
+                        if (mode === 'ai2') {
+                            if (itemRef.analysis && itemRef.analysis.summary_image_ai2_url && this.normalizeAssetUrl(itemRef.analysis.summary_image_ai2_url) === norm) {
+                                itemRef.analysis.summary_image_ai2_url = '';
+                            }
+                        } else {
+                            if (itemRef.summary_image_url && this.normalizeAssetUrl(itemRef.summary_image_url) === norm) {
+                                itemRef.summary_image_url = '';
+                            }
+                            if (itemRef.analysis && itemRef.analysis.summary_image_selected_url && this.normalizeAssetUrl(itemRef.analysis.summary_image_selected_url) === norm) {
+                                itemRef.analysis.summary_image_selected_url = '';
+                            }
+                        }
+                    }
+                } catch(_) {}
+                // Remove the row from the list UI
+                const listEl = mode === 'ai2' ? listA2 : listA1;
+                const rowEl = listEl.querySelector(`[data-variant-row][data-url="${CSS.escape(this.normalizeAssetUrl(url))}"]`);
+                if (rowEl) rowEl.remove();
+                // Auto-select fallback if variants remain
+                try {
+                    const listEl2 = mode === 'ai2' ? listA2 : listA1;
+                    const rows = Array.from(listEl2.querySelectorAll('[data-variant-row]'));
+                    const remaining = rows.map(r => this.normalizeAssetUrl(r.getAttribute('data-url') || '')).filter(Boolean);
+                    if (remaining.length > 0) {
+                        await onSelectVariant(mode, remaining[0], true);
+                    }
+                } catch(_) {}
+                // Ensure cards reflect current mode and fallbacks
+                try { this.forceSwapAllCardsForCurrentMode(); } catch(_) {}
+                this.showToast('Image deleted', 'success');
+            };
+
+            if (deleteAllBtn) {
+                deleteAllBtn.addEventListener('click', async () => {
+                    const ok = await confirmModal('Delete ALL AI images for this card? This removes AI1 and AI2 variants and unlinks files.', 'Delete all');
+                    if (!ok) return;
+                    const token = await this.getReprocessToken();
+                    if (!token) { this.showToast('Token required', 'warn'); return; }
+                    const res = await fetch('/api/delete-all-ai-images', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                        body: JSON.stringify({ video_id: videoId, modes: ['ai1','ai2'] })
+                    });
+                    if (!res.ok) {
+                        let msg = 'Failed to delete AI images';
+                        try { const j = await res.json(); if (j && j.error) msg += `: ${j.error}`; } catch(_) {}
+                        this.showToast(msg, 'error'); return;
+                    }
+                    // Clear lists
+                    listA1.innerHTML = '<div class="px-2 py-3 text-xs text-slate-500">No AI1 variants yet.</div>';
+                    listA2.innerHTML = '<div class="px-2 py-3 text-xs text-slate-500">No AI2 variants yet.</div>';
+                    try {
+                        const itemRef = (this.currentItems || []).find(x => x.file_stem === reportId);
+                        if (itemRef) {
+                            if (!itemRef.analysis) itemRef.analysis = {};
+                            itemRef.summary_image_url = '';
+                            itemRef.analysis.summary_image_selected_url = '';
+                            itemRef.analysis.summary_image_ai2_url = '';
+                        }
+                    } catch(_) {}
+                    try { this.forceSwapAllCardsForCurrentMode(); } catch(_) {}
+                    this.showToast('All AI images deleted', 'success');
+                });
+            }
 
             const refreshSelectionUI = (listEl, selectedUrl) => {
                 const selNorm = this.normalizeAssetUrl(selectedUrl || '');
@@ -7533,15 +7769,15 @@ class AudioDashboard {
                 });
             };
 
-            const onSelectVariant = async (mode, url) => {
+            const onSelectVariant = async (mode, url, silent = false) => {
                 const token = await this.getReprocessToken();
                 if (!token) { this.showToast('Token required', 'warn'); return; }
                 const res = await fetch('/api/select-image-variant', {
                     method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ video_id: reportId, url, mode })
+                    body: JSON.stringify({ video_id: videoId, url, mode })
                 });
                 if (!res.ok) { this.showToast(`Failed to select ${mode} image`, 'error'); return; }
-                this.showToast(`${mode.toUpperCase()} image selected`, 'success');
+                if (!silent) this.showToast(`${mode.toUpperCase()} image selected`, 'success');
                 // Update in-memory and DOM attributes per mode
                 const normalized = this.normalizeAssetUrl(url);
                 try {
@@ -7577,8 +7813,9 @@ class AudioDashboard {
                 listEl.addEventListener('click', (e) => {
                     const useBtn = e.target.closest('[data-use-prompt]');
                     const selBtn = e.target.closest('[data-select-image]');
-                    if (!useBtn && !selBtn) return;
-                    const btn = useBtn || selBtn;
+                    const delBtn = e.target.closest('[data-delete-image]');
+                    if (!useBtn && !selBtn && !delBtn) return;
+                    const btn = useBtn || selBtn || delBtn;
                     let idx = Number(btn.dataset.index);
                     let v = variantsArr[idx];
                     if (!v || Number.isNaN(idx)) {
@@ -7595,15 +7832,112 @@ class AudioDashboard {
                         (mode === 'ai1' ? (inputA1.value = prompt) : (inputA2.value = prompt));
                         return;
                     }
-                    if (selBtn) onSelectVariant(mode, v.url);
+                    if (selBtn) { onSelectVariant(mode, v.url); return; }
+                    if (delBtn) { onDeleteVariant(mode, v.url); return; }
                 });
             };
             listClick(listA1, 'ai1', a1Variants);
             listClick(listA2, 'ai2', a2Variants);
 
+            // Expose a hot-refresh function for SSE updates
+            this._imagesModalRefresh = (freshItem) => {
+                try {
+                    const itm = freshItem || (this.currentItems || []).find(x => x.file_stem === reportId) || item;
+                    // Update in-memory items so card helpers reflect the latest selection
+                    try {
+                        const idx = (this.currentItems || []).findIndex(x => x.file_stem === reportId);
+                        if (idx >= 0) this.currentItems[idx] = itm;
+                    } catch(_) {}
+                    const allVars = Array.isArray(itm.analysis?.summary_image_variants) ? itm.analysis.summary_image_variants : [];
+                    const newUrls = new Set();
+                    try {
+                        const prev = this._imagesModalKnownUrls || new Set();
+                        allVars.forEach(v => { const u = v && v.url ? this.normalizeAssetUrl(v.url) : ''; if (u && !prev.has(u)) newUrls.add(u); });
+                    } catch(_) {}
+                    // Rebuild AI1 list
+                    const a1v = allVars.filter(v => {
+                        const m=(v.image_mode||'').toLowerCase();
+                        const t=(v.template||'').toLowerCase();
+                        const ps=(v.prompt_source||'').toLowerCase();
+                        const u=(v.url||'').toUpperCase();
+                        const isAi2 = (m==='ai2') || (t==='ai2_freestyle') || (ps && ps.startsWith('ai2')) || u.includes('/AI2_') || u.startsWith('AI2_');
+                        return !isAi2;
+                    }).sort((a,b)=>{ const ca=(a.created_at||'')+''; const cb=(b.created_at||'')+''; return ca<cb?1:ca>cb?-1:0; });
+                    const renderRow = (v, i, sel, mode) => {
+                        const url = this.normalizeAssetUrl(v.url||''); const isSel = sel && url && (url===this.normalizeAssetUrl(sel)); const when=this.formatRelativeTime(v.created_at); const preview=(v.prompt||'').slice(0,120);
+                        return `<div class="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 relative" data-variant-row data-url="${url}"><div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 dark:bg-slate-700 flex-shrink-0 relative" data-thumb><img src="${url}" alt="variant" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'" />${isSel ? '<span class=\'y-badge-selected absolute top-1 left-1 px-1.5 py-0.5 text-[10px] rounded bg-emerald-600 text-white\'>Selected</span>' : ''}</div><div class="flex-1 min-w-0"><div class="text-xs text-slate-500 dark:text-slate-400">${when||''}</div><div class="text-sm text-slate-700 dark:text-slate-200 truncate">${this.escapeHtml(preview)}</div><div class="mt-2 flex items-center gap-2"><button type="button" data-use-prompt data-mode="${mode}" data-index="${i}" class="px-2 py-1 text-xs rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">Use this prompt</button>${isSel ? '' : `<button type=\"button\" data-select-image data-mode=\"${mode}\" data-index=\"${i}\" class=\"px-2 py-1 text-xs rounded-md bg-audio-600 text-white hover:bg-audio-700\">Select this image</button>`}${mode==='ai1' || mode==='ai2' ? `<button type=\"button\" data-delete-image data-mode=\"${mode}\" data-index=\"${i}\" class=\"px-2 py-1 text-xs rounded-md border border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20\">Delete</button>`: ''}</div></div></div>`;
+                    };
+                    const a1Sel = itm.summary_image_url || itm.analysis?.summary_image_selected_url || '';
+                    let a1Html = a1v.map((v,i)=>renderRow(v,i,a1Sel,'ai1')).join('');
+                    if (!a1Html) a1Html = '<div class="px-2 py-3 text-xs text-slate-500">No AI1 variants yet.</div>';
+                    listA1.innerHTML = a1Html;
+                    // Highlight newly-added rows (AI1)
+                    try {
+                        listA1.querySelectorAll('[data-variant-row]').forEach(row => {
+                            const u = this.normalizeAssetUrl(row.getAttribute('data-url')||'');
+                            if (newUrls.has(u)) {
+                                row.classList.add('ring','ring-audio-400','ring-offset-1');
+                                setTimeout(()=>{ row.classList.remove('ring','ring-audio-400','ring-offset-1'); }, 1500);
+                            }
+                        });
+                    } catch(_) {}
+                    listClick(listA1,'ai1',a1v);
+
+                    // Rebuild AI2 list
+                    const urlToPrompt = new Map();
+                    allVars.forEach(v=>{ if (v.url) urlToPrompt.set(this.normalizeAssetUrl(v.url), v.prompt||''); });
+                    const ai2Urls = this.getAi2VariantUrls(itm);
+                    const a2v = ai2Urls.map(u=>({ url:u, image_mode:'ai2', prompt:urlToPrompt.get(this.normalizeAssetUrl(u))||'', created_at:'' }));
+                    const a2Sel = itm.summary_image_ai2_url || itm.analysis?.summary_image_ai2_url || '';
+                    let a2Html = a2v.map((v,i)=>renderRow(v,i,a2Sel,'ai2')).join('');
+                    if (!a2Html) a2Html = '<div class="px-2 py-3 text-xs text-slate-500">No AI2 variants yet.</div>';
+                    listA2.innerHTML = a2Html;
+                    // Highlight newly-added rows (AI2)
+                    try {
+                        listA2.querySelectorAll('[data-variant-row]').forEach(row => {
+                            const u = this.normalizeAssetUrl(row.getAttribute('data-url')||'');
+                            if (newUrls.has(u)) {
+                                row.classList.add('ring','ring-audio-400','ring-offset-1');
+                                setTimeout(()=>{ row.classList.remove('ring','ring-audio-400','ring-offset-1'); }, 1500);
+                            }
+                        });
+                    } catch(_) {}
+                    listClick(listA2,'ai2',a2v);
+
+                    // Update the visible card thumbnail in the grid for this item
+                    try {
+                        const card = document.querySelector(`[data-report-id="${CSS.escape(reportId)}"]`);
+                        if (card) {
+                            const imgSum = card.querySelector('[data-role="thumb-summary"]');
+                            const ai1 = a1Sel ? this.normalizeAssetUrl(a1Sel) : '';
+                            const ai2 = a2Sel ? this.normalizeAssetUrl(a2Sel) : '';
+                            if (imgSum) {
+                                if (ai1) try { imgSum.setAttribute('data-ai1-url', ai1); } catch(_) {}
+                                if (ai2) try { imgSum.setAttribute('data-ai2-url', ai2); } catch(_) {}
+                            }
+                            try { this.applyImageModeToCard(card); } catch(_) {}
+                        }
+                    } catch(_) {}
+
+                    // Flip status to ready for both panes, then hide
+                    // If a mode was regenerating, flip its status to ready and re-enable
+                    if (this._imagesModalRegenSet.has('ai1')) { setStatus('ai1','ready'); setBusy('ai1', false); }
+                    if (this._imagesModalRegenSet.has('ai2')) { setStatus('ai2','ready'); setBusy('ai2', false); }
+                    // Update known URLs baseline
+                    try {
+                        const known = this._imagesModalKnownUrls || new Set();
+                        allVars.forEach(v => { if (v && v.url) known.add(this.normalizeAssetUrl(v.url)); });
+                        const urls2 = this.getAi2VariantUrls(itm) || [];
+                        urls2.forEach(u => { if (u) known.add(this.normalizeAssetUrl(u)); });
+                        this._imagesModalKnownUrls = known;
+                    } catch(_) {}
+                } catch(_) {}
+            };
+
             // Default display radio removed for now
 
-            const finish = () => { try { document.body.removeChild(overlay); } catch(_) {}; resolve(); };
+            const finish = () => { try { document.body.removeChild(overlay); } catch(_) {}; if (this._openImagesModalReportId === reportId) this._openImagesModalReportId = null; try { if (this._imagesModalPollTimer) { clearInterval(this._imagesModalPollTimer); this._imagesModalPollTimer = null; } } catch(_) {}; resolve(); };
+            this._closeImagesModal = finish;
             overlay.addEventListener('click', (e)=>{ if (e.target === overlay) finish(); });
             closeBtns.forEach(btn => btn && btn.addEventListener('click', finish));
         });

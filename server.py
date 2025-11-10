@@ -1306,6 +1306,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         elif self.path == '/api/content' or self.path.startswith('/api/content/'):
             # Legacy SQLite content endpoints removed
             self.send_error(410, "Endpoint removed (use /ingest/* with PostgreSQL)")
+        elif self.path == '/api/delete-image-variant':
+            self.handle_delete_image_variant()
+        elif self.path == '/api/delete-all-ai-images':
+            self.handle_delete_all_ai_images()
+        elif self.path == '/api/admin/backfill-original-prompts':
+            self.handle_backfill_original_prompts()
         elif self.path.startswith('/api/delete'):
             self.handle_delete_request()
         elif self.path == '/api/set-image-prompt':
@@ -4622,6 +4628,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "content index unavailable"}).encode())
                 return
 
+            # Ensure original prompt is preserved the first time for this mode
+            try:
+                if hasattr(content_index, 'ensure_original_prompt'):
+                    content_index.ensure_original_prompt(video_id, mode, prompt)
+            except Exception:
+                pass
+
             if mode == 'ai2' and hasattr(content_index, 'update_summary_image_ai2_prompt'):
                 content_index.update_summary_image_ai2_prompt(video_id, prompt)
             else:
@@ -4762,6 +4775,259 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"ok": True, "video_id": video_id, "mode": mode}).encode())
         except Exception as e:
             logger.exception("set-image-display-mode failed")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+
+    def handle_backfill_original_prompts(self):
+        """POST /api/admin/backfill-original-prompts — admin-only (DEBUG_TOKEN).
+
+        Body: { mode?: 'ai1'|'ai2'|'both', limit?: 100, video_ids?: [..], dry_run?: true }
+        Returns JSON with processed/updated/skipped and examples.
+        """
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            length = int(self.headers.get('Content-Length', 0))
+            data = {}
+            if length:
+                try:
+                    raw = self.rfile.read(length)
+                    data = json.loads(raw.decode('utf-8'))
+                except Exception:
+                    pass
+            mode = (data.get('mode') or 'both').strip().lower()
+            limit = int(data.get('limit') or 100)
+            video_ids = data.get('video_ids') if isinstance(data.get('video_ids'), list) else None
+            dry_run = bool(data.get('dry_run') if 'dry_run' in data else True)
+
+            content_index = getattr(self.server, 'content_index', None)
+            if not content_index or not hasattr(content_index, 'backfill_original_prompts'):
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "content index unavailable"}).encode())
+                return
+
+            result = content_index.backfill_original_prompts(mode=mode, limit=limit, video_ids=video_ids, dry_run=dry_run)
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(result).encode())
+        except Exception as e:
+            logger.exception("backfill-original-prompts failed")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+
+    def _unlink_export_image_files(self, urls_or_paths):
+        """Attempt to unlink files under exports/images for provided URLs.
+
+        Accepts either '/exports/images/<file>' or 'images/<file>' or raw filenames.
+        Only removes files inside '/app/data/exports/images' or './exports/images'.
+        Returns list of successfully unlinked absolute paths.
+        """
+        unlinked = []
+        try:
+            images_roots = [
+                Path('/app/data/exports/images'),
+                Path('./exports/images')
+            ]
+            for u in urls_or_paths or []:
+                if not isinstance(u, str) or not u.strip():
+                    continue
+                raw = u.strip()
+                # Derive filename from URL/path
+                try:
+                    # Strip query
+                    raw = raw.split('?', 1)[0]
+                    # Extract tail if URL-like
+                    if raw.startswith('http://') or raw.startswith('https://'):
+                        from urllib.parse import urlparse
+                        p = urlparse(raw)
+                        raw = p.path or ''
+                    # Normalize to just the basename
+                    fname = os.path.basename(raw)
+                    if not fname:
+                        continue
+                    for root in images_roots:
+                        try:
+                            root.mkdir(parents=True, exist_ok=True)
+                        except Exception:
+                            pass
+                        candidate = (root / fname)
+                        # Ensure candidate is actually within root
+                        try:
+                            candidate_abs = candidate.resolve()
+                            if root.resolve() not in candidate_abs.parents and candidate_abs != root.resolve():
+                                continue
+                        except Exception:
+                            continue
+                        if candidate.exists() and candidate.is_file():
+                            try:
+                                candidate.unlink()
+                                unlinked.append(str(candidate))
+                                break
+                            except Exception:
+                                # ignore unlink failure; continue other roots
+                                pass
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return unlinked
+
+    def handle_delete_image_variant(self):
+        """POST /api/delete-image-variant — admin-only. Remove one image variant.
+
+        Body: { "video_id": "<id>", "url": "/exports/images/...png" }
+        Auth: DEBUG_TOKEN
+        """
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            length = int(self.headers.get('Content-Length', 0))
+            data = {}
+            if length:
+                try:
+                    raw = self.rfile.read(length)
+                    data = json.loads(raw.decode('utf-8'))
+                except Exception:
+                    pass
+
+            video_id = (data.get('video_id') or '').strip()
+            url = (data.get('url') or '').strip()
+            if not video_id or not url:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id and url required"}).encode())
+                return
+
+            content_index = getattr(self.server, 'content_index', None)
+            if not content_index or not hasattr(content_index, 'delete_image_variant'):
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "content index unavailable"}).encode())
+                return
+
+            result = content_index.delete_image_variant(video_id, url)
+            removed_urls = result.get('removed_urls') or []
+            unlinked = self._unlink_export_image_files(removed_urls)
+
+            # Optional broadcast event
+            try:
+                payload = {"video_id": video_id, "event": "image-variant-deleted", "removed": removed_urls}
+                report_event_stream.broadcast('image-variant-deleted', payload)
+            except Exception:
+                pass
+
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": bool(result.get('ok')), "removed_urls": removed_urls, "unlinked": unlinked, "cleared": result.get('cleared', []), "variants_remaining": result.get('variants_remaining', None)}).encode())
+        except Exception as e:
+            logger.exception("delete-image-variant failed")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+
+    def handle_delete_all_ai_images(self):
+        """POST /api/delete-all-ai-images — admin-only. Remove all AI1/AI2 images for a card.
+
+        Body: { "video_id": "<id>", "modes": ["ai1","ai2"] }
+        Auth: DEBUG_TOKEN
+        """
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            length = int(self.headers.get('Content-Length', 0))
+            data = {}
+            if length:
+                try:
+                    raw = self.rfile.read(length)
+                    data = json.loads(raw.decode('utf-8'))
+                except Exception:
+                    pass
+
+            video_id = (data.get('video_id') or '').strip()
+            modes = data.get('modes')
+            if not video_id:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id required"}).encode())
+                return
+
+            if modes and isinstance(modes, list):
+                modes = [str(m).lower().strip() for m in modes if str(m).lower().strip() in ('ai1','ai2')]
+            else:
+                modes = ['ai1','ai2']
+
+            content_index = getattr(self.server, 'content_index', None)
+            if not content_index or not hasattr(content_index, 'delete_all_ai_images'):
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "content index unavailable"}).encode())
+                return
+
+            result = content_index.delete_all_ai_images(video_id, modes)
+            removed_urls = result.get('removed_urls') or []
+            unlinked = self._unlink_export_image_files(removed_urls)
+
+            # Optional broadcast
+            try:
+                payload = {"video_id": video_id, "event": "image-images-purged", "removed": removed_urls, "modes": modes}
+                report_event_stream.broadcast('image-images-purged', payload)
+            except Exception:
+                pass
+
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "ok": bool(result.get('ok')),
+                "removed_urls": removed_urls,
+                "unlinked": unlinked,
+                "cleared": result.get('cleared', []),
+                "variants_remaining": result.get('variants_remaining', None)
+            }).encode())
+        except Exception as e:
+            logger.exception("delete-all-ai-images failed")
             self.send_response(500)
             self.set_cors_headers()
             self.send_header('Content-type', 'application/json')
