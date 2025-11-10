@@ -3463,8 +3463,8 @@ class AudioDashboard {
           </div>`;
         const familySeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Font family">
-            ${segBtn('data-reader-family="sans"', '<span style=\"font-family:system-ui,sans-serif\">Aa</span>', prefs.family==='sans')}
-            ${segBtn('data-reader-family="serif"', '<span style=\"font-family:Georgia,serif\">Aa</span>', prefs.family==='serif')}
+            ${segBtn('data-reader-family="sans"', '<span style=\\"font-family:system-ui,sans-serif\\">Aa</span>', prefs.family==='sans')}
+            ${segBtn('data-reader-family="serif"', '<span style=\\"font-family:Georgia,serif\\">Aa</span>', prefs.family==='serif')}
           </div>`;
         const justifySeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Justification">
@@ -3473,17 +3473,23 @@ class AudioDashboard {
           </div>`;
         const paraTile = (id, label) => `
           <div class="reader-tile" data-reader-para="${id}" aria-pressed="${prefs.paraStyle===id?'true':'false'}" role="button" aria-label="${label}" title="${label}">
-            <div class="tile-preview"><div class="tile-preview-inner">${'<div class=\\"strip\\"></div>'.repeat(3)}</div></div>
+            <div class="tile-preview">${id==='indented' ? '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.6\\" stroke-linecap=\\"round\\"><path d=\\"M8 6h11\\"/><path d=\\"M5 10h14\\"/><path d=\\"M5 14h14\\"/><path d=\\"M5 18h14\\"/></svg>' : '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.4\\" stroke-linecap=\\"round\\"><rect x=\\"5\\" y=\\"5\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/><rect x=\\"5\\" y=\\"15\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/></svg>'}</div>
           </div>`;
         const themeTile = (id, label) => `
           <div class="reader-tile" data-reader-theme="${id}" aria-pressed="${prefs.theme===id?'true':'false'}" role="button" aria-label="${label}">
             <div class="tile-preview"><div class="tile-preview-inner">${'<div class=\\"strip\\"></div>'.repeat(3)}</div></div>
             <div class="tile-label">${label}</div>
           </div>`;
-        const measureTile = (id, label) => `
+        const measureTile = (id, label) => {
+          let w = 6, x = 9;
+          if (id === 'medium') { w = 8; x = 8; }
+          if (id === 'wide') { w = 11; x = 6.5; }
+          if (id === 'full') { w = 14; x = 5; }
+          return `
           <div class="reader-tile" data-reader-measure="${id}" aria-pressed="${prefs.measure===id?'true':'false'}" role="button" aria-label="${label}" title="${label}">
-            <div class="tile-preview"><div class="tile-preview-inner">${'<div class=\\"strip\\"></div>'.repeat(3)}</div></div>
+            <div class="tile-preview"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.2\"><rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"3\"/><rect x=\"${x}\" y=\"7\" width=\"${w}\" height=\"10\" rx=\"1.2\" fill=\"currentColor\"/></svg></div>
           </div>`;
+        };
         const justifyMini = `
           <div class="justify-mini"><span class="jline"></span><span class="jline"></span><span class="jline"></span></div>`;
         pop.innerHTML = `
