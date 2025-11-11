@@ -790,7 +790,8 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 
 /* Reader CSS variables (scoped to reader body containers) */
 .wall-expander [data-summary-body],
-#wallReaderBody {
+#wallReaderBody,
+.wall-card--mega .mega-body {
   --reader-font-size: 1rem; /* base 16px */
   --reader-line: 1.6;
   --reader-font-family: inherit;
@@ -802,7 +803,8 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 /* Comfortable reading measure for long-form text (desktop only) */
 @media (min-width: 1024px) {
   .wall-expander [data-summary-body],
-  #wallReaderBody {
+  #wallReaderBody,
+  .wall-card--mega .mega-body {
 /* Reader measure is adjustable via --reader-measure */
     max-width: var(--reader-measure, 70ch);
     margin-left: auto;
@@ -812,15 +814,16 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 
 /* Hyphenation and improved wrapping for paragraphs in readers */
 .wall-expander [data-summary-body] p,
-#wallReaderBody p {
+#wallReaderBody p,
+.wall-card--mega .mega-body p {
   hyphens: auto;
   -webkit-hyphens: auto;
   text-wrap: pretty;
 }
 
 /* Paragraph style: indented (applied at container via .reader-para--indented) */
-.reader-para--indented [data-summary-body] p { margin: 0.55rem 0; }
-.reader-para--indented [data-summary-body] p + p { text-indent: 1.25em; }
+.reader-para--indented [data-summary-body] p, .reader-para--indented .mega-body p { margin: 0.55rem 0; }
+.reader-para--indented [data-summary-body] p + p, .reader-para--indented .mega-body p + p { text-indent: 1.25em; }
 .reader-para--indented [data-summary-body] .kp-takeaway,
 .reader-para--indented [data-summary-body] h1,
 .reader-para--indented [data-summary-body] h2,
@@ -831,7 +834,7 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 .reader-para--indented [data-summary-body] li { text-indent: 0; }
 
 /* Text justification (allowed on mobile when enabled) */
-.reader-justify--on [data-summary-body] {
+.reader-justify--on [data-summary-body], .reader-justify--on .mega-body {
   text-align: justify;
   text-justify: inter-word;
   hyphens: auto;
@@ -841,7 +844,9 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 .wall-expander [data-summary-body] p,
 .wall-expander [data-summary-body] li,
 #wallReaderBody p,
-#wallReaderBody li { line-height: var(--reader-line) !important; }
+#wallReaderBody li,
+.wall-card--mega .mega-body p,
+.wall-card--mega .mega-body li { line-height: var(--reader-line) !important; }
 
 /* Compact preview inside Display Options */
 .reader-preview {
