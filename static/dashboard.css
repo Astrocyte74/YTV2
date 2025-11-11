@@ -1378,7 +1378,8 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
     /* Allow tighter packing so expanded items don't leave awkward gaps */
     grid-auto-flow: dense;
     /* Keep row heights uniform so 2x row spans look tidy (approximate) */
-    grid-auto-rows: 1fr;
+    --wall-row-h: 280px;
+    grid-auto-rows: var(--wall-row-h);
 }
 .wall-expander {
     grid-column: 1 / -1;
@@ -1470,7 +1471,8 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 }
 .wall-card {
     position: relative;
-    aspect-ratio: 2 / 3;
+    /* Use grid row height instead of aspect ratio for consistent spans */
+    height: 100%;
     border-radius: 0.75rem;
     overflow: hidden;
     isolation: isolate;

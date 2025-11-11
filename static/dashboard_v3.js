@@ -5035,6 +5035,14 @@ class AudioDashboard {
                 const openMegas = Array.from(grid.querySelectorAll('.wall-card.wall-card--mega'));
                 openMegas.forEach(el => { if (el !== cardEl) this.closeWallMegaCard(el.getAttribute('data-report-id') || '', el); });
             } catch(_) {}
+            // Calibrate grid row height to actual card height so a span produces visible reflow
+            try {
+              const sample = grid.querySelector('.wall-card');
+              if (sample) {
+                const h = sample.getBoundingClientRect().height;
+                if (h && h > 0) grid.style.setProperty('--wall-row-h', Math.round(h) + 'px');
+              }
+            } catch(_) {}
             // Save original markup
             cardEl._origHTML = cardEl.innerHTML;
             cardEl.classList.add('wall-card--mega');
@@ -5089,20 +5097,24 @@ class AudioDashboard {
               setTimeout(()=> { cardEl.classList.remove('mega-enter'); cardEl.classList.remove('mega-enter-active'); cardEl.classList.remove('mega-focus'); }, 420);
             } catch(_) {}
             setTimeout(() => { cardEl.classList.add('wall-card--flipped'); }, 500);
-            // Animate grid reflow (FLIP) after reflow tick
+            // Animate grid reflow (FLIP) after reflow commits, then scroll
             try {
-              requestAnimationFrame(() => requestAnimationFrame(() => this.animateGridReflow(grid, before)));
-            } catch(_) {}
-            // Ensure card is in view (auto-scroll)
-            try {
-              const header = document.querySelector('header');
-              const hh = header ? header.getBoundingClientRect().height : 64;
-              const r = cardEl.getBoundingClientRect();
-              const needsScroll = (r.top < hh + 12) || (r.bottom > (window.innerHeight - 12));
-              if (needsScroll) {
-                const top = Math.max(0, r.top + window.pageYOffset - hh - 16);
-                window.scrollTo({ top, behavior: 'smooth' });
-              }
+              requestAnimationFrame(() => requestAnimationFrame(() => {
+                this.animateGridReflow(grid, before);
+                // Scroll after animation starts, not before (avoid canceling transforms)
+                setTimeout(() => {
+                  try {
+                    const header = document.querySelector('header');
+                    const hh = header ? header.getBoundingClientRect().height : 64;
+                    const r = cardEl.getBoundingClientRect();
+                    const needsScroll = (r.top < hh + 12) || (r.bottom > (window.innerHeight - 12));
+                    if (needsScroll) {
+                      const top = Math.max(0, r.top + window.pageYOffset - hh - 16);
+                      window.scrollTo({ top, behavior: 'smooth' });
+                    }
+                  } catch(_) {}
+                }, 80);
+              }));
             } catch(_) {}
             // Apply similarity halo and set label count
             let similarCount = 0;
@@ -5281,10 +5293,11 @@ class AudioDashboard {
             const after = el.getBoundingClientRect();
             const dx = before.left - after.left;
             const dy = before.top - after.top;
-            if (dx || dy) {
+            if ((dx || dy) && !el.classList.contains('wall-card--mega')) {
                 try {
+                    el.style.willChange = 'transform';
                     el.style.transform = `translate(${dx}px, ${dy}px)`;
-                    el.style.transition = 'transform 520ms cubic-bezier(0.22, 1, 0.36, 1)';
+                    el.style.transition = 'transform 620ms cubic-bezier(0.22, 1, 0.36, 1)';
                     // force reflow
                     void el.offsetWidth;
                     el.style.transform = '';
@@ -5292,7 +5305,7 @@ class AudioDashboard {
                 } catch(_) {}
             }
         });
-        setTimeout(() => { transitions.forEach(el => { try { el.style.transition = ''; } catch(_) {} }); }, 560);
+        setTimeout(() => { transitions.forEach(el => { try { el.style.transition = ''; el.style.willChange = ''; } catch(_) {} }); }, 700);
     }
     closeWallMegaCard(id, cardEl) {
         try {
