@@ -4898,6 +4898,7 @@ class AudioDashboard {
             <div class="prose prose-sm dark:prose-invert max-w-none" data-summary-body>${this.renderWallReaderSection(item)}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
+        this.adjustWallExpanderSpan(section, grid);
         // Animate open height
         requestAnimationFrame(() => {
             const full = section.scrollHeight;
@@ -4936,9 +4937,15 @@ class AudioDashboard {
             // Draw/update connector overlay (curved link + subtle glow)
             this.updateWallConnectorOverlay(cardEl, section, caretLeft);
             // Recompute once after layout settles (fonts/images)
-            try { setTimeout(() => this.updateWallConnectorOverlay(cardEl, section, caretLeft), 150); } catch(_) {}
+            try { setTimeout(() => {
+                this.adjustWallExpanderSpan(section, grid);
+                this.updateWallConnectorOverlay(cardEl, section, caretLeft);
+            }, 150); } catch(_) {}
             // Keep overlay aligned on scroll/resize until closed
-            const boundUpdate = () => this.updateWallConnectorOverlay(cardEl, section);
+            const boundUpdate = () => {
+                this.adjustWallExpanderSpan(section, grid);
+                this.updateWallConnectorOverlay(cardEl, section);
+            };
             this._wallConnectorHandlers = this._wallConnectorHandlers || [];
             this._wallConnectorHandlers.forEach(h => window.removeEventListener(h.type, h.fn, h.opts));
             this._wallConnectorHandlers = [
@@ -5095,6 +5102,51 @@ class AudioDashboard {
             const d = `M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}`;
             path.setAttribute('d', d);
         } catch (_) { /* no-op */ }
+    }
+    adjustWallExpanderSpan(sectionEl, gridEl) {
+        if (!sectionEl || !gridEl) return;
+        const smallScreen = window.matchMedia('(max-width: 1024px)');
+        if (smallScreen.matches) {
+            sectionEl.style.gridColumn = '1 / -1';
+            sectionEl.style.maxWidth = '';
+            return;
+        }
+        const gridRect = gridEl.getBoundingClientRect();
+        if (!gridRect.width) {
+            sectionEl.style.gridColumn = '1 / -1';
+            sectionEl.style.maxWidth = '';
+            return;
+        }
+        const cards = Array.from(gridEl.querySelectorAll('.wall-card'));
+        const sampleCard = cards.find(Boolean);
+        if (!sampleCard) {
+            sectionEl.style.gridColumn = '1 / -1';
+            sectionEl.style.maxWidth = '';
+            return;
+        }
+        const cardRect = sampleCard.getBoundingClientRect();
+        const computed = window.getComputedStyle(gridEl);
+        const gap = parseFloat(computed.columnGap || computed.gap || '0') || 0;
+        const cardWidth = cardRect.width;
+        if (!cardWidth) {
+            sectionEl.style.gridColumn = '1 / -1';
+            sectionEl.style.maxWidth = '';
+            return;
+        }
+        const columns = Math.max(1, Math.floor((gridRect.width + gap) / (cardWidth + gap)));
+        if (columns <= 2) {
+            sectionEl.style.gridColumn = '1 / -1';
+            sectionEl.style.maxWidth = '';
+            return;
+        }
+        const desiredSpan = Math.max(2, Math.min(columns - 1, 6));
+        sectionEl.style.gridColumn = `span ${desiredSpan}`;
+        const widthPx = desiredSpan * cardWidth + Math.max(0, desiredSpan - 1) * gap;
+        if (Number.isFinite(widthPx) && widthPx > 0) {
+            sectionEl.style.maxWidth = `${widthPx}px`;
+        } else {
+            sectionEl.style.maxWidth = '';
+        }
     }
 
     // Normalize NAS HTML variants at render time to ensure headings/lists styles apply
