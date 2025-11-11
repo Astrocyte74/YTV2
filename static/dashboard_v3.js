@@ -5107,6 +5107,8 @@ class AudioDashboard {
     adjustWallExpanderSpan(sectionEl, gridEl) {
         if (!sectionEl || !gridEl) return;
         sectionEl.style.gridColumn = '1 / -1';
+        sectionEl.style.width = '';
+        sectionEl.style.maxWidth = '';
         const mq = window.matchMedia('(max-width: 1024px)');
         if (mq.matches) {
             return;
@@ -5124,7 +5126,14 @@ class AudioDashboard {
         if (columns <= 2) return;
         let span = Math.min(4, columns - 1);
         if (span < 2) span = Math.min(columns, 2);
-        sectionEl.style.gridColumn = `span ${span}`;
+        const leftover = columns - span;
+        const start = Math.max(1, Math.floor(leftover / 2) + 1);
+        sectionEl.style.gridColumn = `${start} / span ${span}`;
+        const widthPx = span * cardWidth + Math.max(0, span - 1) * gap;
+        if (Number.isFinite(widthPx) && widthPx > 0) {
+            sectionEl.style.width = `${widthPx}px`;
+            sectionEl.style.maxWidth = `${widthPx}px`;
+        }
     }
 
     // Normalize NAS HTML variants at render time to ensure headings/lists styles apply
