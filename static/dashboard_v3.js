@@ -5116,9 +5116,13 @@ class AudioDashboard {
               const dy = (beforeRect.top + window.pageYOffset) - (afterRect.top + window.pageYOffset);
               const sx = beforeRect.width && afterRect.width ? (beforeRect.width / afterRect.width) : 1;
               const sy = beforeRect.height && afterRect.height ? (beforeRect.height / afterRect.height) : 1;
+              // Disable any base transition so this snap does not animate
+              cardEl.style.setProperty('transition', 'none', 'important');
               cardEl.style.transformOrigin = 'top left';
               cardEl.style.willChange = 'transform';
               cardEl.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px) scale(${sx}, ${sy})`;
+              // Keep this card below neighbors during their move-out
+              cardEl.style.zIndex = '5';
               // No transition yet — we want neighbors to animate first
             } catch(_) {}
             // Animate grid reflow (FLIP) after reflow commits, then scroll
@@ -5151,6 +5155,7 @@ class AudioDashboard {
                       try {
                         cardEl.style.removeProperty('transition');
                         cardEl.style.removeProperty('will-change');
+                        cardEl.style.removeProperty('z-index');
                       } catch(_) {}
                       try { cardEl.classList.add('wall-card--flipped'); } catch(_) {}
                     }, 560);
@@ -5343,6 +5348,8 @@ class AudioDashboard {
                     el.style.setProperty('will-change', 'transform', 'important');
                     el.style.transform = `translate(${dx}px, ${dy}px)`;
                     el.style.setProperty('transition', `transform ${durMs}ms cubic-bezier(0.22, 1, 0.36, 1)`, 'important');
+                    // Ensure neighbors render above the temporarily frozen clicked card
+                    el.style.setProperty('z-index', '40', 'important');
                     // force reflow
                     void el.offsetWidth;
                     el.style.transform = '';
@@ -5350,7 +5357,7 @@ class AudioDashboard {
                 } catch(_) {}
             }
         });
-        setTimeout(() => { transitions.forEach(el => { try { el.style.removeProperty('transition'); el.style.removeProperty('will-change'); } catch(_) {} }); }, durMs + 120);
+        setTimeout(() => { transitions.forEach(el => { try { el.style.removeProperty('transition'); el.style.removeProperty('will-change'); el.style.removeProperty('z-index'); } catch(_) {} }); }, durMs + 120);
     }
     closeWallMegaCard(id, cardEl) {
         try {
