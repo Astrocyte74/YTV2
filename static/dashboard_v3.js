@@ -3450,7 +3450,7 @@ class AudioDashboard {
         try { document.querySelectorAll('.reader-display-popover').forEach(el => el.remove()); } catch(_) {}
         const prefs = this.getReaderDisplayPrefs();
         const pop = document.createElement('div');
-        pop.className = 'reader-display-popover';
+        pop.className = 'reader-display-popover pop-animate';
         pop.setAttribute('role', 'dialog');
         const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed?'true':'false'}" title="${String(label).replace(/<[^>]+>/g,'')}">${label}</span>`;
         const sizeSeg = `
