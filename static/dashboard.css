@@ -1479,6 +1479,9 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
   grid-column: span 2;
   grid-row: span 2;
   z-index: 12;
+  /* Break the fixed aspect so content can fill larger area */
+  aspect-ratio: auto;
+  min-height: 420px;
 }
 .wall-card--mega .mega-inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform 380ms ease; }
 .wall-card--mega.wall-card--flipped .mega-inner { transform: rotateY(180deg); }

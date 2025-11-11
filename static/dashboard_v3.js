@@ -120,6 +120,7 @@ class AudioDashboard {
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallSimilarityEnabled')) this.flags.wallSimilarityEnabled = true;
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallSimilarityMode')) this.flags.wallSimilarityMode = 'halo';
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallFlipEnabled')) this.flags.wallFlipEnabled = true;
+        if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallMegaSpanEnabled')) this.flags.wallMegaSpanEnabled = true;
         this.config = (typeof window !== 'undefined' && window.DASHBOARD_CONFIG) ? window.DASHBOARD_CONFIG : {};
         const autoPlayConfig = this.config && this.config.autoPlayOnLoad;
         this.autoPlayOnLoad = autoPlayConfig === undefined;
