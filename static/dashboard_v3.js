@@ -4347,9 +4347,13 @@ class AudioDashboard {
 
     // --- Wall reader handlers ---
     handleWallRead(id, cardEl) {
+        const useMega = this.flags && this.flags.wallMegaSpanEnabled;
         const useFlip = this.flags && this.flags.wallFlipEnabled;
         const useInline = (this.flags && Object.prototype.hasOwnProperty.call(this.flags, 'wallReadInline')) ? !!this.flags.wallReadInline : true;
         const isDesktop = window.innerWidth >= 1024;
+        if (useMega && isDesktop) {
+            return this.openWallMegaCard(id, cardEl);
+        }
         if (useFlip && isDesktop) {
             return this.openWallFlipCard(id, cardEl);
         }
@@ -4978,6 +4982,105 @@ class AudioDashboard {
             container.querySelectorAll('.wall-card').forEach(c => { c.classList.remove('wall-card--dim'); c.classList.remove('wall-card--similar'); });
             this._wallSimApplied = null;
         } catch (_) { /* no-op */ }
+    }
+
+    // --- In-grid 2x2 mega-card (Option A) ---
+    openWallMegaCard(id, cardEl) {
+        try {
+            const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+            if (!grid || !cardEl) return;
+            const item = (this.currentItems || []).find(x => x.file_stem === id);
+            if (!item) return;
+            // If already mega, close
+            if (cardEl.classList.contains('wall-card--mega')) {
+                return this.closeWallMegaCard(id, cardEl);
+            }
+            // Save original markup
+            cardEl._origHTML = cardEl.innerHTML;
+            cardEl.classList.add('wall-card--mega');
+            // Build flip faces
+            const safeTitle = this.escapeHtml(item.title || 'Summary');
+            const menuMarkup = `
+              <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
+              </div>`;
+            cardEl.innerHTML = `
+              <div class="mega-inner">
+                <div class="mega-face mega-face--front"></div>
+                <div class="mega-face mega-face--back">
+                  <div class="mega-header">
+                    <div class="mega-title">${safeTitle}</div>
+                    <div class="mega-actions">
+                      <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-mega-display title="Display options">Aa</button>
+                      <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-mega-open title="Open page">Open</button>
+                      <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                          <circle cx="5" cy="12" r="1.5"></circle>
+                          <circle cx="12" cy="12" r="1.5"></circle>
+                          <circle cx="19" cy="12" r="1.5"></circle>
+                        </svg>
+                      </button>
+                      <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-mega-close aria-label="Close">✕</button>
+                      ${menuMarkup}
+                    </div>
+                  </div>
+                  <div class="mega-body prose prose-sm dark:prose-invert max-w-none" data-mega-body></div>
+                </div>
+              </div>`;
+            const bodyHost = cardEl.querySelector('[data-mega-body]');
+            if (bodyHost) bodyHost.innerHTML = this.renderWallReaderSection(item);
+            // Flip immediately to show summary
+            setTimeout(() => { cardEl.classList.add('wall-card--flipped'); }, 120);
+            // Apply similarity halo
+            try { this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')); } catch(_) {}
+            // Wire actions
+            const openBtn = cardEl.querySelector('[data-mega-open]');
+            if (openBtn) openBtn.addEventListener('click', (ev) => { ev.preventDefault(); window.location.href = `/${encodeURIComponent(id)}.json?v=2`; });
+            const menuBtn = cardEl.querySelector('[data-action="menu"]');
+            if (menuBtn) {
+                menuBtn.addEventListener('click', () => this.toggleKebabMenu(cardEl, true, menuBtn));
+                const menu = cardEl.querySelector('[data-kebab-menu]');
+                if (menu) {
+                    const onMenuClick = (e) => {
+                        const a = e.target.closest('[data-action]');
+                        if (!a) return;
+                        const act = a.getAttribute('data-action');
+                        if (act === 'copy-link') { this.copyLink(cardEl, id); this.toggleKebabMenu(cardEl, false); }
+                        if (act === 'reprocess') { this.openReprocessModal(id, cardEl); this.toggleKebabMenu(cardEl, false); }
+                        if (act === 'delete') { this.handleDelete(id, cardEl); this.toggleKebabMenu(cardEl, false); }
+                        if (act === 'images-manage') { this.handleManageImages(id); this.toggleKebabMenu(cardEl, false); }
+                    };
+                    menu.addEventListener('click', onMenuClick);
+                }
+            }
+            const aaBtn = cardEl.querySelector('[data-mega-display]');
+            if (aaBtn && bodyHost) {
+                this.applyReaderDisplayPrefs(cardEl, bodyHost);
+                aaBtn.addEventListener('click', (e) => { e.preventDefault(); this.openReaderDisplayPopover(cardEl, bodyHost, aaBtn); });
+            }
+            const closeBtn = cardEl.querySelector('[data-mega-close]');
+            if (closeBtn) closeBtn.addEventListener('click', (e) => { e.preventDefault(); this.closeWallMegaCard(id, cardEl); });
+            // Esc to close
+            const onEsc = (ev) => { if (ev.key === 'Escape') { this.closeWallMegaCard(id, cardEl); document.removeEventListener('keydown', onEsc); } };
+            document.addEventListener('keydown', onEsc);
+        } catch (_) {}
+    }
+    closeWallMegaCard(id, cardEl) {
+        try {
+            const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+            if (cardEl && cardEl._origHTML != null) {
+                cardEl.innerHTML = cardEl._origHTML;
+                cardEl._origHTML = null;
+            }
+            if (cardEl) {
+                cardEl.classList.remove('wall-card--flipped');
+                cardEl.classList.remove('wall-card--mega');
+            }
+            this.clearSimilarityView(grid);
+        } catch (_) {}
     }
 
     // Normalize NAS HTML variants at render time to ensure headings/lists styles apply

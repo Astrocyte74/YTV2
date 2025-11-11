@@ -1372,6 +1372,8 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
     padding-bottom: 2rem;
     /* Allow tighter packing so expanded items don't leave awkward gaps */
     grid-auto-flow: dense;
+    /* Keep row heights uniform so 2x row spans look tidy (approximate) */
+    grid-auto-rows: 1fr;
 }
 .wall-expander {
     grid-column: 1 / -1;
@@ -1471,6 +1473,21 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
     box-shadow: var(--card-shadow);
     transition: transform 200ms ease, box-shadow 200ms ease;
 }
+
+/* In-grid mega-card: span two cols/rows and elevate */
+.wall-card--mega {
+  grid-column: span 2;
+  grid-row: span 2;
+  z-index: 12;
+}
+.wall-card--mega .mega-inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform 380ms ease; }
+.wall-card--mega.wall-card--flipped .mega-inner { transform: rotateY(180deg); }
+.mega-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.mega-face--back { transform: rotateY(180deg); display: grid; grid-template-rows: 44px 1fr; }
+.mega-header { display:flex; align-items:center; justify-content: space-between; gap:8px; padding: 8px 10px; background: linear-gradient(180deg, rgba(2,6,23,0.75), rgba(2,6,23,0.55)); color: #f8fafc; }
+.mega-title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.mega-actions .ybtn, .mega-actions .summary-card__menu-btn { margin-left: 6px; }
+.mega-body { padding: 10px 12px; overflow: auto; }
 .wall-card:hover,
 .wall-card:focus-visible {
     transform: translateY(-4px) scale(1.02);
