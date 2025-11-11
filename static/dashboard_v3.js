@@ -4346,8 +4346,12 @@ class AudioDashboard {
 
     // --- Wall reader handlers ---
     handleWallRead(id, cardEl) {
+        const useFlip = this.flags && this.flags.wallFlipEnabled;
         const useInline = (this.flags && Object.prototype.hasOwnProperty.call(this.flags, 'wallReadInline')) ? !!this.flags.wallReadInline : true;
         const isDesktop = window.innerWidth >= 1024;
+        if (useFlip && isDesktop) {
+            return this.openWallFlipCard(id, cardEl);
+        }
         if (useInline && isDesktop) {
             return this.openWallRowReader(id, cardEl);
         }
@@ -4762,6 +4766,82 @@ class AudioDashboard {
         } catch (_) { /* no-op */ }
     }
 
+    // --- Flip mega-card overlay (Option B) ---
+    openWallFlipCard(id, cardEl) {
+        try {
+            const item = (this.currentItems || []).find(x => x.file_stem === id);
+            if (!item || !cardEl) return;
+            // If an overlay is already open, close it first
+            if (this._flipOverlay && this._flipOverlay.parentElement) {
+                try { this._flipOverlay.parentElement.removeChild(this._flipOverlay); } catch(_) {}
+                this._flipOverlay = null;
+            }
+            // Measure origin (card)
+            const rect = cardEl.getBoundingClientRect();
+            const startLeft = Math.round(rect.left + window.pageXOffset);
+            const startTop = Math.round(rect.top + window.pageYOffset);
+            const startW = Math.round(rect.width);
+            const startH = Math.round(rect.height);
+            // Create overlay
+            const ov = document.createElement('div');
+            ov.className = 'flip-overlay';
+            ov.setAttribute('role', 'dialog');
+            ov.style.left = startLeft + 'px';
+            ov.style.top = startTop + 'px';
+            ov.style.width = startW + 'px';
+            ov.style.height = startH + 'px';
+            // Content
+            const safeTitle = this.escapeHtml(item.title || 'Summary');
+            const thumb = (item.summary_image_url || item.thumbnail_url || '').trim();
+            const thumbSrc = thumb ? this.normalizeAssetUrl(thumb) : '';
+            ov.innerHTML = `
+              <div class="flip-header">
+                <div class="flip-title">${safeTitle}</div>
+                <div class="flip-actions">
+                  <button class="flip-close" aria-label="Close" data-flip-close>✕</button>
+                </div>
+              </div>
+              <div class="flip-inner">
+                <div class="flip-face flip-face--front">
+                  <div class="flip-front-body">
+                    ${thumbSrc ? `<img class="thumb" alt="" src="${thumbSrc}">` : `<div class="thumb"></div>`}
+                    <div class="text-sm opacity-80">Click to view summary…</div>
+                  </div>
+                </div>
+                <div class="flip-face flip-face--back">
+                  <div class="flip-back-body prose prose-sm dark:prose-invert max-w-none" data-flip-body></div>
+                </div>
+              </div>`;
+            document.body.appendChild(ov);
+            this._flipOverlay = ov;
+            // Target frame (roughly 2x width, tall enough for summary)
+            const vw = Math.max(360, Math.min(1100, Math.round(window.innerWidth * 0.7)));
+            const vh = Math.max(300, Math.min(700, Math.round(window.innerHeight * 0.7)));
+            const targetLeft = Math.round(window.pageXOffset + (window.innerWidth - vw) / 2);
+            const headerH = (document.querySelector('header')?.getBoundingClientRect()?.height) || 64;
+            const targetTop = Math.round(window.pageYOffset + Math.max(16, headerH + 8));
+            requestAnimationFrame(() => {
+                ov.style.left = targetLeft + 'px';
+                ov.style.top = targetTop + 'px';
+                ov.style.width = vw + 'px';
+                ov.style.height = vh + 'px';
+            });
+            // Inject summary on the back
+            try {
+                const bodyHost = ov.querySelector('[data-flip-body]');
+                if (bodyHost) bodyHost.innerHTML = this.renderWallReaderSection(item);
+            } catch(_) {}
+            // Flip after grow
+            setTimeout(() => { ov.classList.add('is-flipped'); }, 260);
+            // Close handlers
+            const close = () => { try { ov.parentElement && ov.parentElement.removeChild(ov); } catch(_) {}; this._flipOverlay = null; };
+            ov.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-flip-close]');
+                if (btn) { e.preventDefault(); e.stopPropagation(); close(); }
+            });
+            document.addEventListener('keydown', function onEsc(ev) { if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', onEsc); } });
+        } catch (_) {}
+    }
     // --- Wall similarity (heuristic, client-only) ---
     _tokenizeTitle(text) {
         try {
