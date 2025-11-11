@@ -123,6 +123,22 @@ class AudioDashboard {
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallFlipEnabled')) this.flags.wallFlipEnabled = true;
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallMegaSpanEnabled')) this.flags.wallMegaSpanEnabled = true;
         this.config = (typeof window !== 'undefined' && window.DASHBOARD_CONFIG) ? window.DASHBOARD_CONFIG : {};
+        // Debug: allow slowing FLIP with URL ?flip=slow|slower|off or ?flipms=NNN
+        this.flipDebugMs = 0;
+        try {
+            const params = new URLSearchParams((typeof window !== 'undefined' ? window.location.search : '') || '');
+            let fm = params.get('flipms') || '';
+            if (!fm) {
+                const f = (params.get('flip') || '').toLowerCase();
+                if (f === 'slow') fm = '2000';
+                else if (f === 'slower') fm = '3500';
+                else if (f === 'off') fm = '1';
+            }
+            if (fm) {
+                const n = Math.max(0, parseInt(fm, 10) || 0);
+                if (Number.isFinite(n)) this.flipDebugMs = n;
+            }
+        } catch(_) {}
         const autoPlayConfig = this.config && this.config.autoPlayOnLoad;
         this.autoPlayOnLoad = autoPlayConfig === undefined;
         if (autoPlayConfig !== undefined) {
@@ -5287,6 +5303,8 @@ class AudioDashboard {
         if (!grid || !beforeMap || !(beforeMap instanceof Map)) return;
         const els = Array.from(grid.querySelectorAll('.wall-card'));
         const transitions = [];
+        const baseMs = 620;
+        const durMs = this.flipDebugMs || baseMs;
         els.forEach(el => {
             const before = beforeMap.get(el);
             if (!before) return;
@@ -5298,7 +5316,7 @@ class AudioDashboard {
                     // Use !important to survive global reduced-motion overrides for this one spatial transition
                     el.style.setProperty('will-change', 'transform', 'important');
                     el.style.transform = `translate(${dx}px, ${dy}px)`;
-                    el.style.setProperty('transition', 'transform 620ms cubic-bezier(0.22, 1, 0.36, 1)', 'important');
+                    el.style.setProperty('transition', `transform ${durMs}ms cubic-bezier(0.22, 1, 0.36, 1)`, 'important');
                     // force reflow
                     void el.offsetWidth;
                     el.style.transform = '';
@@ -5306,7 +5324,7 @@ class AudioDashboard {
                 } catch(_) {}
             }
         });
-        setTimeout(() => { transitions.forEach(el => { try { el.style.removeProperty('transition'); el.style.removeProperty('will-change'); } catch(_) {} }); }, 700);
+        setTimeout(() => { transitions.forEach(el => { try { el.style.removeProperty('transition'); el.style.removeProperty('will-change'); } catch(_) {} }); }, durMs + 120);
     }
     closeWallMegaCard(id, cardEl) {
         try {
