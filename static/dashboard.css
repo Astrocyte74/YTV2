@@ -570,7 +570,7 @@ body {
   border-radius: 0.9rem;
   box-shadow: 0 18px 48px rgba(2,8,23,0.22);
   padding: 1rem 1rem 1.1rem;
-  z-index: 70;
+  z-index: 120;
 }
 .dark .reader-display-popover {
   background: rgba(15,23,42,0.98);
@@ -1552,6 +1552,10 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 .flip-front-body { display: grid; grid-template-columns: 160px 1fr; gap: 10px; padding: 10px; align-items: start; }
 .flip-front-body .thumb { width: 160px; height: 100px; object-fit: cover; border-radius: 10px; background: rgba(148,163,184,0.25); }
 .flip-back-body { padding: 10px 12px; }
+.flip-back-body { position: relative; padding-bottom: 56px; }
+.flip-footer { position: absolute; right: 12px; bottom: 10px; }
+.flip-footer .ybtn { padding: 6px 10px; border-radius: 8px; background: rgba(148,163,184,0.2); }
+.flip-footer .ybtn:hover { filter: brightness(1.05); }
 .flip-close { width: 28px; height: 28px; border-radius: 8px; background: rgba(148,163,184,0.2); display:inline-flex; align-items:center; justify-content:center; }
 .flip-close:hover { filter: brightness(1.1); }
 

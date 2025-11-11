@@ -4830,6 +4830,7 @@ class AudioDashboard {
                 </div>
                 <div class="flip-face flip-face--back">
                   <div class="flip-back-body prose prose-sm dark:prose-invert max-w-none" data-flip-body></div>
+                  <div class="flip-footer"><button class="ybtn" data-flip-close>Close</button></div>
                 </div>
               </div>`;
             document.body.appendChild(ov);
@@ -7725,6 +7726,7 @@ class AudioDashboard {
         return new Promise((resolve) => {
             const overlay = document.createElement('div');
             overlay.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+            try { overlay.style.zIndex = '130'; } catch(_) {}
             const panel = document.createElement('div');
             panel.className = 'w-full max-w-3xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl';
 
