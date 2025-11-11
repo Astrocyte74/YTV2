@@ -5015,6 +5015,11 @@ class AudioDashboard {
             if (cardEl.classList.contains('wall-card--mega')) {
                 return this.closeWallMegaCard(id, cardEl);
             }
+            // Capture positions for FLIP reflow animation
+            const before = new Map();
+            try {
+              Array.from(grid.querySelectorAll('.wall-card')).forEach(el => { before.set(el, el.getBoundingClientRect()); });
+            } catch(_) {}
             // Close any other mega-cards first
             try {
                 const openMegas = Array.from(grid.querySelectorAll('.wall-card.wall-card--mega'));
@@ -5067,8 +5072,26 @@ class AudioDashboard {
             if (bodyHost) bodyHost.innerHTML = this.renderWallReaderSection(item);
             // Flip immediately to show summary
             // Animate growth by scaling slightly first, then flip to back
-            try { cardEl.classList.add('mega-enter'); requestAnimationFrame(()=> cardEl.classList.add('mega-enter-active')); setTimeout(()=> { cardEl.classList.remove('mega-enter'); cardEl.classList.remove('mega-enter-active'); }, 360); } catch(_) {}
-            setTimeout(() => { cardEl.classList.add('wall-card--flipped'); }, 420);
+            try {
+              cardEl.classList.add('mega-focus');
+              cardEl.classList.add('mega-enter');
+              requestAnimationFrame(()=> cardEl.classList.add('mega-enter-active'));
+              setTimeout(()=> { cardEl.classList.remove('mega-enter'); cardEl.classList.remove('mega-enter-active'); cardEl.classList.remove('mega-focus'); }, 420);
+            } catch(_) {}
+            setTimeout(() => { cardEl.classList.add('wall-card--flipped'); }, 500);
+            // Animate grid reflow (FLIP)
+            try { this.animateGridReflow(grid, before); } catch(_) {}
+            // Ensure card is in view (auto-scroll)
+            try {
+              const header = document.querySelector('header');
+              const hh = header ? header.getBoundingClientRect().height : 64;
+              const r = cardEl.getBoundingClientRect();
+              const needsScroll = (r.top < hh + 12) || (r.bottom > (window.innerHeight - 12));
+              if (needsScroll) {
+                const top = Math.max(0, r.top + window.pageYOffset - hh - 16);
+                window.scrollTo({ top, behavior: 'smooth' });
+              }
+            } catch(_) {}
             // Apply similarity halo and set label count
             let similarCount = 0;
             try {
@@ -5127,6 +5150,29 @@ class AudioDashboard {
             // Prevent clicks inside mega content from bubbling to card (which would close it)
             try { cardEl.querySelector('.mega-inner').addEventListener('click', (e)=> e.stopPropagation()); } catch(_) {}
         } catch (_) {}
+    }
+    animateGridReflow(grid, beforeMap) {
+        if (!grid || !beforeMap || !(beforeMap instanceof Map)) return;
+        const els = Array.from(grid.querySelectorAll('.wall-card'));
+        const transitions = [];
+        els.forEach(el => {
+            const before = beforeMap.get(el);
+            if (!before) return;
+            const after = el.getBoundingClientRect();
+            const dx = before.left - after.left;
+            const dy = before.top - after.top;
+            if (dx || dy) {
+                try {
+                    el.style.transform = `translate(${dx}px, ${dy}px)`;
+                    el.style.transition = 'transform 360ms ease';
+                    // force reflow
+                    void el.offsetWidth;
+                    el.style.transform = '';
+                    transitions.push(el);
+                } catch(_) {}
+            }
+        });
+        setTimeout(() => { transitions.forEach(el => { try { el.style.transition = ''; } catch(_) {} }); }, 400);
     }
     closeWallMegaCard(id, cardEl) {
         try {
