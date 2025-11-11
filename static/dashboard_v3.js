@@ -4996,6 +4996,11 @@ class AudioDashboard {
             if (cardEl.classList.contains('wall-card--mega')) {
                 return this.closeWallMegaCard(id, cardEl);
             }
+            // Close any other mega-cards first
+            try {
+                const openMegas = Array.from(grid.querySelectorAll('.wall-card.wall-card--mega'));
+                openMegas.forEach(el => { if (el !== cardEl) this.closeWallMegaCard(el.getAttribute('data-report-id') || '', el); });
+            } catch(_) {}
             // Save original markup
             cardEl._origHTML = cardEl.innerHTML;
             cardEl.classList.add('wall-card--mega');
@@ -5014,7 +5019,16 @@ class AudioDashboard {
                 <div class="mega-face mega-face--back">
                   <div class="mega-header">
                     <div class="mega-title">${safeTitle}</div>
-                    <div class="mega-actions">
+                    <div></div>
+                  </div>
+                  <div class="mega-body prose prose-sm dark:prose-invert max-w-none" data-mega-body></div>
+                  <div class="mega-footer">
+                    <div class="mega-left">
+                      <span class="wall-sim-pill" data-sim-label>Similar shown</span>
+                      <label class="toggle"><input type="checkbox" data-sim-only> Show only</label>
+                      <button class="wall-sim-reset" data-sim-reset>Reset</button>
+                    </div>
+                    <div class="mega-right">
                       <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-mega-display title="Display options">Aa</button>
                       <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-mega-open title="Open page">Open</button>
                       <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
@@ -5028,15 +5042,29 @@ class AudioDashboard {
                       ${menuMarkup}
                     </div>
                   </div>
-                  <div class="mega-body prose prose-sm dark:prose-invert max-w-none" data-mega-body></div>
                 </div>
               </div>`;
             const bodyHost = cardEl.querySelector('[data-mega-body]');
             if (bodyHost) bodyHost.innerHTML = this.renderWallReaderSection(item);
             // Flip immediately to show summary
             setTimeout(() => { cardEl.classList.add('wall-card--flipped'); }, 120);
-            // Apply similarity halo
-            try { this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')); } catch(_) {}
+            // Apply similarity halo and set label count
+            let similarCount = 0;
+            try {
+              const items = this.currentItems || [];
+              const base = items.find(x => x.file_stem === id);
+              const cards = Array.from(grid.querySelectorAll('.wall-card'));
+              const scored = cards.map(card => {
+                const cid = card.getAttribute('data-report-id');
+                const it = items.find(x => x.file_stem === cid);
+                const sc = it && it !== base ? this.computeHeuristicSimilarity(base, it) : -1;
+                return { cid, card, item: it, score: sc };
+              }).filter(r => r.item && r.cid !== id).sort((a,b)=>b.score-a.score);
+              const K = Math.max(12, Math.min(36, Math.round((window.innerWidth || 1200) / 48)));
+              similarCount = Math.min(K, scored.length);
+              try { this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')); } catch(_) {}
+            } catch(_) {}
+            try { const lbl = cardEl.querySelector('[data-sim-label]'); if (lbl) lbl.textContent = `Similar (${similarCount || ''})`; } catch(_) {}
             // Wire actions
             const openBtn = cardEl.querySelector('[data-mega-open]');
             if (openBtn) openBtn.addEventListener('click', (ev) => { ev.preventDefault(); window.location.href = `/${encodeURIComponent(id)}.json?v=2`; });
@@ -5067,6 +5095,13 @@ class AudioDashboard {
             // Esc to close
             const onEsc = (ev) => { if (ev.key === 'Escape') { this.closeWallMegaCard(id, cardEl); document.removeEventListener('keydown', onEsc); } };
             document.addEventListener('keydown', onEsc);
+            // Similar controls
+            const simOnly = cardEl.querySelector('[data-sim-only]');
+            if (simOnly) simOnly.addEventListener('change', () => {
+              try { grid.classList.toggle('wall-sim-only', !!simOnly.checked); } catch(_) {}
+            });
+            const simReset = cardEl.querySelector('[data-sim-reset]');
+            if (simReset) simReset.addEventListener('click', (e) => { e.preventDefault(); this.clearSimilarityView(grid); try { if (simOnly) simOnly.checked = false; grid.classList.remove('wall-sim-only'); } catch(_) {}; });
         } catch (_) {}
     }
     closeWallMegaCard(id, cardEl) {
@@ -5081,6 +5116,7 @@ class AudioDashboard {
                 cardEl.classList.remove('wall-card--mega');
             }
             this.clearSimilarityView(grid);
+            try { grid.classList.remove('wall-sim-only'); } catch(_) {}
         } catch (_) {}
     }
 
