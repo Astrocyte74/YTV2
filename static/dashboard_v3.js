@@ -5106,34 +5106,31 @@ class AudioDashboard {
     }
     adjustWallExpanderSpan(sectionEl, gridEl) {
         if (!sectionEl || !gridEl) return;
-        sectionEl.style.gridColumn = '1 / -1';
-        sectionEl.style.width = '';
-        sectionEl.style.maxWidth = '';
-        const mq = window.matchMedia('(max-width: 1024px)');
-        if (mq.matches) {
+        const mqSmall = window.matchMedia('(max-width: 640px)');
+        if (mqSmall.matches) {
+            sectionEl.style.flexBasis = '100%';
             return;
         }
         const cards = Array.from(gridEl.querySelectorAll('.wall-card'));
-        if (!cards.length) return;
-        const sample = cards[0];
-        const gridRect = gridEl.getBoundingClientRect();
-        const cardRect = sample.getBoundingClientRect();
-        const styles = window.getComputedStyle(gridEl);
-        const gap = parseFloat(styles.columnGap || styles.gap || '0') || 0;
-        const cardWidth = cardRect.width;
-        if (!gridRect.width || !cardWidth) return;
-        const columns = Math.max(1, Math.floor((gridRect.width + gap) / (cardWidth + gap)));
-        if (columns <= 2) return;
-        let span = Math.min(4, columns - 1);
-        if (span < 2) span = Math.min(columns, 2);
-        const leftover = columns - span;
-        const start = Math.max(1, Math.floor(leftover / 2) + 1);
-        sectionEl.style.gridColumn = `${start} / span ${span}`;
-        const widthPx = span * cardWidth + Math.max(0, span - 1) * gap;
-        if (Number.isFinite(widthPx) && widthPx > 0) {
-            sectionEl.style.width = `${widthPx}px`;
-            sectionEl.style.maxWidth = `${widthPx}px`;
+        if (!cards.length) {
+            sectionEl.style.flexBasis = '100%';
+            return;
         }
+        const sample = cards[0].getBoundingClientRect();
+        const styles = window.getComputedStyle(gridEl);
+        const gap = parseFloat(styles.columnGap || styles.gap || '0') || parseFloat(styles.gap || '0') || 0;
+        const cardWidth = sample.width;
+        if (!cardWidth) {
+            sectionEl.style.flexBasis = 'min(48rem, 100%)';
+            return;
+        }
+        const mqTablet = window.matchMedia('(max-width: 1024px)');
+        if (mqTablet.matches) {
+            sectionEl.style.flexBasis = `calc(${cardWidth}px * 2 + ${gap}px)`;
+            return;
+        }
+        const desiredWidth = cardWidth * 4 + gap * 3;
+        sectionEl.style.flexBasis = `${desiredWidth}px`;
     }
 
     // Normalize NAS HTML variants at render time to ensure headings/lists styles apply

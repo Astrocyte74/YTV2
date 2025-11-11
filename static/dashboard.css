@@ -1347,16 +1347,17 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 .mosaic-card__actions .stream-card__media-btn { width: 2.2rem; height: 2.2rem; }
 
 .wall-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
     width: 100%;
     padding-bottom: 2rem;
-    grid-auto-flow: dense;
-    align-items: start;
+}
+.wall-card,
+.wall-expander {
+    flex: 0 0 calc(12rem + 0.5rem);
 }
 .wall-expander {
-    grid-column: 1 / -1;
     margin-top: 0.35rem;
     margin-bottom: 0.5rem;
     margin-left: auto;
@@ -1368,7 +1369,8 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
     border: 1px solid rgba(226,232,240,0.8);
     box-shadow: var(--card-shadow-strong);
     padding: 1rem 1.35rem;
-    width: 100%;
+    flex: 0 0 calc((12rem + 0.5rem) * 4);
+    max-width: min(48rem, calc(100% - 1rem));
 }
 .dark .wall-expander {
     background: rgba(2,6,23,0.85);
@@ -1376,14 +1378,21 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
     border-color: rgba(30,41,59,0.8);
 }
 .wall-grid .wall-expander {
-    transition: grid-column 200ms ease, width 200ms ease;
-}
-.wall-grid .wall-expander[data-dynamic-span="true"] {
-    width: auto;
+    transition: flex-basis 200ms ease, max-width 200ms ease;
 }
 @media (max-width: 1024px) {
-    .wall-grid .wall-expander {
-        grid-column: 1 / -1 !important;
+    .wall-card,
+    .wall-expander {
+        flex: 0 0 calc(50% - 0.5rem);
+    }
+    .wall-expander {
+        max-width: 100%;
+    }
+}
+@media (max-width: 640px) {
+    .wall-card,
+    .wall-expander {
+        flex: 0 0 100%;
     }
 }
 .wall-expander::before {
