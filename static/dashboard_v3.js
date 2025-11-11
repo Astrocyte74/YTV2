@@ -5106,26 +5106,30 @@ class AudioDashboard {
     }
     adjustWallExpanderSpan(sectionEl, gridEl) {
         if (!sectionEl || !gridEl) return;
-        sectionEl.style.gridColumn = '1 / -1';
-        sectionEl.style.width = '';
-        sectionEl.style.maxWidth = '';
+        sectionEl.style.flexBasis = '';
         const mqSmall = window.matchMedia('(max-width: 640px)');
         if (mqSmall.matches) {
+            sectionEl.style.flexBasis = '100%';
+            sectionEl.style.maxWidth = '100%';
             return;
         }
         const cards = Array.from(gridEl.querySelectorAll('.wall-card'));
         if (!cards.length) return;
         const sample = cards[0].getBoundingClientRect();
         const styles = window.getComputedStyle(gridEl);
-        const gap = parseFloat(styles.columnGap || styles.gap || '0') || 0;
+        const gap = parseFloat(styles.columnGap || styles.gap || '0') || parseFloat(styles.gap || '0') || 0;
         const cardWidth = sample.width;
         if (!cardWidth) return;
-        const gridRect = gridEl.getBoundingClientRect();
-        const columns = Math.max(1, Math.floor((gridRect.width + gap) / (cardWidth + gap)));
-        if (columns <= 2) return;
-        let span = Math.min(4, columns - 1);
-        if (span < 2) span = Math.min(columns, 2);
-        sectionEl.style.gridColumn = `span ${span}`;
+        const mqTablet = window.matchMedia('(max-width: 1024px)');
+        if (mqTablet.matches) {
+            const basis = (cardWidth * 2) + gap;
+            sectionEl.style.flexBasis = `${basis}px`;
+            sectionEl.style.maxWidth = `${basis}px`;
+            return;
+        }
+        const desiredWidth = cardWidth * 4 + gap * 3;
+        sectionEl.style.flexBasis = `${desiredWidth}px`;
+        sectionEl.style.maxWidth = `${desiredWidth}px`;
     }
 
     // Normalize NAS HTML variants at render time to ensure headings/lists styles apply
