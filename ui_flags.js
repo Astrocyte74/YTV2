@@ -12,4 +12,6 @@ window.UI_FLAGS = Object.assign({}, window.UI_FLAGS || {}, {
   wallSimilarityEnabled: true,
   // Similarity mode: 'halo' (highlight/dim) or 'reorder' (not implemented yet)
   wallSimilarityMode: 'halo',
+  // Experimental: flip mega-card overlay instead of row reader (v3 branch)
+  wallFlipEnabled: true,
 });
