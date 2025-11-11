@@ -1352,10 +1352,12 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
     gap: 0.5rem;
     width: 100%;
     padding-bottom: 2rem;
+    align-items: flex-start;
 }
 .wall-card,
 .wall-expander {
     flex: 0 0 calc(12rem + 0.5rem);
+    align-self: flex-start;
 }
 .wall-expander {
     margin-top: 0.35rem;

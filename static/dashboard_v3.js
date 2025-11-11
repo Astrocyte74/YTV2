@@ -5112,14 +5112,9 @@ class AudioDashboard {
             return;
         }
         const cards = Array.from(gridEl.querySelectorAll('.wall-card'));
-        if (!cards.length) {
-            sectionEl.style.flexBasis = '100%';
-            return;
-        }
-        const sample = cards[0].getBoundingClientRect();
         const styles = window.getComputedStyle(gridEl);
         const gap = parseFloat(styles.columnGap || styles.gap || '0') || parseFloat(styles.gap || '0') || 0;
-        const cardWidth = sample.width;
+        const cardWidth = cards.length ? cards[0].getBoundingClientRect().width : 192;
         if (!cardWidth) {
             sectionEl.style.flexBasis = 'min(48rem, 100%)';
             return;
