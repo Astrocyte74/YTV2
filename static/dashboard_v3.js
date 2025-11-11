@@ -5132,7 +5132,7 @@ class AudioDashboard {
             const aaBtn = cardEl.querySelector('[data-mega-display]');
             if (aaBtn && bodyHost) {
                 this.applyReaderDisplayPrefs(cardEl, bodyHost);
-                aaBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.openReaderDisplayPopover(cardEl, bodyHost, aaBtn); });
+                aaBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.openReaderFooterDrawer(cardEl, bodyHost, aaBtn); });
             }
             const closeBtn = cardEl.querySelector('[data-mega-close]');
             if (closeBtn) closeBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.closeWallMegaCard(id, cardEl); });
@@ -5151,6 +5151,112 @@ class AudioDashboard {
             try { cardEl.querySelector('.mega-inner').addEventListener('click', (e)=> e.stopPropagation()); } catch(_) {}
         } catch (_) {}
     }
+    openReaderFooterDrawer(container, bodyEl, anchorBtn) {
+        try {
+            // Close if open
+            const existing = container.querySelector('.reader-drawer');
+            if (existing) { existing.classList.toggle('open'); if (!existing.classList.contains('open')) { setTimeout(()=> existing.remove(), 180); } return; }
+            const prefs = this.getReaderDisplayPrefs();
+            const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed?'true':'false'}">${label}</span>`;
+            const sizeSeg = `
+              <div class="reader-segment" role="group" aria-label="Text size">
+                ${segBtn('data-reader-size-dec', 'A−', false)}
+                <span data-size-chip style="padding:0 .5rem;">A</span>
+                ${segBtn('data-reader-size-inc', 'A+', false)}
+              </div>`;
+            const lineSeg = `
+              <div class="reader-segment" role="radiogroup" aria-label="Line height">
+                ${segBtn('data-reader-line="tight"', 'Tight', prefs.line==='tight')}
+                ${segBtn('data-reader-line="normal"', 'Normal', prefs.line==='normal')}
+                ${segBtn('data-reader-line="loose"', 'Loose', prefs.line==='loose')}
+              </div>`;
+            const familySeg = `
+              <div class="reader-segment" role="radiogroup" aria-label="Font family">
+                ${segBtn('data-reader-family="sans"', '<span style=\\"font-family:system-ui,sans-serif\\">Aa</span>', prefs.family==='sans')}
+                ${segBtn('data-reader-family="serif"', '<span style=\\"font-family:Georgia,serif\\">Aa</span>', prefs.family==='serif')}
+              </div>`;
+            const justifySeg = `
+              <div class="reader-segment" role="radiogroup" aria-label="Justification">
+                ${segBtn('data-reader-justify="left"', 'Left', prefs.justify==='left')}
+                ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify==='justify')}
+              </div>`;
+            const paraSeg = `
+              <div class="reader-segment" role="radiogroup" aria-label="Paragraph style">
+                ${segBtn('data-reader-para="spaced"', 'Spaced', prefs.paraStyle==='spaced')}
+                ${segBtn('data-reader-para="indented"', 'Indented', prefs.paraStyle==='indented')}
+              </div>`;
+            const measureSeg = `
+              <div class="reader-segment" role="radiogroup" aria-label="Reading width">
+                ${segBtn('data-reader-measure="narrow"', 'Narrow', prefs.measure==='narrow')}
+                ${segBtn('data-reader-measure="medium"', 'Medium', prefs.measure==='medium')}
+                ${segBtn('data-reader-measure="wide"', 'Wide', prefs.measure==='wide')}
+                ${segBtn('data-reader-measure="full"', 'Full', prefs.measure==='full')}
+              </div>`;
+            const drawer = document.createElement('div');
+            drawer.className = 'reader-drawer open';
+            drawer.innerHTML = `
+              <div class="flex items-center justify-between">
+                <div class="tabs" role="tablist">
+                  <button type="button" role="tab" aria-pressed="true" data-tab="typo">Typography</button>
+                  <button type="button" role="tab" aria-pressed="false" data-tab="layout">Layout</button>
+                </div>
+                <button type="button" class="reader-close" data-close>×</button>
+              </div>
+              <div class="drawer-row" data-pane="typo">${sizeSeg} ${familySeg} ${lineSeg}</div>
+              <div class="drawer-row hidden" data-pane="layout">${paraSeg} ${justifySeg} ${measureSeg}</div>
+            `;
+            const host = container.querySelector('.mega-face--back') || container;
+            host.appendChild(drawer);
+            const setTab = (name) => {
+              const a = drawer.querySelector('[data-tab="typo"]'); const b = drawer.querySelector('[data-tab="layout"]');
+              const p1 = drawer.querySelector('[data-pane="typo"]'); const p2 = drawer.querySelector('[data-pane="layout"]');
+              a.setAttribute('aria-pressed', name==='typo'?'true':'false');
+              b.setAttribute('aria-pressed', name==='layout'?'true':'false');
+              p1.classList.toggle('hidden', name!=='typo'); p2.classList.toggle('hidden', name!=='layout');
+            };
+            drawer.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-para], [data-reader-justify], [data-reader-measure], [data-reader-size-inc], [data-reader-size-dec], [data-tab], [data-close]');
+                if (!btn) return;
+                if (btn.hasAttribute('data-close')) { drawer.classList.remove('open'); setTimeout(()=> drawer.remove(), 180); return; }
+                if (btn.hasAttribute('data-tab')) { setTab(btn.getAttribute('data-tab')); return; }
+                const size = btn.getAttribute('data-reader-size');
+                const line = btn.getAttribute('data-reader-line');
+                const family = btn.getAttribute('data-reader-family');
+                const para = btn.getAttribute('data-reader-para');
+                const justify = btn.getAttribute('data-reader-justify');
+                const measure = btn.getAttribute('data-reader-measure');
+                const inc = btn.hasAttribute('data-reader-size-inc');
+                const dec = btn.hasAttribute('data-reader-size-dec');
+                let next = {};
+                if (size && READER_SIZE_MAP[size]) next.size = size;
+                if (inc || dec) {
+                  const order = ['s','m','l','xl','xxl'];
+                  const cur = this.getReaderDisplayPrefs().size || 'm';
+                  let idx = Math.max(0, order.indexOf(cur));
+                  if (inc && idx < order.length - 1) idx++;
+                  if (dec && idx > 0) idx--;
+                  next.size = order[idx];
+                }
+                if (line && READER_LINE_MAP[line]) next.line = line;
+                if (family && READER_FAMILY_MAP[family]) next.family = family;
+                if (para && READER_PARA_STYLES.includes(para)) next.paraStyle = para;
+                if (justify && READER_JUSTIFY.includes(justify)) next.justify = justify;
+                if (measure && READER_MEASURE_MAP[measure]) next.measure = measure;
+                const merged = this.setReaderDisplayPrefs(next);
+                this.applyReaderDisplayPrefs(container, bodyEl);
+                // Update toggles states
+                ['size','line','family','para','justify','measure'].forEach(key => {
+                  drawer.querySelectorAll('[data-reader-' + key + ']').forEach(el => {
+                    const val = el.getAttribute('data-reader-' + key);
+                    const want = String(merged[key === 'para' ? 'paraStyle' : key]);
+                    el.setAttribute('aria-pressed', val === want ? 'true' : 'false');
+                  });
+                });
+            });
+            // Start on Typography tab
+            setTab('typo');
+        } catch (_) {}
+    }
     animateGridReflow(grid, beforeMap) {
         if (!grid || !beforeMap || !(beforeMap instanceof Map)) return;
         const els = Array.from(grid.querySelectorAll('.wall-card'));
@@ -5164,7 +5270,7 @@ class AudioDashboard {
             if (dx || dy) {
                 try {
                     el.style.transform = `translate(${dx}px, ${dy}px)`;
-                    el.style.transition = 'transform 360ms ease';
+                    el.style.transition = 'transform 520ms cubic-bezier(0.22, 1, 0.36, 1)';
                     // force reflow
                     void el.offsetWidth;
                     el.style.transform = '';
@@ -5172,7 +5278,7 @@ class AudioDashboard {
                 } catch(_) {}
             }
         });
-        setTimeout(() => { transitions.forEach(el => { try { el.style.transition = ''; } catch(_) {} }); }, 400);
+        setTimeout(() => { transitions.forEach(el => { try { el.style.transition = ''; } catch(_) {} }); }, 560);
     }
     closeWallMegaCard(id, cardEl) {
         try {
