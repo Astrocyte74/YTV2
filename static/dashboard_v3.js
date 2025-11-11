@@ -5295,9 +5295,10 @@ class AudioDashboard {
             const dy = before.top - after.top;
             if ((dx || dy) && !el.classList.contains('wall-card--mega')) {
                 try {
-                    el.style.willChange = 'transform';
+                    // Use !important to survive global reduced-motion overrides for this one spatial transition
+                    el.style.setProperty('will-change', 'transform', 'important');
                     el.style.transform = `translate(${dx}px, ${dy}px)`;
-                    el.style.transition = 'transform 620ms cubic-bezier(0.22, 1, 0.36, 1)';
+                    el.style.setProperty('transition', 'transform 620ms cubic-bezier(0.22, 1, 0.36, 1)', 'important');
                     // force reflow
                     void el.offsetWidth;
                     el.style.transform = '';
@@ -5305,7 +5306,7 @@ class AudioDashboard {
                 } catch(_) {}
             }
         });
-        setTimeout(() => { transitions.forEach(el => { try { el.style.transition = ''; el.style.willChange = ''; } catch(_) {} }); }, 700);
+        setTimeout(() => { transitions.forEach(el => { try { el.style.removeProperty('transition'); el.style.removeProperty('will-change'); } catch(_) {} }); }, 700);
     }
     closeWallMegaCard(id, cardEl) {
         try {
