@@ -4777,6 +4777,10 @@ class AudioDashboard {
                 try { this._flipOverlay.parentElement.removeChild(this._flipOverlay); } catch(_) {}
                 this._flipOverlay = null;
             }
+            // Scrim
+            const scrim = document.createElement('div');
+            scrim.className = 'flip-scrim';
+            document.body.appendChild(scrim);
             // Measure origin (card)
             const rect = cardEl.getBoundingClientRect();
             const startLeft = Math.round(rect.left + window.pageXOffset);
@@ -4799,7 +4803,22 @@ class AudioDashboard {
               <div class="flip-header">
                 <div class="flip-title">${safeTitle}</div>
                 <div class="flip-actions">
+                  <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-flip-display title="Display options">Aa</button>
+                  <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-flip-open title="Open page">Open</button>
+                  <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <circle cx="5" cy="12" r="1.5"></circle>
+                      <circle cx="12" cy="12" r="1.5"></circle>
+                      <circle cx="19" cy="12" r="1.5"></circle>
+                    </svg>
+                  </button>
                   <button class="flip-close" aria-label="Close" data-flip-close>✕</button>
+                </div>
+                <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
+                  <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                  <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
+                  <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                  <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
                 </div>
               </div>
               <div class="flip-inner">
@@ -4816,11 +4835,11 @@ class AudioDashboard {
             document.body.appendChild(ov);
             this._flipOverlay = ov;
             // Target frame (roughly 2x width, tall enough for summary)
-            const vw = Math.max(360, Math.min(1100, Math.round(window.innerWidth * 0.7)));
-            const vh = Math.max(300, Math.min(700, Math.round(window.innerHeight * 0.7)));
+            const vw = Math.max(520, Math.min(980, Math.round(window.innerWidth * 0.56)));
+            const vh = Math.max(340, Math.min(600, Math.round(window.innerHeight * 0.56)));
             const targetLeft = Math.round(window.pageXOffset + (window.innerWidth - vw) / 2);
             const headerH = (document.querySelector('header')?.getBoundingClientRect()?.height) || 64;
-            const targetTop = Math.round(window.pageYOffset + Math.max(16, headerH + 8));
+            const targetTop = Math.round(window.pageYOffset + Math.max(16, headerH + 16));
             requestAnimationFrame(() => {
                 ov.style.left = targetLeft + 'px';
                 ov.style.top = targetTop + 'px';
@@ -4835,12 +4854,46 @@ class AudioDashboard {
             // Flip after grow
             setTimeout(() => { ov.classList.add('is-flipped'); }, 260);
             // Close handlers
-            const close = () => { try { ov.parentElement && ov.parentElement.removeChild(ov); } catch(_) {}; this._flipOverlay = null; };
+            const close = () => {
+                try { ov.parentElement && ov.parentElement.removeChild(ov); } catch(_) {}
+                try { scrim.parentElement && scrim.parentElement.removeChild(scrim); } catch(_) {}
+                this._flipOverlay = null;
+            };
             ov.addEventListener('click', (e) => {
                 const btn = e.target.closest('[data-flip-close]');
                 if (btn) { e.preventDefault(); e.stopPropagation(); close(); }
             });
+            scrim.addEventListener('click', close);
             document.addEventListener('keydown', function onEsc(ev) { if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', onEsc); } });
+
+            // Wire actions: open page, kebab, display options
+            try {
+                const openBtn = ov.querySelector('[data-flip-open]');
+                if (openBtn) openBtn.addEventListener('click', (ev) => { ev.preventDefault(); window.location.href = `/${encodeURIComponent(id)}.json?v=2`; });
+                const menuBtn = ov.querySelector('[data-action="menu"]');
+                if (menuBtn) {
+                    menuBtn.addEventListener('click', () => this.toggleKebabMenu(ov, true, menuBtn));
+                    const menu = ov.querySelector('[data-kebab-menu]');
+                    if (menu) {
+                        const onMenuClick = (e) => {
+                            const a = e.target.closest('[data-action]');
+                            if (!a) return;
+                            const act = a.getAttribute('data-action');
+                            const cardRef = cardEl;
+                            if (act === 'copy-link') { this.copyLink(cardRef || ov, id); this.toggleKebabMenu(ov, false); }
+                            if (act === 'reprocess') { this.openReprocessModal(id, cardRef || ov); this.toggleKebabMenu(ov, false); }
+                            if (act === 'delete') { if (cardRef) this.handleDelete(id, cardRef); this.toggleKebabMenu(ov, false); }
+                        };
+                        menu.addEventListener('click', onMenuClick);
+                    }
+                }
+                const aaBtn = ov.querySelector('[data-flip-display]');
+                const bodyHost = ov.querySelector('[data-flip-body]');
+                if (aaBtn && bodyHost) {
+                    this.applyReaderDisplayPrefs(ov, bodyHost);
+                    aaBtn.addEventListener('click', (e) => { e.preventDefault(); this.openReaderDisplayPopover(ov, bodyHost, aaBtn); });
+                }
+            } catch(_) {}
         } catch (_) {}
     }
     // --- Wall similarity (heuristic, client-only) ---
