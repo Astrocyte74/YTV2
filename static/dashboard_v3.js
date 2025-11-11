@@ -117,6 +117,21 @@ class AudioDashboard {
         // Read UI feature flags (non-breaking if missing)
         this.flags = (typeof window !== 'undefined' && window.UI_FLAGS) ? window.UI_FLAGS : {};
         this.config = (typeof window !== 'undefined' && window.DASHBOARD_CONFIG) ? window.DASHBOARD_CONFIG : {};
+        const parseConfigBool = (value, fallback = false) => {
+            if (typeof value === 'boolean') return value;
+            if (typeof value === 'number') return value !== 0;
+            if (typeof value === 'string') {
+                const trimmed = value.trim().toLowerCase();
+                if (!trimmed) return fallback;
+                if (['false', '0', 'off', 'no'].includes(trimmed)) return false;
+                if (['true', '1', 'on', 'yes'].includes(trimmed)) return true;
+            }
+            return fallback;
+        };
+        const configHaloRaw = this.config?.wallSimilarityHalo ?? this.config?.wall_similarity_halo ?? this.config?.WALL_SIMILARITY_HALO;
+        if (typeof this.flags.wallSimilarityHalo === 'undefined') {
+            this.flags.wallSimilarityHalo = parseConfigBool(configHaloRaw, false);
+        }
         const autoPlayConfig = this.config && this.config.autoPlayOnLoad;
         this.autoPlayOnLoad = autoPlayConfig === undefined;
         if (autoPlayConfig !== undefined) {
