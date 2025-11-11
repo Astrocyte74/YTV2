@@ -193,6 +193,7 @@ def _parse_csv_env(value: str) -> list[str]:
 ALLOWED_ORIGINS_CFG = _parse_csv_env(ALLOWED_ORIGINS_ENV)
 GOOGLE_CLIENT_IDS = _parse_csv_env(GOOGLE_CLIENT_IDS_ENV)
 DASHBOARD_AUTOPLAY_ON_LOAD = _env_flag("DASHBOARD_AUTOPLAY_ON_LOAD", "1")
+WALL_SIMILARITY_HALO = _env_flag("WALL_SIMILARITY_HALO", os.getenv("wallSimilarityHalo", "0"))
 
 RL_USER_PER_MIN = int(os.getenv('RL_USER_PER_MIN', '5'))
 RL_IP_PER_MIN = int(os.getenv('RL_IP_PER_MIN', '10'))
@@ -1583,7 +1584,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "basic_pass": os.getenv('NGROK_BASIC_PASS', ''),
                 }
                 dashboard_config = {
-                    "autoPlayOnLoad": bool(DASHBOARD_AUTOPLAY_ON_LOAD)
+                    "autoPlayOnLoad": bool(DASHBOARD_AUTOPLAY_ON_LOAD),
+                    "wallSimilarityHalo": bool(WALL_SIMILARITY_HALO)
                 }
 
                 # Replace template placeholders (safe replacement for templates with {})

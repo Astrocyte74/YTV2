@@ -1411,6 +1411,38 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
     width: 40px; height: 40px; border-radius: 0.5rem; object-fit: cover;
     box-shadow: 0 4px 10px rgba(2,6,23,0.2);
 }
+.wall-expander__similarity {
+    margin-top: 0.35rem;
+    padding: 0.4rem 0.85rem;
+    border-radius: 0.75rem;
+    background: rgba(14,165,233,0.12);
+    color: #0f172a;
+    font-size: 0.8rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+.wall-expander__similarity-label {
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+.dark .wall-expander__similarity {
+    background: rgba(14,165,233,0.18);
+    color: #e2e8f0;
+}
+.wall-expander__similarity-reset {
+    border: none;
+    background: rgba(14,165,233,0.9);
+    color: #fff;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    cursor: pointer;
+}
+.wall-expander__similarity-reset:hover,
+.wall-expander__similarity-reset:focus-visible {
+    background: #0ea5e9;
+}
 
 .wall-card--selected {
     transform: translateY(-6px) scale(1.05);
@@ -1484,6 +1516,30 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 .wall-card__actions .stream-card__media-actions {
     display: inline-flex;
     gap: 0.4rem;
+}
+
+.wall-grid[data-wall-similarity="active"] .wall-card {
+    transition: transform 180ms ease, box-shadow 180ms ease, opacity 160ms ease, filter 160ms ease;
+}
+.wall-grid[data-wall-similarity="active"] .wall-card--halo-anchor:not(.wall-card--selected) {
+    box-shadow:
+      0 16px 45px -16px rgba(14,165,233,0.45),
+      var(--card-shadow-strong);
+    transform: translateY(-4px) scale(1.02);
+}
+.wall-grid[data-wall-similarity="active"] .wall-card--halo-match {
+    box-shadow:
+      0 14px 35px -12px rgba(14,165,233,0.35),
+      var(--card-shadow);
+    transform: translateY(-2px) scale(1.01);
+    outline: 2px solid rgba(14,165,233,0.4);
+}
+.wall-grid[data-wall-similarity="active"] .wall-card--halo-dim {
+    opacity: 0.35;
+    filter: grayscale(0.25);
+}
+.dark .wall-grid[data-wall-similarity="active"] .wall-card--halo-dim {
+    opacity: 0.45;
 }
 
 /* Ensure selected card glow wins over later hover rules */

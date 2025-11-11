@@ -27,3 +27,10 @@ The UI may intentionally require at least one selection in certain groups (categ
 - When changing CSS/JS, bump the query params in `dashboard_v3_template.html`:
   - CSS: `dashboard.css?v=...`
   - JS: `dashboard_v3.js?v=...`
+
+## Wall Similarity Halo (Experimental)
+- Feature flag: set `wallSimilarityHalo: true` in `ui_flags.js` (or set env `WALL_SIMILARITY_HALO=true` / `wallSimilarityHalo=true` so `window.DASHBOARD_CONFIG.wallSimilarityHalo` flips it at runtime).
+- Behaviour: When a wall card opens inline, the client computes a heuristic similarity score (categories, subcategories, channel, language, summary type, keyword tokens, audio availability) and reorders the visible grid so the most similar cards surround the reader. Highlighting is applied via `.wall-card--halo-*` classes and a banner appears in the expander header with a “Reset” control.
+- Reset/close: Clicking the banner button or closing the inline reader restores the original ordering captured from the most recent `/api/reports` payload. Arrow-key navigation keeps the similarity layout until closed/reset.
+- Testing: Enable the flag locally, open Wall view, click a card with diverse categories, verify that top neighbors bubble up and the dimmed state applies to distant cards. Hit Reset to return to the baseline order and confirm the inline reader reopens automatically.
+- Future upgrade: The current scorer is metadata-only. The NAS can later generate MiniLM/E5 embeddings per item, store the top-k neighbors in Postgres, and expose `/api/similar?video_id=...` so the dashboard swaps to high-quality vectors without touching the Render runtime.

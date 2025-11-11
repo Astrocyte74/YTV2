@@ -158,6 +158,13 @@ class AudioDashboard {
         this.reprocessToken = null;
         this.reprocessTokenSource = null;
         this.pendingReprocess = null;
+        // Wall similarity state cache (cover-wall experience)
+        this._wallSourceItems = null;
+        this._wallBaseIndexById = null;
+        this._wallSimilarityProfiles = null;
+        this._wallSimilarityHighlight = null;
+        this._wallSimilarityAnchor = null;
+        this._wallSimilarityActive = false;
 
         // Filter state helpers
         this.initialSourceFilters = null;
@@ -2364,6 +2371,19 @@ class AudioDashboard {
 
 
             this.currentItems = items;
+            if (Array.isArray(items)) {
+                this._wallSourceItems = items.slice();
+                this._wallBaseIndexById = new Map(items.map((it, idx) => {
+                    const key = it && (it.file_stem || it.video_id || it.id) ? (it.file_stem || it.video_id || it.id) : `__row_${idx}`;
+                    return [key, idx];
+                }));
+            } else {
+                this._wallSourceItems = null;
+                this._wallBaseIndexById = null;
+            }
+            this._wallSimilarityActive = false;
+            this._wallSimilarityAnchor = null;
+            this._wallSimilarityHighlight = null;
             this.augmentSourceFiltersFromItems(items);
             this.updateLatestIndexFromItems(items);
 
@@ -2447,6 +2467,12 @@ class AudioDashboard {
             return;
         }
         
+        if (this.viewMode === 'wall' && Array.isArray(items)) {
+            this.prepareWallSimilarityState(items);
+        } else if (this.viewMode !== 'wall') {
+            this.clearWallSimilarityHighlight();
+        }
+
         let html = '';
         if (this.viewMode === 'grid') {
             html = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(i => this.createGridCard(i)).join('')}</div>`;
@@ -2466,7 +2492,16 @@ class AudioDashboard {
                 if (e.target.closest('[data-control]') || e.target.closest('[data-action]') || e.target.closest('[data-filter-chip]')) return;
                 if (this.viewMode === 'wall') {
                     const id = card.getAttribute('data-report-id');
-                    if (id) { e.preventDefault(); e.stopPropagation(); this.handleWallRead(id, card); return; }
+                    if (id) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (this.flags && this.flags.wallSimilarityHalo) {
+                            this.openWallReaderWithSimilarity(id, card);
+                        } else {
+                            this.handleWallRead(id, card);
+                        }
+                        return;
+                    }
                 }
                 const href = card.dataset.href;
                 if (href) window.location.href = href;
@@ -2501,6 +2536,11 @@ class AudioDashboard {
 
         // Apply deep-link expansion if present
         this.applyHashDeepLink();
+
+        // Apply similarity halo classes after DOM is ready
+        if (this.viewMode === 'wall') {
+            this.applyWallSimilarityDecorations();
+        }
 
         // After render, ensure currentAudio still exists; if not, advance or clear
         if (this.currentAudio) {
@@ -3904,6 +3944,295 @@ class AudioDashboard {
         return this.renderGridCardTW(normalizedItem);
     }
 
+    // --- Wall similarity helpers ---
+    openWallReaderWithSimilarity(id, cardEl) {
+        if (!this.flags || !this.flags.wallSimilarityHalo) {
+            return this.handleWallRead(id, cardEl);
+        }
+        const replacementCard = this.applyWallSimilarityOrdering(id);
+        const targetCard = replacementCard || cardEl;
+        return this.handleWallRead(id, targetCard || cardEl);
+    }
+
+    prepareWallSimilarityState(items) {
+        if (!Array.isArray(items)) return;
+        this._wallItemById = new Map();
+        items.forEach((itm) => {
+            if (!itm) return;
+            const key = itm.file_stem || itm.video_id || itm.id;
+            if (key) this._wallItemById.set(key, itm);
+        });
+        if (!this._wallSimilarityProfiles) {
+            this._wallSimilarityProfiles = new Map();
+        } else {
+            this._wallSimilarityProfiles.clear();
+        }
+        this._wallItemById.forEach((itm, key) => {
+            const profile = this.buildWallSimilarityProfile(itm);
+            if (profile) this._wallSimilarityProfiles.set(key, profile);
+        });
+        if (!this._wallSimilarityActive) {
+            this._wallSimilarityHighlight = null;
+        }
+    }
+
+    buildWallSimilarityProfile(item) {
+        if (!item) return null;
+        const id = item.file_stem || item.video_id || item.id;
+        if (!id) return null;
+        const { categories = [], subcats = [] } = this.extractCatsAndSubcats(item);
+        const categorySet = new Set(categories.map(v => this.normalizeSimilarityToken(v)));
+        const subcatSet = new Set((subcats || []).map(v => this.normalizeSimilarityToken(v)));
+        const keywords = new Set();
+        this.collectSimilarityTokens(keywords, item.analysis?.key_topics);
+        this.collectSimilarityTokens(keywords, item.analysis?.keywords);
+        this.collectSimilarityTokens(keywords, item.analysis?.named_entities);
+        this.collectSimilarityTokens(keywords, item.analysis?.topics);
+        this.collectSimilarityTokens(keywords, item.analysis?.tags);
+        this.collectSimilarityTokens(keywords, item.topics_json);
+        return {
+            id,
+            categories: categorySet,
+            subcats: subcatSet,
+            channel: this.normalizeSimilarityToken(item.channel || item.channel_name),
+            summaryType: this.normalizeSimilarityToken(item.summary_type || item.summary_variant),
+            language: this.normalizeSimilarityToken(item.analysis?.language || item.language),
+            keywords,
+            hasAudio: this.itemHasAudio(item)
+        };
+    }
+
+    collectSimilarityTokens(targetSet, value) {
+        if (!targetSet) return;
+        if (value == null) return;
+        const push = (val) => {
+            const norm = this.normalizeSimilarityToken(val);
+            if (norm) targetSet.add(norm);
+        };
+        if (Array.isArray(value)) {
+            value.forEach(entry => this.collectSimilarityTokens(targetSet, entry));
+            return;
+        }
+        if (typeof value === 'object') {
+            Object.values(value).forEach(entry => this.collectSimilarityTokens(targetSet, entry));
+            return;
+        }
+        let str = value;
+        if (typeof value !== 'string') {
+            str = String(value || '').trim();
+        }
+        if (!str) return;
+        const trimmed = str.trim();
+        if (!trimmed) return;
+        if ((trimmed.startsWith('[') || trimmed.startsWith('{'))) {
+            try {
+                const parsed = JSON.parse(trimmed);
+                this.collectSimilarityTokens(targetSet, parsed);
+                return;
+            } catch (_) {
+                // fall back to splitting
+            }
+        }
+        trimmed.split(/[,;/\n]+/).forEach(tok => push(tok));
+    }
+
+    normalizeSimilarityToken(value) {
+        if (typeof value !== 'string') {
+            if (value == null) return '';
+            value = String(value);
+        }
+        return value.trim().toLowerCase();
+    }
+
+    scoreWallSimilarityProfiles(a, b) {
+        if (!a || !b) return 0;
+        let score = 0;
+        score += this.countSetOverlap(a.subcats, b.subcats) * 6;
+        score += this.countSetOverlap(a.categories, b.categories) * 3;
+        if (a.channel && a.channel === b.channel) score += 2.5;
+        if (a.language && a.language === b.language) score += 1.5;
+        if (a.summaryType && a.summaryType === b.summaryType) score += 1;
+        if (a.hasAudio && b.hasAudio) score += 0.5;
+        score += this.computeKeywordSimilarity(a.keywords, b.keywords);
+        return score;
+    }
+
+    countSetOverlap(aSet, bSet) {
+        if (!aSet || !bSet || !aSet.size || !bSet.size) return 0;
+        let overlap = 0;
+        aSet.forEach(val => {
+            if (bSet.has(val)) overlap += 1;
+        });
+        return overlap;
+    }
+
+    computeKeywordSimilarity(aSet, bSet) {
+        if (!aSet || !bSet || !aSet.size || !bSet.size) return 0;
+        const overlap = this.countSetOverlap(aSet, bSet);
+        if (!overlap) return 0;
+        const union = (aSet.size + bSet.size) - overlap;
+        if (union <= 0) return 0;
+        const jaccard = overlap / union;
+        return jaccard * 4;
+    }
+
+    buildWallSimilarityOrder(anchorId) {
+        if (!this._wallSimilarityProfiles || !anchorId) return null;
+        const anchorProfile = this._wallSimilarityProfiles.get(anchorId);
+        if (!anchorProfile) return null;
+        const entries = [];
+        for (const [id, profile] of this._wallSimilarityProfiles.entries()) {
+            if (id === anchorId || !profile) continue;
+            const score = this.scoreWallSimilarityProfiles(anchorProfile, profile);
+            const baseIdx = this._wallBaseIndexById?.get(id) ?? Number.MAX_SAFE_INTEGER;
+            entries.push({ id, score, baseIdx });
+        }
+        entries.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return a.baseIdx - b.baseIdx;
+        });
+        const anchorItem = this.getWallItemById(anchorId);
+        if (!anchorItem) return null;
+        const configuredLimit = this.flags && Number.isFinite(this.flags.wallSimilarityLimit) ? Number(this.flags.wallSimilarityLimit) : NaN;
+        const limit = Number.isFinite(configuredLimit) ? Math.max(6, configuredLimit) : 24;
+        const highlightEntries = entries.slice(0, limit);
+        const highlightIds = new Set(highlightEntries.map(e => e.id));
+        const remainder = entries.slice(limit).sort((a, b) => a.baseIdx - b.baseIdx);
+        const orderedIds = [anchorId, ...highlightEntries.map(e => e.id), ...remainder.map(e => e.id)];
+        const seen = new Set();
+        const orderedItems = [];
+        const pushItem = (itm) => {
+            if (!itm) return;
+            const key = itm.file_stem || itm.video_id || itm.id;
+            if (!key || seen.has(key)) return;
+            seen.add(key);
+            orderedItems.push(itm);
+        };
+        orderedIds.forEach(id => pushItem(this.getWallItemById(id)));
+        const pools = [this.currentItems, this._wallSourceItems];
+        pools.forEach(arr => {
+            if (!Array.isArray(arr)) return;
+            arr.forEach(itm => pushItem(itm));
+        });
+        return {
+            orderedItems,
+            highlightInfo: { anchorId, highlightIds }
+        };
+    }
+
+    applyWallSimilarityOrdering(anchorId) {
+        const result = this.buildWallSimilarityOrder(anchorId);
+        if (!result) return null;
+        const { orderedItems, highlightInfo } = result;
+        if (!orderedItems || !orderedItems.length) return null;
+        this._wallSimilarityHighlight = highlightInfo;
+        const currentIds = (this.currentItems || []).map(it => it && (it.file_stem || it.video_id || it.id)).join('|');
+        const newIds = orderedItems.map(it => it && (it.file_stem || it.video_id || it.id)).join('|');
+        const needsRender = currentIds !== newIds;
+        this._wallSimilarityActive = true;
+        this._wallSimilarityAnchor = anchorId;
+        if (needsRender) {
+            this.currentItems = orderedItems;
+            this.renderContent(orderedItems);
+            if (this.contentGrid) {
+                const selector = `[data-report-id="${CSS.escape(anchorId)}"]`;
+                return this.contentGrid.querySelector(selector);
+            }
+            return null;
+        }
+        this.applyWallSimilarityDecorations();
+        return null;
+    }
+
+    applyWallSimilarityDecorations() {
+        const grid = this.contentGrid ? this.contentGrid.querySelector('.wall-grid') : null;
+        if (!grid) return;
+        if (!this.flags || !this.flags.wallSimilarityHalo || !this._wallSimilarityActive || !this._wallSimilarityHighlight) {
+            this.clearWallSimilarityHighlight();
+            return;
+        }
+        const anchorId = this._wallSimilarityHighlight.anchorId;
+        const highlightIds = this._wallSimilarityHighlight.highlightIds || new Set();
+        grid.setAttribute('data-wall-similarity', 'active');
+        grid.querySelectorAll('.wall-card').forEach(card => {
+            if (!card) return;
+            const id = card.getAttribute('data-report-id');
+            card.classList.remove('wall-card--halo-anchor', 'wall-card--halo-match', 'wall-card--halo-dim');
+            if (!id) return;
+            if (id === anchorId) {
+                card.classList.add('wall-card--halo-anchor');
+            } else if (highlightIds.has(id)) {
+                card.classList.add('wall-card--halo-match');
+            } else {
+                card.classList.add('wall-card--halo-dim');
+            }
+        });
+    }
+
+    clearWallSimilarityHighlight() {
+        this._wallSimilarityHighlight = null;
+        const grid = this.contentGrid ? this.contentGrid.querySelector('.wall-grid') : null;
+        if (!grid) return;
+        grid.removeAttribute('data-wall-similarity');
+        grid.querySelectorAll('.wall-card').forEach(card => {
+            card.classList.remove('wall-card--halo-anchor', 'wall-card--halo-match', 'wall-card--halo-dim');
+        });
+    }
+
+    getWallItemById(id) {
+        if (!id) return null;
+        if (this._wallItemById && this._wallItemById.has(id)) {
+            return this._wallItemById.get(id);
+        }
+        const pools = [this.currentItems, this._wallSourceItems];
+        for (const arr of pools) {
+            if (!Array.isArray(arr)) continue;
+            const found = arr.find(it => it && (it.file_stem === id || it.video_id === id || it.id === id));
+            if (found) return found;
+        }
+        return null;
+    }
+
+    renderWallSimilarityBanner(item) {
+        if (!this.flags || !this.flags.wallSimilarityHalo) return '';
+        if (!this._wallSimilarityActive || !this._wallSimilarityHighlight) return '';
+        const anchorId = item?.file_stem || item?.video_id || item?.id;
+        if (!anchorId || this._wallSimilarityHighlight.anchorId !== anchorId) return '';
+        return `
+            <div class="wall-expander__similarity" data-wall-similarity-banner>
+                <span class="wall-expander__similarity-label">Showing similar cards</span>
+                <button type="button" class="wall-expander__similarity-reset" data-action="wall-similarity-reset">Reset</button>
+            </div>`;
+    }
+
+    restoreWallBaseOrdering(focusId = null, options = {}) {
+        if (!this.flags || !this.flags.wallSimilarityHalo) {
+            this.clearWallSimilarityHighlight();
+            return;
+        }
+        if (!this._wallSimilarityActive) {
+            this.clearWallSimilarityHighlight();
+            return;
+        }
+        const baseItems = Array.isArray(this._wallSourceItems) ? this._wallSourceItems : null;
+        this._wallSimilarityActive = false;
+        this._wallSimilarityAnchor = null;
+        this._wallSimilarityHighlight = null;
+        if (!baseItems || !baseItems.length) {
+            this.clearWallSimilarityHighlight();
+            return;
+        }
+        const nextItems = baseItems.slice();
+        this.currentItems = nextItems;
+        this.renderContent(nextItems);
+        const reopen = options.reopen ?? Boolean(focusId);
+        if (reopen && focusId && this.contentGrid) {
+            const selector = `[data-report-id="${CSS.escape(focusId)}"]`;
+            const target = this.contentGrid.querySelector(selector);
+            if (target) this.handleWallRead(focusId, target);
+        }
+    }
+
     // V4 List card: audio-first stream card (no autoplay)
     renderStreamCardV4(item) {
         const hasAudio = this.itemHasAudio(item);
@@ -4522,6 +4851,7 @@ class AudioDashboard {
         }
         section.style.overflow = 'hidden';
         section.style.height = '0px';
+        const similarityBanner = this.renderWallSimilarityBanner(item);
         section.innerHTML = `
             <div class="wall-expander__header">
                 <div class="flex items-center gap-3">
@@ -4549,6 +4879,7 @@ class AudioDashboard {
                     </button>
                 </div>
             </div>
+            ${similarityBanner || ''}
             <div class="prose prose-sm dark:prose-invert max-w-none" data-summary-body>${this.renderWallReaderSection(item)}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
@@ -4618,7 +4949,7 @@ class AudioDashboard {
                 actions.insertBefore(rbtn, actions.firstChild);
             }
         } catch(_) {}
-        const onClose = () => {
+        const onClose = (opts = {}) => {
             if (!section || !section.parentElement) return;
             // Animate collapse
             section.style.overflow = 'hidden';
@@ -4636,6 +4967,9 @@ class AudioDashboard {
                 if (this._wallConnectorHandlers) {
                     this._wallConnectorHandlers.forEach(h => window.removeEventListener(h.type, h.fn, h.opts));
                     this._wallConnectorHandlers = [];
+                }
+                if (this.flags && this.flags.wallSimilarityHalo && !opts.skipSimilarityReset) {
+                    this.restoreWallBaseOrdering(null, { reopen: false });
                 }
             };
             section.addEventListener('transitionend', finalize);
@@ -4655,7 +4989,7 @@ class AudioDashboard {
             if (j === i) return;
             const nextCard = cardsAll[j];
             const nextId = nextCard?.getAttribute('data-report-id');
-            if (nextId) { onClose(); this.openWallRowReader(nextId, nextCard); }
+            if (nextId) { onClose({ skipSimilarityReset: true }); this.openWallRowReader(nextId, nextCard); }
         };
         if (closeBtn) closeBtn.addEventListener('click', onClose);
         if (displayBtn) {
@@ -4668,6 +5002,14 @@ class AudioDashboard {
         if (openBtn) openBtn.addEventListener('click', () => {
             window.location.href = `/${encodeURIComponent(id)}.json?v=2`;
         });
+        const similarityResetBtn = section.querySelector('[data-action="wall-similarity-reset"]');
+        if (similarityResetBtn) {
+            similarityResetBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.restoreWallBaseOrdering(id, { reopen: true });
+            });
+        }
         // Copy link is available via kebab menu only
         if (menuBtn) {
             menuBtn.addEventListener('click', () => this.toggleKebabMenu(section, true, menuBtn));
