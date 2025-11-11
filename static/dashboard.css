@@ -1543,9 +1543,9 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 .dark .flip-overlay { background: rgba(2,6,23,0.95); color: #e2e8f0; border-color: rgba(30,41,59,0.8); box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 0 0 2px rgba(14,165,233,0.25); }
 .flip-overlay .flip-header { display:flex; align-items:center; justify-content: space-between; padding: 8px 10px; gap:8px; border-bottom:1px solid rgba(226,232,240,0.6); }
 .dark .flip-overlay .flip-header { border-bottom-color: rgba(51,65,85,0.6); }
-.flip-overlay .flip-title { font-size: 14px; font-weight: 600; overflow:hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flip-overlay .flip-title { font-size: 14px; font-weight: 600; overflow:hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 .flip-overlay .flip-actions button { margin-left: 6px; }
-.flip-overlay .flip-inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform 380ms ease; }
+.flip-overlay .flip-inner { position: absolute; left: 0; right: 0; bottom: 0; top: 44px; transform-style: preserve-3d; transition: transform 380ms ease; }
 .flip-overlay.is-flipped .flip-inner { transform: rotateY(180deg); }
 .flip-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; overflow: auto; }
 .flip-face--back { transform: rotateY(180deg); }
@@ -1554,6 +1554,9 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 .flip-back-body { padding: 10px 12px; }
 .flip-close { width: 28px; height: 28px; border-radius: 8px; background: rgba(148,163,184,0.2); display:inline-flex; align-items:center; justify-content:center; }
 .flip-close:hover { filter: brightness(1.1); }
+
+/* Scrim behind flip overlay */
+.flip-scrim { position: fixed; inset: 0; background: rgba(2,6,23,0.55); z-index: 85; }
 
 /* Compact action buttons for V4 cards */
 .stream-card .variant-toggle,
