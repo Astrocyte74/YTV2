@@ -5025,6 +5025,14 @@ class AudioDashboard {
             if (cardEl.classList.contains('wall-card--mega')) {
                 return this.closeWallMegaCard(id, cardEl);
             }
+            // Calibrate grid row height BEFORE measuring so FLIP doesn't miss the reflow
+            try {
+              const sample = grid.querySelector('.wall-card');
+              if (sample) {
+                const h = sample.getBoundingClientRect().height;
+                if (h && h > 0) grid.style.setProperty('--wall-row-h', Math.round(h) + 'px');
+              }
+            } catch(_) {}
             // Capture positions for FLIP reflow animation
             const before = new Map();
             try {
@@ -5034,14 +5042,6 @@ class AudioDashboard {
             try {
                 const openMegas = Array.from(grid.querySelectorAll('.wall-card.wall-card--mega'));
                 openMegas.forEach(el => { if (el !== cardEl) this.closeWallMegaCard(el.getAttribute('data-report-id') || '', el); });
-            } catch(_) {}
-            // Calibrate grid row height to actual card height so a span produces visible reflow
-            try {
-              const sample = grid.querySelector('.wall-card');
-              if (sample) {
-                const h = sample.getBoundingClientRect().height;
-                if (h && h > 0) grid.style.setProperty('--wall-row-h', Math.round(h) + 'px');
-              }
             } catch(_) {}
             // Save original markup
             cardEl._origHTML = cardEl.innerHTML;
