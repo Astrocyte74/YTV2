@@ -1351,14 +1351,14 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
     grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
     gap: 0.5rem;
     width: 100%;
-    grid-auto-flow: dense;
-    align-items: start;
     padding-bottom: 2rem;
 }
 .wall-expander {
     grid-column: 1 / -1;
     margin-top: 0.35rem;
     margin-bottom: 0.5rem;
+    margin-left: auto;
+    margin-right: auto;
     border-radius: 0.75rem;
     position: relative;
     background: rgba(255,255,255,0.88);
@@ -1367,8 +1367,7 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
     box-shadow: var(--card-shadow-strong);
     padding: 1rem 1.35rem;
     width: 100%;
-    max-width: min(1200px, 100%);
-    justify-self: center;
+    max-width: min(1200px, calc(100% - 1rem));
 }
 .dark .wall-expander {
     background: rgba(2,6,23,0.85);
@@ -1546,16 +1545,6 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 }
 .dark .wall-grid[data-wall-similarity="active"] .wall-card--halo-dim {
     opacity: 0.45;
-}
-
-.wall-grid .wall-expander {
-    transition: grid-column 220ms ease, max-width 200ms ease;
-}
-@media (max-width: 1024px) {
-    .wall-grid .wall-expander {
-        grid-column: 1 / -1 !important;
-        max-width: 100% !important;
-    }
 }
 
 /* Ensure selected card glow wins over later hover rules */
