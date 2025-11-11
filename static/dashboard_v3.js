@@ -102,6 +102,7 @@ const READER_JUSTIFY = ['left','justify'];
 // - Previous 'wide'(80ch) becomes 'medium'
 // - New 'wide' at 90ch bridges the gap to 'full'
 const READER_MEASURE_MAP = {
+    auto: '70ch',            // computed at runtime based on container width
     narrow: '70ch',          // old Medium
     medium: '80ch',          // old Wide
     wide: 'calc((100% + 80ch)/2)', // midpoint between current wide (80ch) and full (100%)
@@ -3441,8 +3442,17 @@ class AudioDashboard {
             const just = this.getReaderDisplayPrefs().justify || 'left';
             try { container.classList.toggle('reader-justify--on', just === 'justify'); } catch(_) {}
             // Measure (desktop-only cap; stored as variable used by CSS)
-            const measureKey = this.getReaderDisplayPrefs().measure || 'medium';
-            const mw = READER_MEASURE_MAP[measureKey] || '70ch';
+            const measureKey = this.getReaderDisplayPrefs().measure || 'auto';
+            let mw = READER_MEASURE_MAP[measureKey] || '70ch';
+            if (measureKey === 'auto') {
+                try {
+                    const w = (container && container.getBoundingClientRect ? container.getBoundingClientRect().width : 700) || 700;
+                    if (w < 520) mw = '48ch';
+                    else if (w < 680) mw = '58ch';
+                    else if (w < 820) mw = '66ch';
+                    else mw = '74ch';
+                } catch(_) {}
+            }
             try { container.style.setProperty('--reader-measure', mw); } catch(_) {}
         }
     }
@@ -5045,7 +5055,7 @@ class AudioDashboard {
                     <div class="mega-title">${safeTitle}</div>
                     <div></div>
                   </div>
-                  <div class="mega-body prose prose-sm dark:prose-invert max-w-none" data-mega-body></div>
+                  <div class="mega-body prose prose-sm dark:prose-invert max-w-none" data-mega-body data-summary-body></div>
                   <div class="mega-footer">
                     <div class="mega-left">
                       <span class="wall-sim-pill" data-sim-label>Similar shown</span>
@@ -5079,8 +5089,8 @@ class AudioDashboard {
               setTimeout(()=> { cardEl.classList.remove('mega-enter'); cardEl.classList.remove('mega-enter-active'); cardEl.classList.remove('mega-focus'); }, 420);
             } catch(_) {}
             setTimeout(() => { cardEl.classList.add('wall-card--flipped'); }, 500);
-            // Animate grid reflow (FLIP)
-            try { this.animateGridReflow(grid, before); } catch(_) {}
+            // Animate grid reflow (FLIP) after reflow tick
+            try { setTimeout(() => this.animateGridReflow(grid, before), 20); } catch(_) {}
             // Ensure card is in view (auto-scroll)
             try {
               const header = document.querySelector('header');
@@ -5193,7 +5203,7 @@ class AudioDashboard {
                 ${segBtn('data-reader-measure="full"', 'Full', prefs.measure==='full')}
               </div>`;
             const drawer = document.createElement('div');
-            drawer.className = 'reader-drawer open';
+            drawer.className = 'reader-drawer';
             drawer.innerHTML = `
               <div class="flex items-center justify-between">
                 <div class="tabs" role="tablist">
@@ -5202,8 +5212,8 @@ class AudioDashboard {
                 </div>
                 <button type="button" class="reader-close" data-close>×</button>
               </div>
-              <div class="drawer-row" data-pane="typo">${sizeSeg} ${familySeg} ${lineSeg}</div>
-              <div class="drawer-row hidden" data-pane="layout">${paraSeg} ${justifySeg} ${measureSeg}</div>
+              <div class="drawer-row" data-pane="typo" style="display:block">${sizeSeg} ${familySeg} ${lineSeg}</div>
+              <div class="drawer-row" data-pane="layout" style="display:none">${paraSeg} ${justifySeg} ${measureSeg.replace('</div>','')}${segBtn('data-reader-measure="auto"','Auto', prefs.measure==='auto')}</div>
             `;
             const host = container.querySelector('.mega-face--back') || container;
             host.appendChild(drawer);
@@ -5212,7 +5222,8 @@ class AudioDashboard {
               const p1 = drawer.querySelector('[data-pane="typo"]'); const p2 = drawer.querySelector('[data-pane="layout"]');
               a.setAttribute('aria-pressed', name==='typo'?'true':'false');
               b.setAttribute('aria-pressed', name==='layout'?'true':'false');
-              p1.classList.toggle('hidden', name!=='typo'); p2.classList.toggle('hidden', name!=='layout');
+              p1.style.display = name==='typo' ? 'block' : 'none';
+              p2.style.display = name==='layout' ? 'block' : 'none';
             };
             drawer.addEventListener('click', (e) => {
                 const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-para], [data-reader-justify], [data-reader-measure], [data-reader-size-inc], [data-reader-size-dec], [data-tab], [data-close]');
@@ -5253,8 +5264,9 @@ class AudioDashboard {
                   });
                 });
             });
-            // Start on Typography tab
+            // Start on Typography tab with slide-up
             setTab('typo');
+            requestAnimationFrame(()=> drawer.classList.add('open'));
         } catch (_) {}
     }
     animateGridReflow(grid, beforeMap) {
