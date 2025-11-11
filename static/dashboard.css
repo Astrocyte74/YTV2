@@ -1371,6 +1371,11 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
     border: 1px solid rgba(226,232,240,0.8);
     box-shadow: var(--card-shadow-strong);
     padding: 1rem 1rem;
+    /* New: make the reader narrower and centered */
+    max-width: min(1100px, 72vw);
+    margin-left: auto;
+    margin-right: auto;
+    position: relative;
 }
 .dark .wall-expander {
     background: rgba(2,6,23,0.85);
@@ -1390,6 +1395,9 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 }
 .dark .wall-expander::before {
     border-bottom-color: rgba(30,41,59,0.95);
+}
+@media (max-width: 900px) {
+  .wall-expander { max-width: calc(100vw - 24px); }
 }
 /* Reader panel – stronger accent glow when open (no hard ring) */
 .wall-reader-open .wall-expander {
