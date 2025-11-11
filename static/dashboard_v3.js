@@ -116,6 +116,9 @@ class AudioDashboard {
         this.isPlaying = false;
         // Read UI feature flags (non-breaking if missing)
         this.flags = (typeof window !== 'undefined' && window.UI_FLAGS) ? window.UI_FLAGS : {};
+        // Provide safe defaults for experimental wall similarity in this branch
+        if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallSimilarityEnabled')) this.flags.wallSimilarityEnabled = true;
+        if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallSimilarityMode')) this.flags.wallSimilarityMode = 'halo';
         this.config = (typeof window !== 'undefined' && window.DASHBOARD_CONFIG) ? window.DASHBOARD_CONFIG : {};
         const autoPlayConfig = this.config && this.config.autoPlayOnLoad;
         this.autoPlayOnLoad = autoPlayConfig === undefined;
