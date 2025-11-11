@@ -5090,7 +5090,9 @@ class AudioDashboard {
             } catch(_) {}
             setTimeout(() => { cardEl.classList.add('wall-card--flipped'); }, 500);
             // Animate grid reflow (FLIP) after reflow tick
-            try { setTimeout(() => this.animateGridReflow(grid, before), 20); } catch(_) {}
+            try {
+              requestAnimationFrame(() => requestAnimationFrame(() => this.animateGridReflow(grid, before)));
+            } catch(_) {}
             // Ensure card is in view (auto-scroll)
             try {
               const header = document.querySelector('header');
