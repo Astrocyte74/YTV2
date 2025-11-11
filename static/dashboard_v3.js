@@ -5104,17 +5104,26 @@ class AudioDashboard {
               </div>`;
             const bodyHost = cardEl.querySelector('[data-mega-body]');
             if (bodyHost) bodyHost.innerHTML = this.renderWallReaderSection(item);
-            // Flip immediately to show summary
-            // Animate growth by scaling slightly first, then flip to back
+            // Two-phase choreography:
+            // 1) Move neighbors out (FLIP reflow) while freezing the clicked card visually in place/size
+            // 2) After neighbors finish, grow the clicked card into the reserved 2x2 area, then flip to summary
+            let beforeRect = null, afterRect = null;
             try {
-              cardEl.classList.add('mega-focus');
-              cardEl.classList.add('mega-enter');
-              requestAnimationFrame(()=> cardEl.classList.add('mega-enter-active'));
-              setTimeout(()=> { cardEl.classList.remove('mega-enter'); cardEl.classList.remove('mega-enter-active'); cardEl.classList.remove('mega-focus'); }, 420);
+              beforeRect = before.get(cardEl) || cardEl.getBoundingClientRect();
+              afterRect = cardEl.getBoundingClientRect();
+              // Freeze the card at its pre-expand position/size using FLIP transform
+              const dx = (beforeRect.left + window.pageXOffset) - (afterRect.left + window.pageXOffset);
+              const dy = (beforeRect.top + window.pageYOffset) - (afterRect.top + window.pageYOffset);
+              const sx = beforeRect.width && afterRect.width ? (beforeRect.width / afterRect.width) : 1;
+              const sy = beforeRect.height && afterRect.height ? (beforeRect.height / afterRect.height) : 1;
+              cardEl.style.transformOrigin = 'top left';
+              cardEl.style.willChange = 'transform';
+              cardEl.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px) scale(${sx}, ${sy})`;
+              // No transition yet — we want neighbors to animate first
             } catch(_) {}
-            setTimeout(() => { cardEl.classList.add('wall-card--flipped'); }, 500);
             // Animate grid reflow (FLIP) after reflow commits, then scroll
             try {
+              const neighborDur = (this.flipDebugMs || 620);
               requestAnimationFrame(() => requestAnimationFrame(() => {
                 this.animateGridReflow(grid, before);
                 // Scroll after animation starts, not before (avoid canceling transforms)
@@ -5130,6 +5139,23 @@ class AudioDashboard {
                     }
                   } catch(_) {}
                 }, 80);
+                // Phase 2: after neighbors finish, grow the clicked card and then flip its faces
+                setTimeout(() => {
+                  try {
+                    // Animate the transform back to identity to expand into place
+                    cardEl.style.setProperty('transition', 'transform 520ms cubic-bezier(0.22, 1, 0.36, 1)', 'important');
+                    // force reflow before clearing transform
+                    void cardEl.offsetWidth;
+                    cardEl.style.transform = '';
+                    setTimeout(() => {
+                      try {
+                        cardEl.style.removeProperty('transition');
+                        cardEl.style.removeProperty('will-change');
+                      } catch(_) {}
+                      try { cardEl.classList.add('wall-card--flipped'); } catch(_) {}
+                    }, 560);
+                  } catch(_) {}
+                }, neighborDur + 60);
               }));
             } catch(_) {}
             // Apply similarity halo and set label count
