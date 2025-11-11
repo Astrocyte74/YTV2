@@ -4616,6 +4616,24 @@ class AudioDashboard {
                 rbtn.textContent = '↻';
                 rbtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.openWallRowReader(id, cardEl); });
                 actions.insertBefore(rbtn, actions.firstChild);
+
+                // Similarity controls (halo mode)
+                if (this.flags && this.flags.wallSimilarityEnabled) {
+                    // Apply immediately when opening
+                    try { this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')); } catch(_) {}
+                    if (!actions.querySelector('[data-sim-reset]')) {
+                        const simLabel = document.createElement('span');
+                        simLabel.className = 'wall-sim-pill';
+                        simLabel.textContent = 'Similar shown';
+                        const simReset = document.createElement('button');
+                        simReset.className = 'wall-sim-reset';
+                        simReset.setAttribute('data-sim-reset','');
+                        simReset.textContent = 'Reset';
+                        simReset.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.clearSimilarityView(grid); });
+                        actions.insertBefore(simReset, actions.firstChild);
+                        actions.insertBefore(simLabel, actions.firstChild);
+                    }
+                }
             }
         } catch(_) {}
         const onClose = () => {
@@ -4633,6 +4651,7 @@ class AudioDashboard {
                 section.removeEventListener('transitionend', finalize);
                 try { document.body.classList.remove('wall-reader-open'); } catch(_) {}
                 try { this.removeWallConnectorOverlay(); } catch(_) {}
+                try { this.clearSimilarityView(grid); } catch(_) {}
                 if (this._wallConnectorHandlers) {
                     this._wallConnectorHandlers.forEach(h => window.removeEventListener(h.type, h.fn, h.opts));
                     this._wallConnectorHandlers = [];
@@ -4737,6 +4756,89 @@ class AudioDashboard {
 
             const d = `M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}`;
             path.setAttribute('d', d);
+        } catch (_) { /* no-op */ }
+    }
+
+    // --- Wall similarity (heuristic, client-only) ---
+    _tokenizeTitle(text) {
+        try {
+            const stop = new Set(['the','a','an','and','or','of','to','in','on','for','with','from','by','at','is','are','be','this','that','it','as','vs','vs.','you','your']);
+            return String(text || '')
+                .toLowerCase()
+                .replace(/[^a-z0-9\s]+/g, ' ')
+                .split(/\s+/)
+                .filter(t => t && !stop.has(t));
+        } catch (_) { return []; }
+    }
+    _jaccard(a, b) {
+        const A = new Set(a);
+        const B = new Set(b);
+        const inter = [...A].filter(x => B.has(x)).length;
+        const uni = new Set([...A, ...B]).size || 1;
+        return inter / uni;
+    }
+    computeHeuristicSimilarity(baseItem, candItem) {
+        if (!baseItem || !candItem || baseItem === candItem) return 0;
+        let score = 0;
+        try {
+            // Categories and subcategories
+            const { categories: c1 = [], subcatPairs: s1 = [] } = this.extractCatsAndSubcats(baseItem);
+            const { categories: c2 = [], subcatPairs: s2 = [] } = this.extractCatsAndSubcats(candItem);
+            const set1 = new Set(c1);
+            const set2 = new Set(c2);
+            const catInter = [...set1].filter(x => set2.has(x)).length;
+            score += catInter * 2.0;
+            const pair1 = new Set(s1.map(p => p.join('>')));
+            const pair2 = new Set(s2.map(p => p.join('>')));
+            const subInter = [...pair1].filter(x => pair2.has(x)).length;
+            score += subInter * 4.0;
+
+            // Channel/source boost
+            const ch1 = (baseItem.channel || '').toLowerCase().trim();
+            const ch2 = (candItem.channel || '').toLowerCase().trim();
+            if (ch1 && ch2 && ch1 === ch2) score += 1.5;
+
+            // Title token overlap (light)
+            const t1 = this._tokenizeTitle(baseItem.title);
+            const t2 = this._tokenizeTitle(candItem.title);
+            score += 0.8 * this._jaccard(t1, t2);
+        } catch (_) { /* no-op */ }
+        return score;
+    }
+    applySimilarityView(selectedId, grid, mode = 'halo') {
+        try {
+            if (!grid || !selectedId) return;
+            const cards = Array.from(grid.querySelectorAll('.wall-card'));
+            const items = this.currentItems || [];
+            const base = items.find(x => x.file_stem === selectedId);
+            if (!base) return;
+            const scored = cards.map(card => {
+                const id = card.getAttribute('data-report-id');
+                const it = items.find(x => x.file_stem === id);
+                const sc = it && it !== base ? this.computeHeuristicSimilarity(base, it) : -1;
+                return { id, card, item: it, score: sc };
+            }).filter(r => r.item && r.id !== selectedId);
+            scored.sort((a,b) => b.score - a.score);
+            const K = Math.max(12, Math.min(36, Math.round((window.innerWidth || 1200) / 48))); // rough responsive pick
+            const top = scored.slice(0, K);
+            // Halo mode: dim all then mark top as similar
+            grid.classList.add('wall-sim-active');
+            cards.forEach(c => c.classList.add('wall-card--dim'));
+            top.forEach(r => r.card.classList.add('wall-card--similar'));
+            top.forEach(r => r.card.classList.remove('wall-card--dim'));
+            // Keep selected fully visible
+            const sel = grid.querySelector(`.wall-card[data-report-id="${CSS.escape(selectedId)}"]`);
+            if (sel) sel.classList.remove('wall-card--dim');
+            this._wallSimApplied = { selectedId, mode, grid };
+        } catch (_) { /* no-op */ }
+    }
+    clearSimilarityView(grid) {
+        try {
+            const container = grid || (this.contentGrid && this.contentGrid.querySelector('.wall-grid'));
+            if (!container) return;
+            container.classList.remove('wall-sim-active');
+            container.querySelectorAll('.wall-card').forEach(c => { c.classList.remove('wall-card--dim'); c.classList.remove('wall-card--similar'); });
+            this._wallSimApplied = null;
         } catch (_) { /* no-op */ }
     }
 

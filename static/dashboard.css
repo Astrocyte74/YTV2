@@ -484,6 +484,14 @@ body {
     box-shadow: none !important;
 }
 
+/* Wall similarity halo mode */
+.wall-sim-active .wall-card { transition: opacity 120ms ease, filter 120ms ease, transform 120ms ease; }
+.wall-sim-active .wall-card.wall-card--dim { opacity: 0.35; filter: saturate(0.7); }
+.wall-sim-active .wall-card.wall-card--similar { opacity: 1; filter: none; box-shadow: 0 0 0 2px rgba(56,189,248,0.28), 0 0 0 4px rgba(56,189,248,0.12); border-radius: 14px; }
+.wall-sim-pill { font-size: 12px; color: rgba(148,163,184,0.9); }
+.wall-sim-reset { padding: 4px 8px; border-radius: 8px; border: 1px solid rgba(148,163,184,0.4); font-size: 12px; }
+.dark .wall-sim-reset { border-color: rgba(71,85,105,0.55); }
+
 /* Subtle media lift on hover */
 [data-card]:hover .summary-card__media img,
 [data-card]:hover .stream-card__media img,
