@@ -1482,6 +1482,7 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
   /* Break the fixed aspect so content can fill larger area */
   aspect-ratio: auto;
   min-height: 420px;
+  transition: transform 300ms ease, box-shadow 300ms ease;
 }
 .wall-card--mega .mega-inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform 380ms ease; }
 .wall-card--mega.wall-card--flipped .mega-inner { transform: rotateY(180deg); }
@@ -1491,6 +1492,11 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 .mega-title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 .mega-actions .ybtn, .mega-actions .summary-card__menu-btn { margin-left: 6px; }
 .mega-body { padding: 10px 12px; overflow: auto; }
+.mega-front-thumb { width: 100%; height: 100%; object-fit: cover; }
+
+/* Enter scale animation to make growth more perceivable */
+.mega-enter { transform: scale(1.0); }
+.mega-enter-active { transform: scale(1.06); }
 
 /* Footer actions row inside mega card */
 .mega-footer { display:flex; align-items:center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-top: 1px solid rgba(148,163,184,0.25); background: linear-gradient(180deg, rgba(2,6,23,0.35), rgba(2,6,23,0.6)); color: #f8fafc; }
