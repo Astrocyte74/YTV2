@@ -5015,7 +5015,7 @@ class AudioDashboard {
               </div>`;
             cardEl.innerHTML = `
               <div class="mega-inner">
-                <div class="mega-face mega-face--front"></div>
+                <div class="mega-face mega-face--front">${(item.summary_image_url||item.thumbnail_url)?`<img class=\"mega-front-thumb\" alt=\"\" src=\"${this.normalizeAssetUrl(item.summary_image_url || item.thumbnail_url)}\">`:''}</div>
                 <div class="mega-face mega-face--back">
                   <div class="mega-header">
                     <div class="mega-title">${safeTitle}</div>
@@ -5025,12 +5025,12 @@ class AudioDashboard {
                   <div class="mega-footer">
                     <div class="mega-left">
                       <span class="wall-sim-pill" data-sim-label>Similar shown</span>
-                      <label class="toggle"><input type="checkbox" data-sim-only> Show only</label>
-                      <button class="wall-sim-reset" data-sim-reset>Reset</button>
+                      <label class="toggle" data-control><input type="checkbox" data-sim-only data-control> Show only</label>
+                      <button class="wall-sim-reset" data-sim-reset data-control>Reset</button>
                     </div>
                     <div class="mega-right">
-                      <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-mega-display title="Display options">Aa</button>
-                      <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-mega-open title="Open page">Open</button>
+                      <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-mega-display data-control title="Display options">Aa</button>
+                      <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-mega-open data-control title="Open page">Open</button>
                       <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                           <circle cx="5" cy="12" r="1.5"></circle>
@@ -5038,7 +5038,7 @@ class AudioDashboard {
                           <circle cx="19" cy="12" r="1.5"></circle>
                         </svg>
                       </button>
-                      <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-mega-close aria-label="Close">✕</button>
+                      <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-mega-close data-control aria-label="Close">✕</button>
                       ${menuMarkup}
                     </div>
                   </div>
@@ -5047,7 +5047,9 @@ class AudioDashboard {
             const bodyHost = cardEl.querySelector('[data-mega-body]');
             if (bodyHost) bodyHost.innerHTML = this.renderWallReaderSection(item);
             // Flip immediately to show summary
-            setTimeout(() => { cardEl.classList.add('wall-card--flipped'); }, 120);
+            // Animate growth by scaling slightly first, then flip to back
+            try { cardEl.classList.add('mega-enter'); requestAnimationFrame(()=> cardEl.classList.add('mega-enter-active')); setTimeout(()=> { cardEl.classList.remove('mega-enter'); cardEl.classList.remove('mega-enter-active'); }, 360); } catch(_) {}
+            setTimeout(() => { cardEl.classList.add('wall-card--flipped'); }, 420);
             // Apply similarity halo and set label count
             let similarCount = 0;
             try {
@@ -5088,20 +5090,23 @@ class AudioDashboard {
             const aaBtn = cardEl.querySelector('[data-mega-display]');
             if (aaBtn && bodyHost) {
                 this.applyReaderDisplayPrefs(cardEl, bodyHost);
-                aaBtn.addEventListener('click', (e) => { e.preventDefault(); this.openReaderDisplayPopover(cardEl, bodyHost, aaBtn); });
+                aaBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.openReaderDisplayPopover(cardEl, bodyHost, aaBtn); });
             }
             const closeBtn = cardEl.querySelector('[data-mega-close]');
-            if (closeBtn) closeBtn.addEventListener('click', (e) => { e.preventDefault(); this.closeWallMegaCard(id, cardEl); });
+            if (closeBtn) closeBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.closeWallMegaCard(id, cardEl); });
             // Esc to close
             const onEsc = (ev) => { if (ev.key === 'Escape') { this.closeWallMegaCard(id, cardEl); document.removeEventListener('keydown', onEsc); } };
             document.addEventListener('keydown', onEsc);
             // Similar controls
             const simOnly = cardEl.querySelector('[data-sim-only]');
-            if (simOnly) simOnly.addEventListener('change', () => {
+            if (simOnly) simOnly.addEventListener('change', (e) => {
+              e.stopPropagation();
               try { grid.classList.toggle('wall-sim-only', !!simOnly.checked); } catch(_) {}
             });
             const simReset = cardEl.querySelector('[data-sim-reset]');
-            if (simReset) simReset.addEventListener('click', (e) => { e.preventDefault(); this.clearSimilarityView(grid); try { if (simOnly) simOnly.checked = false; grid.classList.remove('wall-sim-only'); } catch(_) {}; });
+            if (simReset) simReset.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.clearSimilarityView(grid); try { if (simOnly) simOnly.checked = false; grid.classList.remove('wall-sim-only'); } catch(_) {}; });
+            // Prevent clicks inside mega content from bubbling to card (which would close it)
+            try { cardEl.querySelector('.mega-inner').addEventListener('click', (e)=> e.stopPropagation()); } catch(_) {}
         } catch (_) {}
     }
     closeWallMegaCard(id, cardEl) {
