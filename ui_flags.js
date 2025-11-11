@@ -14,4 +14,6 @@ window.UI_FLAGS = Object.assign({}, window.UI_FLAGS || {}, {
   wallSimilarityMode: 'halo',
   // Experimental: flip mega-card overlay instead of row reader (v3 branch)
   wallFlipEnabled: true,
+  // Experimental: in-grid 2x2 mega-card span with flip (v4 branch)
+  wallMegaSpanEnabled: true,
 });
