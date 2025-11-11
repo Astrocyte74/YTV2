@@ -3568,10 +3568,25 @@ class AudioDashboard {
         } else {
             const anchorRect = anchorBtn.getBoundingClientRect();
             pop.style.position = 'fixed';
-            pop.style.top = Math.round(anchorRect.bottom + 8) + 'px';
-            pop.style.right = Math.round(Math.max(12, window.innerWidth - anchorRect.right)) + 'px';
+            // Default place below
+            let top = Math.round(anchorRect.bottom + 8);
+            let right = Math.round(Math.max(12, window.innerWidth - anchorRect.right));
+            document.body.appendChild(pop);
+            // Reposition if overflow bottom or off-right
+            try {
+                const pr = pop.getBoundingClientRect();
+                if (top + pr.height > (window.innerHeight - 12)) {
+                    top = Math.round(Math.max(12, anchorRect.top - pr.height - 8));
+                }
+                if (right < 12) right = 12;
+                // Also clamp if off left
+                let left = window.innerWidth - right - pr.width;
+                if (left < 12) { right = Math.round(Math.max(12, window.innerWidth - 12 - pr.width)); }
+            } catch(_) {}
+            pop.style.top = top + 'px';
+            pop.style.right = right + 'px';
         }
-        document.body.appendChild(pop);
+        if (!pop.parentElement) document.body.appendChild(pop);
         // Initialize preview theme class
         try {
           const prev = pop.querySelector('#readerPreview');
@@ -4967,8 +4982,12 @@ class AudioDashboard {
             // Halo mode: dim all then mark top as similar
             grid.classList.add('wall-sim-active');
             cards.forEach(c => c.classList.add('wall-card--dim'));
-            top.forEach(r => r.card.classList.add('wall-card--similar'));
-            top.forEach(r => r.card.classList.remove('wall-card--dim'));
+            // Stagger highlight for top matches
+            top.forEach((r, idx) => {
+              setTimeout(() => {
+                try { r.card.classList.add('wall-card--similar'); r.card.classList.remove('wall-card--dim'); } catch(_) {}
+              }, 24 * idx);
+            });
             // Keep selected fully visible
             const sel = grid.querySelector(`.wall-card[data-report-id="${CSS.escape(selectedId)}"]`);
             if (sel) sel.classList.remove('wall-card--dim');
