@@ -5332,32 +5332,65 @@ class AudioDashboard {
     }
     animateGridReflow(grid, beforeMap) {
         if (!grid || !beforeMap || !(beforeMap instanceof Map)) return;
-        const els = Array.from(grid.querySelectorAll('.wall-card'));
+        const cards = Array.from(grid.querySelectorAll('.wall-card'));
+        const selected = grid.querySelector('.wall-card.wall-card--mega');
+        const megaRect = selected ? selected.getBoundingClientRect() : null;
         const transitions = [];
-        const baseMs = 620;
+        const baseMs = 900; // lengthen for clearer motion; can be overridden with ?flipms
         const durMs = this.flipDebugMs || baseMs;
-        els.forEach(el => {
+        const scaleStart = 1.04; // slight shrink while moving into place
+
+        const movers = [];
+        cards.forEach(el => {
+            if (el === selected) return;
             const before = beforeMap.get(el);
             if (!before) return;
             const after = el.getBoundingClientRect();
             const dx = before.left - after.left;
             const dy = before.top - after.top;
-            if ((dx || dy) && !el.classList.contains('wall-card--mega')) {
-                try {
-                    // Use !important to survive global reduced-motion overrides for this one spatial transition
-                    el.style.setProperty('will-change', 'transform', 'important');
-                    el.style.transform = `translate(${dx}px, ${dy}px)`;
-                    el.style.setProperty('transition', `transform ${durMs}ms cubic-bezier(0.22, 1, 0.36, 1)`, 'important');
-                    // Ensure neighbors render above the temporarily frozen clicked card
-                    el.style.setProperty('z-index', '40', 'important');
-                    // force reflow
-                    void el.offsetWidth;
-                    el.style.transform = '';
-                    transitions.push(el);
-                } catch(_) {}
+            if (!(dx || dy)) return;
+            let overlapped = false;
+            let dist = 99999;
+            if (megaRect) {
+                const cx = before.left + before.width / 2;
+                const cy = before.top + before.height / 2;
+                overlapped = (cx >= megaRect.left && cx <= megaRect.right && cy >= megaRect.top && cy <= megaRect.bottom);
+                const mx = megaRect.left + megaRect.width / 2;
+                const my = megaRect.top + megaRect.height / 2;
+                dist = Math.hypot(cx - mx, cy - my);
             }
+            movers.push({ el, before, after, dx, dy, overlapped, dist });
         });
-        setTimeout(() => { transitions.forEach(el => { try { el.style.removeProperty('transition'); el.style.removeProperty('will-change'); el.style.removeProperty('z-index'); } catch(_) {} }); }, durMs + 120);
+
+        // Stagger: overlapped group first (tight cascade), then others by distance
+        const primary = movers.filter(m => m.overlapped);
+        const others  = movers.filter(m => !m.overlapped).sort((a,b) => a.dist - b.dist);
+
+        const schedule = [];
+        primary.forEach((m, i) => schedule.push({ ...m, delay: i * 70 }));
+        const baseDelay = primary.length ? (primary.length - 1) * 70 + 120 : 0;
+        others.forEach((m, i) => schedule.push({ ...m, delay: baseDelay + Math.min(300, i * 30) }));
+
+        schedule.forEach(item => {
+            const { el, dx, dy, delay } = item;
+            try {
+                el.style.setProperty('transform-origin', 'center', 'important');
+                // Prepare from-state: translated away from its final spot and slightly larger
+                el.style.setProperty('will-change', 'transform', 'important');
+                el.style.transform = `translate(${dx}px, ${dy}px) scale(${scaleStart})`;
+                // Make sure neighbors render above the frozen mega during phase 1
+                el.style.setProperty('z-index', '40', 'important');
+                // Force reflow, then animate to identity (0 translate, scale 1)
+                void el.offsetWidth;
+                el.style.setProperty('transition', `transform ${durMs}ms cubic-bezier(0.22, 1, 0.36, 1) ${delay}ms`, 'important');
+                el.style.transform = '';
+                transitions.push(el);
+            } catch (_) {}
+        });
+
+        setTimeout(() => {
+            transitions.forEach(el => { try { el.style.removeProperty('transition'); el.style.removeProperty('will-change'); el.style.removeProperty('z-index'); el.style.removeProperty('transform-origin'); } catch(_) {} });
+        }, (baseDelay + durMs) + 160);
     }
     closeWallMegaCard(id, cardEl) {
         try {
