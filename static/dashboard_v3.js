@@ -5372,7 +5372,7 @@ class AudioDashboard {
         others.forEach((m, i) => schedule.push({ ...m, delay: baseDelay + Math.min(300, i * 30) }));
 
         schedule.forEach(item => {
-            const { el, dx, dy, delay } = item;
+            const { el, dx, dy, delay, overlapped } = item;
             try {
                 el.style.setProperty('transform-origin', 'center', 'important');
                 // Prepare from-state: translated away from its final spot and slightly larger
@@ -5380,16 +5380,22 @@ class AudioDashboard {
                 el.style.transform = `translate(${dx}px, ${dy}px) scale(${scaleStart})`;
                 // Make sure neighbors render above the frozen mega during phase 1
                 el.style.setProperty('z-index', '40', 'important');
+                // Opacity fade for overlapped (the three directly under the mega area)
+                if (overlapped) {
+                    el.style.setProperty('opacity', '0.55', 'important');
+                }
                 // Force reflow, then animate to identity (0 translate, scale 1)
                 void el.offsetWidth;
-                el.style.setProperty('transition', `transform ${durMs}ms cubic-bezier(0.22, 1, 0.36, 1) ${delay}ms`, 'important');
+                const t = `transform ${durMs}ms cubic-bezier(0.22, 1, 0.36, 1) ${delay}ms` + (overlapped ? `, opacity ${durMs}ms ease ${delay}ms` : '');
+                el.style.setProperty('transition', t, 'important');
                 el.style.transform = '';
+                if (overlapped) el.style.opacity = '1';
                 transitions.push(el);
             } catch (_) {}
         });
 
         setTimeout(() => {
-            transitions.forEach(el => { try { el.style.removeProperty('transition'); el.style.removeProperty('will-change'); el.style.removeProperty('z-index'); el.style.removeProperty('transform-origin'); } catch(_) {} });
+            transitions.forEach(el => { try { el.style.removeProperty('transition'); el.style.removeProperty('will-change'); el.style.removeProperty('z-index'); el.style.removeProperty('transform-origin'); el.style.removeProperty('opacity'); } catch(_) {} });
         }, (baseDelay + durMs) + 160);
     }
     closeWallMegaCard(id, cardEl) {
