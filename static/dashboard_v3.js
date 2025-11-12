@@ -5155,7 +5155,8 @@ class AudioDashboard {
                     }
                   } catch(_) {}
                 }, 80);
-                // Phase 2: after neighbors finish, grow the clicked card and then flip its faces
+                // Phase 2: start earlier (half of neighbor stagger duration) so the wait isn't too long
+                const halfMs = Math.max(240, Math.round(totalMs * 0.5));
                 setTimeout(() => {
                   try {
                     // Animate the transform back to identity to expand into place
@@ -5172,7 +5173,7 @@ class AudioDashboard {
                       try { cardEl.classList.add('wall-card--flipped'); } catch(_) {}
                     }, 560);
                   } catch(_) {}
-                }, totalMs + 60);
+                }, halfMs + 60);
               }));
             } catch(_) {}
             // Apply similarity halo and set label count
