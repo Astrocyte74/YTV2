@@ -492,8 +492,9 @@ body {
 .wall-sim-only .wall-card { display: none; }
 .wall-sim-only .wall-card.wall-card--similar,
 .wall-sim-only .wall-card.wall-card--mega { display: block; }
-/* Center the mega at a real width so it doesn't collapse */
-.wall-sim-only .wall-card--mega { grid-column: 1 / -1; justify-self: center; width: min(1100px, 72vw); max-width: 100%; }
+/* Keep regular sizing; just reorder so mega appears first and similars follow tightly */
+.wall-sim-only .wall-card--mega { order: -100; justify-self: auto; width: auto; }
+.wall-sim-only .wall-card--similar { order: -99; }
 .wall-sim-pill { font-size: 12px; color: rgba(148,163,184,0.9); }
 .wall-sim-reset { padding: 4px 8px; border-radius: 8px; border: 1px solid rgba(148,163,184,0.4); font-size: 12px; }
 .dark .wall-sim-reset { border-color: rgba(71,85,105,0.55); }
