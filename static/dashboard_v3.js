@@ -5041,6 +5041,8 @@ class AudioDashboard {
             if (cardEl.classList.contains('wall-card--mega')) {
                 return this.closeWallMegaCard(id, cardEl);
             }
+            // Safety: clear any stale inline transform/transition from prior animations
+            this.resetWallCardStyles(grid);
             // Calibrate grid row height BEFORE measuring so FLIP doesn't miss the reflow
             try {
               const sample = grid.querySelector('.wall-card');
@@ -5138,9 +5140,8 @@ class AudioDashboard {
             } catch(_) {}
             // Animate grid reflow (FLIP) after reflow commits, then scroll
             try {
-              const neighborDur = (this.flipDebugMs || 620);
               requestAnimationFrame(() => requestAnimationFrame(() => {
-                this.animateGridReflow(grid, before);
+                const totalMs = this.animateGridReflow(grid, before) || (this.flipDebugMs || 620);
                 // Scroll after animation starts, not before (avoid canceling transforms)
                 setTimeout(() => {
                   try {
@@ -5171,7 +5172,7 @@ class AudioDashboard {
                       try { cardEl.classList.add('wall-card--flipped'); } catch(_) {}
                     }, 560);
                   } catch(_) {}
-                }, neighborDur + 60);
+                }, totalMs + 60);
               }));
             } catch(_) {}
             // Apply similarity halo and set label count
@@ -5382,6 +5383,7 @@ class AudioDashboard {
         const baseDelay = primary.length ? (primary.length - 1) * 70 + 120 : 0;
         others.forEach((m, i) => schedule.push({ ...m, delay: baseDelay + Math.min(300, i * 30) }));
 
+        let maxEnd = 0;
         schedule.forEach(item => {
             const { el, dx, dy, delay, overlapped } = item;
             try {
@@ -5402,12 +5404,33 @@ class AudioDashboard {
                 el.style.transform = '';
                 if (overlapped) el.style.opacity = '1';
                 transitions.push(el);
+                const end = delay + durMs;
+                if (end > maxEnd) maxEnd = end;
             } catch (_) {}
         });
 
-        setTimeout(() => {
+        const cleanup = () => {
             transitions.forEach(el => { try { el.style.removeProperty('transition'); el.style.removeProperty('will-change'); el.style.removeProperty('z-index'); el.style.removeProperty('transform-origin'); el.style.removeProperty('opacity'); } catch(_) {} });
-        }, (baseDelay + durMs) + 160);
+        };
+        // Primary timeout cleanup
+        setTimeout(cleanup, maxEnd + 160);
+        // Additional safety cleanup in case of interruption
+        setTimeout(cleanup, maxEnd + 1200);
+        return maxEnd;
+    }
+
+    resetWallCardStyles(grid) {
+        try {
+            const els = Array.from(grid.querySelectorAll('.wall-card'));
+            els.forEach(el => {
+                el.style.removeProperty('transition');
+                el.style.removeProperty('transform');
+                el.style.removeProperty('will-change');
+                el.style.removeProperty('z-index');
+                el.style.removeProperty('opacity');
+                el.style.removeProperty('transform-origin');
+            });
+        } catch (_) { /* no-op */ }
     }
     closeWallMegaCard(id, cardEl) {
         try {
