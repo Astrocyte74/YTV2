@@ -1490,8 +1490,10 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
   /* Break the fixed aspect so content can fill larger area */
   aspect-ratio: auto;
   min-height: 420px;
-  transition: transform 360ms ease, box-shadow 360ms ease;
+  transition: transform 360ms ease, box-shadow 360ms ease, border-color 240ms ease;
   overflow: hidden; /* clip overflowing prose */
+  border: 2px solid rgba(56,189,248,0.35);
+  box-shadow: 0 0 0 2px rgba(56,189,248,0.18), 0 24px 60px -12px rgba(14,165,233,0.45), var(--card-shadow-strong);
 }
 .wall-card--mega .mega-inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform 380ms ease; }
 .wall-card--mega.wall-card--flipped .mega-inner { transform: rotateY(180deg); }
@@ -1503,6 +1505,29 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 .mega-actions .ybtn, .mega-actions .summary-card__menu-btn { margin-left: 6px; }
 .mega-body { padding: 10px 12px; overflow: auto; max-width: 100%; word-break: break-word; overflow-wrap: anywhere; }
 .mega-front-thumb { width: 100%; height: 100%; object-fit: cover; }
+
+/* Glowing focus for mega */
+.mega-glow {
+  box-shadow:
+    0 0 0 2px rgba(56,189,248,0.28),
+    0 0 0 6px rgba(56,189,248,0.16),
+    0 28px 70px -20px rgba(14,165,233,0.55),
+    var(--card-shadow-strong);
+  border-color: rgba(56,189,248,0.55);
+}
+
+/* Title/Chips overlay on front face so identity persists while expanding */
+.mega-front { position: absolute; inset: 0; }
+.mega-front-overlay {
+  position: absolute; inset: 8px; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px;
+  border-radius: 12px; padding: 12px;
+  background: linear-gradient(180deg, rgba(2,6,23,0.0) 40%, rgba(2,6,23,0.65) 100%);
+  color: #f8fafc;
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+.mega-front-title { font-size: 1rem; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,0.4); margin: 0; }
+.mega-front-meta { opacity: .95; }
+.wall-card--flipped .mega-front-overlay { opacity: 0; transform: translateY(6px); }
 
 /* Enter scale animation to make growth more perceivable */
 .mega-enter { transform: scale(1.0); }
