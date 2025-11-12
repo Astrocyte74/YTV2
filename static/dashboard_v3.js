@@ -5064,6 +5064,8 @@ class AudioDashboard {
             cardEl.classList.add('wall-card--mega');
             // Build flip faces
             const safeTitle = this.escapeHtml(item.title || 'Summary');
+            const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
+            const chipRail = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 3);
             const menuMarkup = `
               <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
@@ -5073,7 +5075,15 @@ class AudioDashboard {
               </div>`;
             cardEl.innerHTML = `
               <div class="mega-inner">
-                <div class="mega-face mega-face--front">${(item.summary_image_url||item.thumbnail_url)?`<img class=\"mega-front-thumb\" alt=\"\" src=\"${this.normalizeAssetUrl(item.summary_image_url || item.thumbnail_url)}\">`:''}</div>
+                <div class="mega-face mega-face--front">
+                  <div class="mega-front">
+                    ${(item.summary_image_url||item.thumbnail_url)?`<img class=\"mega-front-thumb\" alt=\"\" src=\"${this.normalizeAssetUrl(item.summary_image_url || item.thumbnail_url)}\">`:''}
+                    <div class="mega-front-overlay">
+                      <div class="mega-front-meta">${chipRail || ''}</div>
+                      <h3 class="mega-front-title">${safeTitle}</h3>
+                    </div>
+                  </div>
+                </div>
                 <div class="mega-face mega-face--back">
                   <div class="mega-header">
                     <div class="mega-title">${safeTitle}</div>
@@ -5123,6 +5133,7 @@ class AudioDashboard {
               cardEl.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px) scale(${sx}, ${sy})`;
               // Keep this card below neighbors during their move-out
               cardEl.style.zIndex = '5';
+              cardEl.classList.add('mega-glow');
               // No transition yet — we want neighbors to animate first
             } catch(_) {}
             // Animate grid reflow (FLIP) after reflow commits, then scroll
@@ -5408,6 +5419,7 @@ class AudioDashboard {
             if (cardEl) {
                 cardEl.classList.remove('wall-card--flipped');
                 cardEl.classList.remove('wall-card--mega');
+                cardEl.classList.remove('mega-glow');
             }
             this.clearSimilarityView(grid);
             try { grid.classList.remove('wall-sim-only'); } catch(_) {}
