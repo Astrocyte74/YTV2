@@ -490,9 +490,10 @@ body {
 .wall-sim-active .wall-card.wall-card--similar { opacity: 1; filter: none; box-shadow: 0 0 0 2px rgba(56,189,248,0.28), 0 0 0 4px rgba(56,189,248,0.12); border-radius: 14px; }
 /* Show-only mode: hide non-similar cards but keep mega and similars; center mega */
 /* Show-only: keep grid geometry intact; hide non-similar without reflow */
-.wall-sim-only .wall-card { visibility: hidden; opacity: 0; pointer-events: none; }
+/* Show-only: keep layout identical, just strongly dim non-similar */
+.wall-sim-only .wall-card.wall-card--dim { opacity: 0.12 !important; filter: saturate(0.65) !important; pointer-events: none !important; }
 .wall-sim-only .wall-card.wall-card--similar,
-.wall-sim-only .wall-card.wall-card--mega { visibility: visible; opacity: 1; pointer-events: auto; }
+.wall-sim-only .wall-card.wall-card--mega { opacity: 1 !important; filter: none !important; pointer-events: auto !important; }
 .wall-sim-pill { font-size: 12px; color: rgba(148,163,184,0.9); }
 .wall-sim-reset { padding: 4px 8px; border-radius: 8px; border: 1px solid rgba(148,163,184,0.4); font-size: 12px; }
 .dark .wall-sim-reset { border-color: rgba(71,85,105,0.55); }
@@ -1508,7 +1509,8 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 .mega-header { display:flex; align-items:center; justify-content: space-between; gap:8px; padding: 8px 10px; background: linear-gradient(180deg, rgba(2,6,23,0.75), rgba(2,6,23,0.55)); color: #f8fafc; }
 .mega-title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 .mega-actions .ybtn, .mega-actions .summary-card__menu-btn { margin-left: 6px; }
-.mega-body { padding: 10px 12px; overflow: auto; max-width: 100%; word-break: break-word; overflow-wrap: anywhere; }
+.mega-body { padding: 10px 12px; overflow-y: auto; overflow-x: hidden; max-width: 100%; word-break: normal; overflow-wrap: anywhere; }
+.mega-body * { word-break: normal; overflow-wrap: anywhere; min-width: 0; }
 .mega-front-thumb { width: 100%; height: 100%; object-fit: cover; }
 
 /* Glowing focus for mega */
