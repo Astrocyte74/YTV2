@@ -102,6 +102,7 @@ const READER_JUSTIFY = ['left','justify'];
 // - Previous 'wide'(80ch) becomes 'medium'
 // - New 'wide' at 90ch bridges the gap to 'full'
 const READER_MEASURE_MAP = {
+    auto: '70ch',            // computed at runtime based on container width
     narrow: '70ch',          // old Medium
     medium: '80ch',          // old Wide
     wide: 'calc((100% + 80ch)/2)', // midpoint between current wide (80ch) and full (100%)
@@ -116,7 +117,28 @@ class AudioDashboard {
         this.isPlaying = false;
         // Read UI feature flags (non-breaking if missing)
         this.flags = (typeof window !== 'undefined' && window.UI_FLAGS) ? window.UI_FLAGS : {};
+        // Provide safe defaults for experimental features in this branch
+        if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallSimilarityEnabled')) this.flags.wallSimilarityEnabled = true;
+        if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallSimilarityMode')) this.flags.wallSimilarityMode = 'halo';
+        if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallFlipEnabled')) this.flags.wallFlipEnabled = true;
+        if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallMegaSpanEnabled')) this.flags.wallMegaSpanEnabled = true;
         this.config = (typeof window !== 'undefined' && window.DASHBOARD_CONFIG) ? window.DASHBOARD_CONFIG : {};
+        // Debug: allow slowing FLIP with URL ?flip=slow|slower|off or ?flipms=NNN
+        this.flipDebugMs = 0;
+        try {
+            const params = new URLSearchParams((typeof window !== 'undefined' ? window.location.search : '') || '');
+            let fm = params.get('flipms') || '';
+            if (!fm) {
+                const f = (params.get('flip') || '').toLowerCase();
+                if (f === 'slow') fm = '2000';
+                else if (f === 'slower') fm = '3500';
+                else if (f === 'off') fm = '1';
+            }
+            if (fm) {
+                const n = Math.max(0, parseInt(fm, 10) || 0);
+                if (Number.isFinite(n)) this.flipDebugMs = n;
+            }
+        } catch(_) {}
         const autoPlayConfig = this.config && this.config.autoPlayOnLoad;
         this.autoPlayOnLoad = autoPlayConfig === undefined;
         if (autoPlayConfig !== undefined) {
@@ -3436,8 +3458,17 @@ class AudioDashboard {
             const just = this.getReaderDisplayPrefs().justify || 'left';
             try { container.classList.toggle('reader-justify--on', just === 'justify'); } catch(_) {}
             // Measure (desktop-only cap; stored as variable used by CSS)
-            const measureKey = this.getReaderDisplayPrefs().measure || 'medium';
-            const mw = READER_MEASURE_MAP[measureKey] || '70ch';
+            const measureKey = this.getReaderDisplayPrefs().measure || 'auto';
+            let mw = READER_MEASURE_MAP[measureKey] || '70ch';
+            if (measureKey === 'auto') {
+                try {
+                    const w = (container && container.getBoundingClientRect ? container.getBoundingClientRect().width : 700) || 700;
+                    if (w < 520) mw = '48ch';
+                    else if (w < 680) mw = '58ch';
+                    else if (w < 820) mw = '66ch';
+                    else mw = '74ch';
+                } catch(_) {}
+            }
             try { container.style.setProperty('--reader-measure', mw); } catch(_) {}
         }
     }
@@ -3446,7 +3477,7 @@ class AudioDashboard {
         try { document.querySelectorAll('.reader-display-popover').forEach(el => el.remove()); } catch(_) {}
         const prefs = this.getReaderDisplayPrefs();
         const pop = document.createElement('div');
-        pop.className = 'reader-display-popover';
+        pop.className = 'reader-display-popover pop-animate';
         pop.setAttribute('role', 'dialog');
         const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed?'true':'false'}" title="${String(label).replace(/<[^>]+>/g,'')}">${label}</span>`;
         const sizeSeg = `
@@ -3563,10 +3594,25 @@ class AudioDashboard {
         } else {
             const anchorRect = anchorBtn.getBoundingClientRect();
             pop.style.position = 'fixed';
-            pop.style.top = Math.round(anchorRect.bottom + 8) + 'px';
-            pop.style.right = Math.round(Math.max(12, window.innerWidth - anchorRect.right)) + 'px';
+            // Default place below
+            let top = Math.round(anchorRect.bottom + 8);
+            let right = Math.round(Math.max(12, window.innerWidth - anchorRect.right));
+            document.body.appendChild(pop);
+            // Reposition if overflow bottom or off-right
+            try {
+                const pr = pop.getBoundingClientRect();
+                if (top + pr.height > (window.innerHeight - 12)) {
+                    top = Math.round(Math.max(12, anchorRect.top - pr.height - 8));
+                }
+                if (right < 12) right = 12;
+                // Also clamp if off left
+                let left = window.innerWidth - right - pr.width;
+                if (left < 12) { right = Math.round(Math.max(12, window.innerWidth - 12 - pr.width)); }
+            } catch(_) {}
+            pop.style.top = top + 'px';
+            pop.style.right = right + 'px';
         }
-        document.body.appendChild(pop);
+        if (!pop.parentElement) document.body.appendChild(pop);
         // Initialize preview theme class
         try {
           const prev = pop.querySelector('#readerPreview');
@@ -4343,8 +4389,16 @@ class AudioDashboard {
 
     // --- Wall reader handlers ---
     handleWallRead(id, cardEl) {
+        const useMega = this.flags && this.flags.wallMegaSpanEnabled;
+        const useFlip = this.flags && this.flags.wallFlipEnabled;
         const useInline = (this.flags && Object.prototype.hasOwnProperty.call(this.flags, 'wallReadInline')) ? !!this.flags.wallReadInline : true;
         const isDesktop = window.innerWidth >= 1024;
+        if (useMega && isDesktop) {
+            return this.openWallMegaCard(id, cardEl);
+        }
+        if (useFlip && isDesktop) {
+            return this.openWallFlipCard(id, cardEl);
+        }
         if (useInline && isDesktop) {
             return this.openWallRowReader(id, cardEl);
         }
@@ -4616,6 +4670,24 @@ class AudioDashboard {
                 rbtn.textContent = '↻';
                 rbtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.openWallRowReader(id, cardEl); });
                 actions.insertBefore(rbtn, actions.firstChild);
+
+                // Similarity controls (halo mode)
+                if (this.flags && this.flags.wallSimilarityEnabled) {
+                    // Apply immediately when opening
+                    try { this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')); } catch(_) {}
+                    if (!actions.querySelector('[data-sim-reset]')) {
+                        const simLabel = document.createElement('span');
+                        simLabel.className = 'wall-sim-pill';
+                        simLabel.textContent = 'Similar shown';
+                        const simReset = document.createElement('button');
+                        simReset.className = 'wall-sim-reset';
+                        simReset.setAttribute('data-sim-reset','');
+                        simReset.textContent = 'Reset';
+                        simReset.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.clearSimilarityView(grid); });
+                        actions.insertBefore(simReset, actions.firstChild);
+                        actions.insertBefore(simLabel, actions.firstChild);
+                    }
+                }
             }
         } catch(_) {}
         const onClose = () => {
@@ -4633,6 +4705,7 @@ class AudioDashboard {
                 section.removeEventListener('transitionend', finalize);
                 try { document.body.classList.remove('wall-reader-open'); } catch(_) {}
                 try { this.removeWallConnectorOverlay(); } catch(_) {}
+                try { this.clearSimilarityView(grid); } catch(_) {}
                 if (this._wallConnectorHandlers) {
                     this._wallConnectorHandlers.forEach(h => window.removeEventListener(h.type, h.fn, h.opts));
                     this._wallConnectorHandlers = [];
@@ -4738,6 +4811,643 @@ class AudioDashboard {
             const d = `M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}`;
             path.setAttribute('d', d);
         } catch (_) { /* no-op */ }
+    }
+
+    // --- Flip mega-card overlay (Option B) ---
+    openWallFlipCard(id, cardEl) {
+        try {
+            const item = (this.currentItems || []).find(x => x.file_stem === id);
+            if (!item || !cardEl) return;
+            // If an overlay is already open, close it first
+            if (this._flipOverlay && this._flipOverlay.parentElement) {
+                try { this._flipOverlay.parentElement.removeChild(this._flipOverlay); } catch(_) {}
+                this._flipOverlay = null;
+            }
+            // Scrim
+            const scrim = document.createElement('div');
+            scrim.className = 'flip-scrim';
+            document.body.appendChild(scrim);
+            // Measure origin (card)
+            const rect = cardEl.getBoundingClientRect();
+            const startLeft = Math.round(rect.left + window.pageXOffset);
+            const startTop = Math.round(rect.top + window.pageYOffset);
+            const startW = Math.round(rect.width);
+            const startH = Math.round(rect.height);
+            // Create overlay
+            const ov = document.createElement('div');
+            ov.className = 'flip-overlay';
+            ov.setAttribute('role', 'dialog');
+            ov.style.left = startLeft + 'px';
+            ov.style.top = startTop + 'px';
+            ov.style.width = startW + 'px';
+            ov.style.height = startH + 'px';
+            // Content
+            const safeTitle = this.escapeHtml(item.title || 'Summary');
+            const thumb = (item.summary_image_url || item.thumbnail_url || '').trim();
+            const thumbSrc = thumb ? this.normalizeAssetUrl(thumb) : '';
+            ov.innerHTML = `
+              <div class="flip-header">
+                <div class="flip-title">${safeTitle}</div>
+                <div class="flip-actions">
+                  <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-flip-display title="Display options">Aa</button>
+                  <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-flip-open title="Open page">Open</button>
+                  <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <circle cx="5" cy="12" r="1.5"></circle>
+                      <circle cx="12" cy="12" r="1.5"></circle>
+                      <circle cx="19" cy="12" r="1.5"></circle>
+                    </svg>
+                  </button>
+                  <button class="flip-close" aria-label="Close" data-flip-close>✕</button>
+                </div>
+                <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
+                  <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                  <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
+                  <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                  <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
+                </div>
+              </div>
+              <div class="flip-inner">
+                <div class="flip-face flip-face--front">
+                  <div class="flip-front-body">
+                    ${thumbSrc ? `<img class="thumb" alt="" src="${thumbSrc}">` : `<div class="thumb"></div>`}
+                    <div class="text-sm opacity-80">Click to view summary…</div>
+                  </div>
+                </div>
+                <div class="flip-face flip-face--back">
+                  <div class="flip-back-body prose prose-sm dark:prose-invert max-w-none" data-flip-body></div>
+                  <div class="flip-footer"><button class="ybtn" data-flip-close>Close</button></div>
+                </div>
+              </div>`;
+            document.body.appendChild(ov);
+            this._flipOverlay = ov;
+            // Target frame (roughly 2x width, tall enough for summary)
+            const vw = Math.max(520, Math.min(980, Math.round(window.innerWidth * 0.56)));
+            const vh = Math.max(340, Math.min(600, Math.round(window.innerHeight * 0.56)));
+            const targetLeft = Math.round(window.pageXOffset + (window.innerWidth - vw) / 2);
+            const headerH = (document.querySelector('header')?.getBoundingClientRect()?.height) || 64;
+            const targetTop = Math.round(window.pageYOffset + Math.max(16, headerH + 16));
+            requestAnimationFrame(() => {
+                ov.style.left = targetLeft + 'px';
+                ov.style.top = targetTop + 'px';
+                ov.style.width = vw + 'px';
+                ov.style.height = vh + 'px';
+            });
+            // Inject summary on the back
+            try {
+                const bodyHost = ov.querySelector('[data-flip-body]');
+                if (bodyHost) bodyHost.innerHTML = this.renderWallReaderSection(item);
+            } catch(_) {}
+            // Flip after grow
+            setTimeout(() => { ov.classList.add('is-flipped'); }, 260);
+            // Close handlers
+            const close = () => {
+                try { ov.parentElement && ov.parentElement.removeChild(ov); } catch(_) {}
+                try { scrim.parentElement && scrim.parentElement.removeChild(scrim); } catch(_) {}
+                this._flipOverlay = null;
+            };
+            ov.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-flip-close]');
+                if (btn) { e.preventDefault(); e.stopPropagation(); close(); }
+            });
+            scrim.addEventListener('click', close);
+            document.addEventListener('keydown', function onEsc(ev) { if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', onEsc); } });
+
+            // Wire actions: open page, kebab, display options
+            try {
+                const openBtn = ov.querySelector('[data-flip-open]');
+                if (openBtn) openBtn.addEventListener('click', (ev) => { ev.preventDefault(); window.location.href = `/${encodeURIComponent(id)}.json?v=2`; });
+                const menuBtn = ov.querySelector('[data-action="menu"]');
+                if (menuBtn) {
+                    menuBtn.addEventListener('click', () => this.toggleKebabMenu(ov, true, menuBtn));
+                    const menu = ov.querySelector('[data-kebab-menu]');
+                    if (menu) {
+                        const onMenuClick = (e) => {
+                            const a = e.target.closest('[data-action]');
+                            if (!a) return;
+                            const act = a.getAttribute('data-action');
+                            const cardRef = cardEl;
+                            if (act === 'copy-link') { this.copyLink(cardRef || ov, id); this.toggleKebabMenu(ov, false); }
+                            if (act === 'reprocess') { this.openReprocessModal(id, cardRef || ov); this.toggleKebabMenu(ov, false); }
+                            if (act === 'delete') { if (cardRef) this.handleDelete(id, cardRef); this.toggleKebabMenu(ov, false); }
+                        };
+                        menu.addEventListener('click', onMenuClick);
+                    }
+                }
+                const aaBtn = ov.querySelector('[data-flip-display]');
+                const bodyHost = ov.querySelector('[data-flip-body]');
+                if (aaBtn && bodyHost) {
+                    this.applyReaderDisplayPrefs(ov, bodyHost);
+                    aaBtn.addEventListener('click', (e) => { e.preventDefault(); this.openReaderDisplayPopover(ov, bodyHost, aaBtn); });
+                }
+            } catch(_) {}
+        } catch (_) {}
+    }
+    // --- Wall similarity (heuristic, client-only) ---
+    _tokenizeTitle(text) {
+        try {
+            const stop = new Set(['the','a','an','and','or','of','to','in','on','for','with','from','by','at','is','are','be','this','that','it','as','vs','vs.','you','your']);
+            return String(text || '')
+                .toLowerCase()
+                .replace(/[^a-z0-9\s]+/g, ' ')
+                .split(/\s+/)
+                .filter(t => t && !stop.has(t));
+        } catch (_) { return []; }
+    }
+    _jaccard(a, b) {
+        const A = new Set(a);
+        const B = new Set(b);
+        const inter = [...A].filter(x => B.has(x)).length;
+        const uni = new Set([...A, ...B]).size || 1;
+        return inter / uni;
+    }
+    computeHeuristicSimilarity(baseItem, candItem) {
+        if (!baseItem || !candItem || baseItem === candItem) return 0;
+        let score = 0;
+        try {
+            // Categories and subcategories
+            const { categories: c1 = [], subcatPairs: s1 = [] } = this.extractCatsAndSubcats(baseItem);
+            const { categories: c2 = [], subcatPairs: s2 = [] } = this.extractCatsAndSubcats(candItem);
+            const set1 = new Set(c1);
+            const set2 = new Set(c2);
+            const catInter = [...set1].filter(x => set2.has(x)).length;
+            score += catInter * 2.0;
+            const pair1 = new Set(s1.map(p => p.join('>')));
+            const pair2 = new Set(s2.map(p => p.join('>')));
+            const subInter = [...pair1].filter(x => pair2.has(x)).length;
+            score += subInter * 4.0;
+
+            // Channel/source boost
+            const ch1 = (baseItem.channel || '').toLowerCase().trim();
+            const ch2 = (candItem.channel || '').toLowerCase().trim();
+            if (ch1 && ch2 && ch1 === ch2) score += 1.5;
+
+            // Title token overlap (light)
+            const t1 = this._tokenizeTitle(baseItem.title);
+            const t2 = this._tokenizeTitle(candItem.title);
+            score += 0.8 * this._jaccard(t1, t2);
+        } catch (_) { /* no-op */ }
+        return score;
+    }
+    applySimilarityView(selectedId, grid, mode = 'halo') {
+        try {
+            if (!grid || !selectedId) return;
+            const cards = Array.from(grid.querySelectorAll('.wall-card'));
+            const items = this.currentItems || [];
+            const base = items.find(x => x.file_stem === selectedId);
+            if (!base) return;
+            const scored = cards.map(card => {
+                const id = card.getAttribute('data-report-id');
+                const it = items.find(x => x.file_stem === id);
+                const sc = it && it !== base ? this.computeHeuristicSimilarity(base, it) : -1;
+                return { id, card, item: it, score: sc };
+            }).filter(r => r.item && r.id !== selectedId);
+            scored.sort((a,b) => b.score - a.score);
+            const K = Math.max(12, Math.min(36, Math.round((window.innerWidth || 1200) / 48))); // rough responsive pick
+            const top = scored.slice(0, K);
+            // Halo mode: dim all then mark top as similar
+            grid.classList.add('wall-sim-active');
+            cards.forEach(c => c.classList.add('wall-card--dim'));
+            // Stagger highlight for top matches
+            top.forEach((r, idx) => {
+              setTimeout(() => {
+                try { r.card.classList.add('wall-card--similar'); r.card.classList.remove('wall-card--dim'); } catch(_) {}
+              }, 24 * idx);
+            });
+            // Keep selected fully visible
+            const sel = grid.querySelector(`.wall-card[data-report-id="${CSS.escape(selectedId)}"]`);
+            if (sel) sel.classList.remove('wall-card--dim');
+            this._wallSimApplied = { selectedId, mode, grid };
+        } catch (_) { /* no-op */ }
+    }
+    clearSimilarityView(grid) {
+        try {
+            const container = grid || (this.contentGrid && this.contentGrid.querySelector('.wall-grid'));
+            if (!container) return;
+            container.classList.remove('wall-sim-active');
+            container.querySelectorAll('.wall-card').forEach(c => { c.classList.remove('wall-card--dim'); c.classList.remove('wall-card--similar'); });
+            this._wallSimApplied = null;
+        } catch (_) { /* no-op */ }
+    }
+
+    // --- In-grid 2x2 mega-card (Option A) ---
+    openWallMegaCard(id, cardEl) {
+        try {
+            const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+            if (!grid || !cardEl) return;
+            const item = (this.currentItems || []).find(x => x.file_stem === id);
+            if (!item) return;
+            // If already mega, close
+            if (cardEl.classList.contains('wall-card--mega')) {
+                return this.closeWallMegaCard(id, cardEl);
+            }
+            // Safety: clear any stale inline transform/transition from prior animations
+            this.resetWallCardStyles(grid);
+            // Calibrate grid row height BEFORE measuring so FLIP doesn't miss the reflow
+            try {
+              const sample = grid.querySelector('.wall-card');
+              if (sample) {
+                const h = sample.getBoundingClientRect().height;
+                if (h && h > 0) grid.style.setProperty('--wall-row-h', Math.round(h) + 'px');
+              }
+            } catch(_) {}
+            // Capture positions for FLIP reflow animation
+            const before = new Map();
+            try {
+              Array.from(grid.querySelectorAll('.wall-card')).forEach(el => { before.set(el, el.getBoundingClientRect()); });
+            } catch(_) {}
+            // Close any other mega-cards first
+            try {
+                const openMegas = Array.from(grid.querySelectorAll('.wall-card.wall-card--mega'));
+                openMegas.forEach(el => { if (el !== cardEl) this.closeWallMegaCard(el.getAttribute('data-report-id') || '', el); });
+            } catch(_) {}
+            // Save original markup
+            cardEl._origHTML = cardEl.innerHTML;
+            cardEl.classList.add('wall-card--mega');
+            // Build flip faces
+            const safeTitle = this.escapeHtml(item.title || 'Summary');
+            const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
+            const chipRail = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 3);
+            const menuMarkup = `
+              <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
+              </div>`;
+            cardEl.innerHTML = `
+              <div class="mega-inner">
+                <div class="mega-face mega-face--front">
+                  <div class="mega-front">
+                    ${(item.summary_image_url||item.thumbnail_url)?`<img class=\"mega-front-thumb\" alt=\"\" src=\"${this.normalizeAssetUrl(item.summary_image_url || item.thumbnail_url)}\">`:''}
+                    <div class="mega-front-overlay">
+                      <div class="mega-front-meta">${chipRail || ''}</div>
+                      <h3 class="mega-front-title">${safeTitle}</h3>
+                    </div>
+                  </div>
+                </div>
+                <div class="mega-face mega-face--back">
+                  <div class="mega-header">
+                    <div class="mega-title">${safeTitle}</div>
+                    <div></div>
+                  </div>
+                  <div class="mega-body prose prose-sm dark:prose-invert max-w-none" data-mega-body data-summary-body></div>
+                  <div class="mega-footer">
+                    <div class="mega-left">
+                      <span class="wall-sim-pill" data-sim-label>Similar shown</span>
+                      <label class="toggle" data-control><input type="checkbox" data-sim-only data-control> Show only</label>
+                      <button class="wall-sim-reset" data-sim-reset data-control>Reset</button>
+                    </div>
+                    <div class="mega-right">
+                      <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-mega-display data-control title="Display options">Aa</button>
+                      <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-mega-open data-control title="Open page">Open</button>
+                      <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                          <circle cx="5" cy="12" r="1.5"></circle>
+                          <circle cx="12" cy="12" r="1.5"></circle>
+                          <circle cx="19" cy="12" r="1.5"></circle>
+                        </svg>
+                      </button>
+                      <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-mega-close data-control aria-label="Close">✕</button>
+                      ${menuMarkup}
+                    </div>
+                  </div>
+                </div>
+              </div>`;
+            const bodyHost = cardEl.querySelector('[data-mega-body]');
+            if (bodyHost) bodyHost.innerHTML = this.renderWallReaderSection(item);
+            // Two-phase choreography:
+            // 1) Move neighbors out (FLIP reflow) while freezing the clicked card visually in place/size
+            // 2) After neighbors finish, grow the clicked card into the reserved 2x2 area, then flip to summary
+            let beforeRect = null, afterRect = null;
+            try {
+              beforeRect = before.get(cardEl) || cardEl.getBoundingClientRect();
+              afterRect = cardEl.getBoundingClientRect();
+              // Freeze the card at its pre-expand position/size using FLIP transform
+              const dx = (beforeRect.left + window.pageXOffset) - (afterRect.left + window.pageXOffset);
+              const dy = (beforeRect.top + window.pageYOffset) - (afterRect.top + window.pageYOffset);
+              const sx = beforeRect.width && afterRect.width ? (beforeRect.width / afterRect.width) : 1;
+              const sy = beforeRect.height && afterRect.height ? (beforeRect.height / afterRect.height) : 1;
+              // Disable any base transition so this snap does not animate
+              cardEl.style.setProperty('transition', 'none', 'important');
+              cardEl.style.transformOrigin = 'top left';
+              cardEl.style.willChange = 'transform';
+              cardEl.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px) scale(${sx}, ${sy})`;
+              // Keep this card below neighbors during their move-out
+              cardEl.style.zIndex = '5';
+              cardEl.classList.add('mega-glow');
+              // No transition yet — we want neighbors to animate first
+            } catch(_) {}
+            // Animate grid reflow (FLIP) after reflow commits, then scroll
+            try {
+              requestAnimationFrame(() => requestAnimationFrame(() => {
+                const totalMs = this.animateGridReflow(grid, before) || (this.flipDebugMs || 620);
+                // Scroll after animation starts, not before (avoid canceling transforms)
+                setTimeout(() => {
+                  try {
+                    const header = document.querySelector('header');
+                    const hh = header ? header.getBoundingClientRect().height : 64;
+                    const r = cardEl.getBoundingClientRect();
+                    const needsScroll = (r.top < hh + 12) || (r.bottom > (window.innerHeight - 12));
+                    if (needsScroll) {
+                      const top = Math.max(0, r.top + window.pageYOffset - hh - 16);
+                      window.scrollTo({ top, behavior: 'smooth' });
+                    }
+                  } catch(_) {}
+                }, 80);
+                // Phase 2: start earlier (half of neighbor stagger duration) so the wait isn't too long
+                const halfMs = Math.max(240, Math.round(totalMs * 0.5));
+                setTimeout(() => {
+                  try {
+                    // Animate the transform back to identity to expand into place
+                    cardEl.style.setProperty('transition', 'transform 520ms cubic-bezier(0.22, 1, 0.36, 1)', 'important');
+                    // force reflow before clearing transform
+                    void cardEl.offsetWidth;
+                    cardEl.style.transform = '';
+                    setTimeout(() => {
+                      try {
+                        cardEl.style.removeProperty('transition');
+                        cardEl.style.removeProperty('will-change');
+                        cardEl.style.removeProperty('z-index');
+                      } catch(_) {}
+                      try { cardEl.classList.add('wall-card--flipped'); } catch(_) {}
+                    }, 560);
+                  } catch(_) {}
+                }, halfMs + 60);
+              }));
+            } catch(_) {}
+            // Apply similarity halo and set label count
+            let similarCount = 0;
+            try {
+              const items = this.currentItems || [];
+              const base = items.find(x => x.file_stem === id);
+              const cards = Array.from(grid.querySelectorAll('.wall-card'));
+              const scored = cards.map(card => {
+                const cid = card.getAttribute('data-report-id');
+                const it = items.find(x => x.file_stem === cid);
+                const sc = it && it !== base ? this.computeHeuristicSimilarity(base, it) : -1;
+                return { cid, card, item: it, score: sc };
+              }).filter(r => r.item && r.cid !== id).sort((a,b)=>b.score-a.score);
+              const K = Math.max(12, Math.min(36, Math.round((window.innerWidth || 1200) / 48)));
+              similarCount = Math.min(K, scored.length);
+              try { this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')); } catch(_) {}
+            } catch(_) {}
+            try { const lbl = cardEl.querySelector('[data-sim-label]'); if (lbl) lbl.textContent = `Similar (${similarCount || ''})`; } catch(_) {}
+            // Wire actions
+            const openBtn = cardEl.querySelector('[data-mega-open]');
+            if (openBtn) openBtn.addEventListener('click', (ev) => { ev.preventDefault(); window.location.href = `/${encodeURIComponent(id)}.json?v=2`; });
+            const menuBtn = cardEl.querySelector('[data-action="menu"]');
+            if (menuBtn) {
+                menuBtn.addEventListener('click', () => this.toggleKebabMenu(cardEl, true, menuBtn));
+                const menu = cardEl.querySelector('[data-kebab-menu]');
+                if (menu) {
+                    const onMenuClick = (e) => {
+                        const a = e.target.closest('[data-action]');
+                        if (!a) return;
+                        const act = a.getAttribute('data-action');
+                        if (act === 'copy-link') { this.copyLink(cardEl, id); this.toggleKebabMenu(cardEl, false); }
+                        if (act === 'reprocess') { this.openReprocessModal(id, cardEl); this.toggleKebabMenu(cardEl, false); }
+                        if (act === 'delete') { this.handleDelete(id, cardEl); this.toggleKebabMenu(cardEl, false); }
+                        if (act === 'images-manage') { this.handleManageImages(id); this.toggleKebabMenu(cardEl, false); }
+                    };
+                    menu.addEventListener('click', onMenuClick);
+                }
+            }
+            const aaBtn = cardEl.querySelector('[data-mega-display]');
+            if (aaBtn && bodyHost) {
+                this.applyReaderDisplayPrefs(cardEl, bodyHost);
+                aaBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.openReaderFooterDrawer(cardEl, bodyHost, aaBtn); });
+            }
+            const closeBtn = cardEl.querySelector('[data-mega-close]');
+            if (closeBtn) closeBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.closeWallMegaCard(id, cardEl); });
+            // Esc to close
+            const onEsc = (ev) => { if (ev.key === 'Escape') { this.closeWallMegaCard(id, cardEl); document.removeEventListener('keydown', onEsc); } };
+            document.addEventListener('keydown', onEsc);
+            // Similar controls
+            const simOnly = cardEl.querySelector('[data-sim-only]');
+            if (simOnly) simOnly.addEventListener('change', (e) => {
+              e.stopPropagation();
+              try { grid.classList.toggle('wall-sim-only', !!simOnly.checked); } catch(_) {}
+            });
+            const simReset = cardEl.querySelector('[data-sim-reset]');
+            if (simReset) simReset.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.clearSimilarityView(grid); try { if (simOnly) simOnly.checked = false; grid.classList.remove('wall-sim-only'); } catch(_) {}; });
+            // Prevent clicks inside mega content from bubbling to card (which would close it)
+            try { cardEl.querySelector('.mega-inner').addEventListener('click', (e)=> e.stopPropagation()); } catch(_) {}
+        } catch (_) {}
+    }
+    openReaderFooterDrawer(container, bodyEl, anchorBtn) {
+        try {
+            // Close if open
+            const existing = container.querySelector('.reader-drawer');
+            if (existing) { existing.classList.toggle('open'); if (!existing.classList.contains('open')) { setTimeout(()=> existing.remove(), 180); } return; }
+            const prefs = this.getReaderDisplayPrefs();
+            const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed?'true':'false'}">${label}</span>`;
+            const sizeSeg = `
+              <div class="reader-segment" role="group" aria-label="Text size">
+                ${segBtn('data-reader-size-dec', 'A−', false)}
+                <span data-size-chip style="padding:0 .5rem;">A</span>
+                ${segBtn('data-reader-size-inc', 'A+', false)}
+              </div>`;
+            const lineSeg = `
+              <div class="reader-segment" role="radiogroup" aria-label="Line height">
+                ${segBtn('data-reader-line="tight"', 'Tight', prefs.line==='tight')}
+                ${segBtn('data-reader-line="normal"', 'Normal', prefs.line==='normal')}
+                ${segBtn('data-reader-line="loose"', 'Loose', prefs.line==='loose')}
+              </div>`;
+            const familySeg = `
+              <div class="reader-segment" role="radiogroup" aria-label="Font family">
+                ${segBtn('data-reader-family="sans"', '<span style=\\"font-family:system-ui,sans-serif\\">Aa</span>', prefs.family==='sans')}
+                ${segBtn('data-reader-family="serif"', '<span style=\\"font-family:Georgia,serif\\">Aa</span>', prefs.family==='serif')}
+              </div>`;
+            const justifySeg = `
+              <div class="reader-segment" role="radiogroup" aria-label="Justification">
+                ${segBtn('data-reader-justify="left"', 'Left', prefs.justify==='left')}
+                ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify==='justify')}
+              </div>`;
+            const paraSeg = `
+              <div class="reader-segment" role="radiogroup" aria-label="Paragraph style">
+                ${segBtn('data-reader-para="spaced"', 'Spaced', prefs.paraStyle==='spaced')}
+                ${segBtn('data-reader-para="indented"', 'Indented', prefs.paraStyle==='indented')}
+              </div>`;
+            const measureSeg = `
+              <div class="reader-segment" role="radiogroup" aria-label="Reading width">
+                ${segBtn('data-reader-measure="narrow"', 'Narrow', prefs.measure==='narrow')}
+                ${segBtn('data-reader-measure="medium"', 'Medium', prefs.measure==='medium')}
+                ${segBtn('data-reader-measure="wide"', 'Wide', prefs.measure==='wide')}
+                ${segBtn('data-reader-measure="full"', 'Full', prefs.measure==='full')}
+              </div>`;
+            const drawer = document.createElement('div');
+            drawer.className = 'reader-drawer';
+            drawer.innerHTML = `
+              <div class="flex items-center justify-between">
+                <div class="tabs" role="tablist">
+                  <button type="button" role="tab" aria-pressed="true" data-tab="typo">Typography</button>
+                  <button type="button" role="tab" aria-pressed="false" data-tab="layout">Layout</button>
+                </div>
+                <button type="button" class="reader-close" data-close>×</button>
+              </div>
+              <div class="drawer-row" data-pane="typo" style="display:block">${sizeSeg} ${familySeg} ${lineSeg}</div>
+              <div class="drawer-row" data-pane="layout" style="display:none">${paraSeg} ${justifySeg} ${measureSeg.replace('</div>','')}${segBtn('data-reader-measure="auto"','Auto', prefs.measure==='auto')}</div>
+            `;
+            const host = container.querySelector('.mega-face--back') || container;
+            host.appendChild(drawer);
+            const setTab = (name) => {
+              const a = drawer.querySelector('[data-tab="typo"]'); const b = drawer.querySelector('[data-tab="layout"]');
+              const p1 = drawer.querySelector('[data-pane="typo"]'); const p2 = drawer.querySelector('[data-pane="layout"]');
+              a.setAttribute('aria-pressed', name==='typo'?'true':'false');
+              b.setAttribute('aria-pressed', name==='layout'?'true':'false');
+              p1.style.display = name==='typo' ? 'block' : 'none';
+              p2.style.display = name==='layout' ? 'block' : 'none';
+            };
+            drawer.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-para], [data-reader-justify], [data-reader-measure], [data-reader-size-inc], [data-reader-size-dec], [data-tab], [data-close]');
+                if (!btn) return;
+                if (btn.hasAttribute('data-close')) { drawer.classList.remove('open'); setTimeout(()=> drawer.remove(), 180); return; }
+                if (btn.hasAttribute('data-tab')) { setTab(btn.getAttribute('data-tab')); return; }
+                const size = btn.getAttribute('data-reader-size');
+                const line = btn.getAttribute('data-reader-line');
+                const family = btn.getAttribute('data-reader-family');
+                const para = btn.getAttribute('data-reader-para');
+                const justify = btn.getAttribute('data-reader-justify');
+                const measure = btn.getAttribute('data-reader-measure');
+                const inc = btn.hasAttribute('data-reader-size-inc');
+                const dec = btn.hasAttribute('data-reader-size-dec');
+                let next = {};
+                if (size && READER_SIZE_MAP[size]) next.size = size;
+                if (inc || dec) {
+                  const order = ['s','m','l','xl','xxl'];
+                  const cur = this.getReaderDisplayPrefs().size || 'm';
+                  let idx = Math.max(0, order.indexOf(cur));
+                  if (inc && idx < order.length - 1) idx++;
+                  if (dec && idx > 0) idx--;
+                  next.size = order[idx];
+                }
+                if (line && READER_LINE_MAP[line]) next.line = line;
+                if (family && READER_FAMILY_MAP[family]) next.family = family;
+                if (para && READER_PARA_STYLES.includes(para)) next.paraStyle = para;
+                if (justify && READER_JUSTIFY.includes(justify)) next.justify = justify;
+                if (measure && READER_MEASURE_MAP[measure]) next.measure = measure;
+                const merged = this.setReaderDisplayPrefs(next);
+                this.applyReaderDisplayPrefs(container, bodyEl);
+                // Update toggles states
+                ['size','line','family','para','justify','measure'].forEach(key => {
+                  drawer.querySelectorAll('[data-reader-' + key + ']').forEach(el => {
+                    const val = el.getAttribute('data-reader-' + key);
+                    const want = String(merged[key === 'para' ? 'paraStyle' : key]);
+                    el.setAttribute('aria-pressed', val === want ? 'true' : 'false');
+                  });
+                });
+            });
+            // Start on Typography tab with slide-up
+            setTab('typo');
+            requestAnimationFrame(()=> drawer.classList.add('open'));
+        } catch (_) {}
+    }
+    animateGridReflow(grid, beforeMap) {
+        if (!grid || !beforeMap || !(beforeMap instanceof Map)) return;
+        const cards = Array.from(grid.querySelectorAll('.wall-card'));
+        const selected = grid.querySelector('.wall-card.wall-card--mega');
+        const megaRect = selected ? selected.getBoundingClientRect() : null;
+        const transitions = [];
+        const baseMs = 900; // lengthen for clearer motion; can be overridden with ?flipms
+        const durMs = this.flipDebugMs || baseMs;
+        const scaleStart = 1.04; // slight shrink while moving into place
+
+        const movers = [];
+        cards.forEach(el => {
+            if (el === selected) return;
+            const before = beforeMap.get(el);
+            if (!before) return;
+            const after = el.getBoundingClientRect();
+            const dx = before.left - after.left;
+            const dy = before.top - after.top;
+            if (!(dx || dy)) return;
+            let overlapped = false;
+            let dist = 99999;
+            if (megaRect) {
+                const cx = before.left + before.width / 2;
+                const cy = before.top + before.height / 2;
+                overlapped = (cx >= megaRect.left && cx <= megaRect.right && cy >= megaRect.top && cy <= megaRect.bottom);
+                const mx = megaRect.left + megaRect.width / 2;
+                const my = megaRect.top + megaRect.height / 2;
+                dist = Math.hypot(cx - mx, cy - my);
+            }
+            movers.push({ el, before, after, dx, dy, overlapped, dist });
+        });
+
+        // Stagger: overlapped group first (tight cascade), then others by distance
+        const primary = movers.filter(m => m.overlapped);
+        const others  = movers.filter(m => !m.overlapped).sort((a,b) => a.dist - b.dist);
+
+        const schedule = [];
+        primary.forEach((m, i) => schedule.push({ ...m, delay: i * 70 }));
+        const baseDelay = primary.length ? (primary.length - 1) * 70 + 120 : 0;
+        others.forEach((m, i) => schedule.push({ ...m, delay: baseDelay + Math.min(300, i * 30) }));
+
+        let maxEnd = 0;
+        schedule.forEach(item => {
+            const { el, dx, dy, delay, overlapped } = item;
+            try {
+                el.style.setProperty('transform-origin', 'center', 'important');
+                // Prepare from-state: translated away from its final spot and slightly larger
+                el.style.setProperty('will-change', 'transform', 'important');
+                el.style.transform = `translate(${dx}px, ${dy}px) scale(${scaleStart})`;
+                // Make sure neighbors render above the frozen mega during phase 1
+                el.style.setProperty('z-index', '40', 'important');
+                // Opacity fade for overlapped (the three directly under the mega area)
+                if (overlapped) {
+                    el.style.setProperty('opacity', '0.55', 'important');
+                }
+                // Force reflow, then animate to identity (0 translate, scale 1)
+                void el.offsetWidth;
+                const t = `transform ${durMs}ms cubic-bezier(0.22, 1, 0.36, 1) ${delay}ms` + (overlapped ? `, opacity ${durMs}ms ease ${delay}ms` : '');
+                el.style.setProperty('transition', t, 'important');
+                el.style.transform = '';
+                if (overlapped) el.style.opacity = '1';
+                transitions.push(el);
+                const end = delay + durMs;
+                if (end > maxEnd) maxEnd = end;
+            } catch (_) {}
+        });
+
+        const cleanup = () => {
+            transitions.forEach(el => { try { el.style.removeProperty('transition'); el.style.removeProperty('will-change'); el.style.removeProperty('z-index'); el.style.removeProperty('transform-origin'); el.style.removeProperty('opacity'); } catch(_) {} });
+        };
+        // Primary timeout cleanup
+        setTimeout(cleanup, maxEnd + 160);
+        // Additional safety cleanup in case of interruption
+        setTimeout(cleanup, maxEnd + 1200);
+        return maxEnd;
+    }
+
+    resetWallCardStyles(grid) {
+        try {
+            const els = Array.from(grid.querySelectorAll('.wall-card'));
+            els.forEach(el => {
+                el.style.removeProperty('transition');
+                el.style.removeProperty('transform');
+                el.style.removeProperty('will-change');
+                el.style.removeProperty('z-index');
+                el.style.removeProperty('opacity');
+                el.style.removeProperty('transform-origin');
+            });
+        } catch (_) { /* no-op */ }
+    }
+    closeWallMegaCard(id, cardEl) {
+        try {
+            const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+            if (cardEl && cardEl._origHTML != null) {
+                cardEl.innerHTML = cardEl._origHTML;
+                cardEl._origHTML = null;
+            }
+            if (cardEl) {
+                cardEl.classList.remove('wall-card--flipped');
+                cardEl.classList.remove('wall-card--mega');
+                cardEl.classList.remove('mega-glow');
+            }
+            this.clearSimilarityView(grid);
+            try { grid.classList.remove('wall-sim-only'); } catch(_) {}
+        } catch (_) {}
     }
 
     // Normalize NAS HTML variants at render time to ensure headings/lists styles apply
@@ -7486,6 +8196,7 @@ class AudioDashboard {
         return new Promise((resolve) => {
             const overlay = document.createElement('div');
             overlay.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
+            try { overlay.style.zIndex = '130'; } catch(_) {}
             const panel = document.createElement('div');
             panel.className = 'w-full max-w-3xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl';
 

@@ -484,6 +484,21 @@ body {
     box-shadow: none !important;
 }
 
+/* Wall similarity halo mode */
+.wall-sim-active .wall-card { transition: opacity 120ms ease, filter 120ms ease, transform 120ms ease; }
+.wall-sim-active .wall-card.wall-card--dim { opacity: 0.35; filter: saturate(0.7); }
+.wall-sim-active .wall-card.wall-card--similar { opacity: 1; filter: none; box-shadow: 0 0 0 2px rgba(56,189,248,0.28), 0 0 0 4px rgba(56,189,248,0.12); border-radius: 14px; }
+/* Show-only mode: hide non-similar cards but keep mega and similars; center mega */
+.wall-sim-only .wall-card { display: none; }
+.wall-sim-only .wall-card.wall-card--similar,
+.wall-sim-only .wall-card.wall-card--mega { display: block; }
+/* Keep regular sizing; just reorder so mega appears first and similars follow tightly */
+.wall-sim-only .wall-card--mega { order: -100; justify-self: auto; width: auto; }
+.wall-sim-only .wall-card--similar { order: -99; }
+.wall-sim-pill { font-size: 12px; color: rgba(148,163,184,0.9); }
+.wall-sim-reset { padding: 4px 8px; border-radius: 8px; border: 1px solid rgba(148,163,184,0.4); font-size: 12px; }
+.dark .wall-sim-reset { border-color: rgba(71,85,105,0.55); }
+
 /* Subtle media lift on hover */
 [data-card]:hover .summary-card__media img,
 [data-card]:hover .stream-card__media img,
@@ -562,7 +577,7 @@ body {
   border-radius: 0.9rem;
   box-shadow: 0 18px 48px rgba(2,8,23,0.22);
   padding: 1rem 1rem 1.1rem;
-  z-index: 70;
+  z-index: 120;
 }
 .dark .reader-display-popover {
   background: rgba(15,23,42,0.98);
@@ -693,6 +708,16 @@ body {
 /* Panel shadow/light mode depth */
 .reader-display-popover { box-shadow: 0 12px 32px rgba(0,0,0,0.3); }
 body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+
+/* Snap-in animation for Display Options */
+@keyframes readerPopIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.reader-display-popover.pop-animate { animation: readerPopIn 160ms cubic-bezier(0.22, 1, 0.36, 1) both; will-change: transform, opacity; }
+@media (prefers-reduced-motion: reduce) {
+  .reader-display-popover.pop-animate { animation: none; }
+}
 /* Bottom sheet mode for mobile */
 .reader-sheet-scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 69; }
 .reader-display-popover.reader-sheet { position: fixed; left: 0; right: 0; bottom: 0; top: auto; margin: 0; width: 100vw; max-height: 75vh; border-radius: 16px 16px 0 0; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
@@ -772,7 +797,8 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 
 /* Reader CSS variables (scoped to reader body containers) */
 .wall-expander [data-summary-body],
-#wallReaderBody {
+#wallReaderBody,
+.wall-card--mega .mega-body {
   --reader-font-size: 1rem; /* base 16px */
   --reader-line: 1.6;
   --reader-font-family: inherit;
@@ -784,7 +810,8 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 /* Comfortable reading measure for long-form text (desktop only) */
 @media (min-width: 1024px) {
   .wall-expander [data-summary-body],
-  #wallReaderBody {
+  #wallReaderBody,
+  .wall-card--mega .mega-body {
 /* Reader measure is adjustable via --reader-measure */
     max-width: var(--reader-measure, 70ch);
     margin-left: auto;
@@ -794,15 +821,16 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 
 /* Hyphenation and improved wrapping for paragraphs in readers */
 .wall-expander [data-summary-body] p,
-#wallReaderBody p {
+#wallReaderBody p,
+.wall-card--mega .mega-body p {
   hyphens: auto;
   -webkit-hyphens: auto;
   text-wrap: pretty;
 }
 
 /* Paragraph style: indented (applied at container via .reader-para--indented) */
-.reader-para--indented [data-summary-body] p { margin: 0.55rem 0; }
-.reader-para--indented [data-summary-body] p + p { text-indent: 1.25em; }
+.reader-para--indented [data-summary-body] p, .reader-para--indented .mega-body p { margin: 0.55rem 0; }
+.reader-para--indented [data-summary-body] p + p, .reader-para--indented .mega-body p + p { text-indent: 1.25em; }
 .reader-para--indented [data-summary-body] .kp-takeaway,
 .reader-para--indented [data-summary-body] h1,
 .reader-para--indented [data-summary-body] h2,
@@ -813,7 +841,7 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 .reader-para--indented [data-summary-body] li { text-indent: 0; }
 
 /* Text justification (allowed on mobile when enabled) */
-.reader-justify--on [data-summary-body] {
+.reader-justify--on [data-summary-body], .reader-justify--on .mega-body {
   text-align: justify;
   text-justify: inter-word;
   hyphens: auto;
@@ -823,7 +851,9 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 .wall-expander [data-summary-body] p,
 .wall-expander [data-summary-body] li,
 #wallReaderBody p,
-#wallReaderBody li { line-height: var(--reader-line) !important; }
+#wallReaderBody li,
+.wall-card--mega .mega-body p,
+.wall-card--mega .mega-body li { line-height: var(--reader-line) !important; }
 
 /* Compact preview inside Display Options */
 .reader-preview {
@@ -1352,6 +1382,11 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
     gap: 0.5rem;
     width: 100%;
     padding-bottom: 2rem;
+    /* Allow tighter packing so expanded items don't leave awkward gaps */
+    grid-auto-flow: dense;
+    /* Keep row heights uniform so 2x row spans look tidy (approximate) */
+    --wall-row-h: 280px;
+    grid-auto-rows: var(--wall-row-h);
 }
 .wall-expander {
     grid-column: 1 / -1;
@@ -1363,6 +1398,11 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
     border: 1px solid rgba(226,232,240,0.8);
     box-shadow: var(--card-shadow-strong);
     padding: 1rem 1rem;
+    /* New: make the reader narrower and centered */
+    max-width: min(1100px, 72vw);
+    margin-left: auto;
+    margin-right: auto;
+    position: relative;
 }
 .dark .wall-expander {
     background: rgba(2,6,23,0.85);
@@ -1382,6 +1422,9 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 }
 .dark .wall-expander::before {
     border-bottom-color: rgba(30,41,59,0.95);
+}
+@media (max-width: 900px) {
+  .wall-expander { max-width: calc(100vw - 24px); }
 }
 /* Reader panel – stronger accent glow when open (no hard ring) */
 .wall-reader-open .wall-expander {
@@ -1435,14 +1478,92 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 }
 .wall-card {
     position: relative;
-    aspect-ratio: 2 / 3;
+    /* Use grid row height instead of aspect ratio for consistent spans */
+    height: 100%;
     border-radius: 0.75rem;
     overflow: hidden;
     isolation: isolate;
     cursor: pointer;
     box-shadow: var(--card-shadow);
-    transition: transform 200ms ease, box-shadow 200ms ease;
+    transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 320ms ease;
+    will-change: transform;
 }
+
+/* In-grid mega-card: span two cols/rows and elevate */
+.wall-card--mega {
+  grid-column: span 2;
+  grid-row: span 2;
+  z-index: 12;
+  /* Break the fixed aspect so content can fill larger area */
+  aspect-ratio: auto;
+  min-height: 420px;
+  transition: transform 360ms ease, box-shadow 360ms ease, border-color 240ms ease;
+  overflow: hidden; /* clip overflowing prose */
+  border: 2px solid rgba(56,189,248,0.35);
+  box-shadow: 0 0 0 2px rgba(56,189,248,0.18), 0 24px 60px -12px rgba(14,165,233,0.45), var(--card-shadow-strong);
+}
+.wall-card--mega .mega-inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform 380ms ease; }
+.wall-card--mega.wall-card--flipped .mega-inner { transform: rotateY(180deg); }
+.mega-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.mega-face--back { transform: rotateY(180deg); display: grid; grid-template-rows: 44px 1fr 46px; }
+.mega-face--back { overflow: hidden; }
+.mega-header { display:flex; align-items:center; justify-content: space-between; gap:8px; padding: 8px 10px; background: linear-gradient(180deg, rgba(2,6,23,0.75), rgba(2,6,23,0.55)); color: #f8fafc; }
+.mega-title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.mega-actions .ybtn, .mega-actions .summary-card__menu-btn { margin-left: 6px; }
+.mega-body { padding: 10px 12px; overflow: auto; max-width: 100%; word-break: break-word; overflow-wrap: anywhere; }
+.mega-front-thumb { width: 100%; height: 100%; object-fit: cover; }
+
+/* Glowing focus for mega */
+.mega-glow {
+  box-shadow:
+    0 0 0 2px rgba(56,189,248,0.28),
+    0 0 0 6px rgba(56,189,248,0.16),
+    0 28px 70px -20px rgba(14,165,233,0.55),
+    var(--card-shadow-strong);
+  border-color: rgba(56,189,248,0.55);
+}
+
+/* Title/Chips overlay on front face so identity persists while expanding */
+.mega-front { position: absolute; inset: 0; }
+.mega-front-overlay {
+  position: absolute; inset: 8px; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px;
+  border-radius: 12px; padding: 12px;
+  background: linear-gradient(180deg, rgba(2,6,23,0.0) 40%, rgba(2,6,23,0.65) 100%);
+  color: #f8fafc;
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+.mega-front-title { font-size: 1rem; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,0.4); margin: 0; }
+.mega-front-meta { opacity: .95; }
+.wall-card--flipped .mega-front-overlay { opacity: 0; transform: translateY(6px); }
+
+/* Enter scale animation to make growth more perceivable */
+.mega-enter { transform: scale(1.0); }
+.mega-enter-active { transform: scale(1.06); }
+
+/* Soft focus ring during growth */
+.mega-focus { box-shadow: 0 0 0 3px rgba(56,149,255,0.35), 0 0 0 9px rgba(56,189,248,0.18), var(--card-shadow-strong); }
+
+/* Reader footer drawer inside mega card */
+.reader-drawer { position: absolute; left: 10px; right: 10px; bottom: 56px; max-height: 60%; overflow-y: auto; border-radius: 12px; border: 1px solid rgba(226,232,240,0.9); background: rgba(255,255,255,0.98); box-shadow: 0 18px 48px rgba(2,8,23,0.22); padding: 12px; opacity: 0; transform: translateY(12px); transition: transform 200ms ease, opacity 200ms ease; z-index: 5; }
+.dark .reader-drawer { border-color: rgba(71,85,105,0.55); background: rgba(15,23,42,0.98); }
+.reader-drawer.open { opacity: 1; transform: translateY(0); }
+.reader-drawer .tabs { display: inline-flex; gap: 6px; border: 1px solid rgba(226,232,240,0.9); background: rgba(248,250,252,0.7); border-radius: 10px; overflow: hidden; }
+.dark .reader-drawer .tabs { border-color: rgba(71,85,105,0.55); background: rgba(2,6,23,0.6); }
+.reader-drawer .tabs button { padding: 6px 10px; font-size: 13px; border-right: 1px solid rgba(226,232,240,0.7); }
+.reader-drawer .tabs button:last-child { border-right: none; }
+.reader-drawer .tabs button[aria-pressed="true"] { background: #0ea5e9; color: #fff; }
+.reader-drawer .drawer-row { margin-top: 10px; display: flex; gap: 12px; flex-wrap: wrap; }
+.reader-drawer .drawer-row .reader-segment { margin-right: 0; }
+
+/* Footer actions row inside mega card */
+.mega-footer { display:flex; align-items:center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-top: 1px solid rgba(148,163,184,0.25); background: linear-gradient(180deg, rgba(2,6,23,0.35), rgba(2,6,23,0.6)); color: #f8fafc; flex-wrap: wrap; }
+.mega-footer .mega-left { display:flex; align-items:center; gap: 8px; flex: 1 1 auto; min-width: 220px; }
+.mega-footer .mega-right { flex: 0 0 auto; display:flex; align-items:center; }
+.mega-footer .mega-right .ybtn, .mega-footer .mega-right .summary-card__menu-btn { margin-left: 6px; }
+.mega-footer .toggle { display:inline-flex; align-items:center; gap:6px; font-size:12px; opacity:.9; }
+
+/* Show-only similar: hide dimmed cards when active */
+.wall-sim-active.wall-sim-only .wall-card.wall-card--dim { display: none; }
 .wall-card:hover,
 .wall-card:focus-visible {
     transform: translateY(-4px) scale(1.02);
@@ -1507,6 +1628,42 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
 .wall-card__actions .stream-card__media-btn:focus-visible {
     background: rgba(14, 165, 233, 0.9);
 }
+
+/* Flip mega-card overlay (Option B) */
+.flip-overlay {
+  position: fixed;
+  z-index: 90;
+  top: 0; left: 0;
+  width: 200px; height: 200px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.96);
+  color: #0f172a;
+  border: 1px solid rgba(226,232,240,0.85);
+  box-shadow: 0 24px 80px rgba(2,6,23,0.4), 0 0 0 2px rgba(14,165,233,0.25);
+  overflow: hidden;
+  transition: left 220ms ease, top 220ms ease, width 220ms ease, height 220ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+.dark .flip-overlay { background: rgba(2,6,23,0.95); color: #e2e8f0; border-color: rgba(30,41,59,0.8); box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 0 0 2px rgba(14,165,233,0.25); }
+.flip-overlay .flip-header { display:flex; align-items:center; justify-content: space-between; padding: 8px 10px; gap:8px; border-bottom:1px solid rgba(226,232,240,0.6); }
+.dark .flip-overlay .flip-header { border-bottom-color: rgba(51,65,85,0.6); }
+.flip-overlay .flip-title { font-size: 14px; font-weight: 600; overflow:hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.flip-overlay .flip-actions button { margin-left: 6px; }
+.flip-overlay .flip-inner { position: absolute; left: 0; right: 0; bottom: 0; top: 44px; transform-style: preserve-3d; transition: transform 380ms ease; }
+.flip-overlay.is-flipped .flip-inner { transform: rotateY(180deg); }
+.flip-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; overflow: auto; }
+.flip-face--back { transform: rotateY(180deg); }
+.flip-front-body { display: grid; grid-template-columns: 160px 1fr; gap: 10px; padding: 10px; align-items: start; }
+.flip-front-body .thumb { width: 160px; height: 100px; object-fit: cover; border-radius: 10px; background: rgba(148,163,184,0.25); }
+.flip-back-body { padding: 10px 12px; }
+.flip-back-body { position: relative; padding-bottom: 56px; }
+.flip-footer { position: absolute; right: 12px; bottom: 10px; }
+.flip-footer .ybtn { padding: 6px 10px; border-radius: 8px; background: rgba(148,163,184,0.2); }
+.flip-footer .ybtn:hover { filter: brightness(1.05); }
+.flip-close { width: 28px; height: 28px; border-radius: 8px; background: rgba(148,163,184,0.2); display:inline-flex; align-items:center; justify-content:center; }
+.flip-close:hover { filter: brightness(1.1); }
+
+/* Scrim behind flip overlay */
+.flip-scrim { position: fixed; inset: 0; background: rgba(2,6,23,0.55); z-index: 85; }
 
 /* Compact action buttons for V4 cards */
 .stream-card .variant-toggle,
