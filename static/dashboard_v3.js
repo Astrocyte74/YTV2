@@ -4408,6 +4408,7 @@ class AudioDashboard {
     openWallModalReader(id) {
         const modal = document.getElementById('wallReaderModal');
         const body = document.getElementById('wallReaderBody');
+        const sheet = document.getElementById('wallReaderSheet');
         const titleEl = document.getElementById('wallReaderTitle');
         const closeBtn = document.getElementById('wallReaderClose');
         const item = (this.currentItems || []).find(x => x.file_stem === id);
@@ -4439,12 +4440,14 @@ class AudioDashboard {
         } catch(_) {}
         modal.classList.remove('hidden');
         modal.classList.add('flex');
+        try { document.body.classList.add('mobile-modal-open'); } catch(_) {}
         const onClose = () => {
             modal.classList.add('hidden');
             modal.classList.remove('flex');
             closeBtn.removeEventListener('click', onClose);
             modal.removeEventListener('click', onOutside);
             document.removeEventListener('keydown', onEsc);
+            try { document.body.classList.remove('mobile-modal-open'); } catch(_) {}
             this.sendTelemetry('read_close', { id, view: 'wall' });
         };
         const onOutside = (e) => { if (e.target === modal) onClose(); };
@@ -4482,6 +4485,51 @@ class AudioDashboard {
         document.addEventListener('keydown', onEsc);
         document.addEventListener('keydown', onArrow);
         document.addEventListener('keydown', onArrow);
+        // Swipe-down to close (drag the sheet)
+        try {
+            if (sheet) {
+                let startY = 0, curY = 0, dragging = false;
+                const threshold = 84;
+                const onStart = (e) => { dragging = true; startY = (e.touches? e.touches[0].clientY : e.clientY); curY = startY; sheet.style.transition = 'none'; };
+                const onMove = (e) => {
+                    if (!dragging) return;
+                    curY = (e.touches? e.touches[0].clientY : e.clientY);
+                    const dy = Math.max(0, curY - startY);
+                    if (sheet.scrollTop <= 0 || dy > 0) {
+                        sheet.style.transform = `translateY(${dy}px)`;
+                        try { e.preventDefault(); } catch(_) {}
+                    }
+                };
+                const onEnd = () => {
+                    if (!dragging) return;
+                    dragging = false;
+                    const dy = Math.max(0, curY - startY);
+                    sheet.style.transition = 'transform 200ms ease';
+                    if (dy > threshold) { sheet.style.transform = 'translateY(100%)'; setTimeout(onClose, 160); }
+                    else { sheet.style.transform = 'translateY(0)'; }
+                };
+                sheet.addEventListener('touchstart', onStart, { passive: true });
+                sheet.addEventListener('touchmove', onMove, { passive: false });
+                sheet.addEventListener('touchend', onEnd);
+                // Mouse (dev tools)
+                sheet.addEventListener('mousedown', onStart);
+                window.addEventListener('mousemove', onMove, { passive: false });
+                window.addEventListener('mouseup', onEnd);
+                // Cleanup when modal hides
+                const obs = new MutationObserver(() => {
+                    if (modal.classList.contains('hidden')) {
+                        sheet.removeEventListener('touchstart', onStart);
+                        sheet.removeEventListener('touchmove', onMove);
+                        sheet.removeEventListener('touchend', onEnd);
+                        sheet.removeEventListener('mousedown', onStart);
+                        window.removeEventListener('mousemove', onMove);
+                        window.removeEventListener('mouseup', onEnd);
+                        obs.disconnect();
+                    }
+                });
+                obs.observe(modal, { attributes: true, attributeFilter: ['class'] });
+            }
+        } catch(_) {}
         // Actions: Open, kebab menu
         try {
             const openBtn = modal.querySelector('[data-action="wall-reader-open-page"]');

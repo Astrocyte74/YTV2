@@ -12,7 +12,7 @@
     <!-- Shared styles across dashboard and report pages -->
     <link rel="stylesheet" href="/static/shared.css?v=20251110a">
     <!-- Dashboard specific styles -->
-    <link rel="stylesheet" href="dashboard.css?v=20251111d">
+    <link rel="stylesheet" href="dashboard.css?v=20251111g">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -830,7 +830,7 @@
 
         <!-- Wall Reader Modal (mobile) -->
         <div id="wallReaderModal" class="lg:hidden fixed inset-0 bg-black/40 backdrop-blur-sm hidden items-center justify-end z-50">
-          <div class="w-full max-h-[85vh] bg-white dark:bg-slate-900 rounded-t-2xl shadow-2xl p-5 overflow-y-auto">
+          <div id="wallReaderSheet" class="w-full max-h-[85vh] bg-white dark:bg-slate-900 rounded-t-2xl shadow-2xl p-5 overflow-y-auto">
             <div class="mobile-reader-header flex items-center justify-between mb-3 relative">
               <h3 id="wallReaderTitle" class="text-base font-semibold text-slate-800 dark:text-slate-100">Summary</h3>
               <div class="flex items-center gap-2">
@@ -896,7 +896,7 @@
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
     <script src="ui_flags.js?v=8"></script>
-    <script src="dashboard_v3.js?v=pg118g"></script>
+    <script src="dashboard_v3.js?v=pg118m"></script>
 
 </body>
 </html>
