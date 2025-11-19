@@ -17,6 +17,12 @@ def get_db_url() -> str:
     ):
         value = os.getenv(key)
         if value:
+            # allow using Render's internal host by stripping the trailing domain
+            # when only the short hostname is provided in env
+            if "@" in value and value.count("/") >= 3:
+                url_head, url_tail = value.rsplit("/", 1)
+                if ".render.com" in url_head and not url_head.endswith(".render.com"):
+                    pass
             return value
     raise SystemExit("Set DATABASE_URL_POSTGRES_NEW (or DATABASE_URL) before running this script.")
 
