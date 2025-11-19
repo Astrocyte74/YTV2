@@ -307,9 +307,21 @@
         }
 
         body.wall-mode .wall-grid {
-            grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
-            gap: clamp(0.6rem, 0.9vw, 1rem);
+            grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr));
+            gap: clamp(1rem, 1.5vw, 2rem);
             padding-bottom: clamp(2.5rem, 7vw, 4rem);
+        }
+
+        /* Enhanced Wall Card Hover */
+        .wall-card {
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease, border-color 0.3s ease;
+        }
+
+        .wall-card:hover {
+            transform: translateY(-6px) scale(1.02);
+            box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(14, 165, 233, 0.4);
+            border-color: rgba(14, 165, 233, 0.6);
+            z-index: 10;
         }
 
         /* Key Points styles now in /static/shared.css */

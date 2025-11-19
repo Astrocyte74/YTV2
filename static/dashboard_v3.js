@@ -7,43 +7,43 @@
 const SUBCATEGORY_PARENTS = {
     // Education subcategories
     "Academic Subjects": "Education",
-    "Online Learning": "Education", 
+    "Online Learning": "Education",
     "Tutorials & Courses": "Education",
     "Teaching Methods": "Education",
     "Educational Technology": "Education",
     "Student Life": "Education",
-    
+
     // Technology subcategories  
     "Programming & Software Development": "Technology",
     "Web Development": "Technology",
-    "Mobile Development": "Technology", 
+    "Mobile Development": "Technology",
     "DevOps & Infrastructure": "Technology",
     "Databases & Data Science": "Technology",
     "Cybersecurity": "Technology",
     "Tech Reviews & Comparisons": "Technology",
     "Software Tutorials": "Technology",
     "Tech News & Trends": "Technology",
-    
+
     // AI Software Development subcategories
     "Model Selection & Evaluation": "AI Software Development",
     "Prompt Engineering & RAG": "AI Software Development",
-    "Training & Fine-Tuning": "AI Software Development", 
+    "Training & Fine-Tuning": "AI Software Development",
     "Deployment & Serving": "AI Software Development",
     "Agents & MCP/Orchestration": "AI Software Development",
     "APIs & SDKs": "AI Software Development",
     "Data Engineering & ETL": "AI Software Development",
-    "Testing & Observability": "AI Software Development", 
+    "Testing & Observability": "AI Software Development",
     "Security & Safety": "AI Software Development",
     "Cost Optimisation": "AI Software Development",
-    
+
     // History subcategories
     "Ancient Civilizations": "History",
     "Medieval History": "History",
     "Modern History": "History",
-    "Cultural Heritage": "History", 
+    "Cultural Heritage": "History",
     "Historical Analysis": "History",
     "Biographies": "History",
-    
+
     // WWII subcategories  
     "Causes & Prelude": "World War II (WWII)",
     "European Theatre": "World War II (WWII)",
@@ -55,11 +55,11 @@ const SUBCATEGORY_PARENTS = {
     "Diplomacy & Conferences (Yalta, Potsdam)": "World War II (WWII)",
     "Biographies & Commanders": "World War II (WWII)",
     "Aftermath & Reconstruction": "World War II (WWII)",
-    
+
     // Business subcategories
     "Industry Analysis": "Business",
     "Career Development": "Business",
-    
+
     // General subcategories
     "Miscellaneous": "General",
     "Other": "General"
@@ -94,9 +94,9 @@ const READER_FAMILY_MAP = {
     sans: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif",
     serif: "ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif"
 };
-const READER_THEMES = ['light','sepia','dark'];
-const READER_PARA_STYLES = ['spaced','indented'];
-const READER_JUSTIFY = ['left','justify'];
+const READER_THEMES = ['light', 'sepia', 'dark'];
+const READER_PARA_STYLES = ['spaced', 'indented'];
+const READER_JUSTIFY = ['left', 'justify'];
 // Measure mapping: tuned per feedback
 // - Previous 'medium'(70ch) becomes 'narrow'
 // - Previous 'wide'(80ch) becomes 'medium'
@@ -138,12 +138,12 @@ class AudioDashboard {
                 const n = Math.max(0, parseInt(fm, 10) || 0);
                 if (Number.isFinite(n)) this.flipDebugMs = n;
             }
-        } catch(_) {}
+        } catch (_) { }
         const autoPlayConfig = this.config && this.config.autoPlayOnLoad;
         this.autoPlayOnLoad = autoPlayConfig === undefined;
         if (autoPlayConfig !== undefined) {
             const normalized = String(autoPlayConfig).toLowerCase();
-            this.autoPlayOnLoad = !['false','0','no','off'].includes(normalized);
+            this.autoPlayOnLoad = !['false', '0', 'no', 'off'].includes(normalized);
         }
         this.currentFilters = {};
         this.currentPage = 1;
@@ -204,7 +204,7 @@ class AudioDashboard {
         this.audioElement = document.getElementById('audioElement');
         // Bottom container removed; mini player is always visible in sidebar
         this.audioPlayerContainer = null;
-        
+
         // Player controls
         this.playPauseBtn = document.getElementById('playPauseBtn');
         this.playIcon = document.getElementById('playIcon');
@@ -215,7 +215,7 @@ class AudioDashboard {
         this.progressBar = document.getElementById('progressBar');
         this.currentTimeEl = document.getElementById('currentTime');
         this.totalTimeEl = document.getElementById('totalTime');
-        
+
         // Mobile mini-player elements
         this.mobileMiniPlayer = document.getElementById('mobileMiniPlayer');
         this.mobilePlayPauseBtn = document.getElementById('mobilePlayPauseBtn');
@@ -243,12 +243,12 @@ class AudioDashboard {
         this.volumeBtn = document.getElementById('volumeBtn');
         this.volumeOnIcon = document.getElementById('volumeOnIcon');
         this.volumeOffIcon = document.getElementById('volumeOffIcon');
-        
+
         // Player info
         // Legacy bottom-player ids not present anymore; keep null-safe
         this.playerTitle = document.getElementById('playerTitle');
         this.playerMeta = document.getElementById('playerMeta');
-        
+
         // Search and filters
         this.searchInput = document.getElementById('searchInput');
         this.sortToolbar = document.getElementById('sortToolbar');
@@ -260,7 +260,7 @@ class AudioDashboard {
         this.complexityFilters = document.getElementById('complexityFilters');
         this.languageFilters = document.getElementById('languageFilters');
         this.summaryTypeFilters = document.getElementById('summaryTypeFilters');
-        
+
         // Content area
         this.contentGrid = document.getElementById('contentGrid');
         this.resultsTitle = document.getElementById('resultsTitle');
@@ -278,7 +278,7 @@ class AudioDashboard {
         this.sidebarExpandToggle = document.getElementById('sidebarExpandToggle');
         this.sidebarElement = document.getElementById('sidebar');
         this.resultsHero = document.getElementById('resultsHero');
-        
+
         // Queue
         this.queueSidebar = document.getElementById('queueSidebar');
         this.queueToggle = document.getElementById('queueToggle');
@@ -307,9 +307,9 @@ class AudioDashboard {
 
         // Realtime banner
         this.realtimeBanner = document.getElementById('realtimeBanner');
-       this.realtimeBannerText = document.getElementById('realtimeBannerText');
-       this.realtimeRefreshBtn = document.getElementById('realtimeRefreshBtn');
-       this.realtimeDismissBtn = document.getElementById('realtimeDismissBtn');
+        this.realtimeBannerText = document.getElementById('realtimeBannerText');
+        this.realtimeRefreshBtn = document.getElementById('realtimeRefreshBtn');
+        this.realtimeDismissBtn = document.getElementById('realtimeDismissBtn');
 
         // Metrics panel
         this.metricsPanel = document.getElementById('metricsPanel');
@@ -364,14 +364,14 @@ class AudioDashboard {
         this.audioElement.addEventListener('error', () => this.handleAudioError());
         // Reflect play/pause immediately in card buttons and controls
         this.audioElement.addEventListener('play', () => { this.isPlaying = true; this.updatePlayButton(); this.updatePlayingCard(); });
-        this.audioElement.addEventListener('pause', () => { 
-            this.isPlaying = false; 
-            this.updatePlayButton(); 
+        this.audioElement.addEventListener('pause', () => {
+            this.isPlaying = false;
+            this.updatePlayButton();
             this.updatePlayingCard();
             // Clean up scrub state when pausing to prevent conflicts
             this._cleanupScrubState();
         });
-        
+
         // Player controls
         this.playPauseBtn.addEventListener('click', () => this.togglePlayPause());
         this.prevBtn.addEventListener('click', () => this.playPrevious());
@@ -382,7 +382,7 @@ class AudioDashboard {
         }
         this.progressContainer.addEventListener('mousedown', (e) => this.beginProgressDrag(e, false));
         if (this.volumeBtn) this.volumeBtn.addEventListener('click', () => this.toggleMute());
-        
+
         // Mobile mini-player controls
         if (this.mobilePlayPauseBtn) this.mobilePlayPauseBtn.addEventListener('click', () => this.togglePlayPause());
         if (this.mobilePrevBtn) this.mobilePrevBtn.addEventListener('click', () => this.playPrevious());
@@ -396,7 +396,7 @@ class AudioDashboard {
             localStorage.setItem('ytv2.sidebarCollapsed', '0');
             this.applySidebarCollapsedState();
             // focus the search field in sidebar if present
-            setTimeout(() => { try { this.searchInput?.focus(); } catch(_){} }, 50);
+            setTimeout(() => { try { this.searchInput?.focus(); } catch (_) { } }, 50);
         });
         if (this.mobileProgressContainer) {
             this.mobileProgressContainer.addEventListener('click', (e) => this.seekToMobile(e));
@@ -405,7 +405,7 @@ class AudioDashboard {
         }
         if (this.settingsToggle) this.settingsToggle.addEventListener('click', (e) => { e.stopPropagation(); this.toggleSettings(); });
         const refreshBtn = document.getElementById('refreshBtn');
-        if (refreshBtn) refreshBtn.addEventListener('click', (e) => { e.preventDefault(); try { location.reload(); } catch(_) { window.location.href = window.location.href; } });
+        if (refreshBtn) refreshBtn.addEventListener('click', (e) => { e.preventDefault(); try { location.reload(); } catch (_) { window.location.href = window.location.href; } });
         if (this.settingsMenu) document.addEventListener('click', (e) => { if (!e.target.closest('#settingsMenu') && !e.target.closest('#settingsToggle')) this.closeSettings(); });
         if (this.themeButtons) this.themeButtons.forEach(btn => btn.addEventListener('click', () => this.setTheme(btn.dataset.theme)));
         // Settings accordion: restore open state and persist on toggle
@@ -449,7 +449,7 @@ class AudioDashboard {
             this.updateAdminTokenSourceLabel();
         });
         this.updateImageModeUI();
-        
+
         // Search and filters
         this.searchInput.addEventListener('input', this.debounce(() => this.handleSearch(), 500));
         // Optional top search (mobile + desktop collapsed)
@@ -470,7 +470,7 @@ class AudioDashboard {
                     if (!this.searchClearHeader) return;
                     const has = !!this.searchInputHeader.value;
                     this.searchClearHeader.classList.toggle('hidden', !has);
-                } catch(_) {}
+                } catch (_) { }
             };
             this.searchInputHeader.addEventListener('input', this.debounce(() => {
                 const v = this.searchInputHeader.value;
@@ -489,7 +489,7 @@ class AudioDashboard {
                 if (this.searchInputTop) this.searchInputTop.value = '';
                 this.searchQuery = '';
                 this.loadContent();
-                try { this.searchClearHeader.classList.add('hidden'); } catch(_) {}
+                try { this.searchClearHeader.classList.add('hidden'); } catch (_) { }
             });
         }
         if (this.sortToolbar) {
@@ -497,7 +497,7 @@ class AudioDashboard {
                 btn.addEventListener('click', () => this.setSortMode(btn.dataset.sort));
             });
         }
-        
+
         // Compact sort select in header
         if (this.sortSelect) {
             this.sortSelect.value = this.currentSort;
@@ -546,7 +546,7 @@ class AudioDashboard {
         };
         document.addEventListener('pointerup', imageNewHandler, true);
         document.addEventListener('mousedown', imageNewHandler, true);
-        
+
         // Show more sort options toggle
         const toggleMoreSorts = document.getElementById('toggleMoreSorts');
         const showMoreSorts = document.getElementById('showMoreSorts');
@@ -563,7 +563,7 @@ class AudioDashboard {
         if (clearAllFiltersBtn) {
             clearAllFiltersBtn.addEventListener('click', () => this.selectAllFilters());
         }
-        
+
         // Show more languages toggle
         const toggleMoreLanguages = document.getElementById('toggleMoreLanguages');
         const showMoreLanguages = document.getElementById('showMoreLanguages');
@@ -574,10 +574,10 @@ class AudioDashboard {
                 toggleMoreLanguages.textContent = isHidden ? 'Show less' : 'Show more';
             });
         }
-        
+
         // Show more categories toggle - bind after content loads
         this.bindShowMoreToggles();
-        
+
         // Select All / Clear All buttons for Sources
         const selectAllSources = document.getElementById('selectAllSources');
         const clearAllSources = document.getElementById('clearAllSources');
@@ -639,7 +639,7 @@ class AudioDashboard {
                 this.loadContent();
             });
         }
-        
+
         // Select All / Clear All buttons for Content Types
         const selectAllContentTypes = document.getElementById('selectAllContentTypes');
         const clearAllContentTypes = document.getElementById('clearAllContentTypes');
@@ -732,12 +732,12 @@ class AudioDashboard {
         this.queueToggle.addEventListener('click', () => this.toggleQueue());
         if (this.queueClearBtn) this.queueClearBtn.addEventListener('click', () => this.clearQueue());
         // Play All button removed - auto-playlist handles this
-        
+
         // Mobile sidebar controls
         const mobileFiltersToggle = document.getElementById('mobileFiltersToggle');
         const closeSidebar = document.getElementById('closeSidebar');
         const sidebar = this.sidebarElement;
-        
+
         if (mobileFiltersToggle) {
             mobileFiltersToggle.addEventListener('click', () => this.openMobileSidebar());
         }
@@ -785,7 +785,7 @@ class AudioDashboard {
         }
         this.applySidebarCollapsedState();
         this.updateViewToggle();
-        
+
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyboard(e));
         this.audioElement.addEventListener('volumechange', () => this.updateMuteIcon());
@@ -963,7 +963,7 @@ class AudioDashboard {
     connectEventSource() {
         if (typeof window === 'undefined' || !window.EventSource) return;
         if (this.eventSource) {
-            try { this.eventSource.close(); } catch (_) {}
+            try { this.eventSource.close(); } catch (_) { }
         }
         try {
             const sseUrl = this.hasNasBridge ? this.buildSseUrl('/api/report-events') : '/api/report-events';
@@ -979,7 +979,7 @@ class AudioDashboard {
                 this.requestMetricsRefresh(500);
             });
             source.addEventListener('error', () => {
-                try { source.close(); } catch (_) {}
+                try { source.close(); } catch (_) { }
                 this.eventSource = null;
                 this.scheduleRealtimeReconnect();
                 this.startPollingFallback();
@@ -1117,17 +1117,17 @@ class AudioDashboard {
                         try {
                             const idx = (this.currentItems || []).findIndex(x => x.file_stem === (item.file_stem || item.video_id));
                             if (idx >= 0) this.currentItems[idx] = item; else (this.currentItems || []).push(item);
-                        } catch(_) {}
+                        } catch (_) { }
                         if (typeof this._imagesModalRefresh === 'function') {
                             this._imagesModalRefresh(item);
                         }
-                    } catch(_) {}
+                    } catch (_) { }
                 };
                 // Debounce the refresh a bit to avoid double work
                 clearTimeout(this._imagesModalRefreshTimer);
                 this._imagesModalRefreshTimer = setTimeout(fetchAndRefresh, 400);
             }
-        } catch(_) {}
+        } catch (_) { }
 
         this.realtimeEventBuffer.push({ videoId, summaryTypes, timestamp, meta: { ...meta, eventName } });
         this.scheduleRealtimeFlush();
@@ -1163,14 +1163,14 @@ class AudioDashboard {
         if (canAutoRefresh && sinceLast > 2000) {
             this.lastRealtimeRefresh = now;
             this.currentPage = 1;
-        Promise.resolve(this.loadContent())
-            .catch((error) => console.error('Realtime refresh failed', error))
-            .finally(() => {
-                this.realtimePendingCount = 0;
-                this.hideRealtimeBanner();
-                this.requestMetricsRefresh(1200);
-                // (legacy reopen flow removed; now hot‑refreshes while open)
-            });
+            Promise.resolve(this.loadContent())
+                .catch((error) => console.error('Realtime refresh failed', error))
+                .finally(() => {
+                    this.realtimePendingCount = 0;
+                    this.hideRealtimeBanner();
+                    this.requestMetricsRefresh(1200);
+                    // (legacy reopen flow removed; now hot‑refreshes while open)
+                });
         } else {
             this.showRealtimeBanner(this.realtimePendingCount, eventNames);
             this.requestMetricsRefresh(2000);
@@ -1533,7 +1533,7 @@ class AudioDashboard {
         if (!this.audioElement) return;
         try {
             this.audioElement.pause();
-        } catch (_) {}
+        } catch (_) { }
         this.audioElement.removeAttribute('src');
         this.audioElement.load();
         if (this.progressBar) this.progressBar.style.width = '0%';
@@ -1601,7 +1601,7 @@ class AudioDashboard {
     restoreSettingsAccordion() {
         if (!this.settingsAccordions) return;
         let map = {};
-        try { map = JSON.parse(localStorage.getItem('ytv2.settingsAccordion') || '{}'); } catch(_) {}
+        try { map = JSON.parse(localStorage.getItem('ytv2.settingsAccordion') || '{}'); } catch (_) { }
         this.settingsAccordions.forEach((sec) => {
             const key = sec.getAttribute('data-settings-section') || '';
             if (!key) return;
@@ -1613,7 +1613,7 @@ class AudioDashboard {
                 const chev = sec.querySelector('summary svg');
                 if (chev) chev.style.transform = sec.open ? 'rotate(180deg)' : 'rotate(0deg)';
                 sec.addEventListener('toggle', () => { if (chev) chev.style.transform = sec.open ? 'rotate(180deg)' : 'rotate(0deg)'; });
-            } catch(_) {}
+            } catch (_) { }
         });
     }
 
@@ -1625,31 +1625,31 @@ class AudioDashboard {
             if (!key) return;
             map[key] = !!sec.open;
         });
-        try { localStorage.setItem('ytv2.settingsAccordion', JSON.stringify(map)); } catch(_) {}
+        try { localStorage.setItem('ytv2.settingsAccordion', JSON.stringify(map)); } catch (_) { }
     }
-    setTheme(mode) { 
-        this.themeMode = mode || 'system'; 
-        localStorage.setItem('ytv2.theme', this.themeMode); 
-        this.applyTheme(this.themeMode); 
-        this.updateThemeChecks(); 
+    setTheme(mode) {
+        this.themeMode = mode || 'system';
+        localStorage.setItem('ytv2.theme', this.themeMode);
+        this.applyTheme(this.themeMode);
+        this.updateThemeChecks();
     }
-    
+
     applyTheme(mode) {
         const root = document.documentElement;
         const mq = window.matchMedia('(prefers-color-scheme: dark)');
         const wantsDark = mode === 'dark' || (mode === 'system' && mq.matches);
-        
+
         // Apply dark class to root element
         root.classList.toggle('dark', wantsDark);
-        
+
         // Bind media query listener for system mode
-        if (!this._mqBound) { 
-            mq.addEventListener('change', () => { 
+        if (!this._mqBound) {
+            mq.addEventListener('change', () => {
                 if ((localStorage.getItem('ytv2.theme') || 'system') === 'system') {
-                    this.applyTheme('system'); 
+                    this.applyTheme('system');
                 }
-            }); 
-            this._mqBound = true; 
+            });
+            this._mqBound = true;
         }
     }
     updateThemeChecks() {
@@ -1665,7 +1665,7 @@ class AudioDashboard {
         try {
             const response = await fetch('/api/filters');
             const filters = await response.json();
-            
+
             const sourceItems = (filters.content_source || filters.source || []).map(item => {
                 const raw = (item.value ?? '').toString();
                 const slug = raw.toLowerCase();
@@ -1681,22 +1681,22 @@ class AudioDashboard {
             this.renderFilterSection(filters.complexity_level, this.complexityFilters, 'complexity');
             this.renderLanguageFilters(filters.languages || []);
             this.renderFilterSection(filters.summary_type, this.summaryTypeFilters, 'summary_type');
-            
+
             // Bind show more toggles after content is loaded
             this.bindShowMoreToggles();
-            
+
             // Fix 1: Initialize currentFilters after filters render
             // This ensures visual state (checkboxes) matches internal state
             this.currentFilters = this.computeFiltersFromDOM();
             this.updateHeroBadges();
             console.log('Initialized currentFilters after render:', this.currentFilters);
             this.updateShowAllButtonVisibility();
-            
+
         } catch (error) {
             console.error('Failed to load filters:', error);
         }
     }
-    
+
     augmentSourceFiltersFromItems(items = []) {
         if (!Array.isArray(items) || !this.sourceFilters) return;
         const existingFilters = this.initialSourceFilters || [];
@@ -1769,7 +1769,7 @@ class AudioDashboard {
         this.currentFilters = this.computeFiltersFromDOM();
         this.updateHeroBadges();
     }
-    
+
     bindShowMoreToggles() {
         // Show more categories toggle
         const toggleMoreCategories = document.getElementById('toggleMoreCategories');
@@ -1781,7 +1781,7 @@ class AudioDashboard {
                 toggleMoreCategories.textContent = isHidden ? 'Show less' : 'Show more';
             });
         }
-        
+
         // Show more channels toggle
         const toggleMoreChannels = document.getElementById('toggleMoreChannels');
         const showMoreChannels = document.getElementById('showMoreChannels');
@@ -1810,19 +1810,19 @@ class AudioDashboard {
             container.innerHTML = '<p class="text-xs text-slate-500 dark:text-slate-400">No data available</p>';
             return;
         }
-        
+
         // Check if this is hierarchical data (categories with subcategories)
         const isHierarchical = filterType === 'category' && items.some(item => item.subcategories && item.subcategories.length > 0);
-        
+
         // Show first 3 items in main area
         const mainItems = items.slice(0, 3);
         const additionalItems = items.slice(3);
-        
+
         // Create hierarchical filter HTML for categories with subcategories
         const createHierarchicalHTML = (item) => {
             const hasSubcategories = item.subcategories && item.subcategories.length > 0;
             const categoryId = `category-${item.value.replace(/[^a-zA-Z0-9]/g, '-')}`;
-            
+
             let html = `
                 <div class="category-group mb-2">
                     <div class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
@@ -1872,7 +1872,7 @@ class AudioDashboard {
             `;
             return html;
         };
-        
+
         // Create simple filter HTML for non-hierarchical items
         const createFilterHTML = (item) => `
             <div class="flex items-center space-x-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
@@ -1891,31 +1891,31 @@ class AudioDashboard {
                         title="Show only ${this.escapeHtml(item.label || item.value)}">only</button>
             </div>
         `;
-        
+
         // Choose the appropriate HTML creator
         const htmlCreator = isHierarchical ? createHierarchicalHTML : createFilterHTML;
-        
+
         // Render main items - insert before existing show more structure
         const mainHTML = mainItems.map(htmlCreator).join('');
-        
+
         // Find the existing structure elements 
         const existingShowMore = container.querySelector(`[id^="showMore"]`);
         const existingToggle = container.querySelector(`[id^="toggleMore"]`);
-        
+
         if (existingShowMore && existingToggle) {
             // Replace everything before the show more div
             const showMoreHTML = existingShowMore.outerHTML;
             const toggleHTML = existingToggle.outerHTML;
             container.innerHTML = mainHTML + showMoreHTML + toggleHTML;
-            
+
             // Re-get elements after innerHTML change
             const showMoreContainer = container.querySelector(`[id^="showMore"]`);
             const toggleButton = container.querySelector(`[id^="toggleMore"]`);
-            
+
             // Render additional items in show more section
             if (additionalItems.length > 0 && showMoreContainer) {
                 showMoreContainer.innerHTML = additionalItems.map(htmlCreator).join('');
-                
+
                 // Show the toggle button
                 if (toggleButton) toggleButton.classList.remove('hidden');
             } else {
@@ -1931,7 +1931,7 @@ class AudioDashboard {
         container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
             checkbox.addEventListener('change', () => this.handleFilterChange());
         });
-        
+
         // Add expand/collapse functionality for hierarchical categories
         if (isHierarchical) {
             container.querySelectorAll('.category-expand-btn').forEach(btn => {
@@ -1940,7 +1940,7 @@ class AudioDashboard {
                     const targetId = btn.dataset.categoryTarget;
                     const subcategoryList = document.getElementById(targetId);
                     const arrow = btn.querySelector('svg');
-                    
+
                     if (subcategoryList) {
                         const isHidden = subcategoryList.classList.contains('hidden');
                         subcategoryList.classList.toggle('hidden');
@@ -1948,45 +1948,45 @@ class AudioDashboard {
                     }
                 });
             });
-            
+
             // Handle parent-child checkbox relationships
             this.bindCategoryCheckboxLogic(container);
         }
     }
-    
+
     bindCategoryCheckboxLogic(container) {
         // Handle parent category checkbox changes
         container.querySelectorAll('input[data-category-parent]').forEach(parentCheckbox => {
             parentCheckbox.addEventListener('change', () => {
                 const categoryName = parentCheckbox.dataset.categoryParent;
                 const subcategoryCheckboxes = container.querySelectorAll(`input[data-parent-category="${categoryName}"]`);
-                
+
                 // When parent is checked/unchecked, update all subcategories
                 subcategoryCheckboxes.forEach(subCheckbox => {
                     subCheckbox.checked = parentCheckbox.checked;
                 });
-                
+
                 this.handleFilterChange();
             });
         });
-        
+
         // Handle subcategory checkbox changes  
         container.querySelectorAll('input[data-parent-category]').forEach(subCheckbox => {
             subCheckbox.addEventListener('change', () => {
                 const categoryName = subCheckbox.dataset.parentCategory;
                 const parentCheckbox = container.querySelector(`input[data-category-parent="${categoryName}"]`);
                 const allSubcategoryCheckboxes = container.querySelectorAll(`input[data-parent-category="${categoryName}"]`);
-                
+
                 if (parentCheckbox) {
                     // Check if all subcategories are checked
                     const allChecked = Array.from(allSubcategoryCheckboxes).every(cb => cb.checked);
                     const someChecked = Array.from(allSubcategoryCheckboxes).some(cb => cb.checked);
-                    
+
                     // Update parent checkbox state
                     parentCheckbox.checked = allChecked;
                     parentCheckbox.indeterminate = !allChecked && someChecked;
                 }
-                
+
                 this.handleFilterChange();
             });
         });
@@ -1996,16 +1996,16 @@ class AudioDashboard {
         const mainContainer = this.languageFilters;
         const showMoreContainer = document.getElementById('showMoreLanguages');
         const toggleButton = document.getElementById('toggleMoreLanguages');
-        
+
         if (!languages || languages.length === 0) {
             mainContainer.innerHTML = '<p class="text-xs text-slate-500 dark:text-slate-400">No language data available</p>';
             return;
         }
-        
+
         // Show first 3 languages in main area
         const mainLanguages = languages.slice(0, 3);
         const additionalLanguages = languages.slice(3);
-        
+
         // Render main languages (preserve the showMoreLanguages structure) - default all to checked
         const mainHTML = mainLanguages.map(item => `
             <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
@@ -2018,7 +2018,7 @@ class AudioDashboard {
                 <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
             </label>
         `).join('');
-        
+
         // Update main container while preserving structure
         const existingStructure = mainContainer.innerHTML;
         const showMoreIndex = existingStructure.indexOf('<div id="showMoreLanguages"');
@@ -2027,7 +2027,7 @@ class AudioDashboard {
         } else {
             mainContainer.innerHTML = mainHTML;
         }
-        
+
         // Render additional languages in show more section
         if (additionalLanguages.length > 0 && showMoreContainer) {
             showMoreContainer.innerHTML = additionalLanguages.map(item => `
@@ -2041,14 +2041,14 @@ class AudioDashboard {
                     <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
                 </label>
             `).join('');
-            
+
             // Show the toggle button
             if (toggleButton) toggleButton.classList.remove('hidden');
         } else {
             // Hide toggle button if no additional languages
             if (toggleButton) toggleButton.classList.add('hidden');
         }
-        
+
         // Add event listeners to all language checkboxes
         mainContainer.querySelectorAll('input[type="checkbox"][data-filter="language"]').forEach(checkbox => {
             checkbox.addEventListener('change', () => this.handleFilterChange());
@@ -2062,7 +2062,7 @@ class AudioDashboard {
             (filters[k] ||= []);
             if (el.checked) filters[k].push(el.value);
         });
-        
+
         // Add parent category context for subcategories
         const selectedSubcategories = document.querySelectorAll('input[data-filter="subcategory"]:checked');
         if (selectedSubcategories.length > 0) {
@@ -2075,7 +2075,7 @@ class AudioDashboard {
                 filters.parentCategory = Array.from(parentCategories);
             }
         }
-        
+
         return filters;
     }
 
@@ -2125,15 +2125,15 @@ class AudioDashboard {
         };
 
         const params = new URLSearchParams();
-        
+
         // Add search query
         if (this.searchQuery) params.append('q', this.searchQuery);
-        
+
         // Fix 2: Recompute state from DOM right before fetching (prevents drift)
         this.currentFilters = this.computeFiltersFromDOM();
         this.updateHeroBadges();
         const facet = this.computeFacetState();
-        
+
         // Helper functions (OpenAI's drop-in solution)
         const getAllOptions = (filterType) =>
             Array.from(document.querySelectorAll(`input[data-filter="${filterType}"]`))
@@ -2249,7 +2249,7 @@ class AudioDashboard {
         // Check if server will handle subcategory filtering (to disable client-side narrowing)
         const hasServerSubcatFilter = Array.isArray(effectiveFilters.subcategory) && effectiveFilters.subcategory.length > 0;
         console.log(`[YTV2] Server subcategory filtering: ${hasServerSubcatFilter}`);
-        
+
         // Build params with special handling for subcategories
         Object.entries(effectiveFilters).forEach(([key, values]) => {
             if (key === 'subcategory') {
@@ -2258,7 +2258,7 @@ class AudioDashboard {
                     const normalizedSubcat = normalizeLabel(subcatValue);
                     console.log(`[YTV2] Adding param: subcategory=${normalizedSubcat} (original: ${subcatValue})`);
                     params.append('subcategory', normalizedSubcat);
-                    
+
                     // Find the parent category for this subcategory
                     const subcatInput = document.querySelector(`input[data-filter="subcategory"][value="${CSS.escape(subcatValue)}"]`);
                     if (subcatInput && subcatInput.dataset.parentCategory) {
@@ -2279,7 +2279,7 @@ class AudioDashboard {
                 });
             }
         });
-        
+
         // Deduplicate parentCategory parameters (per OpenAI recommendation)
         const dedupeParam = (key) => {
             const all = params.getAll(key);
@@ -2291,11 +2291,11 @@ class AudioDashboard {
             }
         };
         dedupeParam('parentCategory');
-        
+
         console.debug('Final URL params:', params.toString());
         // Render loading placeholders before fetching
         showSkeletons();
-        
+
         const isWallMode = this.viewMode === 'wall';
         const requestedPage = isWallMode ? 1 : this.currentPage;
         const pageSize = isWallMode ? 500 : 12;
@@ -2310,14 +2310,14 @@ class AudioDashboard {
             console.log('[YTV2] Request URL:', requestUrl); // Debug logging per OpenAI
             const response = await fetch(requestUrl);
             const data = await response.json();
-            
+
             // Handle API errors (per OpenAI recommendation)
             if (!response.ok) {
                 console.error('API error:', data);
                 this.showError(data?.message || 'Failed to load content');
                 return; // Don't try to process pagination/items
             }
-            
+
             let items = data.reports || data.data || [];
             console.log(`[YTV2] Items from server: ${items.length}`);
 
@@ -2445,17 +2445,17 @@ class AudioDashboard {
             this.contentGrid.innerHTML = '<div class="text-center py-8 text-gray-400">No summaries available</div>';
             return;
         }
-        
+
         // Show helpful message when no items to display
         if (items.length === 0) {
-            const hasActiveFilters = Object.keys(this.currentFilters).some(key => 
+            const hasActiveFilters = Object.keys(this.currentFilters).some(key =>
                 this.currentFilters[key] && this.currentFilters[key].length > 0
             );
-            
+
             // Helper functions for empty state
             const anySelected = (filters) =>
                 Object.values(filters).some(arr => Array.isArray(arr) && arr.length > 0);
-            
+
             const hasQueryOrFilters = this.searchQuery || anySelected(this.currentFilters);
             this.contentGrid.innerHTML = hasQueryOrFilters
                 ? `<div class="text-center py-12 text-slate-400">
@@ -2468,7 +2468,7 @@ class AudioDashboard {
                    </div>`;
             return;
         }
-        
+
         let html = '';
         if (this.viewMode === 'grid') {
             html = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(i => this.createGridCard(i)).join('')}</div>`;
@@ -2603,7 +2603,7 @@ class AudioDashboard {
         if (btn.hasAttribute('disabled') || btn.dataset.disabled !== undefined) return;
         if (btn.dataset.busy) return;
         btn.dataset.busy = '1';
-        setTimeout(() => { try { delete btn.dataset.busy; } catch(_){} }, 400);
+        setTimeout(() => { try { delete btn.dataset.busy; } catch (_) { } }, 400);
         const action = btn.dataset.action;
         const id = card.dataset.reportId;
         if (action === 'listen') {
@@ -2726,8 +2726,8 @@ class AudioDashboard {
         // Set id and control linkage
         if (!region.id) region.id = `expand-${id}`;
         const readBtn = card.querySelector('[data-action="read"]');
-        if (readBtn) { 
-            readBtn.setAttribute('aria-controls', region.id); 
+        if (readBtn) {
+            readBtn.setAttribute('aria-controls', region.id);
             readBtn.setAttribute('aria-expanded', 'true');
             // Update arrow to point down when expanded
             const arrow = readBtn.querySelector('span[aria-hidden="true"]');
@@ -2764,12 +2764,12 @@ class AudioDashboard {
             region.innerHTML = expandedContent.html;
             this.bindExpandedVariantControls(region, expandedContent.variantInfo, expandedContent.defaultVariant);
             // Ensure normalized HTML only; reader display options are handled in wall reader header
-            try { const bodyEl = region.querySelector('[data-summary-body]'); this.enhanceSummaryHtml(bodyEl); } catch(_) {}
+            try { const bodyEl = region.querySelector('[data-summary-body]'); this.enhanceSummaryHtml(bodyEl); } catch (_) { }
             // Focus expanded wrapper for a11y (title is sr-only)
             const wrapper = region.querySelector('[data-expanded]');
             if (wrapper) {
                 wrapper.setAttribute('tabindex', '-1');
-                try { wrapper.focus({ preventScroll: true }); } catch(_) { wrapper.focus(); }
+                try { wrapper.focus({ preventScroll: true }); } catch (_) { wrapper.focus(); }
             }
         } catch (err) {
             console.error('Failed to load report', err);
@@ -2882,13 +2882,13 @@ class AudioDashboard {
         const controlsHtml = variantInfo.order.length > 1
             ? `<div class="flex flex-wrap gap-2 text-xs" data-variant-controls>
                 ${variantInfo.order.map((variantId) => {
-                    const meta = variantInfo.map[variantId];
-                    const icon = meta.icon ? `<span class="text-base">${meta.icon}</span>` : '';
-                    return `<button type="button" data-variant="${variantId}" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border transition variant-toggle">
+                const meta = variantInfo.map[variantId];
+                const icon = meta.icon ? `<span class="text-base">${meta.icon}</span>` : '';
+                return `<button type="button" data-variant="${variantId}" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border transition variant-toggle">
                                 ${icon}
                                 <span class="font-medium">${meta.label}</span>
                             </button>`;
-                }).join('')}
+            }).join('')}
                </div>`
             : '';
 
@@ -2977,12 +2977,12 @@ class AudioDashboard {
 
     toggleKebabMenu(card, show, trigger) {
         const menu = card.querySelector('[data-kebab-menu]');
-        const btn  = trigger || card.querySelector('[data-action="menu"]');
+        const btn = trigger || card.querySelector('[data-action="menu"]');
         if (!menu || !btn) return;
         const setExpanded = (val) => btn.setAttribute('aria-expanded', val ? 'true' : 'false');
         if (show) {
             // Close any other open menus globally
-            try { document.querySelectorAll('[data-kebab-menu]:not(.hidden)').forEach(m => m.classList.add('hidden')); } catch(_) {}
+            try { document.querySelectorAll('[data-kebab-menu]:not(.hidden)').forEach(m => m.classList.add('hidden')); } catch (_) { }
             setExpanded(true);
             menu.classList.remove('hidden');
             menu.setAttribute('role', 'menu');
@@ -3405,7 +3405,7 @@ class AudioDashboard {
 
     // === Reader Display Options (MVP) ===
     readerPrefsKey() {
-        try { return (window.innerWidth || 0) >= 1024 ? 'readerDisplayPrefsDesktop' : 'readerDisplayPrefsMobile'; } catch(_) { return 'readerDisplayPrefs'; }
+        try { return (window.innerWidth || 0) >= 1024 ? 'readerDisplayPrefsDesktop' : 'readerDisplayPrefsMobile'; } catch (_) { return 'readerDisplayPrefs'; }
     }
     getReaderDisplayPrefs() {
         try {
@@ -3425,7 +3425,7 @@ class AudioDashboard {
                 justify: READER_JUSTIFY.includes(obj.justify) ? obj.justify : 'left',
                 measure: (storedMeasure && READER_MEASURE_MAP[storedMeasure]) ? storedMeasure : 'narrow'
             };
-        } catch(_) {
+        } catch (_) {
             return { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
         }
     }
@@ -3435,7 +3435,7 @@ class AudioDashboard {
             const merged = { ...cur, ...next };
             localStorage.setItem(this.readerPrefsKey(), JSON.stringify(merged));
             return merged;
-        } catch(_) { return this.getReaderDisplayPrefs(); }
+        } catch (_) { return this.getReaderDisplayPrefs(); }
     }
     applyReaderDisplayPrefs(container, bodyEl) {
         const prefs = this.getReaderDisplayPrefs();
@@ -3443,20 +3443,20 @@ class AudioDashboard {
             const fs = READER_SIZE_MAP[prefs.size] || 1.0;
             const lh = READER_LINE_MAP[prefs.line] || 1.6;
             const ff = READER_FAMILY_MAP[prefs.family] || 'inherit';
-            try { bodyEl.style.setProperty('--reader-font-size', fs + 'rem'); } catch(_) {}
-            try { bodyEl.style.setProperty('--reader-line', String(lh)); } catch(_) {}
-            try { bodyEl.style.setProperty('--reader-font-family', ff); } catch(_) {}
+            try { bodyEl.style.setProperty('--reader-font-size', fs + 'rem'); } catch (_) { }
+            try { bodyEl.style.setProperty('--reader-line', String(lh)); } catch (_) { }
+            try { bodyEl.style.setProperty('--reader-font-family', ff); } catch (_) { }
         }
         if (container) {
-            try { container.classList.remove('reader-theme--light','reader-theme--sepia','reader-theme--dark'); } catch(_) {}
+            try { container.classList.remove('reader-theme--light', 'reader-theme--sepia', 'reader-theme--dark'); } catch (_) { }
             const theme = this.getReaderDisplayPrefs().theme || 'light';
-            try { container.classList.add('reader-theme--' + theme); } catch(_) {}
+            try { container.classList.add('reader-theme--' + theme); } catch (_) { }
             // Paragraph style
             const para = this.getReaderDisplayPrefs().paraStyle || 'spaced';
-            try { container.classList.toggle('reader-para--indented', para === 'indented'); } catch(_) {}
+            try { container.classList.toggle('reader-para--indented', para === 'indented'); } catch (_) { }
             // Justification (CSS applies only on desktop)
             const just = this.getReaderDisplayPrefs().justify || 'left';
-            try { container.classList.toggle('reader-justify--on', just === 'justify'); } catch(_) {}
+            try { container.classList.toggle('reader-justify--on', just === 'justify'); } catch (_) { }
             // Measure (desktop-only cap; stored as variable used by CSS)
             const measureKey = this.getReaderDisplayPrefs().measure || 'auto';
             let mw = READER_MEASURE_MAP[measureKey] || '70ch';
@@ -3467,63 +3467,63 @@ class AudioDashboard {
                     else if (w < 680) mw = '58ch';
                     else if (w < 820) mw = '66ch';
                     else mw = '74ch';
-                } catch(_) {}
+                } catch (_) { }
             }
-            try { container.style.setProperty('--reader-measure', mw); } catch(_) {}
+            try { container.style.setProperty('--reader-measure', mw); } catch (_) { }
         }
     }
     openReaderDisplayPopover(container, bodyEl, anchorBtn) {
         // Close any existing
-        try { document.querySelectorAll('.reader-display-popover').forEach(el => el.remove()); } catch(_) {}
+        try { document.querySelectorAll('.reader-display-popover').forEach(el => el.remove()); } catch (_) { }
         const prefs = this.getReaderDisplayPrefs();
         const pop = document.createElement('div');
         pop.className = 'reader-display-popover pop-animate';
         pop.setAttribute('role', 'dialog');
-        const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed?'true':'false'}" title="${String(label).replace(/<[^>]+>/g,'')}">${label}</span>`;
+        const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed ? 'true' : 'false'}" title="${String(label).replace(/<[^>]+>/g, '')}">${label}</span>`;
         const sizeSeg = `
           <div class="reader-segment" role="group" aria-label="Text size">
             ${segBtn('data-reader-size-dec', 'A−', false)}
-            <span data-size-chip style="font-size:${(READER_SIZE_MAP[prefs.size]||1.0)}rem; padding:0 .5rem;">A</span>
+            <span data-size-chip style="font-size:${(READER_SIZE_MAP[prefs.size] || 1.0)}rem; padding:0 .5rem;">A</span>
             ${segBtn('data-reader-size-inc', 'A+', false)}
           </div>`;
         const lineSeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Line height">
-            ${segBtn('data-reader-line="tight"', 'Tight', prefs.line==='tight')}
-            ${segBtn('data-reader-line="normal"', 'Normal', prefs.line==='normal')}
-            ${segBtn('data-reader-line="loose"', 'Loose', prefs.line==='loose')}
+            ${segBtn('data-reader-line="tight"', 'Tight', prefs.line === 'tight')}
+            ${segBtn('data-reader-line="normal"', 'Normal', prefs.line === 'normal')}
+            ${segBtn('data-reader-line="loose"', 'Loose', prefs.line === 'loose')}
           </div>`;
         const familySeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Font family">
-            ${segBtn('data-reader-family="sans"', '<span style=\\"font-family:system-ui,sans-serif\\">Aa</span>', prefs.family==='sans')}
-            ${segBtn('data-reader-family="serif"', '<span style=\\"font-family:Georgia,serif\\">Aa</span>', prefs.family==='serif')}
+            ${segBtn('data-reader-family="sans"', '<span style=\\"font-family:system-ui,sans-serif\\">Aa</span>', prefs.family === 'sans')}
+            ${segBtn('data-reader-family="serif"', '<span style=\\"font-family:Georgia,serif\\">Aa</span>', prefs.family === 'serif')}
           </div>`;
         const justifySeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Justification">
-            ${segBtn('data-reader-justify="left"', 'Left', prefs.justify==='left')}
-            ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify==='justify')}
+            ${segBtn('data-reader-justify="left"', 'Left', prefs.justify === 'left')}
+            ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify === 'justify')}
           </div>`;
         const themeSeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Theme">
-            ${segBtn('data-reader-theme="light"', 'Light', prefs.theme==='light')}
-            ${segBtn('data-reader-theme="sepia"', 'Sepia', prefs.theme==='sepia')}
-            ${segBtn('data-reader-theme="dark"', 'Dark', prefs.theme==='dark')}
+            ${segBtn('data-reader-theme="light"', 'Light', prefs.theme === 'light')}
+            ${segBtn('data-reader-theme="sepia"', 'Sepia', prefs.theme === 'sepia')}
+            ${segBtn('data-reader-theme="dark"', 'Dark', prefs.theme === 'dark')}
           </div>`;
         const paraTile = (id, label) => `
-          <div class="reader-tile" data-reader-para="${id}" aria-pressed="${prefs.paraStyle===id?'true':'false'}" role="button" aria-label="${label}" title="${label}">
-            <div class="tile-preview">${id==='indented' ? '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.6\\" stroke-linecap=\\"round\\"><path d=\\"M8 6h11\\"/><path d=\\"M5 10h14\\"/><path d=\\"M5 14h14\\"/><path d=\\"M5 18h14\\"/></svg>' : '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.4\\" stroke-linecap=\\"round\\"><rect x=\\"5\\" y=\\"5\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/><rect x=\\"5\\" y=\\"15\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/></svg>'}</div>
+          <div class="reader-tile" data-reader-para="${id}" aria-pressed="${prefs.paraStyle === id ? 'true' : 'false'}" role="button" aria-label="${label}" title="${label}">
+            <div class="tile-preview">${id === 'indented' ? '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.6\\" stroke-linecap=\\"round\\"><path d=\\"M8 6h11\\"/><path d=\\"M5 10h14\\"/><path d=\\"M5 14h14\\"/><path d=\\"M5 18h14\\"/></svg>' : '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.4\\" stroke-linecap=\\"round\\"><rect x=\\"5\\" y=\\"5\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/><rect x=\\"5\\" y=\\"15\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/></svg>'}</div>
           </div>`;
         const themeTile = (id, label) => `
-          <div class="reader-tile" data-reader-theme="${id}" aria-pressed="${prefs.theme===id?'true':'false'}" role="button" aria-label="${label}">
+          <div class="reader-tile" data-reader-theme="${id}" aria-pressed="${prefs.theme === id ? 'true' : 'false'}" role="button" aria-label="${label}">
             <div class="tile-preview"><div class="tile-preview-inner">${'<div class=\\"strip\\"></div>'.repeat(3)}</div></div>
             <div class="tile-label">${label}</div>
           </div>`;
         const measureTile = (id, label) => {
-          let w = 6, x = 9;
-          if (id === 'medium') { w = 8; x = 8; }
-          if (id === 'wide') { w = 11; x = 6.5; }
-          if (id === 'full') { w = 14; x = 5; }
-          return `
-          <div class="reader-tile" data-reader-measure="${id}" aria-pressed="${prefs.measure===id?'true':'false'}" role="button" aria-label="${label}" title="${label}">
+            let w = 6, x = 9;
+            if (id === 'medium') { w = 8; x = 8; }
+            if (id === 'wide') { w = 11; x = 6.5; }
+            if (id === 'full') { w = 14; x = 5; }
+            return `
+          <div class="reader-tile" data-reader-measure="${id}" aria-pressed="${prefs.measure === id ? 'true' : 'false'}" role="button" aria-label="${label}" title="${label}">
             <div class="tile-preview"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.2\"><rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"3\"/><rect x=\"${x}\" y=\"7\" width=\"${w}\" height=\"10\" rx=\"1.2\" fill=\"currentColor\"/></svg></div>
           </div>`;
         };
@@ -3561,9 +3561,9 @@ class AudioDashboard {
             <div class="reader-col">
               <div class="reader-group">
                 <h5>Layout</h5>
-                <div class="reader-display-row" data-row="para"><div class="reader-segment" role="radiogroup" aria-label="Paragraph style">${segBtn('data-reader-para=\"spaced\"', 'Spaced', prefs.paraStyle==='spaced')}${segBtn('data-reader-para=\"indented\"', 'Indented', prefs.paraStyle==='indented')}</div></div>
-                <div class="reader-display-row" data-row="justify"><div class="reader-segment" role="radiogroup" aria-label="Justification">${segBtn('data-reader-justify=\"left\"','Left', prefs.justify==='left')}${segBtn('data-reader-justify=\"justify\"','Justified', prefs.justify==='justify')}</div></div>
-                <div class="reader-display-row" data-row="measure"><div class="reader-segment" role="radiogroup" aria-label="Reading width">${segBtn('data-reader-measure=\"narrow\"', 'Narrow', prefs.measure==='narrow')}${segBtn('data-reader-measure=\"medium\"', 'Medium', prefs.measure==='medium')}${segBtn('data-reader-measure=\"wide\"', 'Wide', prefs.measure==='wide')}${segBtn('data-reader-measure=\"full\"', 'Full', prefs.measure==='full')}</div></div>
+                <div class="reader-display-row" data-row="para"><div class="reader-segment" role="radiogroup" aria-label="Paragraph style">${segBtn('data-reader-para=\"spaced\"', 'Spaced', prefs.paraStyle === 'spaced')}${segBtn('data-reader-para=\"indented\"', 'Indented', prefs.paraStyle === 'indented')}</div></div>
+                <div class="reader-display-row" data-row="justify"><div class="reader-segment" role="radiogroup" aria-label="Justification">${segBtn('data-reader-justify=\"left\"', 'Left', prefs.justify === 'left')}${segBtn('data-reader-justify=\"justify\"', 'Justified', prefs.justify === 'justify')}</div></div>
+                <div class="reader-display-row" data-row="measure"><div class="reader-segment" role="radiogroup" aria-label="Reading width">${segBtn('data-reader-measure=\"narrow\"', 'Narrow', prefs.measure === 'narrow')}${segBtn('data-reader-measure=\"medium\"', 'Medium', prefs.measure === 'medium')}${segBtn('data-reader-measure=\"wide\"', 'Wide', prefs.measure === 'wide')}${segBtn('data-reader-measure=\"full\"', 'Full', prefs.measure === 'full')}</div></div>
                 <div class="reader-field">
                   <div class="reader-field-label">Theme</div>
                   <div class="reader-display-row" data-row="theme">${themeSeg}</div>
@@ -3590,7 +3590,7 @@ class AudioDashboard {
                 pop.style.right = '0';
                 pop.style.top = 'auto';
                 pop.style.bottom = '0';
-            } catch(_) {}
+            } catch (_) { }
         } else {
             const anchorRect = anchorBtn.getBoundingClientRect();
             pop.style.position = 'fixed';
@@ -3608,26 +3608,26 @@ class AudioDashboard {
                 // Also clamp if off left
                 let left = window.innerWidth - right - pr.width;
                 if (left < 12) { right = Math.round(Math.max(12, window.innerWidth - 12 - pr.width)); }
-            } catch(_) {}
+            } catch (_) { }
             pop.style.top = top + 'px';
             pop.style.right = right + 'px';
         }
         if (!pop.parentElement) document.body.appendChild(pop);
         // Initialize preview theme class
         try {
-          const prev = pop.querySelector('#readerPreview');
-          if (prev) {
-            let baseTheme = 'light';
-            try {
-              if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
-              else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
-            } catch(_) {}
-            const effectiveTheme = (prefs.systemTheme ? baseTheme : (prefs.theme || baseTheme));
-            prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
-            prev.classList.add('preview-theme--' + effectiveTheme);
-          }
-        } catch(_) {}
-        const closeAll = () => { try { pop.remove(); } catch(_) {} if (scrim) { try { scrim.remove(); } catch(_) {} scrim = null; } window.removeEventListener('resize', onAway, true); document.removeEventListener('click', onAway, true); };
+            const prev = pop.querySelector('#readerPreview');
+            if (prev) {
+                let baseTheme = 'light';
+                try {
+                    if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
+                    else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
+                } catch (_) { }
+                const effectiveTheme = (prefs.systemTheme ? baseTheme : (prefs.theme || baseTheme));
+                prev.classList.remove('preview-theme--light', 'preview-theme--sepia', 'preview-theme--dark');
+                prev.classList.add('preview-theme--' + effectiveTheme);
+            }
+        } catch (_) { }
+        const closeAll = () => { try { pop.remove(); } catch (_) { } if (scrim) { try { scrim.remove(); } catch (_) { } scrim = null; } window.removeEventListener('resize', onAway, true); document.removeEventListener('click', onAway, true); };
         if (scrim) scrim.addEventListener('click', closeAll);
         const onAway = (e) => { if (!pop.contains(e.target) && e.target !== anchorBtn) closeAll(); };
         setTimeout(() => { document.addEventListener('click', onAway, true); window.addEventListener('resize', onAway, true); }, 0);
@@ -3648,13 +3648,13 @@ class AudioDashboard {
             if (size && READER_SIZE_MAP[size]) next.size = size;
             if (inc || dec) {
                 try {
-                    const order = ['s','m','l','xl','xxl'];
+                    const order = ['s', 'm', 'l', 'xl', 'xxl'];
                     const cur = this.getReaderDisplayPrefs().size || 'm';
                     let idx = Math.max(0, order.indexOf(cur));
                     if (inc && idx < order.length - 1) idx++;
                     if (dec && idx > 0) idx--;
                     next.size = order[idx];
-                } catch(_) {}
+                } catch (_) { }
             }
             if (line && READER_LINE_MAP[line]) next.line = line;
             if (family && READER_FAMILY_MAP[family]) next.family = family;
@@ -3666,39 +3666,39 @@ class AudioDashboard {
             this.applyReaderDisplayPrefs(container, bodyEl);
             // Update live preview
             try {
-              const prev = pop.querySelector('#readerPreview');
-              if (prev) {
-                const fs = READER_SIZE_MAP[merged.size] || 1.0;
-                const lh = READER_LINE_MAP[merged.line] || 1.6;
-                const ff = READER_FAMILY_MAP[merged.family] || 'inherit';
-                prev.style.fontSize = fs + 'rem';
-                prev.style.lineHeight = String(lh);
-                prev.style.fontFamily = ff;
-                let baseTheme = 'light';
-                try {
-                  if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
-                  else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
-                } catch(_) {}
-                const effectiveTheme = (merged.systemTheme ? baseTheme : merged.theme);
-                prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
-                prev.classList.add('preview-theme--' + effectiveTheme);
-              }
-              const chip = pop.querySelector('[data-size-chip]');
-              if (chip) chip.style.fontSize = (READER_SIZE_MAP[merged.size]||1.0) + 'rem';
-            } catch(_) {}
+                const prev = pop.querySelector('#readerPreview');
+                if (prev) {
+                    const fs = READER_SIZE_MAP[merged.size] || 1.0;
+                    const lh = READER_LINE_MAP[merged.line] || 1.6;
+                    const ff = READER_FAMILY_MAP[merged.family] || 'inherit';
+                    prev.style.fontSize = fs + 'rem';
+                    prev.style.lineHeight = String(lh);
+                    prev.style.fontFamily = ff;
+                    let baseTheme = 'light';
+                    try {
+                        if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
+                        else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
+                    } catch (_) { }
+                    const effectiveTheme = (merged.systemTheme ? baseTheme : merged.theme);
+                    prev.classList.remove('preview-theme--light', 'preview-theme--sepia', 'preview-theme--dark');
+                    prev.classList.add('preview-theme--' + effectiveTheme);
+                }
+                const chip = pop.querySelector('[data-size-chip]');
+                if (chip) chip.style.fontSize = (READER_SIZE_MAP[merged.size] || 1.0) + 'rem';
+            } catch (_) { }
             // Update pressed states
-            pop.querySelectorAll('[data-reader-size]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-size')===merged.size ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-line]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-line')===merged.line ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-family]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-family')===merged.family ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-theme]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-theme')===merged.theme ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-para]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-para')===merged.paraStyle ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-justify]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-justify')===merged.justify ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-measure]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-measure')===merged.measure ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-size]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-size') === merged.size ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-line]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-line') === merged.line ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-family]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-family') === merged.family ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-theme]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-theme') === merged.theme ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-para]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-para') === merged.paraStyle ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-justify]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-justify') === merged.justify ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-measure]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-measure') === merged.measure ? 'true' : 'false'));
             // Update micro preview for justification
             const jr = pop.querySelector('[data-row="justify"]');
             if (jr) jr.setAttribute('data-justify-state', merged.justify === 'justify' ? 'justify' : 'left');
             // Light telemetry on change
-            try { this.sendTelemetry && this.sendTelemetry('reader_display_change', merged); } catch(_) {}
+            try { this.sendTelemetry && this.sendTelemetry('reader_display_change', merged); } catch (_) { }
         });
         // Reset handler
         const resetBtn = pop.querySelector('[data-reader-reset]');
@@ -3709,32 +3709,32 @@ class AudioDashboard {
                 try {
                     if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
                     else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
-                } catch(_) {}
+                } catch (_) { }
                 const defaults = { size: 'm', line: 'normal', family: 'sans', theme: baseTheme, systemTheme: false, paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
                 const merged = this.setReaderDisplayPrefs(defaults);
                 this.applyReaderDisplayPrefs(container, bodyEl);
                 // Update UI state
-                ['size','line','family','theme','para','justify','measure'].forEach(key => {
-                  pop.querySelectorAll('[data-reader-' + key + ']').forEach(el => {
-                    const val = el.getAttribute('data-reader-' + key);
-                    const want = String(merged[key === 'para' ? 'paraStyle' : key]);
-                    el.setAttribute('aria-pressed', val === want ? 'true' : 'false');
-                  });
+                ['size', 'line', 'family', 'theme', 'para', 'justify', 'measure'].forEach(key => {
+                    pop.querySelectorAll('[data-reader-' + key + ']').forEach(el => {
+                        const val = el.getAttribute('data-reader-' + key);
+                        const want = String(merged[key === 'para' ? 'paraStyle' : key]);
+                        el.setAttribute('aria-pressed', val === want ? 'true' : 'false');
+                    });
                 });
                 const jr = pop.querySelector('[data-row="justify"]');
                 if (jr) jr.setAttribute('data-justify-state', 'left');
                 const sys = pop.querySelector('[data-reader-system]');
                 if (sys) sys.checked = false;
                 try {
-                  const prev = pop.querySelector('#readerPreview');
-                  if (prev) {
-                    prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
-                    prev.classList.add('preview-theme--' + baseTheme);
-                    prev.style.fontSize = (READER_SIZE_MAP[merged.size]||1.0) + 'rem';
-                    prev.style.lineHeight = String(READER_LINE_MAP[merged.line]||1.6);
-                    prev.style.fontFamily = (READER_FAMILY_MAP[merged.family]||'inherit');
-                  }
-                } catch(_) {}
+                    const prev = pop.querySelector('#readerPreview');
+                    if (prev) {
+                        prev.classList.remove('preview-theme--light', 'preview-theme--sepia', 'preview-theme--dark');
+                        prev.classList.add('preview-theme--' + baseTheme);
+                        prev.style.fontSize = (READER_SIZE_MAP[merged.size] || 1.0) + 'rem';
+                        prev.style.lineHeight = String(READER_LINE_MAP[merged.line] || 1.6);
+                        prev.style.fontFamily = (READER_FAMILY_MAP[merged.family] || 'inherit');
+                    }
+                } catch (_) { }
             });
         }
         // System theme checkbox
@@ -3745,19 +3745,19 @@ class AudioDashboard {
                 this.applyReaderDisplayPrefs(container, bodyEl);
                 // Update preview theme class to follow system
                 try {
-                  const prev = pop.querySelector('#readerPreview');
-                  if (prev) {
-                    let baseTheme = 'light';
-                    try {
-                      if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
-                      else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
-                    } catch(_) {}
-                    const prefsNow = this.getReaderDisplayPrefs();
-                    const eff = prefsNow.systemTheme ? baseTheme : (prefsNow.theme || baseTheme);
-                    prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
-                    prev.classList.add('preview-theme--' + eff);
-                  }
-                } catch(_) {}
+                    const prev = pop.querySelector('#readerPreview');
+                    if (prev) {
+                        let baseTheme = 'light';
+                        try {
+                            if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
+                            else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
+                        } catch (_) { }
+                        const prefsNow = this.getReaderDisplayPrefs();
+                        const eff = prefsNow.systemTheme ? baseTheme : (prefsNow.theme || baseTheme);
+                        prev.classList.remove('preview-theme--light', 'preview-theme--sepia', 'preview-theme--dark');
+                        prev.classList.add('preview-theme--' + eff);
+                    }
+                } catch (_) { }
             });
         }
         const closeBtn = pop.querySelector('[data-reader-close]');
@@ -3845,23 +3845,23 @@ class AudioDashboard {
                     'Content-Type': 'application/json'
                 }
             });
-            
+
             if (!res.ok) {
                 const errorText = await res.text();
                 throw new Error(`HTTP ${res.status}: ${errorText}`);
             }
-            
+
             const result = await res.json();
-            
+
             // Smooth remove
             cardEl.classList.add('transition', 'duration-200', 'ease-out', 'opacity-0', 'scale-95');
             setTimeout(() => {
                 cardEl.remove();
                 this.showToast('Deleted successfully', 'success');
             }, 200);
-            
+
             // Ask server to refresh
-            fetch('/api/refresh').catch(() => {});
+            fetch('/api/refresh').catch(() => { });
         } catch (err) {
             console.error('Delete failed', err);
             this.showToast(`Delete failed: ${err.message}`, 'error');
@@ -4262,7 +4262,7 @@ class AudioDashboard {
                 </div>
             </article>`;
     }
-// V5 Grid card (Mosaic): Tailwind-first tile
+    // V5 Grid card (Mosaic): Tailwind-first tile
     renderGridCardTW(item) {
         const hasAudio = this.itemHasAudio(item);
         const rawSource = item.content_source || 'youtube';
@@ -4416,9 +4416,9 @@ class AudioDashboard {
         titleEl.textContent = item.title || 'Summary';
         body.innerHTML = this.renderWallReaderSection(item);
         // Apply saved reader display preferences
-        try { this.applyReaderDisplayPrefs(modal, body); } catch(_) {}
+        try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
         // Normalize NAS HTML for headings/lists on mobile modal
-        try { this.enhanceSummaryHtml(body); } catch (_) {}
+        try { this.enhanceSummaryHtml(body); } catch (_) { }
         // Inject Display Options (Aa) control
         try {
             const headerRight = modal.querySelector('.mobile-reader-header .flex.items-center.gap-2');
@@ -4437,17 +4437,17 @@ class AudioDashboard {
                 });
                 headerRight.prepend(aaBtn);
             }
-        } catch(_) {}
+        } catch (_) { }
         modal.classList.remove('hidden');
         modal.classList.add('flex');
-        try { document.body.classList.add('mobile-modal-open'); } catch(_) {}
+        try { document.body.classList.add('mobile-modal-open'); } catch (_) { }
         const onClose = () => {
             modal.classList.add('hidden');
             modal.classList.remove('flex');
             closeBtn.removeEventListener('click', onClose);
             modal.removeEventListener('click', onOutside);
             document.removeEventListener('keydown', onEsc);
-            try { document.body.classList.remove('mobile-modal-open'); } catch(_) {}
+            try { document.body.classList.remove('mobile-modal-open'); } catch (_) { }
             this.sendTelemetry('read_close', { id, view: 'wall' });
         };
         const onOutside = (e) => { if (e.target === modal) onClose(); };
@@ -4490,14 +4490,14 @@ class AudioDashboard {
             if (sheet) {
                 let startY = 0, curY = 0, dragging = false;
                 const threshold = 84;
-                const onStart = (e) => { dragging = true; startY = (e.touches? e.touches[0].clientY : e.clientY); curY = startY; sheet.style.transition = 'none'; };
+                const onStart = (e) => { dragging = true; startY = (e.touches ? e.touches[0].clientY : e.clientY); curY = startY; sheet.style.transition = 'none'; };
                 const onMove = (e) => {
                     if (!dragging) return;
-                    curY = (e.touches? e.touches[0].clientY : e.clientY);
+                    curY = (e.touches ? e.touches[0].clientY : e.clientY);
                     const dy = Math.max(0, curY - startY);
                     if (sheet.scrollTop <= 0 || dy > 0) {
                         sheet.style.transform = `translateY(${dy}px)`;
-                        try { e.preventDefault(); } catch(_) {}
+                        try { e.preventDefault(); } catch (_) { }
                     }
                 };
                 const onEnd = () => {
@@ -4529,7 +4529,7 @@ class AudioDashboard {
                 });
                 obs.observe(modal, { attributes: true, attributeFilter: ['class'] });
             }
-        } catch(_) {}
+        } catch (_) { }
         // Actions: Open, kebab menu
         try {
             const openBtn = modal.querySelector('[data-action="wall-reader-open-page"]');
@@ -4552,11 +4552,11 @@ class AudioDashboard {
                     rbtn.addEventListener('click', (e) => {
                         e.preventDefault(); e.stopPropagation();
                         // Reload the page in mobile web-app context
-                        try { location.reload(); } catch(_) { window.location.href = window.location.href; }
+                        try { location.reload(); } catch (_) { window.location.href = window.location.href; }
                     });
                     headerRight.insertBefore(rbtn, headerRight.firstChild);
                 }
-            } catch(_) {}
+            } catch (_) { }
             if (menuBtn) {
                 menuBtn.addEventListener('click', () => this.toggleKebabMenu(modal, true, menuBtn));
                 const menu = modal.querySelector('[data-kebab-menu]');
@@ -4572,7 +4572,7 @@ class AudioDashboard {
                     menu.addEventListener('click', onMenuClick);
                 }
             }
-        } catch (_) {}
+        } catch (_) { }
         this.sendTelemetry('read_open', { id, view: 'wall' });
     }
 
@@ -4584,16 +4584,16 @@ class AudioDashboard {
         if (prev && prev.getAttribute('data-wall-reader-id') === id) {
             // Toggle: clicking again on same item collapses
             prev.parentElement.removeChild(prev);
-            try { cardEl.classList.remove('wall-card--selected'); } catch(_) {}
+            try { cardEl.classList.remove('wall-card--selected'); } catch (_) { }
             // When the inline reader is fully closed, drop the global flag
-            try { document.body.classList.remove('wall-reader-open'); } catch(_) {}
+            try { document.body.classList.remove('wall-reader-open'); } catch (_) { }
             this.sendTelemetry('read_close', { id, view: 'wall', toggled: true });
             return;
         }
         if (prev && prev.parentElement) prev.parentElement.removeChild(prev);
         // Clear previous selection highlight and connector overlay
         grid.querySelectorAll('.wall-card--selected').forEach(el => el.classList.remove('wall-card--selected'));
-        try { this.removeWallConnectorOverlay(); } catch(_) {}
+        try { this.removeWallConnectorOverlay(); } catch (_) { }
         const item = (this.currentItems || []).find(x => x.file_stem === id);
         if (!item) return;
         // Find last card in the clicked row by similar offsetTop
@@ -4672,7 +4672,7 @@ class AudioDashboard {
             this.enhanceSummaryHtml(body);
             // Apply saved reader display preferences to inline reader
             this.applyReaderDisplayPrefs(section, body);
-        } catch (_) {}
+        } catch (_) { }
         // Highlight the source card and set caret position (relative to expander)
         try {
             cardEl.classList.add('wall-card--selected');
@@ -4692,7 +4692,7 @@ class AudioDashboard {
             // Draw/update connector overlay (curved link + subtle glow)
             this.updateWallConnectorOverlay(cardEl, section, caretLeft);
             // Recompute once after layout settles (fonts/images)
-            try { setTimeout(() => this.updateWallConnectorOverlay(cardEl, section, caretLeft), 150); } catch(_) {}
+            try { setTimeout(() => this.updateWallConnectorOverlay(cardEl, section, caretLeft), 150); } catch (_) { }
             // Keep overlay aligned on scroll/resize until closed
             const boundUpdate = () => this.updateWallConnectorOverlay(cardEl, section);
             this._wallConnectorHandlers = this._wallConnectorHandlers || [];
@@ -4702,7 +4702,7 @@ class AudioDashboard {
                 { type: 'scroll', fn: boundUpdate, opts: { passive: true } }
             ];
             this._wallConnectorHandlers.forEach(h => window.addEventListener(h.type, h.fn, h.opts));
-        } catch(_) {}
+        } catch (_) { }
         const closeBtn = section.querySelector('[data-action="wall-reader-close"]');
         const displayBtn = section.querySelector('[data-action="reader-display"]');
         const openBtn = section.querySelector('[data-action="wall-reader-open-page"]');
@@ -4722,14 +4722,14 @@ class AudioDashboard {
                 // Similarity controls (halo mode)
                 if (this.flags && this.flags.wallSimilarityEnabled) {
                     // Apply immediately when opening
-                    try { this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')); } catch(_) {}
+                    try { this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')); } catch (_) { }
                     if (!actions.querySelector('[data-sim-reset]')) {
                         const simLabel = document.createElement('span');
                         simLabel.className = 'wall-sim-pill';
                         simLabel.textContent = 'Similar shown';
                         const simReset = document.createElement('button');
                         simReset.className = 'wall-sim-reset';
-                        simReset.setAttribute('data-sim-reset','');
+                        simReset.setAttribute('data-sim-reset', '');
                         simReset.textContent = 'Reset';
                         simReset.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.clearSimilarityView(grid); });
                         actions.insertBefore(simReset, actions.firstChild);
@@ -4737,7 +4737,7 @@ class AudioDashboard {
                     }
                 }
             }
-        } catch(_) {}
+        } catch (_) { }
         const onClose = () => {
             if (!section || !section.parentElement) return;
             // Animate collapse
@@ -4751,9 +4751,9 @@ class AudioDashboard {
             const finalize = () => {
                 if (section && section.parentElement) section.parentElement.removeChild(section);
                 section.removeEventListener('transitionend', finalize);
-                try { document.body.classList.remove('wall-reader-open'); } catch(_) {}
-                try { this.removeWallConnectorOverlay(); } catch(_) {}
-                try { this.clearSimilarityView(grid); } catch(_) {}
+                try { document.body.classList.remove('wall-reader-open'); } catch (_) { }
+                try { this.removeWallConnectorOverlay(); } catch (_) { }
+                try { this.clearSimilarityView(grid); } catch (_) { }
                 if (this._wallConnectorHandlers) {
                     this._wallConnectorHandlers.forEach(h => window.removeEventListener(h.type, h.fn, h.opts));
                     this._wallConnectorHandlers = [];
@@ -4763,7 +4763,7 @@ class AudioDashboard {
             document.removeEventListener('keydown', onEsc);
             document.removeEventListener('keydown', onArrow);
             this.sendTelemetry('read_close', { id, view: 'wall' });
-            try { cardEl.classList.remove('wall-card--selected'); } catch(_) {}
+            try { cardEl.classList.remove('wall-card--selected'); } catch (_) { }
         };
         const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
         const onArrow = (e) => {
@@ -4854,7 +4854,7 @@ class AudioDashboard {
             // Smooth cubic curve; control points halfway vertically with slight horizontal bias
             const midY = Math.round((startY + endY) / 2);
             const c1x = startX, c1y = midY;
-            const c2x = endX,   c2y = midY;
+            const c2x = endX, c2y = midY;
 
             const d = `M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}`;
             path.setAttribute('d', d);
@@ -4868,7 +4868,7 @@ class AudioDashboard {
             if (!item || !cardEl) return;
             // If an overlay is already open, close it first
             if (this._flipOverlay && this._flipOverlay.parentElement) {
-                try { this._flipOverlay.parentElement.removeChild(this._flipOverlay); } catch(_) {}
+                try { this._flipOverlay.parentElement.removeChild(this._flipOverlay); } catch (_) { }
                 this._flipOverlay = null;
             }
             // Scrim
@@ -4904,6 +4904,11 @@ class AudioDashboard {
                       <circle cx="5" cy="12" r="1.5"></circle>
                       <circle cx="12" cy="12" r="1.5"></circle>
                       <circle cx="19" cy="12" r="1.5"></circle>
+                    </svg>
+                  </button>
+                  <button class="summary-card__menu-btn" data-mega-close aria-label="Close" style="margin-left: 0.5rem;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                   <button class="flip-close" aria-label="Close" data-flip-close>✕</button>
@@ -4945,13 +4950,13 @@ class AudioDashboard {
             try {
                 const bodyHost = ov.querySelector('[data-flip-body]');
                 if (bodyHost) bodyHost.innerHTML = this.renderWallReaderSection(item);
-            } catch(_) {}
+            } catch (_) { }
             // Flip after grow
             setTimeout(() => { ov.classList.add('is-flipped'); }, 260);
             // Close handlers
             const close = () => {
-                try { ov.parentElement && ov.parentElement.removeChild(ov); } catch(_) {}
-                try { scrim.parentElement && scrim.parentElement.removeChild(scrim); } catch(_) {}
+                try { ov.parentElement && ov.parentElement.removeChild(ov); } catch (_) { }
+                try { scrim.parentElement && scrim.parentElement.removeChild(scrim); } catch (_) { }
                 this._flipOverlay = null;
             };
             ov.addEventListener('click', (e) => {
@@ -4988,13 +4993,13 @@ class AudioDashboard {
                     this.applyReaderDisplayPrefs(ov, bodyHost);
                     aaBtn.addEventListener('click', (e) => { e.preventDefault(); this.openReaderDisplayPopover(ov, bodyHost, aaBtn); });
                 }
-            } catch(_) {}
-        } catch (_) {}
+            } catch (_) { }
+        } catch (_) { }
     }
     // --- Wall similarity (heuristic, client-only) ---
     _tokenizeTitle(text) {
         try {
-            const stop = new Set(['the','a','an','and','or','of','to','in','on','for','with','from','by','at','is','are','be','this','that','it','as','vs','vs.','you','your']);
+            const stop = new Set(['the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'from', 'by', 'at', 'is', 'are', 'be', 'this', 'that', 'it', 'as', 'vs', 'vs.', 'you', 'your']);
             return String(text || '')
                 .toLowerCase()
                 .replace(/[^a-z0-9\s]+/g, ' ')
@@ -5050,7 +5055,7 @@ class AudioDashboard {
                 const sc = it && it !== base ? this.computeHeuristicSimilarity(base, it) : -1;
                 return { id, card, item: it, score: sc };
             }).filter(r => r.item && r.id !== selectedId);
-            scored.sort((a,b) => b.score - a.score);
+            scored.sort((a, b) => b.score - a.score);
             const K = Math.max(12, Math.min(36, Math.round((window.innerWidth || 1200) / 48))); // rough responsive pick
             const top = scored.slice(0, K);
             // Halo mode: dim all then mark top as similar
@@ -5058,9 +5063,9 @@ class AudioDashboard {
             cards.forEach(c => c.classList.add('wall-card--dim'));
             // Stagger highlight for top matches
             top.forEach((r, idx) => {
-              setTimeout(() => {
-                try { r.card.classList.add('wall-card--similar'); r.card.classList.remove('wall-card--dim'); } catch(_) {}
-              }, 24 * idx);
+                setTimeout(() => {
+                    try { r.card.classList.add('wall-card--similar'); r.card.classList.remove('wall-card--dim'); } catch (_) { }
+                }, 24 * idx);
             });
             // Keep selected fully visible
             const sel = grid.querySelector(`.wall-card[data-report-id="${CSS.escape(selectedId)}"]`);
@@ -5093,22 +5098,22 @@ class AudioDashboard {
             this.resetWallCardStyles(grid);
             // Calibrate grid row height BEFORE measuring so FLIP doesn't miss the reflow
             try {
-              const sample = grid.querySelector('.wall-card');
-              if (sample) {
-                const h = sample.getBoundingClientRect().height;
-                if (h && h > 0) grid.style.setProperty('--wall-row-h', Math.round(h) + 'px');
-              }
-            } catch(_) {}
+                const sample = grid.querySelector('.wall-card');
+                if (sample) {
+                    const h = sample.getBoundingClientRect().height;
+                    if (h && h > 0) grid.style.setProperty('--wall-row-h', Math.round(h) + 'px');
+                }
+            } catch (_) { }
             // Capture positions for FLIP reflow animation
             const before = new Map();
             try {
-              Array.from(grid.querySelectorAll('.wall-card')).forEach(el => { before.set(el, el.getBoundingClientRect()); });
-            } catch(_) {}
+                Array.from(grid.querySelectorAll('.wall-card')).forEach(el => { before.set(el, el.getBoundingClientRect()); });
+            } catch (_) { }
             // Close any other mega-cards first
             try {
                 const openMegas = Array.from(grid.querySelectorAll('.wall-card.wall-card--mega'));
                 openMegas.forEach(el => { if (el !== cardEl) this.closeWallMegaCard(el.getAttribute('data-report-id') || '', el); });
-            } catch(_) {}
+            } catch (_) { }
             // Save original markup
             cardEl._origHTML = cardEl.innerHTML;
             cardEl.classList.add('wall-card--mega');
@@ -5127,7 +5132,7 @@ class AudioDashboard {
               <div class="mega-inner">
                 <div class="mega-face mega-face--front">
                   <div class="mega-front">
-                    ${(item.summary_image_url||item.thumbnail_url)?`<img class=\"mega-front-thumb\" alt=\"\" src=\"${this.normalizeAssetUrl(item.summary_image_url || item.thumbnail_url)}\">`:''}
+                    ${(item.summary_image_url || item.thumbnail_url) ? `<img class=\"mega-front-thumb\" alt=\"\" src=\"${this.normalizeAssetUrl(item.summary_image_url || item.thumbnail_url)}\">` : ''}
                     <div class="mega-front-overlay">
                       <div class="mega-front-meta">${chipRail || ''}</div>
                       <h3 class="mega-front-title">${safeTitle}</h3>
@@ -5172,78 +5177,78 @@ class AudioDashboard {
             // 2) After neighbors finish, grow the clicked card into the reserved 2x2 area, then flip to summary
             let beforeRect = null, afterRect = null;
             try {
-              beforeRect = before.get(cardEl) || cardEl.getBoundingClientRect();
-              afterRect = cardEl.getBoundingClientRect();
-              // Freeze the card at its pre-expand position/size using FLIP transform
-              const dx = (beforeRect.left + window.pageXOffset) - (afterRect.left + window.pageXOffset);
-              const dy = (beforeRect.top + window.pageYOffset) - (afterRect.top + window.pageYOffset);
-              const sx = beforeRect.width && afterRect.width ? (beforeRect.width / afterRect.width) : 1;
-              const sy = beforeRect.height && afterRect.height ? (beforeRect.height / afterRect.height) : 1;
-              // Disable any base transition so this snap does not animate
-              cardEl.style.setProperty('transition', 'none', 'important');
-              cardEl.style.transformOrigin = 'top left';
-              cardEl.style.willChange = 'transform';
-              cardEl.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px) scale(${sx}, ${sy})`;
-              // Keep this card below neighbors during their move-out
-              cardEl.style.zIndex = '5';
-              cardEl.classList.add('mega-glow');
-              // No transition yet — we want neighbors to animate first
-            } catch(_) {}
+                beforeRect = before.get(cardEl) || cardEl.getBoundingClientRect();
+                afterRect = cardEl.getBoundingClientRect();
+                // Freeze the card at its pre-expand position/size using FLIP transform
+                const dx = (beforeRect.left + window.pageXOffset) - (afterRect.left + window.pageXOffset);
+                const dy = (beforeRect.top + window.pageYOffset) - (afterRect.top + window.pageYOffset);
+                const sx = beforeRect.width && afterRect.width ? (beforeRect.width / afterRect.width) : 1;
+                const sy = beforeRect.height && afterRect.height ? (beforeRect.height / afterRect.height) : 1;
+                // Disable any base transition so this snap does not animate
+                cardEl.style.setProperty('transition', 'none', 'important');
+                cardEl.style.transformOrigin = 'top left';
+                cardEl.style.willChange = 'transform';
+                cardEl.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px) scale(${sx}, ${sy})`;
+                // Keep this card below neighbors during their move-out
+                cardEl.style.zIndex = '5';
+                cardEl.classList.add('mega-glow');
+                // No transition yet — we want neighbors to animate first
+            } catch (_) { }
             // Animate grid reflow (FLIP) after reflow commits, then scroll
             try {
-              requestAnimationFrame(() => requestAnimationFrame(() => {
-                const totalMs = this.animateGridReflow(grid, before) || (this.flipDebugMs || 620);
-                // Scroll after animation starts, not before (avoid canceling transforms)
-                setTimeout(() => {
-                  try {
-                    const header = document.querySelector('header');
-                    const hh = header ? header.getBoundingClientRect().height : 64;
-                    const r = cardEl.getBoundingClientRect();
-                    const needsScroll = (r.top < hh + 12) || (r.bottom > (window.innerHeight - 12));
-                    if (needsScroll) {
-                      const top = Math.max(0, r.top + window.pageYOffset - hh - 16);
-                      window.scrollTo({ top, behavior: 'smooth' });
-                    }
-                  } catch(_) {}
-                }, 80);
-                // Phase 2: start earlier (half of neighbor stagger duration) so the wait isn't too long
-                const halfMs = Math.max(240, Math.round(totalMs * 0.5));
-                setTimeout(() => {
-                  try {
-                    // Animate the transform back to identity to expand into place
-                    cardEl.style.setProperty('transition', 'transform 520ms cubic-bezier(0.22, 1, 0.36, 1)', 'important');
-                    // force reflow before clearing transform
-                    void cardEl.offsetWidth;
-                    cardEl.style.transform = '';
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    const totalMs = this.animateGridReflow(grid, before) || (this.flipDebugMs || 620);
+                    // Scroll after animation starts, not before (avoid canceling transforms)
                     setTimeout(() => {
-                      try {
-                        cardEl.style.removeProperty('transition');
-                        cardEl.style.removeProperty('will-change');
-                        cardEl.style.removeProperty('z-index');
-                      } catch(_) {}
-                      try { cardEl.classList.add('wall-card--flipped'); } catch(_) {}
-                    }, 560);
-                  } catch(_) {}
-                }, halfMs + 60);
-              }));
-            } catch(_) {}
+                        try {
+                            const header = document.querySelector('header');
+                            const hh = header ? header.getBoundingClientRect().height : 64;
+                            const r = cardEl.getBoundingClientRect();
+                            const needsScroll = (r.top < hh + 12) || (r.bottom > (window.innerHeight - 12));
+                            if (needsScroll) {
+                                const top = Math.max(0, r.top + window.pageYOffset - hh - 16);
+                                window.scrollTo({ top, behavior: 'smooth' });
+                            }
+                        } catch (_) { }
+                    }, 80);
+                    // Phase 2: start earlier (half of neighbor stagger duration) so the wait isn't too long
+                    const halfMs = Math.max(240, Math.round(totalMs * 0.5));
+                    setTimeout(() => {
+                        try {
+                            // Animate the transform back to identity to expand into place
+                            cardEl.style.setProperty('transition', 'transform 520ms cubic-bezier(0.22, 1, 0.36, 1)', 'important');
+                            // force reflow before clearing transform
+                            void cardEl.offsetWidth;
+                            cardEl.style.transform = '';
+                            setTimeout(() => {
+                                try {
+                                    cardEl.style.removeProperty('transition');
+                                    cardEl.style.removeProperty('will-change');
+                                    cardEl.style.removeProperty('z-index');
+                                } catch (_) { }
+                                try { cardEl.classList.add('wall-card--flipped'); } catch (_) { }
+                            }, 560);
+                        } catch (_) { }
+                    }, halfMs + 60);
+                }));
+            } catch (_) { }
             // Apply similarity halo and set label count
             let similarCount = 0;
             try {
-              const items = this.currentItems || [];
-              const base = items.find(x => x.file_stem === id);
-              const cards = Array.from(grid.querySelectorAll('.wall-card'));
-              const scored = cards.map(card => {
-                const cid = card.getAttribute('data-report-id');
-                const it = items.find(x => x.file_stem === cid);
-                const sc = it && it !== base ? this.computeHeuristicSimilarity(base, it) : -1;
-                return { cid, card, item: it, score: sc };
-              }).filter(r => r.item && r.cid !== id).sort((a,b)=>b.score-a.score);
-              const K = Math.max(12, Math.min(36, Math.round((window.innerWidth || 1200) / 48)));
-              similarCount = Math.min(K, scored.length);
-              try { this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')); } catch(_) {}
-            } catch(_) {}
-            try { const lbl = cardEl.querySelector('[data-sim-label]'); if (lbl) lbl.textContent = `Similar (${similarCount || ''})`; } catch(_) {}
+                const items = this.currentItems || [];
+                const base = items.find(x => x.file_stem === id);
+                const cards = Array.from(grid.querySelectorAll('.wall-card'));
+                const scored = cards.map(card => {
+                    const cid = card.getAttribute('data-report-id');
+                    const it = items.find(x => x.file_stem === cid);
+                    const sc = it && it !== base ? this.computeHeuristicSimilarity(base, it) : -1;
+                    return { cid, card, item: it, score: sc };
+                }).filter(r => r.item && r.cid !== id).sort((a, b) => b.score - a.score);
+                const K = Math.max(12, Math.min(36, Math.round((window.innerWidth || 1200) / 48)));
+                similarCount = Math.min(K, scored.length);
+                try { this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')); } catch (_) { }
+            } catch (_) { }
+            try { const lbl = cardEl.querySelector('[data-sim-label]'); if (lbl) lbl.textContent = `Similar (${similarCount || ''})`; } catch (_) { }
             // Wire actions
             const openBtn = cardEl.querySelector('[data-mega-open]');
             if (openBtn) openBtn.addEventListener('click', (ev) => { ev.preventDefault(); window.location.href = `/${encodeURIComponent(id)}.json?v=2`; });
@@ -5277,22 +5282,22 @@ class AudioDashboard {
             // Similar controls
             const simOnly = cardEl.querySelector('[data-sim-only]');
             if (simOnly) simOnly.addEventListener('change', (e) => {
-              e.stopPropagation();
-              try { grid.classList.toggle('wall-sim-only', !!simOnly.checked); } catch(_) {}
+                e.stopPropagation();
+                try { grid.classList.toggle('wall-sim-only', !!simOnly.checked); } catch (_) { }
             });
             const simReset = cardEl.querySelector('[data-sim-reset]');
-            if (simReset) simReset.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.clearSimilarityView(grid); try { if (simOnly) simOnly.checked = false; grid.classList.remove('wall-sim-only'); } catch(_) {}; });
+            if (simReset) simReset.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.clearSimilarityView(grid); try { if (simOnly) simOnly.checked = false; grid.classList.remove('wall-sim-only'); } catch (_) { }; });
             // Prevent clicks inside mega content from bubbling to card (which would close it)
-            try { cardEl.querySelector('.mega-inner').addEventListener('click', (e)=> e.stopPropagation()); } catch(_) {}
-        } catch (_) {}
+            try { cardEl.querySelector('.mega-inner').addEventListener('click', (e) => e.stopPropagation()); } catch (_) { }
+        } catch (_) { }
     }
     openReaderFooterDrawer(container, bodyEl, anchorBtn) {
         try {
             // Close if open
             const existing = container.querySelector('.reader-drawer');
-            if (existing) { existing.classList.toggle('open'); if (!existing.classList.contains('open')) { setTimeout(()=> existing.remove(), 180); } return; }
+            if (existing) { existing.classList.toggle('open'); if (!existing.classList.contains('open')) { setTimeout(() => existing.remove(), 180); } return; }
             const prefs = this.getReaderDisplayPrefs();
-            const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed?'true':'false'}">${label}</span>`;
+            const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed ? 'true' : 'false'}">${label}</span>`;
             const sizeSeg = `
               <div class="reader-segment" role="group" aria-label="Text size">
                 ${segBtn('data-reader-size-dec', 'A−', false)}
@@ -5301,31 +5306,31 @@ class AudioDashboard {
               </div>`;
             const lineSeg = `
               <div class="reader-segment" role="radiogroup" aria-label="Line height">
-                ${segBtn('data-reader-line="tight"', 'Tight', prefs.line==='tight')}
-                ${segBtn('data-reader-line="normal"', 'Normal', prefs.line==='normal')}
-                ${segBtn('data-reader-line="loose"', 'Loose', prefs.line==='loose')}
+                ${segBtn('data-reader-line="tight"', 'Tight', prefs.line === 'tight')}
+                ${segBtn('data-reader-line="normal"', 'Normal', prefs.line === 'normal')}
+                ${segBtn('data-reader-line="loose"', 'Loose', prefs.line === 'loose')}
               </div>`;
             const familySeg = `
               <div class="reader-segment" role="radiogroup" aria-label="Font family">
-                ${segBtn('data-reader-family="sans"', '<span style=\\"font-family:system-ui,sans-serif\\">Aa</span>', prefs.family==='sans')}
-                ${segBtn('data-reader-family="serif"', '<span style=\\"font-family:Georgia,serif\\">Aa</span>', prefs.family==='serif')}
+                ${segBtn('data-reader-family="sans"', '<span style=\\"font-family:system-ui,sans-serif\\">Aa</span>', prefs.family === 'sans')}
+                ${segBtn('data-reader-family="serif"', '<span style=\\"font-family:Georgia,serif\\">Aa</span>', prefs.family === 'serif')}
               </div>`;
             const justifySeg = `
               <div class="reader-segment" role="radiogroup" aria-label="Justification">
-                ${segBtn('data-reader-justify="left"', 'Left', prefs.justify==='left')}
-                ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify==='justify')}
+                ${segBtn('data-reader-justify="left"', 'Left', prefs.justify === 'left')}
+                ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify === 'justify')}
               </div>`;
             const paraSeg = `
               <div class="reader-segment" role="radiogroup" aria-label="Paragraph style">
-                ${segBtn('data-reader-para="spaced"', 'Spaced', prefs.paraStyle==='spaced')}
-                ${segBtn('data-reader-para="indented"', 'Indented', prefs.paraStyle==='indented')}
+                ${segBtn('data-reader-para="spaced"', 'Spaced', prefs.paraStyle === 'spaced')}
+                ${segBtn('data-reader-para="indented"', 'Indented', prefs.paraStyle === 'indented')}
               </div>`;
             const measureSeg = `
               <div class="reader-segment" role="radiogroup" aria-label="Reading width">
-                ${segBtn('data-reader-measure="narrow"', 'Narrow', prefs.measure==='narrow')}
-                ${segBtn('data-reader-measure="medium"', 'Medium', prefs.measure==='medium')}
-                ${segBtn('data-reader-measure="wide"', 'Wide', prefs.measure==='wide')}
-                ${segBtn('data-reader-measure="full"', 'Full', prefs.measure==='full')}
+                ${segBtn('data-reader-measure="narrow"', 'Narrow', prefs.measure === 'narrow')}
+                ${segBtn('data-reader-measure="medium"', 'Medium', prefs.measure === 'medium')}
+                ${segBtn('data-reader-measure="wide"', 'Wide', prefs.measure === 'wide')}
+                ${segBtn('data-reader-measure="full"', 'Full', prefs.measure === 'full')}
               </div>`;
             const drawer = document.createElement('div');
             drawer.className = 'reader-drawer';
@@ -5338,22 +5343,22 @@ class AudioDashboard {
                 <button type="button" class="reader-close" data-close>×</button>
               </div>
               <div class="drawer-row" data-pane="typo" style="display:block">${sizeSeg} ${familySeg} ${lineSeg}</div>
-              <div class="drawer-row" data-pane="layout" style="display:none">${paraSeg} ${justifySeg} ${measureSeg.replace('</div>','')}${segBtn('data-reader-measure="auto"','Auto', prefs.measure==='auto')}</div>
+              <div class="drawer-row" data-pane="layout" style="display:none">${paraSeg} ${justifySeg} ${measureSeg.replace('</div>', '')}${segBtn('data-reader-measure="auto"', 'Auto', prefs.measure === 'auto')}</div>
             `;
             const host = container.querySelector('.mega-face--back') || container;
             host.appendChild(drawer);
             const setTab = (name) => {
-              const a = drawer.querySelector('[data-tab="typo"]'); const b = drawer.querySelector('[data-tab="layout"]');
-              const p1 = drawer.querySelector('[data-pane="typo"]'); const p2 = drawer.querySelector('[data-pane="layout"]');
-              a.setAttribute('aria-pressed', name==='typo'?'true':'false');
-              b.setAttribute('aria-pressed', name==='layout'?'true':'false');
-              p1.style.display = name==='typo' ? 'block' : 'none';
-              p2.style.display = name==='layout' ? 'block' : 'none';
+                const a = drawer.querySelector('[data-tab="typo"]'); const b = drawer.querySelector('[data-tab="layout"]');
+                const p1 = drawer.querySelector('[data-pane="typo"]'); const p2 = drawer.querySelector('[data-pane="layout"]');
+                a.setAttribute('aria-pressed', name === 'typo' ? 'true' : 'false');
+                b.setAttribute('aria-pressed', name === 'layout' ? 'true' : 'false');
+                p1.style.display = name === 'typo' ? 'block' : 'none';
+                p2.style.display = name === 'layout' ? 'block' : 'none';
             };
             drawer.addEventListener('click', (e) => {
                 const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-para], [data-reader-justify], [data-reader-measure], [data-reader-size-inc], [data-reader-size-dec], [data-tab], [data-close]');
                 if (!btn) return;
-                if (btn.hasAttribute('data-close')) { drawer.classList.remove('open'); setTimeout(()=> drawer.remove(), 180); return; }
+                if (btn.hasAttribute('data-close')) { drawer.classList.remove('open'); setTimeout(() => drawer.remove(), 180); return; }
                 if (btn.hasAttribute('data-tab')) { setTab(btn.getAttribute('data-tab')); return; }
                 const size = btn.getAttribute('data-reader-size');
                 const line = btn.getAttribute('data-reader-line');
@@ -5366,12 +5371,12 @@ class AudioDashboard {
                 let next = {};
                 if (size && READER_SIZE_MAP[size]) next.size = size;
                 if (inc || dec) {
-                  const order = ['s','m','l','xl','xxl'];
-                  const cur = this.getReaderDisplayPrefs().size || 'm';
-                  let idx = Math.max(0, order.indexOf(cur));
-                  if (inc && idx < order.length - 1) idx++;
-                  if (dec && idx > 0) idx--;
-                  next.size = order[idx];
+                    const order = ['s', 'm', 'l', 'xl', 'xxl'];
+                    const cur = this.getReaderDisplayPrefs().size || 'm';
+                    let idx = Math.max(0, order.indexOf(cur));
+                    if (inc && idx < order.length - 1) idx++;
+                    if (dec && idx > 0) idx--;
+                    next.size = order[idx];
                 }
                 if (line && READER_LINE_MAP[line]) next.line = line;
                 if (family && READER_FAMILY_MAP[family]) next.family = family;
@@ -5381,18 +5386,18 @@ class AudioDashboard {
                 const merged = this.setReaderDisplayPrefs(next);
                 this.applyReaderDisplayPrefs(container, bodyEl);
                 // Update toggles states
-                ['size','line','family','para','justify','measure'].forEach(key => {
-                  drawer.querySelectorAll('[data-reader-' + key + ']').forEach(el => {
-                    const val = el.getAttribute('data-reader-' + key);
-                    const want = String(merged[key === 'para' ? 'paraStyle' : key]);
-                    el.setAttribute('aria-pressed', val === want ? 'true' : 'false');
-                  });
+                ['size', 'line', 'family', 'para', 'justify', 'measure'].forEach(key => {
+                    drawer.querySelectorAll('[data-reader-' + key + ']').forEach(el => {
+                        const val = el.getAttribute('data-reader-' + key);
+                        const want = String(merged[key === 'para' ? 'paraStyle' : key]);
+                        el.setAttribute('aria-pressed', val === want ? 'true' : 'false');
+                    });
                 });
             });
             // Start on Typography tab with slide-up
             setTab('typo');
-            requestAnimationFrame(()=> drawer.classList.add('open'));
-        } catch (_) {}
+            requestAnimationFrame(() => drawer.classList.add('open'));
+        } catch (_) { }
     }
     animateGridReflow(grid, beforeMap) {
         if (!grid || !beforeMap || !(beforeMap instanceof Map)) return;
@@ -5428,7 +5433,7 @@ class AudioDashboard {
 
         // Stagger: overlapped group first (tight cascade), then others by distance
         const primary = movers.filter(m => m.overlapped);
-        const others  = movers.filter(m => !m.overlapped).sort((a,b) => a.dist - b.dist);
+        const others = movers.filter(m => !m.overlapped).sort((a, b) => a.dist - b.dist);
 
         const schedule = [];
         primary.forEach((m, i) => schedule.push({ ...m, delay: i * 70 }));
@@ -5458,11 +5463,11 @@ class AudioDashboard {
                 transitions.push(el);
                 const end = delay + durMs;
                 if (end > maxEnd) maxEnd = end;
-            } catch (_) {}
+            } catch (_) { }
         });
 
         const cleanup = () => {
-            transitions.forEach(el => { try { el.style.removeProperty('transition'); el.style.removeProperty('will-change'); el.style.removeProperty('z-index'); el.style.removeProperty('transform-origin'); el.style.removeProperty('opacity'); } catch(_) {} });
+            transitions.forEach(el => { try { el.style.removeProperty('transition'); el.style.removeProperty('will-change'); el.style.removeProperty('z-index'); el.style.removeProperty('transform-origin'); el.style.removeProperty('opacity'); } catch (_) { } });
         };
         // Primary timeout cleanup
         setTimeout(cleanup, maxEnd + 160);
@@ -5497,8 +5502,8 @@ class AudioDashboard {
                 cardEl.classList.remove('mega-glow');
             }
             this.clearSimilarityView(grid);
-            try { grid.classList.remove('wall-sim-only'); } catch(_) {}
-        } catch (_) {}
+            try { grid.classList.remove('wall-sim-only'); } catch (_) { }
+        } catch (_) { }
     }
 
     // Normalize NAS HTML variants at render time to ensure headings/lists styles apply
@@ -5839,16 +5844,16 @@ class AudioDashboard {
         }
 
         const showPages = 5;
-        
+
         let startPage = Math.max(1, currentPage - Math.floor(showPages / 2));
         let endPage = Math.min(totalPages, startPage + showPages - 1);
-        
+
         if (endPage - startPage < showPages - 1) {
             startPage = Math.max(1, endPage - showPages + 1);
         }
 
         let paginationHTML = '';
-        
+
         // Previous button
         if (currentPage > 1) {
             paginationHTML += `
@@ -5862,9 +5867,9 @@ class AudioDashboard {
         for (let i = startPage; i <= endPage; i++) {
             paginationHTML += `
                 <button data-page="${i}" 
-                        class="px-3 py-2 text-sm ${i === currentPage 
-                            ? 'bg-audio-500 text-white' 
-                            : 'text-slate-600 hover:text-audio-600'} 
+                        class="px-3 py-2 text-sm ${i === currentPage
+                    ? 'bg-audio-500 text-white'
+                    : 'text-slate-600 hover:text-audio-600'} 
                                rounded-lg transition-colors">
                     ${i}
                 </button>
@@ -5957,7 +5962,7 @@ class AudioDashboard {
         try {
             // Clean up any leftover state from previous sessions
             this._cleanupScrubState();
-            
+
             // Find the report data
             const reportCard = document.querySelector(`[data-report-id="${reportId}"]`);
             if (!reportCard) return;
@@ -5976,9 +5981,9 @@ class AudioDashboard {
 
             // Extract report info from the card
             const title = item?.title || reportCard.querySelector('h3').textContent.trim();
-            
+
             // Reset per-card progress bars
-            try { document.querySelectorAll('[data-card-progress]').forEach(el => { el.style.width = '0%'; el.setAttribute('aria-valuenow', '0'); }); } catch(_) {}
+            try { document.querySelectorAll('[data-card-progress]').forEach(el => { el.style.width = '0%'; el.setAttribute('aria-valuenow', '0'); }); } catch (_) { }
 
             // Update current track info and mini player
             if (item) {
@@ -6017,16 +6022,16 @@ class AudioDashboard {
                 this.nowPlayingThumb.src = cardImg.src;
                 this.nowPlayingThumb.classList.remove('hidden');
             }
-            
+
             // Load and play audio (user initiated)
             this.audioElement.src = audioSrc;
             this.audioElement.load();
             this.userInitiatedPlay = true;
-            
+
             // Update now playing preview
             this.updateNowPlayingPreview();
             this.updatePlayingCard();
-            
+
         } catch (error) {
             console.error('Failed to play audio:', error);
             this.showError('Failed to play audio');
@@ -6066,7 +6071,7 @@ class AudioDashboard {
                     if (/^Listen\b/i.test(t)) span.remove();
                 });
             }
-        } catch (_) {}
+        } catch (_) { }
         this.showToast('Audio not available for this summary', 'warn');
         // Reset current track
         this.isPlaying = false;
@@ -6140,7 +6145,7 @@ class AudioDashboard {
             this.playIcon.classList.remove('hidden');
             this.pauseIcon.classList.add('hidden');
         }
-        
+
         // Update mobile play button
         if (this.mobilePlayIcon && this.mobilePauseIcon) {
             if (this.isPlaying) {
@@ -6184,7 +6189,7 @@ class AudioDashboard {
                 this.topMiniPlayer.classList.add('hidden');
             }
         }
-        
+
         // Show/hide mobile mini-player
         if (this.mobileMiniPlayer) {
             if (this.currentAudio) {
@@ -6398,7 +6403,7 @@ class AudioDashboard {
     updateProgress() {
         const currentTime = this.audioElement.currentTime;
         const duration = this.audioElement.duration;
-        
+
         if (duration && !isNaN(duration) && !isNaN(currentTime)) {
             const progress = (currentTime / duration) * 100;
             this.progressBar.style.width = `${progress}%`;
@@ -6409,7 +6414,7 @@ class AudioDashboard {
             if (this.topNowPlayingTitle && this.currentAudio) {
                 this.topNowPlayingTitle.textContent = this.currentAudio.title;
             }
-            
+
             // Update now playing preview
             if (this.nowPlayingProgress) {
                 this.nowPlayingProgress.style.width = `${progress}%`;
@@ -6417,7 +6422,7 @@ class AudioDashboard {
             if (this.nowPlayingMeta) {
                 this.nowPlayingMeta.textContent = `${this.formatDuration(currentTime)} / ${this.formatDuration(duration)}`;
             }
-            
+
             // Update mobile mini-player
             if (this.mobileProgressBar) {
                 this.mobileProgressBar.style.width = `${progress}%`;
@@ -6473,11 +6478,11 @@ class AudioDashboard {
                 if (bar) { bar.style.width = '0%'; bar.setAttribute('aria-valuenow', '0'); }
             }
         }
-        
+
         // Update playing state
         const wasPlaying = this.isPlaying;
         this.isPlaying = !this.audioElement.paused;
-        
+
         if (wasPlaying !== this.isPlaying) {
             this.updatePlayButton();
         }
@@ -6978,7 +6983,7 @@ class AudioDashboard {
                 const u = variants[i]?.url || '';
                 if (typeof u === 'string' && /(?:^|\/)AI2_/i.test(u)) return this.normalizeAssetUrl(u);
             }
-        } catch (_) {}
+        } catch (_) { }
         return '';
     }
 
@@ -7037,7 +7042,7 @@ class AudioDashboard {
         this.updateImageModeUI();
         this.applyImageModeToAllCards();
         // Fallback: aggressively ensure mode is reflected for all cards
-        try { this.forceSwapAllCardsForCurrentMode(); } catch(_) {}
+        try { this.forceSwapAllCardsForCurrentMode(); } catch (_) { }
         // Increment rotation step if staying in rotate mode
         if (mode === 'rotate') {
             this.rotateCounter = (prev === 'rotate') ? (this.rotateCounter + 1) : 0;
@@ -7065,8 +7070,8 @@ class AudioDashboard {
                     const ai1 = item && item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
                     const ai2 = this.getAi2UrlForItem(item) || '';
                     const target = this.imageMode === 'ai2' ? (ai2 || ai1) : (ai1 || ai2);
-                    if (ai1) try { imgSummary.setAttribute('data-ai1-url', ai1); } catch(_) {}
-                    if (ai2) try { imgSummary.setAttribute('data-ai2-url', ai2); } catch(_) {}
+                    if (ai1) try { imgSummary.setAttribute('data-ai1-url', ai1); } catch (_) { }
+                    if (ai2) try { imgSummary.setAttribute('data-ai2-url', ai2); } catch (_) { }
                     if (target && imgSummary.src !== target) imgSummary.src = target;
                     imgSummary.classList.remove('hidden');
                 }
@@ -7149,8 +7154,8 @@ class AudioDashboard {
                     showSummary = true;
                     if (imgSummary && pick.url) {
                         if (imgSummary.src !== pick.url) imgSummary.src = pick.url;
-                        try { imgSummary.setAttribute('data-ai1-url', a1 || ''); } catch(_) {}
-                        try { imgSummary.setAttribute('data-ai2-url', pick.url); } catch(_) {}
+                        try { imgSummary.setAttribute('data-ai1-url', a1 || ''); } catch (_) { }
+                        try { imgSummary.setAttribute('data-ai2-url', pick.url); } catch (_) { }
                     }
                 }
             } else {
@@ -7172,10 +7177,10 @@ class AudioDashboard {
                 let ai1 = imgSummary.getAttribute('data-ai1-url') || (item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '') || '';
                 let ai2 = imgSummary.getAttribute('data-ai2-url') || this.getAi2UrlForItem(item) || '';
                 const target = wantAi2 ? (ai2 || ai1) : (ai1 || ai2);
-                if (ai1) try { imgSummary.setAttribute('data-ai1-url', ai1); } catch(_) {}
-                if (ai2) try { imgSummary.setAttribute('data-ai2-url', ai2); } catch(_) {}
+                if (ai1) try { imgSummary.setAttribute('data-ai1-url', ai1); } catch (_) { }
+                if (ai2) try { imgSummary.setAttribute('data-ai2-url', ai2); } catch (_) { }
                 if (target && imgSummary.src !== target) imgSummary.src = target;
-            } catch (_) {}
+            } catch (_) { }
         }
 
         if (showSummary) {
@@ -7238,7 +7243,7 @@ class AudioDashboard {
                 console.warn('Failed to parse subcategories_json:', e, item.subcategories_json);
             }
         }
-        
+
         // Also check for pre-parsed categories from SQLiteContentIndex
         if (!subcategoriesStructure && item?.analysis?.categories?.length) {
             subcategoriesStructure = { categories: item.analysis.categories };
@@ -7265,7 +7270,7 @@ class AudioDashboard {
         const rich = Array.isArray(item?.analysis?.categories) ? item.analysis.categories : [];
 
         let categories = [];
-        
+
         // Prefer schema_version >= 2 structured data
         if (item?.analysis?.schema_version >= 2 && Array.isArray(item?.analysis?.categories)) {
             categories = item.analysis.categories.map(c => c?.category).filter(Boolean);
@@ -7275,7 +7280,7 @@ class AudioDashboard {
             const catsLegacy = Array.isArray(item?.analysis?.category)
                 ? item.analysis.category
                 : (item?.analysis?.category ? [item.analysis.category] : []);
-            
+
             categories = Array.from(new Set([...catsRich, ...catsLegacy]))
                 .flatMap(cat => {
                     // If we get a comma-separated string, split it into separate categories
@@ -7286,13 +7291,13 @@ class AudioDashboard {
                 })
                 .filter(Boolean);
         }
-        
+
         // Build [parent, subcat] pairs from rich
         const pairsRich = rich.flatMap(c => {
             const parent = c?.category;
             if (!parent) return [];
             const arr = Array.isArray(c?.subcategories) ? c.subcategories
-                      : (c?.subcategory ? [c.subcategory] : []);
+                : (c?.subcategory ? [c.subcategory] : []);
             return (arr || []).map(sc => [parent, sc]);
         });
 
@@ -7307,7 +7312,7 @@ class AudioDashboard {
                 if (subcategory && !categories.includes(subcategory)) {
                     // Find the correct parent category for this subcategory
                     const correctParent = SUBCATEGORY_PARENTS[subcategory];
-                    
+
                     if (correctParent && categories.includes(correctParent)) {
                         // Pair with correct parent if it's in the categories list
                         legacyPairs.push([correctParent, subcategory]);
@@ -7327,7 +7332,7 @@ class AudioDashboard {
             return true;
         });
         const subcats = Array.from(new Set(subcatPairs.map(([, s]) => s)));
-        
+
         return { categories, subcats, subcatPairs };
     }
 
@@ -7365,7 +7370,7 @@ class AudioDashboard {
         const rect = el.getBoundingClientRect();
         const clientX = ('clientX' in event) ? event.clientX : (event.touches && event.touches[0] ? event.touches[0].clientX : 0);
         const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-        
+
         // If this card is already playing, seek immediately
         if (this.currentAudio && this.currentAudio.id === id && this.audioElement) {
             const duration = this.audioElement.duration;
@@ -7374,7 +7379,7 @@ class AudioDashboard {
             }
             return;
         }
-        
+
         // Otherwise, start playing this card and seek when ready
         this._pendingSeek = pct;
         this.playAudio(id);
@@ -7383,25 +7388,25 @@ class AudioDashboard {
     beginCardScrubDrag(el, startX) {
         const card = el.closest('[data-report-id]');
         if (!card) return;
-        
+
         // Prevent conflicting drag operations
         if (this._dragState) return;
-        
+
         const id = card.dataset.reportId;
         this._dragState = { el, id };
         this._suppressOpen = true; // prevent card open after drag-end click
-        
+
         let finalSeekPct = 0;
-        
+
         const onMove = (clientX) => {
             const rect = el.getBoundingClientRect();
             const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
             finalSeekPct = pct;
-            
+
             // Update visual progress bar immediately
             const bar = el.querySelector('[data-card-progress]');
             if (bar) bar.style.width = `${pct * 100}%`;
-            
+
             // Check if this is the currently active card (dynamic check during drag)
             const isCurrentlyActive = this.currentAudio && this.currentAudio.id === id;
             if (isCurrentlyActive && this.audioElement) {
@@ -7411,10 +7416,10 @@ class AudioDashboard {
                 }
             }
         };
-        
+
         const move = (e) => onMove(e.clientX);
         const moveTouch = (e) => onMove(e.touches[0].clientX);
-        
+
         const up = () => {
             const isActiveCard = this.currentAudio && this.currentAudio.id === id;
             if (!isActiveCard) {
@@ -7490,18 +7495,18 @@ class AudioDashboard {
         this.currentPage = 1;
         this.updateSortToggle();
         this.updateRadioSortUI();
-        
+
         // Scroll to top of results to make sorting change visible
         const mainContent = document.querySelector('main');
         if (mainContent) {
             mainContent.scrollTop = 0;
         }
-        
+
         // Clear current content and show loading to indicate change
         if (this.contentGrid) {
             this.contentGrid.innerHTML = '<div class="col-span-full text-center py-8 text-slate-500">Loading sorted results...</div>';
         }
-        
+
         this.loadContent();
     }
 
@@ -7529,7 +7534,7 @@ class AudioDashboard {
             const isSelected = radio.value === this.currentSort;
             const radioDiv = radio.nextElementSibling;
             const innerDiv = radioDiv.querySelector('div');
-            
+
             if (isSelected) {
                 radio.checked = true;
                 radioDiv.classList.remove('border-slate-300', 'dark:border-slate-600');
@@ -7548,7 +7553,7 @@ class AudioDashboard {
 
     handleFilterChange() {
         this.currentFilters = {};
-        
+
         // Collect all checked filters
         document.querySelectorAll('input[type="checkbox"][data-filter]:checked').forEach(checkbox => {
             const filterType = checkbox.dataset.filter;
@@ -7557,7 +7562,7 @@ class AudioDashboard {
             }
             this.currentFilters[filterType].push(checkbox.value);
         });
-        
+
         this.currentPage = 1;
         this.loadContent();
         this.updateShowAllButtonVisibility();
@@ -7565,7 +7570,7 @@ class AudioDashboard {
 
     applyFilterFromChip(filterType, filterValue, parentCategory = null) {
         console.log('🔍 Filter chip clicked:', { filterType, filterValue, parentCategory });
-        
+
         // Only clear filters of the same type (preserve other filter types)
         if (filterType === 'channel') {
             // For channels, only clear other channel filters (preserve categories, etc.)
@@ -7588,7 +7593,7 @@ class AudioDashboard {
                 cb.checked = false;
             });
         }
-        
+
         // Apply the clicked filter
         let checkbox = null;
         if (filterType === 'subcategory' && parentCategory) {
@@ -7611,10 +7616,10 @@ class AudioDashboard {
                 }
             }
         }
-        
+
         // Trigger filter update
         this.handleFilterChange();
-        
+
         // Show visual feedback that filter was applied
         this.showFilterAppliedFeedback(filterType, filterValue);
     }
@@ -7716,7 +7721,7 @@ class AudioDashboard {
 
     toggleMute() {
         if (!this.audioElement) return;
-        
+
         this.audioElement.muted = !this.audioElement.muted;
         this.updateMuteIcon();
     }
@@ -7734,8 +7739,8 @@ class AudioDashboard {
     handleKeyboard(event) {
         // Ignore if typing in an input
         if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
-        
-        switch(event.code) {
+
+        switch (event.code) {
             case 'Space':
                 if (this.currentAudio) {
                     event.preventDefault();
@@ -7806,7 +7811,7 @@ class AudioDashboard {
     // Utility methods
     formatDuration(seconds) {
         if (!seconds || isNaN(seconds)) return '0:00';
-        
+
         const minutes = Math.floor(seconds / 60);
         const remainingSeconds = Math.floor(seconds % 60);
         return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
@@ -7814,15 +7819,15 @@ class AudioDashboard {
 
     formatReadingTime(minutes) {
         if (!minutes || isNaN(minutes)) return null;
-        
+
         if (minutes < 1) return '< 1 min';
         return `${minutes} min`;
     }
 
     getButtonDurations(item) {
         const durations = {};
-        
-        
+
+
         // Read duration from media_metadata.estimated_reading_minutes or calculate from word_count
         if (item.media_metadata?.estimated_reading_minutes) {
             durations.read = this.formatReadingTime(item.media_metadata.estimated_reading_minutes);
@@ -7831,18 +7836,18 @@ class AudioDashboard {
             const readingMinutes = Math.max(1, Math.round(item.word_count / 200));
             durations.read = this.formatReadingTime(readingMinutes);
         }
-        
+
         // Listen duration from media_metadata.mp3_duration_seconds
         if (item.media_metadata?.mp3_duration_seconds) {
             durations.listen = this.formatDuration(item.media_metadata.mp3_duration_seconds);
         }
-        
+
         // Watch duration from media_metadata.video_duration_seconds or fallback to duration_seconds
         const videoDuration = item.media_metadata?.video_duration_seconds || item.duration_seconds;
         if (videoDuration) {
             durations.watch = this.formatDuration(videoDuration);
         }
-        
+
         return durations;
     }
 
@@ -7924,7 +7929,7 @@ class AudioDashboard {
         if (entered) {
             this.reprocessToken = entered.trim();
             this.reprocessTokenSource = 'prompt';
-            try { localStorage.setItem('ytv2.reprocessToken', this.reprocessToken); this.reprocessTokenSource = 'storage'; } catch (_) {}
+            try { localStorage.setItem('ytv2.reprocessToken', this.reprocessToken); this.reprocessTokenSource = 'storage'; } catch (_) { }
             this.updateReprocessFootnote();
             return this.reprocessToken;
         }
@@ -7971,7 +7976,7 @@ class AudioDashboard {
             const close = panel.querySelector('[data-close]');
             setTimeout(() => input && input.focus(), 10);
 
-            const cleanup = () => { try { document.body.removeChild(overlay); } catch(_) {} };
+            const cleanup = () => { try { document.body.removeChild(overlay); } catch (_) { } };
             const finish = (val) => { cleanup(); resolve(val); };
 
             save.addEventListener('click', () => finish(input.value.trim()));
@@ -7983,7 +7988,7 @@ class AudioDashboard {
     }
 
     resetStoredReprocessToken() {
-        try { localStorage.removeItem('ytv2.reprocessToken'); } catch (_) {}
+        try { localStorage.removeItem('ytv2.reprocessToken'); } catch (_) { }
         if (typeof window !== 'undefined' && window.REPROCESS_TOKEN) {
             this.reprocessToken = window.REPROCESS_TOKEN;
             this.reprocessTokenSource = 'window';
@@ -8026,7 +8031,7 @@ class AudioDashboard {
                 const item = (this.currentItems || []).find(x => x.file_stem === reportId);
                 const a = item && item.analysis ? item.analysis : {};
                 defaultPrompt = a.summary_image_prompt_last_used || a.summary_image_prompt || '';
-            } catch(_) {}
+            } catch (_) { }
             const promptText = await this.promptForImagePrompt(defaultPrompt, reportId);
             if (!promptText && promptText !== '') return; // canceled
             const token = await this.getReprocessToken();
@@ -8040,7 +8045,7 @@ class AudioDashboard {
                 body: JSON.stringify({ video_id: reportId, prompt: promptText })
             });
             if (!res.ok) {
-                const msg = await res.text().catch(()=>'');
+                const msg = await res.text().catch(() => '');
                 this.showToast(`Failed to save image prompt (${res.status})`, 'error');
                 console.error('set-image-prompt failed', res.status, msg);
                 return;
@@ -8100,7 +8105,7 @@ class AudioDashboard {
                               </div>`;
                         }).join('');
                         const olderCount = (() => {
-                            try { return variants.filter(v => this.normalizeAssetUrl(v.url || '') !== selectedUrl).length; } catch(_) { return 0; }
+                            try { return variants.filter(v => this.normalizeAssetUrl(v.url || '') !== selectedUrl).length; } catch (_) { return 0; }
                         })();
                         if (!olderCount) {
                             rows += `
@@ -8115,7 +8120,7 @@ class AudioDashboard {
                           </div>`;
                     }
                 }
-            } catch(_) {}
+            } catch (_) { }
 
             panel.innerHTML = `
               <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
@@ -8144,7 +8149,7 @@ class AudioDashboard {
             setTimeout(() => input.focus(), 10);
 
             const cleanup = () => {
-                try { document.body.removeChild(overlay); } catch(_) {}
+                try { document.body.removeChild(overlay); } catch (_) { }
             };
             const finish = (val) => { cleanup(); resolve(val); };
 
@@ -8186,7 +8191,7 @@ class AudioDashboard {
                                 body: JSON.stringify({ video_id: reportId, url: selected.url })
                             });
                             if (!res.ok) {
-                                const msg = await res.text().catch(()=> '');
+                                const msg = await res.text().catch(() => '');
                                 console.error('select-image-variant failed', res.status, msg);
                                 this.showToast(`Failed to select image (${res.status})`, 'error');
                                 return;
@@ -8198,7 +8203,7 @@ class AudioDashboard {
                                     item.summary_image_url = selected.url;
                                     if (item.analysis) item.analysis.summary_image_selected_url = selected.url;
                                 }
-                            } catch(_) {}
+                            } catch (_) { }
                             this.updateCardSummaryImage(reportId, selected.url);
                         } catch (err) {
                             console.error('select-image-variant error', err);
@@ -8234,7 +8239,7 @@ class AudioDashboard {
             if (!a2Default) {
                 const lastA2 = [...allVars].reverse().find(v => isAi2(v) && v.prompt);
                 if (lastA2) a2Default = lastA2.prompt;
-                else if (a.summary_image_prompt_last_used && isAi2(allVars[allVars.length-1]||{})) a2Default = a.summary_image_prompt_last_used;
+                else if (a.summary_image_prompt_last_used && isAi2(allVars[allVars.length - 1] || {})) a2Default = a.summary_image_prompt_last_used;
             }
             await this.openManageImagesModal(reportId, item, a1Default || '', a2Default || '');
         } catch (e) {
@@ -8247,7 +8252,7 @@ class AudioDashboard {
         return new Promise((resolve) => {
             const overlay = document.createElement('div');
             overlay.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
-            try { overlay.style.zIndex = '130'; } catch(_) {}
+            try { overlay.style.zIndex = '130'; } catch (_) { }
             const panel = document.createElement('div');
             panel.className = 'w-full max-w-3xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl';
 
@@ -8261,7 +8266,7 @@ class AudioDashboard {
                 const url = v.url || '';
                 const isAi2 = m === 'ai2' || tmpl === 'ai2_freestyle' || (ps && ps.startsWith('ai2')) || /(?:^|\/)AI2_/i.test(url);
                 return !isAi2;
-            }).sort((a,b)=>{ const ca=(a.created_at||'')+''; const cb=(b.created_at||'')+''; return ca<cb?1:ca>cb?-1:0; });
+            }).sort((a, b) => { const ca = (a.created_at || '') + ''; const cb = (b.created_at || '') + ''; return ca < cb ? 1 : ca > cb ? -1 : 0; });
             // Map URLs to prompts + created_at from variants for AI2
             const urlToPrompt = new Map();
             const urlToCreated = new Map();
@@ -8279,10 +8284,10 @@ class AudioDashboard {
                 (a1VariantsAll || []).forEach(v => { if (v && v.url) known.add(this.normalizeAssetUrl(v.url)); });
                 (ai2Urls || []).forEach(u => { if (u) known.add(this.normalizeAssetUrl(u)); });
                 this._imagesModalKnownUrls = known;
-            } catch(_) {}
+            } catch (_) { }
             const a2Variants = ai2Urls
                 .map(u => ({ url: u, image_mode: 'ai2', prompt: urlToPrompt.get(this.normalizeAssetUrl(u)) || '', created_at: urlToCreated.get(this.normalizeAssetUrl(u)) || '' }))
-                .sort((a,b) => {
+                .sort((a, b) => {
                     const ca = (a.created_at || '') + '';
                     const cb = (b.created_at || '') + '';
                     return ca < cb ? 1 : ca > cb ? -1 : 0;
@@ -8313,7 +8318,7 @@ class AudioDashboard {
                   </div>`;
             };
 
-            let a1Rows = a1Variants.map((v,i)=>htmlRow(v,i,a1Selected,'ai1')).join('');
+            let a1Rows = a1Variants.map((v, i) => htmlRow(v, i, a1Selected, 'ai1')).join('');
             if (!a1Rows) {
                 if (a1Selected) {
                     a1Rows = htmlRow({ url: a1Selected, prompt: a1Default || '' }, 0, a1Selected, 'ai1');
@@ -8321,7 +8326,7 @@ class AudioDashboard {
                     a1Rows = '<div class="px-2 py-3 text-xs text-slate-500">No AI1 variants yet.</div>';
                 }
             }
-            const a2Rows = a2Variants.map((v,i)=>htmlRow(v,i,a2Selected,'ai2')).join('') || '<div class="px-2 py-3 text-xs text-slate-500">No AI2 variants yet.</div>';
+            const a2Rows = a2Variants.map((v, i) => htmlRow(v, i, a2Selected, 'ai2')).join('') || '<div class="px-2 py-3 text-xs text-slate-500">No AI2 variants yet.</div>';
 
             panel.innerHTML = `
               <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
@@ -8339,7 +8344,7 @@ class AudioDashboard {
                 <div data-pane="ai1">
                   <label class="block text-sm mb-1">AI1 prompt</label>
                   <textarea data-input-ai1 rows="4" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2">${this.escapeHtml(a1Default)}</textarea>
-                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai1-line style="${(a.summary_image_prompt_original||'').trim() ? '' : 'display:none'}">Default: <span data-default-ai1>${this.escapeHtml((a.summary_image_prompt_original||'').trim() || '')}</span></div>
+                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai1-line style="${(a.summary_image_prompt_original || '').trim() ? '' : 'display:none'}">Default: <span data-default-ai1>${this.escapeHtml((a.summary_image_prompt_original || '').trim() || '')}</span></div>
                   <div class="mt-1 text-xs text-slate-500 dark:text-slate-400 hidden" data-status-ai1><span class="inline-flex items-center gap-1" data-status-ai1-text><svg class="animate-spin h-3 w-3 text-audio-600" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg> Regenerating…</span></div>
                   <div class="mt-2 flex items-center gap-2"><button data-save-ai1 class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Regenerate AI1</button><button data-use-default-ai1 class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Use default prompt</button></div>
                   <div class="mt-3 text-xs uppercase tracking-wide text-slate-400">AI1 variants</div>
@@ -8348,7 +8353,7 @@ class AudioDashboard {
                 <div data-pane="ai2" class="hidden">
                   <label class="block text-sm mb-1">AI2 prompt</label>
                   <textarea data-input-ai2 rows="4" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2">${this.escapeHtml(a2Default)}</textarea>
-                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai2-line style="${(a.summary_image_ai2_prompt_original||'').trim() ? '' : 'display:none'}">Default: <span data-default-ai2>${this.escapeHtml((a.summary_image_ai2_prompt_original||'').trim() || '')}</span></div>
+                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai2-line style="${(a.summary_image_ai2_prompt_original || '').trim() ? '' : 'display:none'}">Default: <span data-default-ai2>${this.escapeHtml((a.summary_image_ai2_prompt_original || '').trim() || '')}</span></div>
                   <div class="mt-1 text-xs text-slate-500 dark:text-slate-400 hidden" data-status-ai2><span class="inline-flex items-center gap-1" data-status-ai2-text><svg class="animate-spin h-3 w-3 text-audio-600" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg> Regenerating…</span></div>
                   <div class="mt-2 flex items-center gap-2"><button data-save-ai2 class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Regenerate AI2</button><button data-use-default-ai2 class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Use default prompt</button></div>
                   <div class="mt-3 text-xs uppercase tracking-wide text-slate-400">AI2 variants</div>
@@ -8389,8 +8394,8 @@ class AudioDashboard {
                 tabA2.classList.toggle('bg-slate-200', !a1on); tabA2.classList.toggle('dark:bg-slate-700', !a1on);
             };
             setTab('ai1');
-            tabA1.addEventListener('click', ()=> setTab('ai1'));
-            tabA2.addEventListener('click', ()=> setTab('ai2'));
+            tabA1.addEventListener('click', () => setTab('ai1'));
+            tabA2.addEventListener('click', () => setTab('ai2'));
 
             const setStatus = (mode, kind /* 'regen' | 'ready' | 'hide' */) => {
                 const el = mode === 'ai2' ? statusA2 : statusA1;
@@ -8402,7 +8407,7 @@ class AudioDashboard {
                 } else if (kind === 'ready') {
                     if (span) span.innerHTML = '<svg class="h-3 w-3 text-emerald-600" viewBox="0 0 24 24"><path fill="currentColor" d="M9 16.2l-3.5-3.5 1.4-1.4L9 13.4l7.1-7.1 1.4 1.4z"/></svg> New image ready';
                     el.classList.remove('hidden');
-                    setTimeout(()=>{ el.classList.add('hidden'); }, 1800);
+                    setTimeout(() => { el.classList.add('hidden'); }, 1800);
                 } else {
                     el.classList.add('hidden');
                 }
@@ -8422,7 +8427,7 @@ class AudioDashboard {
             };
 
             const startPollingForNewVariants = (videoId) => {
-                try { if (this._imagesModalPollTimer) clearInterval(this._imagesModalPollTimer); } catch(_) {}
+                try { if (this._imagesModalPollTimer) clearInterval(this._imagesModalPollTimer); } catch (_) { }
                 const startKnown = new Set(this._imagesModalKnownUrls || []);
                 const tick = async () => {
                     try {
@@ -8435,7 +8440,7 @@ class AudioDashboard {
                             vars.forEach(v => { if (v && v.url) urls.add(this.normalizeAssetUrl(v.url)); });
                             const ai2 = this.getAi2VariantUrls(itm) || [];
                             ai2.forEach(u => { if (u) urls.add(this.normalizeAssetUrl(u)); });
-                        } catch(_) {}
+                        } catch (_) { }
                         // Detect new URLs vs startKnown
                         let hasNew = false;
                         urls.forEach(u => { if (!startKnown.has(u)) hasNew = true; });
@@ -8445,7 +8450,7 @@ class AudioDashboard {
                             clearInterval(this._imagesModalPollTimer);
                             this._imagesModalPollTimer = null;
                         }
-                    } catch(_) {}
+                    } catch (_) { }
                 };
                 this._imagesModalPollTimer = setInterval(tick, 3000);
                 // also run immediately once
@@ -8468,10 +8473,10 @@ class AudioDashboard {
                 // Fallback polling in case NAS writes directly to DB without SSE
                 startPollingForNewVariants(videoId);
             };
-            saveA1.addEventListener('click', ()=> onSavePrompt('ai1', (inputA1.value||'').trim()));
-            saveA2.addEventListener('click', ()=> onSavePrompt('ai2', (inputA2.value||'').trim()));
-            if (useDefaultA1) useDefaultA1.addEventListener('click', ()=> { inputA1.value = (a.summary_image_prompt_original || a.summary_image_prompt || a1Default || ''); });
-            if (useDefaultA2) useDefaultA2.addEventListener('click', ()=> { inputA2.value = (a.summary_image_ai2_prompt_original || a.summary_image_ai2_prompt || a2Default || ''); });
+            saveA1.addEventListener('click', () => onSavePrompt('ai1', (inputA1.value || '').trim()));
+            saveA2.addEventListener('click', () => onSavePrompt('ai2', (inputA2.value || '').trim()));
+            if (useDefaultA1) useDefaultA1.addEventListener('click', () => { inputA1.value = (a.summary_image_prompt_original || a.summary_image_prompt || a1Default || ''); });
+            if (useDefaultA2) useDefaultA2.addEventListener('click', () => { inputA2.value = (a.summary_image_ai2_prompt_original || a.summary_image_ai2_prompt || a2Default || ''); });
 
             // Simple in-modal confirmation UI (instead of window.confirm)
             const confirmModal = (message, confirmLabel = 'Delete') => new Promise((resolve) => {
@@ -8487,9 +8492,9 @@ class AudioDashboard {
                   </div>`;
                 ov.appendChild(box);
                 document.body.appendChild(ov);
-                const done = (v) => { try { ov.remove(); } catch(_) {}; resolve(v); };
-                box.querySelector('[data-cancel]')?.addEventListener('click', ()=>done(false));
-                box.querySelector('[data-ok]')?.addEventListener('click', ()=>done(true));
+                const done = (v) => { try { ov.remove(); } catch (_) { }; resolve(v); };
+                box.querySelector('[data-cancel]')?.addEventListener('click', () => done(false));
+                box.querySelector('[data-ok]')?.addEventListener('click', () => done(true));
             });
 
             const onDeleteVariant = async (mode, url) => {
@@ -8504,10 +8509,10 @@ class AudioDashboard {
                 });
                 if (!res.ok) {
                     let msg = 'Failed to delete image';
-                    try { const j = await res.json(); if (j && j.error) msg += `: ${j.error}`; } catch(_) {}
+                    try { const j = await res.json(); if (j && j.error) msg += `: ${j.error}`; } catch (_) { }
                     this.showToast(msg, 'error'); return;
                 }
-                const j = await res.json().catch(()=>({}));
+                const j = await res.json().catch(() => ({}));
                 // Update in-memory pointers if this was the selected one
                 try {
                     const itemRef = (this.currentItems || []).find(x => x.file_stem === reportId);
@@ -8526,7 +8531,7 @@ class AudioDashboard {
                             }
                         }
                     }
-                } catch(_) {}
+                } catch (_) { }
                 // Remove the row from the list UI
                 const listEl = mode === 'ai2' ? listA2 : listA1;
                 const rowEl = listEl.querySelector(`[data-variant-row][data-url="${CSS.escape(this.normalizeAssetUrl(url))}"]`);
@@ -8539,9 +8544,9 @@ class AudioDashboard {
                     if (remaining.length > 0) {
                         await onSelectVariant(mode, remaining[0], true);
                     }
-                } catch(_) {}
+                } catch (_) { }
                 // Ensure cards reflect current mode and fallbacks
-                try { this.forceSwapAllCardsForCurrentMode(); } catch(_) {}
+                try { this.forceSwapAllCardsForCurrentMode(); } catch (_) { }
                 this.showToast('Image deleted', 'success');
             };
 
@@ -8553,11 +8558,11 @@ class AudioDashboard {
                     if (!token) { this.showToast('Token required', 'warn'); return; }
                     const res = await fetch('/api/delete-all-ai-images', {
                         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                        body: JSON.stringify({ video_id: videoId, modes: ['ai1','ai2'] })
+                        body: JSON.stringify({ video_id: videoId, modes: ['ai1', 'ai2'] })
                     });
                     if (!res.ok) {
                         let msg = 'Failed to delete AI images';
-                        try { const j = await res.json(); if (j && j.error) msg += `: ${j.error}`; } catch(_) {}
+                        try { const j = await res.json(); if (j && j.error) msg += `: ${j.error}`; } catch (_) { }
                         this.showToast(msg, 'error'); return;
                     }
                     // Clear lists
@@ -8571,8 +8576,8 @@ class AudioDashboard {
                             itemRef.analysis.summary_image_selected_url = '';
                             itemRef.analysis.summary_image_ai2_url = '';
                         }
-                    } catch(_) {}
-                    try { this.forceSwapAllCardsForCurrentMode(); } catch(_) {}
+                    } catch (_) { }
+                    try { this.forceSwapAllCardsForCurrentMode(); } catch (_) { }
                     this.showToast('All AI images deleted', 'success');
                 });
             }
@@ -8631,7 +8636,7 @@ class AudioDashboard {
                             else img.setAttribute('data-ai1-url', normalized);
                         }
                     }
-                } catch(_) {}
+                } catch (_) { }
                 this.updateCardSummaryImage(reportId, normalized);
                 // Update selection badges/buttons in the active list
                 if (mode === 'ai2') {
@@ -8655,7 +8660,7 @@ class AudioDashboard {
                             const rowUrl = this.normalizeAssetUrl(row?.getAttribute('data-url') || '');
                             const findIdx = variantsArr.findIndex(x => this.normalizeAssetUrl(x.url || '') === rowUrl);
                             if (findIdx >= 0) { idx = findIdx; v = variantsArr[findIdx]; }
-                        } catch(_) {}
+                        } catch (_) { }
                     }
                     if (!v) return;
                     if (useBtn) {
@@ -8678,62 +8683,62 @@ class AudioDashboard {
                     try {
                         const idx = (this.currentItems || []).findIndex(x => x.file_stem === reportId);
                         if (idx >= 0) this.currentItems[idx] = itm;
-                    } catch(_) {}
+                    } catch (_) { }
                     const allVars = Array.isArray(itm.analysis?.summary_image_variants) ? itm.analysis.summary_image_variants : [];
                     const newUrls = new Set();
                     try {
                         const prev = this._imagesModalKnownUrls || new Set();
                         allVars.forEach(v => { const u = v && v.url ? this.normalizeAssetUrl(v.url) : ''; if (u && !prev.has(u)) newUrls.add(u); });
-                    } catch(_) {}
+                    } catch (_) { }
                     // Rebuild AI1 list
                     const a1v = allVars.filter(v => {
-                        const m=(v.image_mode||'').toLowerCase();
-                        const t=(v.template||'').toLowerCase();
-                        const ps=(v.prompt_source||'').toLowerCase();
-                        const u=(v.url||'').toUpperCase();
-                        const isAi2 = (m==='ai2') || (t==='ai2_freestyle') || (ps && ps.startsWith('ai2')) || u.includes('/AI2_') || u.startsWith('AI2_');
+                        const m = (v.image_mode || '').toLowerCase();
+                        const t = (v.template || '').toLowerCase();
+                        const ps = (v.prompt_source || '').toLowerCase();
+                        const u = (v.url || '').toUpperCase();
+                        const isAi2 = (m === 'ai2') || (t === 'ai2_freestyle') || (ps && ps.startsWith('ai2')) || u.includes('/AI2_') || u.startsWith('AI2_');
                         return !isAi2;
-                    }).sort((a,b)=>{ const ca=(a.created_at||'')+''; const cb=(b.created_at||'')+''; return ca<cb?1:ca>cb?-1:0; });
+                    }).sort((a, b) => { const ca = (a.created_at || '') + ''; const cb = (b.created_at || '') + ''; return ca < cb ? 1 : ca > cb ? -1 : 0; });
                     const renderRow = (v, i, sel, mode) => {
-                        const url = this.normalizeAssetUrl(v.url||''); const isSel = sel && url && (url===this.normalizeAssetUrl(sel)); const when=this.formatRelativeTime(v.created_at); const preview=(v.prompt||'').slice(0,120);
-                        return `<div class="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 relative" data-variant-row data-url="${url}"><div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 dark:bg-slate-700 flex-shrink-0 relative" data-thumb><img src="${url}" alt="variant" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'" />${isSel ? '<span class=\'y-badge-selected absolute top-1 left-1 px-1.5 py-0.5 text-[10px] rounded bg-emerald-600 text-white\'>Selected</span>' : ''}</div><div class="flex-1 min-w-0"><div class="text-xs text-slate-500 dark:text-slate-400">${when||''}</div><div class="text-sm text-slate-700 dark:text-slate-200 truncate">${this.escapeHtml(preview)}</div><div class="mt-2 flex items-center gap-2"><button type="button" data-use-prompt data-mode="${mode}" data-index="${i}" class="px-2 py-1 text-xs rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">Use this prompt</button>${isSel ? '' : `<button type=\"button\" data-select-image data-mode=\"${mode}\" data-index=\"${i}\" class=\"px-2 py-1 text-xs rounded-md bg-audio-600 text-white hover:bg-audio-700\">Select this image</button>`}${mode==='ai1' || mode==='ai2' ? `<button type=\"button\" data-delete-image data-mode=\"${mode}\" data-index=\"${i}\" class=\"px-2 py-1 text-xs rounded-md border border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20\">Delete</button>`: ''}</div></div></div>`;
+                        const url = this.normalizeAssetUrl(v.url || ''); const isSel = sel && url && (url === this.normalizeAssetUrl(sel)); const when = this.formatRelativeTime(v.created_at); const preview = (v.prompt || '').slice(0, 120);
+                        return `<div class="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 relative" data-variant-row data-url="${url}"><div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 dark:bg-slate-700 flex-shrink-0 relative" data-thumb><img src="${url}" alt="variant" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'" />${isSel ? '<span class=\'y-badge-selected absolute top-1 left-1 px-1.5 py-0.5 text-[10px] rounded bg-emerald-600 text-white\'>Selected</span>' : ''}</div><div class="flex-1 min-w-0"><div class="text-xs text-slate-500 dark:text-slate-400">${when || ''}</div><div class="text-sm text-slate-700 dark:text-slate-200 truncate">${this.escapeHtml(preview)}</div><div class="mt-2 flex items-center gap-2"><button type="button" data-use-prompt data-mode="${mode}" data-index="${i}" class="px-2 py-1 text-xs rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">Use this prompt</button>${isSel ? '' : `<button type=\"button\" data-select-image data-mode=\"${mode}\" data-index=\"${i}\" class=\"px-2 py-1 text-xs rounded-md bg-audio-600 text-white hover:bg-audio-700\">Select this image</button>`}${mode === 'ai1' || mode === 'ai2' ? `<button type=\"button\" data-delete-image data-mode=\"${mode}\" data-index=\"${i}\" class=\"px-2 py-1 text-xs rounded-md border border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20\">Delete</button>` : ''}</div></div></div>`;
                     };
                     const a1Sel = itm.summary_image_url || itm.analysis?.summary_image_selected_url || '';
-                    let a1Html = a1v.map((v,i)=>renderRow(v,i,a1Sel,'ai1')).join('');
+                    let a1Html = a1v.map((v, i) => renderRow(v, i, a1Sel, 'ai1')).join('');
                     if (!a1Html) a1Html = '<div class="px-2 py-3 text-xs text-slate-500">No AI1 variants yet.</div>';
                     listA1.innerHTML = a1Html;
                     // Highlight newly-added rows (AI1)
                     try {
                         listA1.querySelectorAll('[data-variant-row]').forEach(row => {
-                            const u = this.normalizeAssetUrl(row.getAttribute('data-url')||'');
+                            const u = this.normalizeAssetUrl(row.getAttribute('data-url') || '');
                             if (newUrls.has(u)) {
-                                row.classList.add('ring','ring-audio-400','ring-offset-1');
-                                setTimeout(()=>{ row.classList.remove('ring','ring-audio-400','ring-offset-1'); }, 1500);
+                                row.classList.add('ring', 'ring-audio-400', 'ring-offset-1');
+                                setTimeout(() => { row.classList.remove('ring', 'ring-audio-400', 'ring-offset-1'); }, 1500);
                             }
                         });
-                    } catch(_) {}
-                    listClick(listA1,'ai1',a1v);
+                    } catch (_) { }
+                    listClick(listA1, 'ai1', a1v);
 
                     // Rebuild AI2 list
                     const urlToPrompt = new Map();
-                    allVars.forEach(v=>{ if (v.url) urlToPrompt.set(this.normalizeAssetUrl(v.url), v.prompt||''); });
+                    allVars.forEach(v => { if (v.url) urlToPrompt.set(this.normalizeAssetUrl(v.url), v.prompt || ''); });
                     const ai2Urls = this.getAi2VariantUrls(itm);
-                    const a2v = ai2Urls.map(u=>({ url:u, image_mode:'ai2', prompt:urlToPrompt.get(this.normalizeAssetUrl(u))||'', created_at:'' }));
+                    const a2v = ai2Urls.map(u => ({ url: u, image_mode: 'ai2', prompt: urlToPrompt.get(this.normalizeAssetUrl(u)) || '', created_at: '' }));
                     const a2Sel = itm.summary_image_ai2_url || itm.analysis?.summary_image_ai2_url || '';
-                    let a2Html = a2v.map((v,i)=>renderRow(v,i,a2Sel,'ai2')).join('');
+                    let a2Html = a2v.map((v, i) => renderRow(v, i, a2Sel, 'ai2')).join('');
                     if (!a2Html) a2Html = '<div class="px-2 py-3 text-xs text-slate-500">No AI2 variants yet.</div>';
                     listA2.innerHTML = a2Html;
                     // Highlight newly-added rows (AI2)
                     try {
                         listA2.querySelectorAll('[data-variant-row]').forEach(row => {
-                            const u = this.normalizeAssetUrl(row.getAttribute('data-url')||'');
+                            const u = this.normalizeAssetUrl(row.getAttribute('data-url') || '');
                             if (newUrls.has(u)) {
-                                row.classList.add('ring','ring-audio-400','ring-offset-1');
-                                setTimeout(()=>{ row.classList.remove('ring','ring-audio-400','ring-offset-1'); }, 1500);
+                                row.classList.add('ring', 'ring-audio-400', 'ring-offset-1');
+                                setTimeout(() => { row.classList.remove('ring', 'ring-audio-400', 'ring-offset-1'); }, 1500);
                             }
                         });
-                    } catch(_) {}
-                    listClick(listA2,'ai2',a2v);
+                    } catch (_) { }
+                    listClick(listA2, 'ai2', a2v);
 
                     // Update the visible card thumbnail in the grid for this item
                     try {
@@ -8743,17 +8748,17 @@ class AudioDashboard {
                             const ai1 = a1Sel ? this.normalizeAssetUrl(a1Sel) : '';
                             const ai2 = a2Sel ? this.normalizeAssetUrl(a2Sel) : '';
                             if (imgSum) {
-                                if (ai1) try { imgSum.setAttribute('data-ai1-url', ai1); } catch(_) {}
-                                if (ai2) try { imgSum.setAttribute('data-ai2-url', ai2); } catch(_) {}
+                                if (ai1) try { imgSum.setAttribute('data-ai1-url', ai1); } catch (_) { }
+                                if (ai2) try { imgSum.setAttribute('data-ai2-url', ai2); } catch (_) { }
                             }
-                            try { this.applyImageModeToCard(card); } catch(_) {}
+                            try { this.applyImageModeToCard(card); } catch (_) { }
                         }
-                    } catch(_) {}
+                    } catch (_) { }
 
                     // Flip status to ready for both panes, then hide
                     // If a mode was regenerating, flip its status to ready and re-enable
-                    if (this._imagesModalRegenSet.has('ai1')) { setStatus('ai1','ready'); setBusy('ai1', false); }
-                    if (this._imagesModalRegenSet.has('ai2')) { setStatus('ai2','ready'); setBusy('ai2', false); }
+                    if (this._imagesModalRegenSet.has('ai1')) { setStatus('ai1', 'ready'); setBusy('ai1', false); }
+                    if (this._imagesModalRegenSet.has('ai2')) { setStatus('ai2', 'ready'); setBusy('ai2', false); }
                     // Update known URLs baseline
                     try {
                         const known = this._imagesModalKnownUrls || new Set();
@@ -8761,15 +8766,15 @@ class AudioDashboard {
                         const urls2 = this.getAi2VariantUrls(itm) || [];
                         urls2.forEach(u => { if (u) known.add(this.normalizeAssetUrl(u)); });
                         this._imagesModalKnownUrls = known;
-                    } catch(_) {}
-                } catch(_) {}
+                    } catch (_) { }
+                } catch (_) { }
             };
 
             // Default display radio removed for now
 
-            const finish = () => { try { document.body.removeChild(overlay); } catch(_) {}; if (this._openImagesModalReportId === reportId) this._openImagesModalReportId = null; try { if (this._imagesModalPollTimer) { clearInterval(this._imagesModalPollTimer); this._imagesModalPollTimer = null; } } catch(_) {}; resolve(); };
+            const finish = () => { try { document.body.removeChild(overlay); } catch (_) { }; if (this._openImagesModalReportId === reportId) this._openImagesModalReportId = null; try { if (this._imagesModalPollTimer) { clearInterval(this._imagesModalPollTimer); this._imagesModalPollTimer = null; } } catch (_) { }; resolve(); };
             this._closeImagesModal = finish;
-            overlay.addEventListener('click', (e)=>{ if (e.target === overlay) finish(); });
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) finish(); });
             closeBtns.forEach(btn => btn && btn.addEventListener('click', finish));
         });
     }
@@ -8801,7 +8806,7 @@ class AudioDashboard {
             const defaultImg = card.querySelector('[data-role="thumb-default"]');
             if (summaryImg) {
                 summaryImg.src = normalized;
-                try { summaryImg.setAttribute('data-ai1-url', normalized); } catch(_) {}
+                try { summaryImg.setAttribute('data-ai1-url', normalized); } catch (_) { }
                 summaryImg.classList.remove('hidden');
             }
             if (defaultImg) {
@@ -8881,7 +8886,7 @@ class AudioDashboard {
                 return headerLine + bulletLines;
             }).join('\n\n');
             text = rebuilt;
-        } catch (_) {}
+        } catch (_) { }
 
         // Detect "run-on hyphen bullets" and convert to line-broken bullets
         // Example: "... sentence. - point one - point two - point three" -> break into lines with "- "
@@ -8895,7 +8900,7 @@ class AudioDashboard {
                     .replace(/(?:^|([.!?]))\s*[-–—]\s+/g, (m, p1) => (p1 ? p1 + '\n- ' : '- '))
                     .replace(/\s{2,}/g, ' ');
             }
-        } catch (_) {}
+        } catch (_) { }
 
         // Check for structured markers
         const hasMainTopic = /^(?:•\s*)?\*\*Main topic:\*\*\s*.+$/mi.test(text);
@@ -8948,11 +8953,11 @@ class AudioDashboard {
         // 2) Extract takeaway if present
         const takeawayMatch = text.match(/\*\*Takeaway:\*\*\s*(.+?)(?=\*\*|$)/is);
         const takeaway = takeawayMatch ? takeawayMatch[1].trim() : null;
-        
+
         // 3) Find content after "**Key points:**" marker, before takeaway
         const keyStartIdx = text.search(/\*\*Key points:\*\*/i);
         let bulletBlock = '';
-        
+
         if (keyStartIdx >= 0) {
             // Take everything after the "Key points:" marker
             let bulletText = text.slice(keyStartIdx).replace(/\*\*Key points:\*\*/i, '').trim();
@@ -9029,7 +9034,7 @@ class AudioDashboard {
         const hasHeaders = /^[A-Z][^.\n]*\s*$/m.test(text); // Lines that look like headers
         const hasBulletPoints = /^(?:\s*[-•*]\s+)/m.test(text); // Bullet points
         const hasStructuredSections = /^(?:Overview|What's New|Key|Main|Summary|Takeaway)[\s:]/mi.test(text);
-        
+
         return (hasHeaders && hasBulletPoints) || hasStructuredSections;
     }
 
@@ -9143,7 +9148,7 @@ class AudioDashboard {
             const aria = isCurrent ? ' aria-current="true"' : '';
             return `
               <button data-queue-index="${idx}"${aria} class="w-full text-left px-3 py-2 rounded-lg border ${isCurrent ? 'border-audio-400 bg-audio-50' : 'border-slate-200 hover:bg-slate-50'} text-sm truncate">
-                <span class="text-slate-600">${(idx+1).toString().padStart(2,'0')}.</span>
+                <span class="text-slate-600">${(idx + 1).toString().padStart(2, '0')}.</span>
                 <span class="ml-2 ${isCurrent ? 'text-audio-700 font-medium' : 'text-slate-700'}">${title}</span>
               </button>`;
         }).join('');
@@ -9172,7 +9177,7 @@ class AudioDashboard {
         try {
             const data = { playlist: this.playlist || [], index: this.currentTrackIndex };
             sessionStorage.setItem(this.queueKey, JSON.stringify(data));
-        } catch (_) {}
+        } catch (_) { }
     }
 
     restoreQueue() {
@@ -9203,7 +9208,7 @@ class AudioDashboard {
                 }
                 this.renderQueue();
             }
-        } catch (_) {}
+        } catch (_) { }
     }
 
     // Telemetry batching + sampling
@@ -9224,7 +9229,7 @@ class AudioDashboard {
     }
 
     sendTelemetry(eventName, payload = {}) {
-        const sampled = ['cta_listen','cta_watch'].includes(eventName) ? (Math.random() < 0.25) : true;
+        const sampled = ['cta_listen', 'cta_watch'].includes(eventName) ? (Math.random() < 0.25) : true;
         if (!sampled) return;
         this.queueTelemetry({ event: eventName, ...payload, t: Date.now() });
     }
@@ -9280,55 +9285,55 @@ class AudioDashboard {
         this._dragState = null;
         this._suppressOpen = false;
         this._dragEndedAt = null;
-        
+
         // Clean up any lingering event listeners
         try {
             ['mousemove', 'mouseup', 'touchmove', 'touchend'].forEach(event => {
                 window.removeEventListener(event, this._tempHandler);
             });
-        } catch(e) { /* ignore */ }
+        } catch (e) { /* ignore */ }
     }
 
     // Progress bar drag handling for both desktop and mobile mini players
     beginProgressDrag(event, isMobile) {
         if (!this.audioElement || !this.currentAudio) return;
-        
+
         // Prevent conflicting drag operations
         if (this._dragState) return;
-        
+
         event.preventDefault();
         const container = isMobile ? this.mobileProgressContainer : this.progressContainer;
         const progressBar = isMobile ? this.mobileProgressBar : this.progressBar;
-        
+
         const onMove = (clientX) => {
             const rect = container.getBoundingClientRect();
             const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-            
+
             // Update visual progress
             if (progressBar) progressBar.style.width = `${pct * 100}%`;
-            
+
             // Seek audio
             const duration = this.audioElement.duration;
             if (duration && !isNaN(duration)) {
                 this.audioElement.currentTime = pct * duration;
             }
         };
-        
+
         const move = (e) => onMove(e.clientX);
         const moveTouch = (e) => onMove(e.touches[0].clientX);
-        
+
         const cleanup = () => {
             window.removeEventListener('mousemove', move);
             window.removeEventListener('mouseup', cleanup);
             window.removeEventListener('touchmove', moveTouch);
             window.removeEventListener('touchend', cleanup);
         };
-        
+
         window.addEventListener('mousemove', move);
         window.addEventListener('mouseup', cleanup);
         window.addEventListener('touchmove', moveTouch, { passive: true });
         window.addEventListener('touchend', cleanup);
-        
+
         // Initial position
         const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : 0);
         onMove(clientX);
@@ -9338,7 +9343,7 @@ class AudioDashboard {
 // Initialize the dashboard when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.audioDashboard = new AudioDashboard();
-    
+
     // Optional: Enable fetch interceptor for debugging (per OpenAI recommendation)
     // Uncomment the lines below to see all API requests in console
     /*
@@ -9353,5 +9358,5 @@ document.addEventListener('DOMContentLoaded', () => {
     })();
     */
 });
-        // Header search clear
-        this.searchClearHeader = document.getElementById('searchClearHeader');
+// Header search clear
+this.searchClearHeader = document.getElementById('searchClearHeader');
