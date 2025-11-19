@@ -1592,10 +1592,20 @@ body:not(.dark) .reader-display-popover { box-shadow: 0 8px 24px rgba(0,0,0,0.12
     justify-content: flex-end;
     gap: 0.45rem;
     padding: 0.75rem;
-    background: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.75) 70%, rgba(15, 23, 42, 0.85) 100%);
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.6) 50%, rgba(15, 23, 42, 0.9) 100%);
+    backdrop-filter: blur(0px); /* Prepare for potential blur transition */
     color: #f8fafc;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
-.wall-card__meta { font-size: 0.65rem; opacity: 0.85; display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
+.wall-card__meta { font-size: 0.65rem; opacity: 0.95; display: inline-flex; flex-wrap: wrap; gap: 0.25rem; }
+.wall-card__meta .chip-btn {
+    background: rgba(255,255,255,0.15);
+    backdrop-filter: blur(4px);
+    border-radius: 999px;
+    padding: 1px 6px;
+    color: #fff;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.3);
+}
 .wall-card__meta button { color: inherit; opacity: 0.85; }
 .wall-card__title {
     font-size: 0.9rem;
@@ -3207,4 +3217,92 @@ input[type="checkbox"][data-category-parent]:indeterminate::after {
   .wall-sim-only .wall-card.wall-card--mega { opacity: 1; filter: none; }
   .wall-sim-only .wall-card--mega,
   .wall-sim-only .wall-card.wall-card--similar { order: 0 !important; }
+}
+
+/* Mega Card Controls Polish */
+.mega-footer .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    user-select: none;
+}
+.mega-footer .toggle input {
+    appearance: none;
+    width: 2.25rem;
+    height: 1.25rem;
+    background: rgba(148, 163, 184, 0.3);
+    border-radius: 999px;
+    position: relative;
+    transition: background 0.2s ease;
+    cursor: pointer;
+}
+.mega-footer .toggle input::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 1rem;
+    height: 1rem;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s ease;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+.mega-footer .toggle input:checked {
+    background: #0ea5e9;
+}
+.mega-footer .toggle input:checked::after {
+    transform: translateX(1rem);
+}
+.dark .mega-footer .toggle input {
+    background: rgba(255,255,255,0.15);
+}
+
+.wall-sim-reset {
+    background: transparent;
+    border: 1px solid transparent;
+    color: #64748b;
+    padding: 0.25rem 0.75rem;
+    border-radius: 0.375rem;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+.wall-sim-reset:hover {
+    background: rgba(148, 163, 184, 0.1);
+    color: #334155;
+}
+.dark .wall-sim-reset {
+    color: #94a3b8;
+}
+.dark .wall-sim-reset:hover {
+    background: rgba(255,255,255,0.05);
+    color: #e2e8f0;
+}
+
+/* Focus Ring Polish */
+.wall-card:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.6);
+    border-radius: 12px; /* Matches card radius */
+}
+
+/* Similar Card Highlighting */
+.wall-card.wall-sim-active {
+    border: 2px dashed rgba(14, 165, 233, 0.5);
+}
+.wall-card.wall-sim-active::after {
+    content: 'Similar';
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: #0ea5e9;
+    color: white;
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    z-index: 10;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }

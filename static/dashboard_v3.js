@@ -5143,7 +5143,10 @@ class AudioDashboard {
                   <div class="mega-footer">
                     <div class="mega-left">
                       <span class="wall-sim-pill" data-sim-label>Similar shown</span>
-                      <label class="toggle" data-control><input type="checkbox" data-sim-only data-control> Show only</label>
+                      <label class="toggle" data-control title="Show only similar items">
+                        <input type="checkbox" data-sim-only data-control>
+                      </label>
+                      <span class="text-xs font-medium opacity-70">Show only</span>
                       <button class="wall-sim-reset" data-sim-reset data-control>Reset</button>
                     </div>
                     <div class="mega-right">
