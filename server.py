@@ -3322,22 +3322,33 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             errors.append(f"JSON cleanup error: {e}")
 
         # Remove generated summary images if present
+        # Modern image filenames are based on the bare video_id (no source prefix)
+        # e.g. 7GnRsYHwNIU_20251119_071657_neon_network384.png and
+        #       AI2_7GnRsYHwNIU_20251119_071804_minimal_vector384.png
         try:
             img_dirs = [
                 Path('/app/data/exports/images'),
                 Path('./exports/images')
             ]
+            # Derive a generic base id for filenames (strip yt:/reddit:/web: prefixes)
+            base_id = (report_id or '').split(':', 1)[-1]
             for idir in img_dirs:
                 if not idir.exists():
                     continue
                 for ext in ('.png', '.jpg', '.jpeg', '.webp'):
-                    for p in idir.glob(f"{report_id}_*{ext}"):
-                        try:
-                            p.unlink()
-                            deleted_files.append(str(p))
-                            logger.info("Deleted summary image: %s", p)
-                        except Exception as e:
-                            errors.append(f"Failed to delete image {p}: {e}")
+                    patterns = [
+                        f"{base_id}_*{ext}",           # AI1 / legacy pattern
+                        f"AI2_{base_id}_*{ext}",       # AI2 pattern
+                        f"{report_id}_*{ext}",         # older prefix pattern
+                    ]
+                    for pattern in patterns:
+                        for p in idir.glob(pattern):
+                            try:
+                                p.unlink()
+                                deleted_files.append(str(p))
+                                logger.info("Deleted summary image: %s", p)
+                            except Exception as e:
+                                errors.append(f"Failed to delete image {p}: {e}")
         except Exception as e:
             errors.append(f"Image cleanup error: {e}")
 
