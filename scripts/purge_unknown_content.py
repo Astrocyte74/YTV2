@@ -30,16 +30,15 @@ def get_db_url() -> str:
 def list_rows(conn: psycopg.Connection, limit: Optional[int]) -> list[tuple[str, str]]:
     sql = (
         "SELECT id, indexed_at FROM content "
-        "WHERE title ILIKE 'Content unknown-%' "
+        "WHERE title ILIKE %s "
         "ORDER BY indexed_at"
     )
+    values = ["Content unknown-%"]
     if limit:
         sql += " LIMIT %s"
-        params = (limit,)
-    else:
-        params = ()
+        values.append(limit)
     with conn.cursor() as cur:
-        cur.execute(sql, params)
+        cur.execute(sql, tuple(values))
         return [(row[0], row[1].isoformat()) for row in cur.fetchall()]
 
 
