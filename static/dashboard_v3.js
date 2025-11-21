@@ -5080,6 +5080,7 @@ class AudioDashboard {
 
     // --- In-grid 2x2 mega-card (Option A) ---
     openWallMegaCard(id, cardEl) {
+        return this.openWallMegaOverlay(id, cardEl);
         try {
             const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
             if (!grid || !cardEl) return;
