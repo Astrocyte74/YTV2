@@ -5661,6 +5661,201 @@ class AudioDashboard {
             </div>`;
     }
 
+    // Unified overlay reader modal (panel + inline)
+    openWallMegaOverlay(id, cardEl) {
+        try {
+            if (typeof this.closeWallMegaOverlay === 'function') this.closeWallMegaOverlay();
+            const item = (this.currentItems || []).find(x => x.file_stem === id);
+            if (!item) return;
+
+            const safeTitle = this.escapeHtml(item.title || 'Summary');
+            const { categories, subcatPairs } = this.extractCatsAndSubcats(item);
+            const chipRail = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 4);
+            const sourceLink = item.canonical_url || item.video_id
+                ? `<a class="reader-source" href="${this.escapeHtml(item.canonical_url || '')}" target="_blank" rel="noopener">Open source</a>`
+                : '';
+            const menuMarkup = `
+              <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
+              </div>`;
+
+            const overlay = document.createElement('div');
+            overlay.id = 'wallMegaOverlay';
+            overlay.className = 'reader-overlay';
+            overlay.innerHTML = `
+              <div class="reader-scrim" data-overlay-close></div>
+              <div class="reader-modal">
+                <div class="reader-shell">
+                  <div class="reader-header">
+                    <div class="reader-header-main">
+                      ${(item.summary_image_url || item.thumbnail_url)
+                        ? `<div class="reader-thumb"><img src="${this.normalizeAssetUrl(item.summary_image_url || item.thumbnail_url)}" alt=""></div>`
+                        : `<div class="reader-thumb reader-thumb--empty"></div>`}
+                      <div class="reader-title-wrap">
+                        <div class="reader-title" title="${safeTitle}">${safeTitle}</div>
+                        <div class="reader-meta">${chipRail || ''} ${sourceLink}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="reader-actions-bar">
+                    <div class="reader-actions">
+                      <button class="reader-btn reader-btn-primary" data-mega-open data-control title="Open page">Open article</button>
+                      <button class="reader-btn" data-mega-display data-control title="Display options">Aa</button>
+                      <button class="reader-btn reader-btn-icon" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                          <circle cx="5" cy="12" r="1.5"></circle>
+                          <circle cx="12" cy="12" r="1.5"></circle>
+                          <circle cx="19" cy="12" r="1.5"></circle>
+                        </svg>
+                      </button>
+                      <button class="reader-btn" data-overlay-close aria-label="Close">Close</button>
+                      ${menuMarkup}
+                    </div>
+                  </div>
+                  <div class="reader-body" data-mega-body data-summary-body></div>
+                  <div class="reader-footer">
+                    <div class="reader-sim">
+                      <div class="mega-simseg" role="radiogroup" aria-label="Similarity highlight">
+                        <button type="button" data-sim-mode="halo" aria-pressed="true" data-control>Halo</button>
+                        <button type="button" data-sim-mode="focus" aria-pressed="false" data-control>Focus</button>
+                        <button type="button" data-sim-mode="off" aria-pressed="false" data-control>Off</button>
+                      </div>
+                      <label class="mega-simonly" title="Show only similar items">
+                        <input type="checkbox" data-sim-only data-control>
+                        <span>Show only</span>
+                      </label>
+                      <span class="mega-simcount" data-sim-count>Similar</span>
+                    </div>
+                    <div class="reader-footer-right">
+                      <button class="reader-btn" data-mega-top data-control aria-label="Back to top">Top</button>
+                    </div>
+                  </div>
+                </div>
+              </div>`;
+
+            document.body.appendChild(overlay);
+            document.body.classList.add('reader-open');
+
+            const panel = overlay.querySelector('.reader-modal');
+            const bodyHost = panel.querySelector('[data-mega-body]');
+            if (bodyHost) {
+                bodyHost.innerHTML = `<div class="mega-body-inner">${this.renderWallReaderSection(item)}</div>`;
+                this.enhanceSummaryHtml(bodyHost);
+            }
+
+            // Similarity
+            let similarCount = 0;
+            try {
+                const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+                if (grid) {
+                    const items = this.currentItems || [];
+                    const base = items.find(x => x.file_stem === id);
+                    const cards = Array.from(grid.querySelectorAll('.wall-card'));
+                    const scored = cards.map(card => {
+                        const cid = card.getAttribute('data-report-id');
+                        const it = items.find(x => x.file_stem === cid);
+                        const sc = it && it !== base ? this.computeHeuristicSimilarity(base, it) : -1;
+                        return { cid, card, item: it, score: sc };
+                    }).filter(r => r.item && r.cid !== id).sort((a, b) => b.score - a.score);
+                    const K = Math.max(12, Math.min(36, Math.round((window.innerWidth || 1200) / 48)));
+                    similarCount = Math.min(K, scored.length);
+                    this.applySimilarityView(id, grid, 'halo');
+                }
+            } catch (_) {}
+            const simButtons = Array.from(panel.querySelectorAll('[data-sim-mode]'));
+            const simOnly = panel.querySelector('[data-sim-only]');
+            const simReset = panel.querySelector('[data-sim-reset]');
+            const simCountEl = panel.querySelector('[data-sim-count]');
+            const updateSimCount = (val) => { if (simCountEl) simCountEl.textContent = `Similar (${val || 0})`; };
+            updateSimCount(similarCount);
+            const setSimMode = (mode) => {
+                simButtons.forEach(btn => btn.setAttribute('aria-pressed', btn.dataset.simMode === mode ? 'true' : 'false'));
+                const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+                if (grid) this.clearSimilarityView(grid);
+                if (mode === 'off') {
+                    if (grid) grid.classList.remove('wall-sim-only');
+                    if (simOnly) simOnly.checked = false;
+                    return;
+                }
+                const grid2 = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+                if (grid2) this.applySimilarityView(id, grid2, mode);
+                const focus = (mode === 'focus');
+                if (grid2) grid2.classList.toggle('wall-sim-only', focus || (simOnly && simOnly.checked));
+                if (simOnly) simOnly.checked = focus || simOnly.checked;
+            };
+            simButtons.forEach(btn => btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); setSimMode(btn.dataset.simMode || 'halo'); }));
+            if (simOnly) simOnly.addEventListener('change', (e) => {
+                e.stopPropagation();
+                const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+                if (grid) grid.classList.toggle('wall-sim-only', !!simOnly.checked);
+                if (simOnly.checked) setSimMode('focus');
+                else setSimMode('halo');
+            });
+            if (simReset) simReset.addEventListener('click', (e) => {
+                e.preventDefault(); e.stopPropagation();
+                const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+                if (grid) this.clearSimilarityView(grid);
+                if (simOnly) simOnly.checked = false;
+                if (grid) grid.classList.remove('wall-sim-only');
+                setSimMode('off');
+            });
+            setSimMode('halo');
+
+            // Actions
+            const closeOverlay = () => {
+                if (overlay && overlay.parentElement) overlay.remove();
+                const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+                if (grid) this.clearSimilarityView(grid);
+                document.body.classList.remove('reader-open');
+            };
+            this.closeWallMegaOverlay = closeOverlay;
+            overlay.querySelectorAll('[data-overlay-close]').forEach(btn => btn.addEventListener('click', (e) => { e.preventDefault(); closeOverlay(); }));
+            const openBtn = panel.querySelector('[data-mega-open]');
+            if (openBtn) openBtn.addEventListener('click', (ev) => { ev.preventDefault(); window.location.href = `/${encodeURIComponent(id)}.json?v=2`; });
+            const menuBtn = panel.querySelector('[data-action="menu"]');
+            if (menuBtn) {
+                menuBtn.addEventListener('click', () => this.toggleKebabMenu(panel, true, menuBtn));
+                const menu = panel.querySelector('[data-kebab-menu]');
+                if (menu) {
+                    const onMenuClick = (e) => {
+                        const a = e.target.closest('[data-action]');
+                        if (!a) return;
+                        const act = a.getAttribute('data-action');
+                        if (act === 'copy-link') { this.copyLink(panel, id); this.toggleKebabMenu(panel, false); }
+                        if (act === 'reprocess') { this.openReprocessModal(id, panel); this.toggleKebabMenu(panel, false); }
+                        if (act === 'delete') { this.handleDelete(id, panel); this.toggleKebabMenu(panel, false); }
+                        if (act === 'images-manage') { this.handleManageImages(id); this.toggleKebabMenu(panel, false); }
+                    };
+                    menu.addEventListener('click', onMenuClick);
+                }
+            }
+            const aaBtn = panel.querySelector('[data-mega-display]');
+            if (aaBtn && bodyHost) {
+                this.applyReaderDisplayPrefs(panel, bodyHost);
+                aaBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.openReaderFooterDrawer(panel, bodyHost, aaBtn); });
+            }
+            const topBtn = panel.querySelector('[data-mega-top]');
+            if (topBtn && bodyHost) {
+                topBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); bodyHost.scrollTo({ top: 0, behavior: 'smooth' }); });
+                bodyHost.addEventListener('scroll', () => {
+                    const show = bodyHost.scrollTop > 180;
+                    topBtn.classList.toggle('is-visible', show);
+                }, { passive: true });
+            }
+
+            const onEsc = (ev) => { if (ev.key === 'Escape') { closeOverlay(); document.removeEventListener('keydown', onEsc); } };
+            document.addEventListener('keydown', onEsc);
+            overlay.addEventListener('click', (e) => {
+                if (e.target && e.target.dataset && e.target.dataset.overlayClose !== undefined) closeOverlay();
+            });
+        } catch (err) {
+            console.error('Failed to open reader modal', err);
+        }
+    }
+
     renderConsumptionSummary(durations = {}, hasAudio = false, source = 'youtube', hasWatchLink = false) {
         const segments = [];
         if (durations.read) {
