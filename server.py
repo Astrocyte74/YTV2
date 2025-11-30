@@ -5051,6 +5051,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
         # Start with env-configured allowlist
         origins = set(ALLOWED_ORIGINS_CFG)
+        # Explicitly allow Quizzernator frontend
+        origins.add('https://quizzernator.onrender.com')
         # Also include self render url if provided
         render_url = os.getenv('RENDER_DASHBOARD_URL', '').rstrip('/')
         if render_url:
