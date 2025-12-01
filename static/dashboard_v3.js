@@ -3921,14 +3921,8 @@ class AudioDashboard {
 
     createContentCard(item) {
         const normalizedItem = this.normalizeCardItem(item);
-        // Experimental Tailwind-first card revamp (v5)
-        if (this.flags && this.flags.twRevamp) {
-            return this.renderStreamCardTW(normalizedItem);
-        }
-        if (this.flags && this.flags.cardV4) {
-            return this.renderStreamCardV4(normalizedItem);
-        }
-        return this.renderSummaryCard(normalizedItem, { view: 'list' });
+        // In list view, always use the audio-first stream card layout
+        return this.renderStreamCardV4(normalizedItem);
     }
 
     createGridCard(item) {
