@@ -2206,9 +2206,9 @@ body:not(.dark) .reader-display-popover {
 .kaleido-backdrop {
     position: fixed;
     inset: 0;
-    background: radial-gradient(120% 120% at 50% 40%, rgba(14, 165, 233, 0.12), rgba(15, 23, 42, 0.62)),
-        rgba(3, 7, 18, 0.42);
-    backdrop-filter: blur(10px) saturate(110%);
+    background: radial-gradient(140% 140% at 50% 40%, rgba(14, 165, 233, 0.14), rgba(15, 23, 42, 0.74)),
+        rgba(3, 7, 18, 0.58);
+    backdrop-filter: blur(14px) saturate(115%);
     opacity: 0;
     transition: opacity 220ms ease;
 }
@@ -2218,7 +2218,7 @@ body:not(.dark) .reader-display-popover {
     z-index: 1;
     width: min(1100px, calc(100vw - 32px));
     max-height: min(92vh, 1080px);
-    background: rgba(8, 15, 30, 0.4);
+    background: rgba(8, 15, 30, 0.36);
     color: #e2e8f0;
     border-radius: 1.3rem;
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -2244,11 +2244,11 @@ body:not(.dark) .reader-display-popover {
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 1rem 1.2rem 0.85rem;
+    padding: 0.85rem 1.2rem 0.65rem;
     position: sticky;
     top: 0;
     z-index: 2;
-    background: linear-gradient(180deg, rgba(8, 15, 30, 0.72), rgba(8, 15, 30, 0.55));
+    background: linear-gradient(180deg, rgba(8, 15, 30, 0.78), rgba(8, 15, 30, 0.52));
     backdrop-filter: blur(10px);
 }
 
@@ -2259,7 +2259,7 @@ body:not(.dark) .reader-display-popover {
 .kaleido-title-stack {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.65rem;
     min-width: 0;
 }
 
@@ -2360,15 +2360,16 @@ body:not(.dark) .reader-display-popover {
 .kaleido-chip-rail {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.35rem;
     flex-wrap: wrap;
+    margin-top: 0.25rem;
 }
 
 .kaleido-chip {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    padding: 0.35rem 0.65rem;
+    padding: 0.32rem 0.6rem;
     border-radius: 999px;
     border: 1px solid rgba(148, 163, 184, 0.4);
     background: rgba(248, 250, 252, 0.8);
@@ -2386,21 +2387,19 @@ body:not(.dark) .reader-display-popover {
 }
 
 .kaleido-hero {
-    margin: 0 1.2rem 1.1rem;
-    height: 280px;
-    border-radius: 1.1rem;
+    margin: 0 0 0.85rem;
+    height: 300px;
+    border-radius: 0;
     overflow: hidden;
     position: relative;
-    background: radial-gradient(circle at 20% 30%, rgba(59, 130, 246, 0.35), transparent 45%),
-        radial-gradient(circle at 80% 30%, rgba(14, 165, 233, 0.28), transparent 50%),
-        linear-gradient(135deg, rgba(15, 23, 42, 0.7), rgba(15, 23, 42, 0.4));
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.75), rgba(14, 165, 233, 0.16));
 }
 
 .kaleido-hero::after {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.45));
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.55));
     pointer-events: none;
 }
 
@@ -2424,19 +2423,20 @@ body:not(.dark) .reader-display-popover {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    filter: saturate(1.05);
+    filter: saturate(1.05) brightness(0.92);
+    transform: scale(1.02);
 }
 
 .kaleido-content {
     flex: 1;
     overflow-y: auto;
-    padding: 0 1.3rem 1.1rem;
+    padding: 0 1.6rem 1.05rem;
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
 }
 
 #wallReaderBody {
-    max-width: 72ch;
+    max-width: 68ch;
     margin-left: auto;
     margin-right: auto;
 }
@@ -2446,9 +2446,9 @@ body:not(.dark) .reader-display-popover {
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
-    padding: 0.9rem 1.2rem 1.1rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    background: linear-gradient(180deg, rgba(8, 15, 30, 0.8), rgba(8, 15, 30, 0.85));
+    padding: 0.65rem 1.2rem 0.7rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: linear-gradient(180deg, rgba(8, 15, 30, 0.72), rgba(8, 15, 30, 0.8));
 }
 
 .dark .kaleido-nav {
@@ -2457,8 +2457,8 @@ body:not(.dark) .reader-display-popover {
 }
 
 .kaleido-nav-btn {
-    width: 2.6rem;
-    height: 2.6rem;
+    width: 2.2rem;
+    height: 2.2rem;
     border-radius: 999px;
     border: 1px solid rgba(148, 163, 184, 0.45);
     background: rgba(255, 255, 255, 0.82);
@@ -2486,10 +2486,10 @@ body:not(.dark) .reader-display-popover {
     flex: 1;
     display: grid;
     grid-auto-flow: column;
-    grid-auto-columns: 92px;
-    gap: 0.4rem;
+    grid-auto-columns: 78px;
+    gap: 0.35rem;
     overflow-x: auto;
-    padding: 0.15rem;
+    padding: 0.1rem 0.15rem;
     scrollbar-width: thin;
 }
 
@@ -2508,7 +2508,7 @@ body:not(.dark) .reader-display-popover {
     overflow: hidden;
     border: 1px solid rgba(148, 163, 184, 0.45);
     background: rgba(255, 255, 255, 0.05);
-    height: 64px;
+    height: 60px;
     cursor: pointer;
     transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
 }
@@ -2542,7 +2542,8 @@ body:not(.dark) .reader-display-popover {
 
 .kaleido-film-item.is-active {
     border-color: rgba(14, 165, 233, 0.9);
-    box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.35), 0 10px 26px -14px rgba(15, 23, 42, 0.6);
+    box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.4), 0 14px 30px -16px rgba(15, 23, 42, 0.65);
+    transform: translateY(-2px) scale(1.02);
 }
 
 .dark .kaleido-film-item {
@@ -2585,13 +2586,13 @@ body.kaleido-open #mobileMiniPlayer {
     }
 
     .kaleido-hero {
-        margin-left: 1rem;
-        margin-right: 1rem;
-        height: 190px;
+        margin-left: 0;
+        margin-right: 0;
+        height: 220px;
     }
 
     .kaleido-filmstrip {
-        grid-auto-columns: 86px;
+        grid-auto-columns: 74px;
     }
 }
 
@@ -2607,7 +2608,7 @@ body.kaleido-open #mobileMiniPlayer {
     }
 
     .kaleido-hero {
-        height: 160px;
+        height: 170px;
     }
 
     .kaleido-filmstrip {
