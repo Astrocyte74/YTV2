@@ -4626,10 +4626,10 @@ class AudioDashboard {
             if (startRect) {
                 const dx = startRect.left - targetRect.left;
                 const dy = startRect.top - targetRect.top;
-                const sx = startRect.width / Math.max(1, targetRect.width);
-                const sy = startRect.height / Math.max(1, targetRect.height);
+                const sx = Math.min(1.2, startRect.width / Math.max(1, targetRect.width));
+                const sy = Math.min(1.2, startRect.height / Math.max(1, targetRect.height));
                 sheet.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
-                sheet.style.opacity = '0.2';
+                sheet.style.opacity = '0.1';
                 requestAnimationFrame(() => {
                     sheet.style.transform = 'translate(0, 0) scale(1)';
                     sheet.style.opacity = '1';
