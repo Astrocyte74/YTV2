@@ -2388,8 +2388,8 @@ body:not(.dark) .reader-display-popover {
 
 .kaleido-hero {
     margin: 0 0 0.85rem;
-    height: clamp(220px, 26vh, 360px);
-    min-height: 220px;
+    height: clamp(240px, 32vh, 420px);
+    min-height: 240px;
     border-radius: 0;
     overflow: hidden;
     position: relative;
@@ -2424,7 +2424,7 @@ body:not(.dark) .reader-display-popover {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    object-position: center center;
+    object-position: center top;
     filter: saturate(1.05) brightness(0.92);
     transform: scale(1.02);
 }
@@ -2432,7 +2432,7 @@ body:not(.dark) .reader-display-popover {
 .kaleido-content {
     flex: 1;
     overflow-y: auto;
-    padding: 0 1.6rem 1.05rem;
+    padding: 0 1.6rem 1.2rem;
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
 }
@@ -2441,6 +2441,11 @@ body:not(.dark) .reader-display-popover {
     max-width: 68ch;
     margin-left: auto;
     margin-right: auto;
+    padding: 1.6rem 1.5rem;
+    border-radius: 1rem;
+    background: rgba(8, 15, 30, 0.52);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow: 0 28px 70px -38px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(14, 165, 233, 0.1);
 }
 
 .kaleido-nav {
@@ -2448,7 +2453,7 @@ body:not(.dark) .reader-display-popover {
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
-    padding: 0.65rem 1.2rem 0.7rem;
+    padding: 0.5rem 1.2rem 0.65rem;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
     background: linear-gradient(180deg, rgba(8, 15, 30, 0.72), rgba(8, 15, 30, 0.8));
 }
@@ -2459,8 +2464,8 @@ body:not(.dark) .reader-display-popover {
 }
 
 .kaleido-nav-btn {
-    width: 2.2rem;
-    height: 2.2rem;
+    width: 2rem;
+    height: 2rem;
     border-radius: 999px;
     border: 1px solid rgba(148, 163, 184, 0.45);
     background: rgba(255, 255, 255, 0.82);
@@ -2488,11 +2493,13 @@ body:not(.dark) .reader-display-popover {
     flex: 1;
     display: grid;
     grid-auto-flow: column;
-    grid-auto-columns: 78px;
-    gap: 0.35rem;
+    grid-auto-columns: 72px;
+    gap: 0.3rem;
     overflow-x: auto;
-    padding: 0.1rem 0.15rem;
+    padding: 0.08rem 0.15rem;
     scrollbar-width: thin;
+    backdrop-filter: blur(10px) saturate(120%);
+    background: rgba(8, 15, 30, 0.42);
 }
 
 .kaleido-filmstrip::-webkit-scrollbar {
@@ -2510,7 +2517,7 @@ body:not(.dark) .reader-display-popover {
     overflow: hidden;
     border: 1px solid rgba(148, 163, 184, 0.45);
     background: rgba(255, 255, 255, 0.05);
-    height: 60px;
+    height: 54px;
     cursor: pointer;
     transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
 }
@@ -2534,8 +2541,8 @@ body:not(.dark) .reader-display-popover {
     left: 0;
     right: 0;
     bottom: 0;
-    padding: 0.25rem 0.35rem;
-    font-size: 0.7rem;
+    padding: 0.2rem 0.32rem;
+    font-size: 0.66rem;
     line-height: 1.25;
     color: #f8fafc;
     background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.6));
@@ -2571,6 +2578,44 @@ body.kaleido-open #mobileMiniPlayer {
     transform: translateY(100%);
     pointer-events: none;
     opacity: 0;
+}
+
+/* Edge nav buttons (mid-height overlay) */
+.kaleido-edge-nav {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.kaleido-edge-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(8, 15, 30, 0.45);
+    color: #e2e8f0;
+    display: grid;
+    place-items: center;
+    box-shadow: 0 12px 36px -18px rgba(0, 0, 0, 0.6);
+    pointer-events: auto;
+    transition: background 150ms ease, transform 150ms ease, border-color 150ms ease;
+}
+
+.kaleido-edge-btn:hover,
+.kaleido-edge-btn:focus-visible {
+    background: rgba(14, 165, 233, 0.32);
+    border-color: rgba(14, 165, 233, 0.5);
+    transform: translateY(-50%) scale(1.04);
+}
+
+.kaleido-edge-btn[data-kaleido-prev] { left: 10px; }
+.kaleido-edge-btn[data-kaleido-next] { right: 10px; }
+
+@media (max-width: 900px) {
+    .kaleido-edge-btn { display: none; }
 }
 
 /* Edge nav buttons (mid-height overlay) */
