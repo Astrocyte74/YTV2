@@ -2184,7 +2184,7 @@ body:not(.dark) .reader-display-popover {
     width: 100%;
     padding-bottom: 2rem;
     grid-auto-flow: dense;
-    grid-auto-rows: auto;
+    grid-auto-rows: 280px;
 }
 
 /* Kaleido overlay (wall reader modal) */
@@ -2874,7 +2874,9 @@ body.kaleido-open #mobileMiniPlayer {
 
 .wall-card {
     position: relative;
-    height: auto;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
     border-radius: 0.75rem;
     overflow: hidden;
     isolation: isolate;
@@ -2887,8 +2889,8 @@ body.kaleido-open #mobileMiniPlayer {
 }
 
 .dark .wall-card {
-    background: rgba(15, 23, 42, 0.95);
-    border-color: rgba(15, 23, 42, 0.9);
+    background: rgba(15, 23, 42, 0.88);
+    border-color: rgba(51, 65, 85, 0.85);
 }
 
 /* In-grid mega-card: span two cols/rows and elevate */
@@ -3170,7 +3172,7 @@ body.kaleido-open #mobileMiniPlayer {
     grid-template-rows: auto auto 1fr;
     gap: 0.35rem;
     padding: 0.75rem;
-    background: rgba(15, 23, 42, 0.78);
+    background: rgba(15, 23, 42, 0.92);
     color: #f8fafc;
     text-shadow: none;
 }
