@@ -2893,6 +2893,11 @@ body.kaleido-open #mobileMiniPlayer {
     border-color: rgba(71, 85, 105, 0.9);
 }
 
+body.wall-mode .wall-card {
+    background: rgba(51, 65, 85, 0.96);
+    border-color: rgba(148, 163, 184, 0.8);
+}
+
 /* In-grid mega-card: span two cols/rows and elevate */
 .wall-card--mega {
     grid-column: span 2;
@@ -3213,6 +3218,17 @@ body.kaleido-open #mobileMiniPlayer {
 }
 
 .wall-card__snippet {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: #e2e8f0;
+    opacity: 0.9;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+body.wall-mode .wall-card__snippet {
     display: none;
 }
 

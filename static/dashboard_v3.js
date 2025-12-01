@@ -4303,7 +4303,6 @@ class AudioDashboard {
         const visibleLimitG = (this.flags && this.flags.twChipsVisible) || 4;
         const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, visibleLimitG);
         const pendingChip = this.renderPendingImageOverrideChip(item);
-        const snippet = this.getSummarySnippet(item, 180);
         return `
             <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
                      class="wall-card compact">
@@ -4311,7 +4310,6 @@ class AudioDashboard {
                 <div class="wall-card__overlay">
                     ${chipBar ? `<div class="wall-card__meta">${chipBar}</div>` : '<div class="wall-card__meta"></div>'}
                     <h3 class="wall-card__title line-clamp-2">${title}</h3>
-                    ${snippet ? `<p class="wall-card__snippet">${this.escapeHtml(snippet)}</p>` : '<p class="wall-card__snippet"></p>'}
                 </div>
             </article>`;
     }
@@ -6349,7 +6347,8 @@ class AudioDashboard {
 
         document.body.classList.toggle('wall-mode', this.viewMode === 'wall');
         if (this.resultsHero) {
-            this.resultsHero.classList.toggle('hidden', this.viewMode === 'wall');
+            const hideHero = this.viewMode === 'wall' || this.viewMode === 'grid';
+            this.resultsHero.classList.toggle('hidden', hideHero);
         }
 
         this.updateHeroBadges();
