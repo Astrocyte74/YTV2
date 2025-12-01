@@ -6251,16 +6251,18 @@ class AudioDashboard {
         // Show/hide top mini-player when sidebar collapsed (desktop)
         if (this.topMiniPlayer) {
             const collapsed = document.body.classList.contains('sidebar-collapsed');
-            if (collapsed && this.currentAudio) {
+            const allow = this.viewMode !== 'wall';
+            if (collapsed && this.currentAudio && allow) {
                 this.topMiniPlayer.classList.remove('hidden');
             } else {
                 this.topMiniPlayer.classList.add('hidden');
             }
         }
 
-        // Show/hide mobile mini-player
+        // Show/hide bottom mini-player (hidden in wall view)
         if (this.mobileMiniPlayer) {
-            if (this.currentAudio) {
+            const allow = this.viewMode !== 'wall';
+            if (this.currentAudio && allow) {
                 this.mobileMiniPlayer.classList.remove('hidden', 'translate-y-full');
                 this.mobileMiniPlayer.classList.add('translate-y-0');
             } else {

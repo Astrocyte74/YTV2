@@ -2184,7 +2184,7 @@ body:not(.dark) .reader-display-popover {
     width: 100%;
     padding-bottom: 2rem;
     grid-auto-flow: dense;
-    grid-auto-rows: auto;
+    grid-auto-rows: 260px;
 }
 
 /* Kaleido overlay (wall reader modal) */
