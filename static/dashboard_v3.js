@@ -3982,7 +3982,7 @@ class AudioDashboard {
         const identityMeta = useMinimalMeta ? identityMetaMinimal : identityMetaClassic;
 
         const taxonomyMarkup = this.renderCategorySection(item.file_stem, categories, subcatPairs);
-        const actionMarkup = this.renderActionBar(item, buttonDurations, hasAudio);
+        const mediaActions = this.renderActionBar(item, buttonDurations, hasAudio);
         const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
 
         const thumb = item.thumbnail_url
