@@ -2388,7 +2388,8 @@ body:not(.dark) .reader-display-popover {
 
 .kaleido-hero {
     margin: 0 0 0.85rem;
-    height: 300px;
+    height: clamp(220px, 26vh, 360px);
+    min-height: 220px;
     border-radius: 0;
     overflow: hidden;
     position: relative;
@@ -2423,6 +2424,7 @@ body:not(.dark) .reader-display-popover {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    object-position: center center;
     filter: saturate(1.05) brightness(0.92);
     transform: scale(1.02);
 }
@@ -2569,6 +2571,51 @@ body.kaleido-open #mobileMiniPlayer {
     transform: translateY(100%);
     pointer-events: none;
     opacity: 0;
+}
+
+/* Edge nav buttons (mid-height overlay) */
+.kaleido-edge-nav {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.kaleido-edge-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2.8rem;
+    height: 2.8rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(8, 15, 30, 0.45);
+    color: #e2e8f0;
+    display: grid;
+    place-items: center;
+    box-shadow: 0 12px 36px -18px rgba(0, 0, 0, 0.6);
+    pointer-events: auto;
+    transition: background 150ms ease, transform 150ms ease, border-color 150ms ease;
+}
+
+.kaleido-edge-btn:hover,
+.kaleido-edge-btn:focus-visible {
+    background: rgba(14, 165, 233, 0.32);
+    border-color: rgba(14, 165, 233, 0.5);
+    transform: translateY(-50%) scale(1.04);
+}
+
+.kaleido-edge-btn[data-kaleido-prev] {
+    left: 10px;
+}
+
+.kaleido-edge-btn[data-kaleido-next] {
+    right: 10px;
+}
+
+@media (max-width: 900px) {
+    .kaleido-edge-btn {
+        display: none;
+    }
 }
 
 @media (max-width: 860px) {

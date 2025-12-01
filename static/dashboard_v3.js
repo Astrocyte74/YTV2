@@ -4421,8 +4421,8 @@ class AudioDashboard {
         const filmstrip = document.getElementById('wallReaderFilmstrip');
         const closeBtn = document.getElementById('wallReaderClose');
         const backdrop = modal ? modal.querySelector('.kaleido-backdrop') : null;
-        const prevBtn = modal ? modal.querySelector('[data-kaleido-prev]') : null;
-        const nextBtn = modal ? modal.querySelector('[data-kaleido-next]') : null;
+        const prevBtns = modal ? Array.from(modal.querySelectorAll('[data-kaleido-prev]')) : [];
+        const nextBtns = modal ? Array.from(modal.querySelectorAll('[data-kaleido-next]')) : [];
         const item = (this.currentItems || []).find(x => x.file_stem === id);
         if (!modal || !body || !sheet || !titleEl || !heroEl || !item) return;
 
@@ -4569,8 +4569,17 @@ class AudioDashboard {
             const nextId = nextCard?.getAttribute('data-report-id');
             if (nextId) this.openWallModalReader(nextId, nextCard);
         };
-        if (prevBtn) { prevBtn.disabled = currentIdx <= 0; prevBtn.onclick = null; on(prevBtn, 'click', (e) => { e.preventDefault(); goByOffset(-1); }); }
-        if (nextBtn) { nextBtn.disabled = currentIdx >= cardsAll.length - 1; nextBtn.onclick = null; on(nextBtn, 'click', (e) => { e.preventDefault(); goByOffset(1); }); }
+        const disableNav = (btns, disabled) => {
+            btns.forEach(btn => {
+                btn.disabled = disabled;
+                btn.classList.toggle('opacity-50', disabled);
+                btn.classList.toggle('cursor-not-allowed', disabled);
+            });
+        };
+        disableNav(prevBtns, currentIdx <= 0);
+        disableNav(nextBtns, currentIdx >= cardsAll.length - 1);
+        prevBtns.forEach(btn => { btn.onclick = null; on(btn, 'click', (e) => { e.preventDefault(); goByOffset(-1); }); });
+        nextBtns.forEach(btn => { btn.onclick = null; on(btn, 'click', (e) => { e.preventDefault(); goByOffset(1); }); });
 
         const close = () => {
             const targetRect = (this._kaleidoOriginCard || card || (grid && grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`)))?.getBoundingClientRect();
