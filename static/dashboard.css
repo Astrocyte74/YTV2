@@ -2184,7 +2184,7 @@ body:not(.dark) .reader-display-popover {
     width: 100%;
     padding-bottom: 2rem;
     grid-auto-flow: dense;
-    grid-auto-rows: 280px;
+    grid-auto-rows: auto;
 }
 
 /* Kaleido overlay (wall reader modal) */
@@ -2889,8 +2889,8 @@ body.kaleido-open #mobileMiniPlayer {
 }
 
 .dark .wall-card {
-    background: rgba(15, 23, 42, 0.88);
-    border-color: rgba(51, 65, 85, 0.85);
+    background: rgba(30, 41, 59, 0.96);
+    border-color: rgba(71, 85, 105, 0.9);
 }
 
 /* In-grid mega-card: span two cols/rows and elevate */
@@ -3213,14 +3213,7 @@ body.kaleido-open #mobileMiniPlayer {
 }
 
 .wall-card__snippet {
-    font-size: 0.9rem;
-    line-height: 1.5;
-    color: #e2e8f0;
-    opacity: 0.9;
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
+    display: none;
 }
 
 .wall-card__actions .stream-card__media-actions {

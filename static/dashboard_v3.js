@@ -4364,7 +4364,6 @@ class AudioDashboard {
         } else {
             mediaImgs = `<div class="wall-card__thumb wall-card__thumb--fallback"></div>`;
         }
-        const snippet = this.getSummarySnippet(item, 220);
         return `
             <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0" class="wall-card">
                 ${menuMarkup}
@@ -4372,7 +4371,6 @@ class AudioDashboard {
                 <div class="wall-card__overlay">
                     <div class="wall-card__meta">${chipRail || ''}${pendingChip ? `<div class=\"inline-block ml-2\">${pendingChip}</div>` : ''}</div>
                     <h3 class="wall-card__title line-clamp-2">${title}</h3>
-                    ${snippet ? `<p class="wall-card__snippet">${this.escapeHtml(snippet)}</p>` : '<p class="wall-card__snippet"></p>'}
                 </div>
             </article>`;
     }
