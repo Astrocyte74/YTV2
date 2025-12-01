@@ -2474,7 +2474,7 @@ class AudioDashboard {
         if (this.viewMode === 'grid') {
             html = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(i => this.createGridCard(i)).join('')}</div>`;
         } else if (this.viewMode === 'wall') {
-            html = `<div class="wall-grid">${items.map(i => this.createWallCard(i)).join('')}</div>`;
+            html = `<div class="wall-grid">${items.map(i => this.renderWallCardTW(i)).join('')}</div>`;
         } else {
             html = items.map(i => this.createContentCard(i)).join('');
         }
@@ -4306,24 +4306,12 @@ class AudioDashboard {
         const snippet = this.getSummarySnippet(item, 180);
         return `
             <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
-                     class="mosaic-card group rounded-2xl border border-slate-200/70 dark:border-slate-800/60 bg-white/80 dark:bg-slate-900/70 backdrop-blur hover:shadow-xl transition-all overflow-hidden">
-                <div class="relative w-full h-40">
-                    ${toggleBtn}
-                    ${mediaImgs}
-                    <div class="mosaic-card__progress absolute inset-x-0 bottom-0 h-1.5 bg-white/40 dark:bg-slate-900/40" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
-                        <div class="mosaic-card__progress-bar h-full bg-sky-500/90 dark:bg-sky-400/90" data-card-progress></div>
-                    </div>
-                </div>
-                <div class="mosaic-card__content">
-                    <div class="mosaic-card__main">
-                        ${pendingChip ? `<div class="mb-1">${pendingChip}</div>` : ''}
-                        ${chipBar}
-                        <h3 class="mosaic-card__title line-clamp-2 text-slate-900 dark:text-slate-100">${title}</h3>
-                        <div class="mosaic-card__divider" role="presentation"></div>
-                        ${snippet ? `<p class="mosaic-card__snippet text-[13px] text-slate-700 dark:text-slate-300 line-clamp-3">${this.escapeHtml(snippet)}</p>` : '<div class="mosaic-card__snippet mosaic-card__snippet--empty"></div>'}
-                        <button type="button" class="mosaic-card__readmore text-[13px] font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
-                    </div>
-                    ${mediaActions ? `<div class="mosaic-card__actions">${mediaActions}</div>` : ''}
+                     class="wall-card compact">
+                <div class="wall-card__media">${mediaImgs}</div>
+                <div class="wall-card__overlay">
+                    ${chipBar ? `<div class="wall-card__meta">${chipBar}</div>` : '<div class="wall-card__meta"></div>'}
+                    <h3 class="wall-card__title line-clamp-2">${title}</h3>
+                    ${snippet ? `<p class="wall-card__snippet">${this.escapeHtml(snippet)}</p>` : '<p class="wall-card__snippet"></p>'}
                 </div>
             </article>`;
     }
@@ -4376,14 +4364,15 @@ class AudioDashboard {
         } else {
             mediaImgs = `<div class="wall-card__thumb wall-card__thumb--fallback"></div>`;
         }
+        const snippet = this.getSummarySnippet(item, 220);
         return `
             <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0" class="wall-card">
                 ${menuMarkup}
                 <div class="wall-card__media">${toggleBtn}${mediaImgs}</div>
                 <div class="wall-card__overlay">
                     <div class="wall-card__meta">${chipRail || ''}${pendingChip ? `<div class=\"inline-block ml-2\">${pendingChip}</div>` : ''}</div>
-                    <h3 class="wall-card__title">${title}</h3>
-                    <div class="wall-card__actions">${mediaActions || ''}</div>
+                    <h3 class="wall-card__title line-clamp-2">${title}</h3>
+                    ${snippet ? `<p class="wall-card__snippet">${this.escapeHtml(snippet)}</p>` : '<p class="wall-card__snippet"></p>'}
                 </div>
             </article>`;
     }
@@ -6291,6 +6280,11 @@ class AudioDashboard {
         const previousMode = this.viewMode;
         this.viewMode = mode;
         localStorage.setItem('ytv2.viewMode', mode);
+        const np = document.getElementById('nowPlayingPreview');
+        const mini = document.getElementById('mobileMiniPlayer');
+        const hideAudio = mode === 'wall';
+        if (np) np.classList.toggle('hidden', hideAudio);
+        if (mini) mini.classList.toggle('hidden', hideAudio);
         if (mode === 'wall') {
             this._previousSidebarCollapsed = this.sidebarCollapsed;
             this._previousPageBeforeWall = this.currentPage;
