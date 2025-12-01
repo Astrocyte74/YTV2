@@ -6347,8 +6347,7 @@ class AudioDashboard {
 
         document.body.classList.toggle('wall-mode', this.viewMode === 'wall');
         if (this.resultsHero) {
-            const hideHero = this.viewMode === 'wall' || this.viewMode === 'grid';
-            this.resultsHero.classList.toggle('hidden', hideHero);
+            this.resultsHero.classList.add('hidden');
         }
 
         this.updateHeroBadges();
