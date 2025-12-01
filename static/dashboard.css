@@ -2879,9 +2879,16 @@ body.kaleido-open #mobileMiniPlayer {
     overflow: hidden;
     isolation: isolate;
     cursor: pointer;
+    background: var(--card-surface);
+    border: 1px solid var(--card-border);
     box-shadow: var(--card-shadow);
     transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 320ms ease;
     will-change: transform;
+}
+
+.dark .wall-card {
+    background: rgba(15, 23, 42, 0.95);
+    border-color: rgba(15, 23, 42, 0.9);
 }
 
 /* In-grid mega-card: span two cols/rows and elevate */
@@ -3174,6 +3181,8 @@ body.kaleido-open #mobileMiniPlayer {
     display: inline-flex;
     flex-wrap: wrap;
     gap: 0.25rem;
+    max-height: 2.1rem;
+    overflow: hidden;
 }
 
 .wall-card__meta .chip-btn {
