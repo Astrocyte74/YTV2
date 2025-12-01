@@ -122,6 +122,7 @@ class AudioDashboard {
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallSimilarityMode')) this.flags.wallSimilarityMode = 'halo';
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallFlipEnabled')) this.flags.wallFlipEnabled = true;
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallMegaSpanEnabled')) this.flags.wallMegaSpanEnabled = true;
+        if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallKaleidoPreferred')) this.flags.wallKaleidoPreferred = true;
         this.config = (typeof window !== 'undefined' && window.DASHBOARD_CONFIG) ? window.DASHBOARD_CONFIG : {};
         // Debug: allow slowing FLIP with URL ?flip=slow|slower|off or ?flipms=NNN
         this.flipDebugMs = 0;
@@ -4389,6 +4390,10 @@ class AudioDashboard {
 
     // --- Wall reader handlers ---
     handleWallRead(id, cardEl) {
+        const preferKaleido = !this.flags || this.flags.wallKaleidoPreferred !== false;
+        if (preferKaleido) {
+            return this.openWallModalReader(id, cardEl);
+        }
         const useMega = this.flags && this.flags.wallMegaSpanEnabled;
         const useFlip = this.flags && this.flags.wallFlipEnabled;
         const useInline = (this.flags && Object.prototype.hasOwnProperty.call(this.flags, 'wallReadInline')) ? !!this.flags.wallReadInline : true;
@@ -4402,177 +4407,243 @@ class AudioDashboard {
         if (useInline && isDesktop) {
             return this.openWallRowReader(id, cardEl);
         }
-        return this.openWallModalReader(id);
+        return this.openWallModalReader(id, cardEl);
     }
 
-    openWallModalReader(id) {
+    openWallModalReader(id, cardEl) {
         const modal = document.getElementById('wallReaderModal');
         const body = document.getElementById('wallReaderBody');
         const sheet = document.getElementById('wallReaderSheet');
         const titleEl = document.getElementById('wallReaderTitle');
+        const sourceEl = document.getElementById('wallReaderSource');
+        const heroEl = document.getElementById('wallReaderHero');
+        const chipRail = document.getElementById('wallReaderChips');
+        const filmstrip = document.getElementById('wallReaderFilmstrip');
         const closeBtn = document.getElementById('wallReaderClose');
+        const backdrop = modal ? modal.querySelector('.kaleido-backdrop') : null;
+        const prevBtn = modal ? modal.querySelector('[data-kaleido-prev]') : null;
+        const nextBtn = modal ? modal.querySelector('[data-kaleido-next]') : null;
         const item = (this.currentItems || []).find(x => x.file_stem === id);
-        if (!modal || !body || !item) return;
+        if (!modal || !body || !sheet || !titleEl || !heroEl || !item) return;
+
+        const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+        const card = cardEl || (grid ? grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`) : null);
+        if (this._kaleidoOriginCard && this._kaleidoOriginCard !== card) {
+            try { this._kaleidoOriginCard.classList.remove('wall-card--selected'); } catch (_) { }
+        }
+
+        // Remove any previous listeners
+        if (this._kaleidoTeardown && Array.isArray(this._kaleidoTeardown)) {
+            this._kaleidoTeardown.forEach(fn => { try { fn(); } catch (_) { } });
+        }
+        this._kaleidoTeardown = [];
+        const on = (target, type, fn, opts) => {
+            if (!target || !fn) return;
+            target.addEventListener(type, fn, opts);
+            this._kaleidoTeardown.push(() => { try { target.removeEventListener(type, fn, opts); } catch (_) { } });
+        };
+
+        // Populate content
         titleEl.textContent = item.title || 'Summary';
+        const sourceLabel = (item.content_source || 'Source').toString().toUpperCase();
+        if (sourceEl) sourceEl.textContent = sourceLabel;
         body.innerHTML = this.renderWallReaderSection(item);
-        // Apply saved reader display preferences
         try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
-        // Normalize NAS HTML for headings/lists on mobile modal
         try { this.enhanceSummaryHtml(body); } catch (_) { }
-        // Inject Display Options (Aa) control
+
+        // Hero artwork
+        let heroUrl = '';
         try {
-            const headerRight = modal.querySelector('.mobile-reader-header .flex.items-center.gap-2');
-            if (headerRight) {
-                const aaBtn = document.createElement('button');
-                aaBtn.type = 'button';
-                aaBtn.className = 'ybtn ybtn-ghost px-2 py-1.5 rounded-md';
-                aaBtn.setAttribute('aria-haspopup', 'dialog');
-                aaBtn.setAttribute('aria-expanded', 'false');
-                aaBtn.title = 'Display options';
-                aaBtn.dataset.action = 'reader-display';
-                aaBtn.textContent = 'Aa';
-                aaBtn.addEventListener('click', (e) => {
-                    e.preventDefault(); e.stopPropagation();
-                    this.openReaderDisplayPopover(modal, body, aaBtn);
-                });
-                headerRight.prepend(aaBtn);
+            heroUrl = item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
+            if (!heroUrl && item.thumbnail_url) heroUrl = item.thumbnail_url;
+        } catch (_) { }
+        if (heroUrl) {
+            heroEl.dataset.empty = 'false';
+            heroEl.innerHTML = `<img class="kaleido-hero-img" src="${heroUrl}" alt="">`;
+        } else {
+            heroEl.dataset.empty = 'true';
+            heroEl.innerHTML = '';
+        }
+
+        // Similarity + filters rail
+        if (chipRail) {
+            if (this.flags && this.flags.wallSimilarityEnabled) {
+                chipRail.innerHTML = `
+                    <span class="wall-sim-pill">Similar</span>
+                    <label class="kaleido-chip"><input type="checkbox" data-sim-only>Show only</label>
+                    <button class="wall-sim-reset" data-sim-reset data-control>Reset</button>
+                `;
+            } else {
+                chipRail.innerHTML = '';
+            }
+        }
+
+        // Apply similarity view for context
+        try {
+            if (this.flags && this.flags.wallSimilarityEnabled) {
+                this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo'));
+                const simOnly = chipRail ? chipRail.querySelector('[data-sim-only]') : null;
+                const simReset = chipRail ? chipRail.querySelector('[data-sim-reset]') : null;
+                if (simOnly) {
+                    simOnly.checked = grid && grid.classList.contains('wall-sim-only');
+                    on(simOnly, 'change', () => {
+                        if (grid) grid.classList.toggle('wall-sim-only', !!simOnly.checked);
+                    });
+                }
+                if (simReset) {
+                    on(simReset, 'click', (e) => {
+                        e.preventDefault(); e.stopPropagation();
+                        this.clearSimilarityView(grid);
+                        if (simOnly) simOnly.checked = false;
+                        if (grid) grid.classList.remove('wall-sim-only');
+                    });
+                }
             }
         } catch (_) { }
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-        try { document.body.classList.add('mobile-modal-open'); } catch (_) { }
-        const onClose = () => {
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-            closeBtn.removeEventListener('click', onClose);
-            modal.removeEventListener('click', onOutside);
-            document.removeEventListener('keydown', onEsc);
-            try { document.body.classList.remove('mobile-modal-open'); } catch (_) { }
-            this.sendTelemetry('read_close', { id, view: 'wall' });
-        };
-        const onOutside = (e) => { if (e.target === modal) onClose(); };
-        const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
-        const onArrowRowInline = (e) => {
-            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-            e.preventDefault();
-            const cardsAll = Array.from(grid.querySelectorAll('.wall-card'));
-            const i = cardsAll.indexOf(cardEl);
-            if (i === -1) return;
-            const j = e.key === 'ArrowLeft' ? Math.max(0, i - 1) : Math.min(cardsAll.length - 1, i + 1);
-            if (j === i) return;
-            const nextCard = cardsAll[j];
-            const nextId = nextCard?.getAttribute('data-report-id');
-            if (nextId) this.openWallRowReader(nextId, nextCard);
-        };
-        const onArrow = (e) => {
-            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-            e.preventDefault();
-            const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
-            const cardsAll = grid ? Array.from(grid.querySelectorAll('.wall-card')) : [];
-            const current = this.contentGrid && this.contentGrid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`);
-            const i = current ? cardsAll.indexOf(current) : -1;
-            if (i === -1) return;
-            const j = e.key === 'ArrowLeft' ? Math.max(0, i - 1) : Math.min(cardsAll.length - 1, i + 1);
-            const nextCard = cardsAll[j];
-            const nextId = nextCard?.getAttribute('data-report-id');
-            if (nextId) {
-                onClose();
-                this.openWallModalReader(nextId);
-            }
-        };
-        closeBtn.addEventListener('click', onClose);
-        modal.addEventListener('click', onOutside);
-        document.addEventListener('keydown', onEsc);
-        document.addEventListener('keydown', onArrow);
-        document.addEventListener('keydown', onArrow);
-        // Swipe-down to close (drag the sheet)
-        try {
-            if (sheet) {
-                let startY = 0, curY = 0, dragging = false;
-                const threshold = 84;
-                const onStart = (e) => { dragging = true; startY = (e.touches ? e.touches[0].clientY : e.clientY); curY = startY; sheet.style.transition = 'none'; };
-                const onMove = (e) => {
-                    if (!dragging) return;
-                    curY = (e.touches ? e.touches[0].clientY : e.clientY);
-                    const dy = Math.max(0, curY - startY);
-                    if (sheet.scrollTop <= 0 || dy > 0) {
-                        sheet.style.transform = `translateY(${dy}px)`;
-                        try { e.preventDefault(); } catch (_) { }
-                    }
-                };
-                const onEnd = () => {
-                    if (!dragging) return;
-                    dragging = false;
-                    const dy = Math.max(0, curY - startY);
-                    sheet.style.transition = 'transform 200ms ease';
-                    if (dy > threshold) { sheet.style.transform = 'translateY(100%)'; setTimeout(onClose, 160); }
-                    else { sheet.style.transform = 'translateY(0)'; }
-                };
-                sheet.addEventListener('touchstart', onStart, { passive: true });
-                sheet.addEventListener('touchmove', onMove, { passive: false });
-                sheet.addEventListener('touchend', onEnd);
-                // Mouse (dev tools)
-                sheet.addEventListener('mousedown', onStart);
-                window.addEventListener('mousemove', onMove, { passive: false });
-                window.addEventListener('mouseup', onEnd);
-                // Cleanup when modal hides
-                const obs = new MutationObserver(() => {
-                    if (modal.classList.contains('hidden')) {
-                        sheet.removeEventListener('touchstart', onStart);
-                        sheet.removeEventListener('touchmove', onMove);
-                        sheet.removeEventListener('touchend', onEnd);
-                        sheet.removeEventListener('mousedown', onStart);
-                        window.removeEventListener('mousemove', onMove);
-                        window.removeEventListener('mouseup', onEnd);
-                        obs.disconnect();
-                    }
-                });
-                obs.observe(modal, { attributes: true, attributeFilter: ['class'] });
-            }
-        } catch (_) { }
-        // Actions: Open, kebab menu
+
+        // Menu + display + open page
         try {
             const openBtn = modal.querySelector('[data-action="wall-reader-open-page"]');
+            const displayBtn = modal.querySelector('[data-action="reader-display"]');
             const menuBtn = modal.querySelector('[data-action="menu"]');
-            const cardEl = this.contentGrid && this.contentGrid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`);
+            const menu = modal.querySelector('[data-kebab-menu]');
             if (openBtn) {
-                openBtn.addEventListener('click', () => {
-                    window.location.href = `/${encodeURIComponent(id)}.json?v=2`;
+                on(openBtn, 'click', (e) => { e.preventDefault(); window.location.href = `/${encodeURIComponent(id)}.json?v=2`; });
+            }
+            if (displayBtn) {
+                on(displayBtn, 'click', (e) => { e.preventDefault(); e.stopPropagation(); this.openReaderDisplayPopover(modal, body, displayBtn); });
+            }
+            if (menuBtn && menu) {
+                menu.classList.add('hidden');
+                on(menuBtn, 'click', (e) => { e.stopPropagation(); this.toggleKebabMenu(modal, true, menuBtn); });
+                on(menu, 'click', (e) => {
+                    const a = e.target.closest('[data-action]');
+                    if (!a) return;
+                    const act = a.getAttribute('data-action');
+                    if (act === 'copy-link') { this.copyLink(card || modal, id); this.toggleKebabMenu(modal, false); }
+                    if (act === 'reprocess') { this.openReprocessModal(id, card || modal); this.toggleKebabMenu(modal, false); }
+                    if (act === 'delete') { if (card) this.handleDelete(id, card); this.toggleKebabMenu(modal, false); }
                 });
             }
-            // Add refresh control for mobile modal
-            try {
-                const headerRight = modal.querySelector('.mobile-reader-header .flex.items-center.gap-2');
-                if (headerRight) {
-                    const rbtn = document.createElement('button');
-                    rbtn.className = 'ybtn ybtn-ghost px-2 py-1.5 rounded-md';
-                    rbtn.setAttribute('title', 'Refresh');
-                    rbtn.setAttribute('aria-label', 'Refresh');
-                    rbtn.textContent = '↻';
-                    rbtn.addEventListener('click', (e) => {
-                        e.preventDefault(); e.stopPropagation();
-                        // Reload the page in mobile web-app context
-                        try { location.reload(); } catch (_) { window.location.href = window.location.href; }
-                    });
-                    headerRight.insertBefore(rbtn, headerRight.firstChild);
-                }
-            } catch (_) { }
-            if (menuBtn) {
-                menuBtn.addEventListener('click', () => this.toggleKebabMenu(modal, true, menuBtn));
-                const menu = modal.querySelector('[data-kebab-menu]');
-                if (menu) {
-                    const onMenuClick = (e) => {
-                        const a = e.target.closest('[data-action]');
-                        if (!a) return;
-                        const act = a.getAttribute('data-action');
-                        if (act === 'copy-link') { this.copyLink(cardEl || modal, id); this.toggleKebabMenu(modal, false); }
-                        if (act === 'reprocess') { this.openReprocessModal(id, cardEl || modal); this.toggleKebabMenu(modal, false); }
-                        if (act === 'delete') { if (cardEl) this.handleDelete(id, cardEl); this.toggleKebabMenu(modal, false); }
-                    };
-                    menu.addEventListener('click', onMenuClick);
-                }
-            }
         } catch (_) { }
+
+        // Filmstrip neighbors
+        const cardsAll = grid ? Array.from(grid.querySelectorAll('.wall-card')) : [];
+        const currentIdx = card ? cardsAll.indexOf(card) : (cardsAll.findIndex(c => c.getAttribute('data-report-id') === id));
+        if (filmstrip) {
+            const neighbors = [];
+            const windowSize = 3;
+            for (let offset = -windowSize; offset <= windowSize; offset += 1) {
+                const idx = currentIdx + offset;
+                if (idx < 0 || idx >= cardsAll.length) continue;
+                const c = cardsAll[idx];
+                const cid = c?.getAttribute('data-report-id');
+                if (!cid) continue;
+                const itm = (this.currentItems || []).find(x => x.file_stem === cid) || null;
+                let thumb = '';
+                if (itm) thumb = itm.summary_image_url ? this.normalizeAssetUrl(itm.summary_image_url) : (itm.thumbnail_url || '');
+                neighbors.push({ id: cid, title: itm?.title || '', thumb, active: cid === id });
+            }
+            filmstrip.innerHTML = neighbors.map(n => `
+                <button class="kaleido-film-item ${n.active ? 'is-active' : ''}" data-film-id="${this.escapeHtml(n.id)}" aria-label="${this.escapeHtml(n.title || 'Open')}">
+                    ${n.thumb ? `<img src="${n.thumb}" alt="">` : ''}
+                    <div class="kaleido-film-title line-clamp-2">${this.escapeHtml(n.title || '')}</div>
+                </button>
+            `).join('');
+            filmstrip.querySelectorAll('[data-film-id]').forEach(btn => {
+                on(btn, 'click', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    const targetId = btn.getAttribute('data-film-id');
+                    const nextCard = grid ? grid.querySelector(`[data-card][data-report-id="${CSS.escape(targetId)}"]`) : null;
+                    this.openWallModalReader(targetId, nextCard);
+                });
+            });
+        }
+
+        // Navigation helpers
+        const goByOffset = (delta) => {
+            if (!cardsAll.length) return;
+            const idx = currentIdx === -1 ? 0 : currentIdx;
+            const nextIdx = Math.min(cardsAll.length - 1, Math.max(0, idx + delta));
+            const nextCard = cardsAll[nextIdx];
+            const nextId = nextCard?.getAttribute('data-report-id');
+            if (nextId) this.openWallModalReader(nextId, nextCard);
+        };
+        if (prevBtn) { prevBtn.disabled = currentIdx <= 0; prevBtn.onclick = null; on(prevBtn, 'click', (e) => { e.preventDefault(); goByOffset(-1); }); }
+        if (nextBtn) { nextBtn.disabled = currentIdx >= cardsAll.length - 1; nextBtn.onclick = null; on(nextBtn, 'click', (e) => { e.preventDefault(); goByOffset(1); }); }
+
+        const close = () => {
+            const targetRect = (this._kaleidoOriginCard || card || (grid && grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`)))?.getBoundingClientRect();
+            if (sheet && targetRect) {
+                const rectNow = sheet.getBoundingClientRect();
+                const dx = targetRect.left - rectNow.left;
+                const dy = targetRect.top - rectNow.top;
+                const sx = targetRect.width / Math.max(1, rectNow.width);
+                const sy = targetRect.height / Math.max(1, rectNow.height);
+                sheet.style.transition = 'transform 200ms ease, opacity 180ms ease';
+                sheet.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+                sheet.style.opacity = '0';
+            }
+            if (backdrop) backdrop.style.opacity = '0';
+            if (card) card.classList.remove('wall-card--selected');
+            if (this._kaleidoTeardown) {
+                this._kaleidoTeardown.forEach(fn => { try { fn(); } catch (_) { } });
+                this._kaleidoTeardown = [];
+            }
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('kaleido-visible');
+                document.body.classList.remove('kaleido-open');
+                document.body.classList.remove('wall-reader-open');
+                if (sheet) { sheet.style.transform = ''; sheet.style.opacity = ''; sheet.style.transition = ''; }
+            }, 210);
+            this.sendTelemetry('read_close', { id, view: 'wall' });
+        };
+
+        const onEsc = (e) => {
+            if (e.key === 'Escape') return close();
+            if (e.key === 'ArrowRight') return goByOffset(1);
+            if (e.key === 'ArrowLeft') return goByOffset(-1);
+        };
+        const onBackdrop = (e) => { if (e.target === backdrop) close(); };
+
+        on(closeBtn, 'click', (e) => { e.preventDefault(); close(); });
+        on(document, 'keydown', onEsc);
+        if (backdrop) on(backdrop, 'click', onBackdrop);
+
+        // Show modal + animate in
+        const wasHidden = modal.classList.contains('hidden');
+        const startRect = card ? card.getBoundingClientRect() : null;
+        modal.classList.remove('hidden');
+        modal.classList.add('kaleido-visible');
+        if (card) card.classList.add('wall-card--selected');
+        document.body.classList.add('kaleido-open');
+        document.body.classList.add('wall-reader-open');
+        if (backdrop) backdrop.style.opacity = '1';
+
+        if (wasHidden && sheet) {
+            const targetRect = sheet.getBoundingClientRect();
+            if (startRect) {
+                const dx = startRect.left - targetRect.left;
+                const dy = startRect.top - targetRect.top;
+                const sx = startRect.width / Math.max(1, targetRect.width);
+                const sy = startRect.height / Math.max(1, targetRect.height);
+                sheet.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+                sheet.style.opacity = '0.2';
+                requestAnimationFrame(() => {
+                    sheet.style.transform = 'translate(0, 0) scale(1)';
+                    sheet.style.opacity = '1';
+                });
+            } else {
+                sheet.style.opacity = '1';
+                sheet.style.transform = 'scale(1)';
+            }
+        } else if (sheet) {
+            sheet.style.opacity = '1';
+            sheet.style.transform = 'translate(0, 0) scale(1)';
+        }
+
+        this._kaleidoOriginCard = card || this._kaleidoOriginCard;
         this.sendTelemetry('read_open', { id, view: 'wall' });
     }
 
