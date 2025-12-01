@@ -4417,12 +4417,13 @@ class AudioDashboard {
         const titleEl = document.getElementById('wallReaderTitle');
         const sourceEl = document.getElementById('wallReaderSource');
         const heroEl = document.getElementById('wallReaderHero');
-        const chipRail = document.getElementById('wallReaderChips');
         const filmstrip = document.getElementById('wallReaderFilmstrip');
         const closeBtn = document.getElementById('wallReaderClose');
         const backdrop = modal ? modal.querySelector('.kaleido-backdrop') : null;
         const prevBtns = modal ? Array.from(modal.querySelectorAll('[data-kaleido-prev]')) : [];
         const nextBtns = modal ? Array.from(modal.querySelectorAll('[data-kaleido-next]')) : [];
+        const filterSimilar = document.getElementById('kFilterSimilar');
+        const filterReset = document.getElementById('kFilterReset');
         const item = (this.currentItems || []).find(x => x.file_stem === id);
         if (!modal || !body || !sheet || !titleEl || !heroEl || !item) return;
 
@@ -4465,41 +4466,17 @@ class AudioDashboard {
             heroEl.innerHTML = '';
         }
 
-        // Similarity + filters rail
-        if (chipRail) {
-            if (this.flags && this.flags.wallSimilarityEnabled) {
-                chipRail.innerHTML = `
-                    <span class="wall-sim-pill">Similar</span>
-                    <label class="kaleido-chip"><input type="checkbox" data-sim-only>Show only</label>
-                    <button class="wall-sim-reset" data-sim-reset data-control>Reset</button>
-                `;
+        const applyFilterState = (active) => {
+            if (filterSimilar) filterSimilar.setAttribute('aria-pressed', active ? 'true' : 'false');
+            if (!grid) return;
+            if (active && this.flags && this.flags.wallSimilarityEnabled) {
+                try { this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')); } catch (_) { }
+                grid.classList.add('wall-sim-only');
             } else {
-                chipRail.innerHTML = '';
+                try { this.clearSimilarityView(grid); } catch (_) { }
+                grid.classList.remove('wall-sim-only');
             }
-        }
-
-        // Apply similarity view for context
-        try {
-            if (this.flags && this.flags.wallSimilarityEnabled) {
-                this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo'));
-                const simOnly = chipRail ? chipRail.querySelector('[data-sim-only]') : null;
-                const simReset = chipRail ? chipRail.querySelector('[data-sim-reset]') : null;
-                if (simOnly) {
-                    simOnly.checked = grid && grid.classList.contains('wall-sim-only');
-                    on(simOnly, 'change', () => {
-                        if (grid) grid.classList.toggle('wall-sim-only', !!simOnly.checked);
-                    });
-                }
-                if (simReset) {
-                    on(simReset, 'click', (e) => {
-                        e.preventDefault(); e.stopPropagation();
-                        this.clearSimilarityView(grid);
-                        if (simOnly) simOnly.checked = false;
-                        if (grid) grid.classList.remove('wall-sim-only');
-                    });
-                }
-            }
-        } catch (_) { }
+        };
 
         // Menu + display + open page
         try {
@@ -4527,27 +4504,29 @@ class AudioDashboard {
             }
         } catch (_) { }
 
-        // Filmstrip neighbors
+        // Filmstrip list (with title + snippet)
         const cardsAll = grid ? Array.from(grid.querySelectorAll('.wall-card')) : [];
         const currentIdx = card ? cardsAll.indexOf(card) : (cardsAll.findIndex(c => c.getAttribute('data-report-id') === id));
-        if (filmstrip) {
-            const neighbors = [];
-            const windowSize = 3;
-            for (let offset = -windowSize; offset <= windowSize; offset += 1) {
-                const idx = currentIdx + offset;
-                if (idx < 0 || idx >= cardsAll.length) continue;
-                const c = cardsAll[idx];
-                const cid = c?.getAttribute('data-report-id');
-                if (!cid) continue;
+        const buildFilmstrip = (simOnlyActive) => {
+            if (!filmstrip) return;
+            const pool = simOnlyActive && grid
+                ? Array.from(grid.querySelectorAll('.wall-card.wall-card--similar'))
+                : cardsAll;
+            const items = pool.map(c => {
+                const cid = c.getAttribute('data-report-id');
                 const itm = (this.currentItems || []).find(x => x.file_stem === cid) || null;
-                let thumb = '';
-                if (itm) thumb = itm.summary_image_url ? this.normalizeAssetUrl(itm.summary_image_url) : (itm.thumbnail_url || '');
-                neighbors.push({ id: cid, title: itm?.title || '', thumb, active: cid === id });
-            }
-            filmstrip.innerHTML = neighbors.map(n => `
+                const thumb = itm ? (itm.summary_image_url ? this.normalizeAssetUrl(itm.summary_image_url) : (itm.thumbnail_url || '')) : '';
+                const titleTxt = itm?.title || '';
+                const snippet = this.getSummarySnippet ? (this.getSummarySnippet(itm, 90) || '') : '';
+                return { id: cid, title: titleTxt, thumb, snippet, active: cid === id };
+            }).filter(x => !!x.id);
+            filmstrip.innerHTML = items.map(n => `
                 <button class="kaleido-film-item ${n.active ? 'is-active' : ''}" data-film-id="${this.escapeHtml(n.id)}" aria-label="${this.escapeHtml(n.title || 'Open')}">
-                    ${n.thumb ? `<img src="${n.thumb}" alt="">` : ''}
-                    <div class="kaleido-film-title line-clamp-2">${this.escapeHtml(n.title || '')}</div>
+                    <div class="kaleido-film-thumb">${n.thumb ? `<img src="${n.thumb}" alt="">` : ''}</div>
+                    <div class="kaleido-film-meta">
+                        <div class="kaleido-film-title">${this.escapeHtml(n.title || '')}</div>
+                        <div class="kaleido-film-snippet">${this.escapeHtml(n.snippet || '')}</div>
+                    </div>
                 </button>
             `).join('');
             filmstrip.querySelectorAll('[data-film-id]').forEach(btn => {
@@ -4558,7 +4537,7 @@ class AudioDashboard {
                     this.openWallModalReader(targetId, nextCard);
                 });
             });
-        }
+        };
 
         // Navigation helpers
         const goByOffset = (delta) => {
@@ -4580,6 +4559,28 @@ class AudioDashboard {
         disableNav(nextBtns, currentIdx >= cardsAll.length - 1);
         prevBtns.forEach(btn => { btn.onclick = null; on(btn, 'click', (e) => { e.preventDefault(); goByOffset(-1); }); });
         nextBtns.forEach(btn => { btn.onclick = null; on(btn, 'click', (e) => { e.preventDefault(); goByOffset(1); }); });
+
+        // Filters
+        const simActiveInitial = filterSimilar ? filterSimilar.getAttribute('aria-pressed') === 'true' : false;
+        const handleFilter = (active) => {
+            applyFilterState(active);
+            buildFilmstrip(active);
+        };
+        if (filterSimilar) {
+            on(filterSimilar, 'click', (e) => {
+                e.preventDefault();
+                const now = filterSimilar.getAttribute('aria-pressed') !== 'true';
+                handleFilter(now);
+            });
+        }
+        if (filterReset) {
+            on(filterReset, 'click', (e) => {
+                e.preventDefault();
+                handleFilter(false);
+            });
+        }
+        applyFilterState(simActiveInitial);
+        buildFilmstrip(simActiveInitial);
 
         const close = () => {
             const targetRect = (this._kaleidoOriginCard || card || (grid && grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`)))?.getBoundingClientRect();

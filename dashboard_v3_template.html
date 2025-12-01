@@ -14,7 +14,7 @@
     <!-- Shared styles across dashboard and report pages -->
     <link rel="stylesheet" href="/static/shared.css?v=20251110a">
     <!-- Dashboard specific styles -->
-    <link rel="stylesheet" href="dashboard.css?v=20251201s">
+    <link rel="stylesheet" href="dashboard.css?v=20251201t">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -1123,7 +1123,7 @@
             </div>
         </div>
 
-        <!-- Kaleido Wall Reader (all viewports) -->
+        <!-- Reader Overlay (all viewports) -->
         <div id="wallReaderModal" class="kaleido-overlay fixed inset-0 hidden z-50">
             <div class="kaleido-backdrop" data-action="wall-reader-close"></div>
             <div id="wallReaderSheet" class="kaleido-shell">
@@ -1138,10 +1138,11 @@
                         <div class="kaleido-title-block">
                             <p id="wallReaderSource" class="kaleido-source">Source</p>
                             <h3 id="wallReaderTitle" class="kaleido-heading">Summary</h3>
-                            <div id="wallReaderChips" class="kaleido-chip-rail"></div>
                         </div>
                     </div>
                     <div class="kaleido-actions">
+                        <button class="kaleido-nav-btn" data-kaleido-prev aria-label="Previous">←</button>
+                        <button class="kaleido-nav-btn" data-kaleido-next aria-label="Next">→</button>
                         <button class="kaleido-btn" data-action="reader-display" title="Display options">Aa</button>
                         <button class="kaleido-btn" data-action="wall-reader-open-page" title="Open page">Open</button>
                         <button class="summary-card__menu-btn kaleido-menu-btn" data-action="menu" aria-label="More options"
@@ -1162,18 +1163,16 @@
                         </div>
                     </div>
                 </div>
-                <div id="wallReaderHero" class="kaleido-hero"></div>
-                <div class="kaleido-edge-nav">
-                    <button class="kaleido-edge-btn" data-kaleido-prev aria-label="Previous">←</button>
-                    <button class="kaleido-edge-btn" data-kaleido-next aria-label="Next">→</button>
+                <div class="kaleido-filterbar">
+                    <button id="kFilterSimilar" class="filter-chip" type="button" aria-pressed="false">Similar only</button>
+                    <button id="kFilterReset" class="filter-chip filter-chip--ghost" type="button">Reset</button>
                 </div>
+                <div id="wallReaderHero" class="kaleido-hero"></div>
                 <div class="kaleido-content">
                     <div id="wallReaderBody" class="prose prose-sm dark:prose-invert max-w-none"></div>
                 </div>
-                <div class="kaleido-nav">
-                    <button class="kaleido-nav-btn" data-kaleido-prev aria-label="Previous">&#8592;</button>
+                <div class="kaleido-strip">
                     <div id="wallReaderFilmstrip" class="kaleido-filmstrip"></div>
-                    <button class="kaleido-nav-btn" data-kaleido-next aria-label="Next">&#8594;</button>
                 </div>
             </div>
         </div>
@@ -1238,7 +1237,7 @@
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
     <script src="ui_flags.js?v=8"></script>
-    <script src="dashboard_v3.js?v=pg118kaleido5"></script>
+    <script src="dashboard_v3.js?v=pg118kaleido6"></script>
 
 </body>
 
