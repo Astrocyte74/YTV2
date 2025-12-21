@@ -14,7 +14,7 @@
     <!-- Shared styles across dashboard and report pages -->
     <link rel="stylesheet" href="/static/shared.css?v=20251110a">
     <!-- Dashboard specific styles -->
-    <link rel="stylesheet" href="dashboard.css?v=20251221a">
+    <link rel="stylesheet" href="dashboard.css?v=20251221b">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -1164,8 +1164,10 @@
                     </div>
                 </div>
                 <div class="kaleido-filterbar">
-                    <button id="kFilterSimilar" class="filter-chip" type="button" aria-pressed="false">Similar only</button>
-                    <button id="kFilterReset" class="filter-chip filter-chip--ghost" type="button">Reset</button>
+                    <button id="kFilterSimilar" class="filter-chip" type="button" aria-pressed="false"
+                        title="Show related summaries in this result set">Related</button>
+                    <button id="kFilterReset" class="filter-chip filter-chip--ghost" type="button"
+                        title="Show all summaries in this result set">All</button>
                 </div>
                 <div id="wallReaderHero" class="kaleido-hero"></div>
                 <div class="kaleido-content">
@@ -1237,7 +1239,7 @@
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
     <script src="ui_flags.js?v=8"></script>
-    <script src="dashboard_v3.js?v=pg118kaleido7"></script>
+    <script src="dashboard_v3.js?v=pg118kaleido8"></script>
 
 </body>
 

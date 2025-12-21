@@ -2360,6 +2360,37 @@ body:not(.dark) .reader-display-popover {
     border-radius: 999px;
 }
 
+.kaleido-topbar .summary-card__menu-btn {
+    position: static;
+    top: auto;
+    right: auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 999px;
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(59, 130, 246, 0.32);
+    color: inherit;
+    backdrop-filter: none;
+}
+
+.kaleido-topbar .summary-card__menu-btn:hover,
+.kaleido-topbar .summary-card__menu-btn:focus-visible {
+    background: rgba(14, 165, 233, 0.18);
+    border-color: rgba(14, 165, 233, 0.35);
+    transform: translateY(-1px);
+}
+
+.dark .kaleido-topbar .summary-card__menu-btn {
+    background: rgba(59, 130, 246, 0.14);
+    border-color: rgba(59, 130, 246, 0.32);
+}
+
+.kaleido-topbar .summary-card__menu {
+    top: calc(100% + 0.35rem);
+    right: 0.9rem;
+    z-index: 60;
+}
+
 .kaleido-chip-rail {
     display: inline-flex;
     align-items: center;
@@ -2775,6 +2806,12 @@ body.kaleido-open #mobileMiniPlayer {
     .kaleido-actions {
         gap: 0.35rem;
         flex-wrap: nowrap;
+        justify-content: flex-end;
+    }
+
+    .kaleido-actions [data-kaleido-prev],
+    .kaleido-actions [data-kaleido-next] {
+        display: none;
     }
 
     .kaleido-icon-btn,
@@ -2815,7 +2852,7 @@ body.kaleido-open #mobileMiniPlayer {
     }
 
     .kaleido-hero {
-        height: 120px;
+        height: 150px;
         margin-bottom: 0.25rem;
     }
 
@@ -2844,7 +2881,7 @@ body.kaleido-open #mobileMiniPlayer {
 
     /* When the reader body is scrolled, reduce fixed chrome to focus on text. */
     .kaleido-shell.kaleido-scrolled .kaleido-hero {
-        height: 74px;
+        height: 90px;
         margin-bottom: 0.1rem;
     }
 
