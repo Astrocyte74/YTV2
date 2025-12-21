@@ -1178,6 +1178,76 @@ body:not(.dark) .reader-display-popover {
     padding-top: 6px;
 }
 
+.reader-popover-header--sheet .title {
+    font-size: 0.95rem;
+    letter-spacing: 0.01em;
+}
+
+.reader-popover-header--sheet .reader-reset {
+    font-size: 0.78rem;
+    padding: 0.35rem 0.55rem;
+}
+
+.reader-tabs {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.25rem 0.1rem 0.6rem;
+}
+
+.reader-tab {
+    flex: 1 1 0;
+    text-align: center;
+    padding: 0.42rem 0.65rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    background: rgba(255, 255, 255, 0.08);
+    color: inherit;
+    font-weight: 650;
+    font-size: 0.86rem;
+}
+
+.reader-tab[aria-selected="true"] {
+    background: rgba(14, 165, 233, 0.28);
+    border-color: rgba(14, 165, 233, 0.55);
+}
+
+.dark .reader-tab {
+    background: rgba(2, 6, 23, 0.6);
+    border-color: rgba(71, 85, 105, 0.55);
+}
+
+.dark .reader-tab[aria-selected="true"] {
+    background: rgba(14, 165, 233, 0.35);
+    border-color: rgba(14, 165, 233, 0.55);
+}
+
+.reader-preview-row--compact {
+    margin-bottom: 0.55rem;
+}
+
+.reader-live-preview--compact {
+    padding: 10px 12px;
+    font-size: 0.95rem;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+}
+
+.reader-pane .reader-field {
+    margin-bottom: 0.7rem;
+}
+
+.reader-system-toggle {
+    margin-top: 0.55rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
 /* Full-width theme row centered beneath the grid */
 .reader-theme-row {
     display: flex;
@@ -2835,22 +2905,9 @@ body.kaleido-open #mobileMiniPlayer {
         font-size: 0.85rem;
     }
 
-    /* Make the Open button icon-only to save space. */
+    /* Mobile: drop Open-page control (swipe + filmstrip cover navigation). */
     .kaleido-actions [data-action="wall-reader-open-page"] {
-        font-size: 0;
-        padding: 0;
-        width: 2.2rem;
-        height: 2.2rem;
-        border-radius: 999px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .kaleido-actions [data-action="wall-reader-open-page"]::after {
-        content: '↗';
-        font-size: 0.95rem;
-        line-height: 1;
+        display: none !important;
     }
 
     .kaleido-hero {

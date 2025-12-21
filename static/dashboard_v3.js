@@ -3485,6 +3485,7 @@ class AudioDashboard {
         // Close any existing
         try { document.querySelectorAll('.reader-display-popover').forEach(el => el.remove()); } catch (_) { }
         const prefs = this.getReaderDisplayPrefs();
+        const isMobile = (window.innerWidth || 0) <= 640;
         const pop = document.createElement('div');
         pop.className = 'reader-display-popover pop-animate';
         pop.setAttribute('role', 'dialog');
@@ -3538,55 +3539,135 @@ class AudioDashboard {
         };
         const justifyMini = `
           <div class="justify-mini"><span class="jline"></span><span class="jline"></span><span class="jline"></span></div>`;
-        pop.innerHTML = `
-          <div class="reader-popover-header">
-            <span class="title">Display Options</span>
-            <div class="actions">
-              <button type="button" class="reader-reset" data-reader-reset>Reset to Defaults</button>
-              <button type="button" class="reader-close" aria-label="Close" data-reader-close>×</button>
-            </div>
-          </div>
-          <div class="reader-preview-row">
-            <div class="reader-live-preview" id="readerPreview">The quick brown fox jumps over the lazy dog. The five boxing wizards jump quickly. A mad boxer shot a quick, gloved jab to the jaw of his dizzy opponent. Pack my box with five dozen liquor jugs.</div>
-          </div>
-          <div class="reader-panel reader-grid">
-            <div class="reader-col">
-              <div class="reader-group">
-                <h5>Typography</h5>
-                <div class="reader-field">
-                  <div class="reader-field-label">Font Size</div>
-                  <div class="reader-display-row" data-row="size">${sizeSeg}</div>
-                </div>
-                <div class="reader-field">
-                  <div class="reader-field-label">Font Family</div>
-                  <div class="reader-display-row" data-row="family">${familySeg}</div>
-                </div>
-                <div class="reader-field">
-                  <div class="reader-field-label">Line Spacing</div>
-                  <div class="reader-display-row" data-row="line">${lineSeg}</div>
+        if (isMobile) {
+            pop.innerHTML = `
+              <div class="reader-popover-header reader-popover-header--sheet">
+                <span class="title">Display</span>
+                <div class="actions">
+                  <button type="button" class="reader-reset" data-reader-reset>Reset</button>
+                  <button type="button" class="reader-close" aria-label="Close" data-reader-close>×</button>
                 </div>
               </div>
-            </div>
-            <div class="reader-col">
-              <div class="reader-group">
-                <h5>Layout</h5>
-                <div class="reader-display-row" data-row="para"><div class="reader-segment" role="radiogroup" aria-label="Paragraph style">${segBtn('data-reader-para=\"spaced\"', 'Spaced', prefs.paraStyle === 'spaced')}${segBtn('data-reader-para=\"indented\"', 'Indented', prefs.paraStyle === 'indented')}</div></div>
-                <div class="reader-display-row" data-row="justify"><div class="reader-segment" role="radiogroup" aria-label="Justification">${segBtn('data-reader-justify=\"left\"', 'Left', prefs.justify === 'left')}${segBtn('data-reader-justify=\"justify\"', 'Justified', prefs.justify === 'justify')}</div></div>
-                <div class="reader-display-row" data-row="measure"><div class="reader-segment" role="radiogroup" aria-label="Reading width">${segBtn('data-reader-measure=\"narrow\"', 'Narrow', prefs.measure === 'narrow')}${segBtn('data-reader-measure=\"medium\"', 'Medium', prefs.measure === 'medium')}${segBtn('data-reader-measure=\"wide\"', 'Wide', prefs.measure === 'wide')}${segBtn('data-reader-measure=\"full\"', 'Full', prefs.measure === 'full')}</div></div>
-                <div class="reader-field">
-                  <div class="reader-field-label">Theme</div>
-                  <div class="reader-display-row" data-row="theme">${themeSeg}</div>
-                  <div class="mt-2 flex items-center gap-2 text-sm">
-                    <label class="inline-flex items-center gap-2">
-                      <input type="checkbox" data-reader-system ${prefs.systemTheme ? 'checked' : ''} /> Match System Theme
+              <div class="reader-tabs" role="tablist" aria-label="Display options sections">
+                <button type="button" class="reader-tab" data-reader-tab="text" role="tab" aria-selected="true">Text</button>
+                <button type="button" class="reader-tab" data-reader-tab="layout" role="tab" aria-selected="false">Layout</button>
+                <button type="button" class="reader-tab" data-reader-tab="theme" role="tab" aria-selected="false">Theme</button>
+              </div>
+              <div class="reader-preview-row reader-preview-row--compact">
+                <div class="reader-live-preview reader-live-preview--compact" id="readerPreview">The quick brown fox jumps over the lazy dog. The five boxing wizards jump quickly. Pack my box with five dozen liquor jugs.</div>
+              </div>
+              <div class="reader-pane" data-reader-pane="text">
+                <div class="reader-group">
+                  <div class="reader-field">
+                    <div class="reader-field-label">Font Size</div>
+                    <div class="reader-display-row" data-row="size">${sizeSeg}</div>
+                  </div>
+                  <div class="reader-field">
+                    <div class="reader-field-label">Line Spacing</div>
+                    <div class="reader-display-row" data-row="line">${lineSeg}</div>
+                  </div>
+                  <div class="reader-field">
+                    <div class="reader-field-label">Font Family</div>
+                    <div class="reader-display-row" data-row="family">${familySeg}</div>
+                  </div>
+                </div>
+              </div>
+              <div class="reader-pane" data-reader-pane="layout" hidden>
+                <div class="reader-group">
+                  <div class="reader-field">
+                    <div class="reader-field-label">Paragraphs</div>
+                    <div class="reader-display-row" data-row="para">
+                      <div class="reader-segment" role="radiogroup" aria-label="Paragraph style">
+                        ${segBtn('data-reader-para=\"spaced\"', 'Spaced', prefs.paraStyle === 'spaced')}
+                        ${segBtn('data-reader-para=\"indented\"', 'Indented', prefs.paraStyle === 'indented')}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="reader-field">
+                    <div class="reader-field-label">Justification</div>
+                    <div class="reader-display-row" data-row="justify" data-justify-state="${prefs.justify === 'justify' ? 'justify' : 'left'}">
+                      <div class="reader-segment" role="radiogroup" aria-label="Justification">
+                        ${segBtn('data-reader-justify=\"left\"', 'Left', prefs.justify === 'left')}
+                        ${segBtn('data-reader-justify=\"justify\"', 'Justified', prefs.justify === 'justify')}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="reader-field">
+                    <div class="reader-field-label">Reading Width</div>
+                    <div class="reader-display-row" data-row="measure">
+                      <div class="reader-segment" role="radiogroup" aria-label="Reading width">
+                        ${segBtn('data-reader-measure=\"narrow\"', 'Narrow', prefs.measure === 'narrow')}
+                        ${segBtn('data-reader-measure=\"medium\"', 'Medium', prefs.measure === 'medium')}
+                        ${segBtn('data-reader-measure=\"wide\"', 'Wide', prefs.measure === 'wide')}
+                        ${segBtn('data-reader-measure=\"full\"', 'Full', prefs.measure === 'full')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="reader-pane" data-reader-pane="theme" hidden>
+                <div class="reader-group">
+                  <div class="reader-field">
+                    <div class="reader-field-label">Theme</div>
+                    <div class="reader-display-row" data-row="theme">${themeSeg}</div>
+                    <label class="reader-system-toggle">
+                      <input type="checkbox" data-reader-system ${prefs.systemTheme ? 'checked' : ''} />
+                      <span>Match system</span>
                     </label>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>`;
+            `;
+        } else {
+            pop.innerHTML = `
+              <div class="reader-popover-header">
+                <span class="title">Display Options</span>
+                <div class="actions">
+                  <button type="button" class="reader-reset" data-reader-reset>Reset to Defaults</button>
+                  <button type="button" class="reader-close" aria-label="Close" data-reader-close>×</button>
+                </div>
+              </div>
+              <div class="reader-preview-row">
+                <div class="reader-live-preview" id="readerPreview">The quick brown fox jumps over the lazy dog. The five boxing wizards jump quickly. A mad boxer shot a quick, gloved jab to the jaw of his dizzy opponent. Pack my box with five dozen liquor jugs.</div>
+              </div>
+              <div class="reader-panel reader-grid">
+                <div class="reader-col">
+                  <div class="reader-group">
+                    <h5>Typography</h5>
+                    <div class="reader-field">
+                      <div class="reader-field-label">Font Size</div>
+                      <div class="reader-display-row" data-row="size">${sizeSeg}</div>
+                    </div>
+                    <div class="reader-field">
+                      <div class="reader-field-label">Font Family</div>
+                      <div class="reader-display-row" data-row="family">${familySeg}</div>
+                    </div>
+                    <div class="reader-field">
+                      <div class="reader-field-label">Line Spacing</div>
+                      <div class="reader-display-row" data-row="line">${lineSeg}</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="reader-col">
+                  <div class="reader-group">
+                    <h5>Layout</h5>
+                    <div class="reader-display-row" data-row="para"><div class="reader-segment" role="radiogroup" aria-label="Paragraph style">${segBtn('data-reader-para=\"spaced\"', 'Spaced', prefs.paraStyle === 'spaced')}${segBtn('data-reader-para=\"indented\"', 'Indented', prefs.paraStyle === 'indented')}</div></div>
+                    <div class="reader-display-row" data-row="justify"><div class="reader-segment" role="radiogroup" aria-label="Justification">${segBtn('data-reader-justify=\"left\"', 'Left', prefs.justify === 'left')}${segBtn('data-reader-justify=\"justify\"', 'Justified', prefs.justify === 'justify')}</div></div>
+                    <div class="reader-display-row" data-row="measure"><div class="reader-segment" role="radiogroup" aria-label="Reading width">${segBtn('data-reader-measure=\"narrow\"', 'Narrow', prefs.measure === 'narrow')}${segBtn('data-reader-measure=\"medium\"', 'Medium', prefs.measure === 'medium')}${segBtn('data-reader-measure=\"wide\"', 'Wide', prefs.measure === 'wide')}${segBtn('data-reader-measure=\"full\"', 'Full', prefs.measure === 'full')}</div></div>
+                    <div class="reader-field">
+                      <div class="reader-field-label">Theme</div>
+                      <div class="reader-display-row" data-row="theme">${themeSeg}</div>
+                      <div class="mt-2 flex items-center gap-2 text-sm">
+                        <label class="inline-flex items-center gap-2">
+                          <input type="checkbox" data-reader-system ${prefs.systemTheme ? 'checked' : ''} /> Match System Theme
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>`;
+        }
         // Position relative to anchor (desktop) or as bottom sheet (mobile)
-        const isMobile = (window.innerWidth || 0) <= 640;
         let scrim = null;
         if (isMobile) {
             try {
@@ -3640,6 +3721,25 @@ class AudioDashboard {
         if (scrim) scrim.addEventListener('click', closeAll);
         const onAway = (e) => { if (!pop.contains(e.target) && e.target !== anchorBtn) closeAll(); };
         setTimeout(() => { document.addEventListener('click', onAway, true); window.addEventListener('resize', onAway, true); }, 0);
+        // Mobile tabs
+        if (isMobile) {
+            const tabs = Array.from(pop.querySelectorAll('[data-reader-tab]'));
+            const panes = Array.from(pop.querySelectorAll('[data-reader-pane]'));
+            const setTab = (name) => {
+                tabs.forEach(t => t.setAttribute('aria-selected', t.getAttribute('data-reader-tab') === name ? 'true' : 'false'));
+                panes.forEach(p => {
+                    const match = p.getAttribute('data-reader-pane') === name;
+                    if (match) p.removeAttribute('hidden'); else p.setAttribute('hidden', '');
+                });
+            };
+            tabs.forEach(t => {
+                t.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    setTab(t.getAttribute('data-reader-tab') || 'text');
+                });
+            });
+            setTab('text');
+        }
         // Handlers
         pop.addEventListener('click', (e) => {
             const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-theme], [data-reader-para], [data-reader-justify], [data-reader-measure], [data-reader-size-inc], [data-reader-size-dec]');
@@ -3719,7 +3819,9 @@ class AudioDashboard {
                     if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
                     else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
                 } catch (_) { }
-                const defaults = { size: 'm', line: 'normal', family: 'sans', theme: baseTheme, systemTheme: false, paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
+                const defaults = isMobile
+                    ? { size: 'l', line: 'loose', family: 'sans', theme: baseTheme, systemTheme: false, paraStyle: 'spaced', justify: 'left', measure: 'full' }
+                    : { size: 'm', line: 'normal', family: 'sans', theme: baseTheme, systemTheme: false, paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
                 const merged = this.setReaderDisplayPrefs(defaults);
                 this.applyReaderDisplayPrefs(container, bodyEl);
                 // Update UI state
