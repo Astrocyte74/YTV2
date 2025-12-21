@@ -516,6 +516,25 @@ class AudioDashboard {
             }
         });
 
+        // iOS/Safari can restore the page from bfcache with stale CSS classes (e.g., wall similarity dimming).
+        const cleanupTransientUi = () => {
+            try {
+                const modal = document.getElementById('wallReaderModal');
+                const isModalOpen = modal && !modal.classList.contains('hidden');
+                if (!isModalOpen) {
+                    document.body.classList.remove('kaleido-open', 'wall-reader-open');
+                    const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+                    this.clearSimilarityView(grid);
+                }
+            } catch (_) { /* no-op */ }
+        };
+        try {
+            window.addEventListener('pageshow', cleanupTransientUi);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') cleanupTransientUi();
+            });
+        } catch (_) { /* no-op */ }
+
         // Ensure kebab action opens Manage Images (capture phase to beat other handlers)
         document.addEventListener('click', (e) => {
             const el = e.target.closest('[data-action="images-manage"]');
@@ -4855,15 +4874,18 @@ class AudioDashboard {
             if (backdrop) backdrop.style.opacity = '0';
             try { sheet.classList.remove('kaleido-scrolled'); } catch (_) { }
             if (card) card.classList.remove('wall-card--selected');
+            // Always clear similarity classes when closing the reader; otherwise the wall grid can stay dimmed.
+            try { this.clearSimilarityView(grid); } catch (_) { }
             if (this._kaleidoTeardown) {
                 this._kaleidoTeardown.forEach(fn => { try { fn(); } catch (_) { } });
                 this._kaleidoTeardown = [];
             }
+            // Remove global "modal open" classes immediately (iOS bfcache can skip pending timeouts).
+            try { document.body.classList.remove('kaleido-open'); } catch (_) { }
+            try { document.body.classList.remove('wall-reader-open'); } catch (_) { }
             setTimeout(() => {
                 modal.classList.add('hidden');
                 modal.classList.remove('kaleido-visible');
-                document.body.classList.remove('kaleido-open');
-                document.body.classList.remove('wall-reader-open');
                 if (sheet) { sheet.style.transform = ''; sheet.style.opacity = ''; sheet.style.transition = ''; }
             }, 210);
             this.sendTelemetry('read_close', { id, view: 'wall' });
@@ -5416,6 +5438,7 @@ class AudioDashboard {
             const container = grid || (this.contentGrid && this.contentGrid.querySelector('.wall-grid'));
             if (!container) return;
             container.classList.remove('wall-sim-active');
+            container.classList.remove('wall-sim-only');
             container.querySelectorAll('.wall-card').forEach(c => { c.classList.remove('wall-card--dim'); c.classList.remove('wall-card--similar'); });
             this._wallSimApplied = null;
         } catch (_) { /* no-op */ }
