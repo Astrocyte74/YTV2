@@ -2554,6 +2554,13 @@ body:not(.dark) .reader-display-popover {
     transform: scale(1.02);
 }
 
+.kaleido-main {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+}
+
 .kaleido-content {
     flex: 1;
     overflow-y: auto;
@@ -2728,6 +2735,115 @@ body:not(.dark) .reader-display-popover {
 
 .dark .kaleido-film-item .kaleido-film-title {
     color: #e2e8f0;
+}
+
+/* Desktop: move filmstrip to right sidebar to reclaim vertical space */
+@media (min-width: 1024px) {
+    .kaleido-main {
+        flex-direction: row;
+    }
+
+    .kaleido-content {
+        min-width: 0;
+    }
+
+    .kaleido-strip {
+        width: 380px;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        padding: 0.7rem 0.8rem;
+        border-top: none;
+        border-left: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(5, 10, 20, 0.9);
+    }
+
+    .kaleido-stripbar {
+        justify-content: flex-start;
+        padding: 0.1rem 0 0.55rem;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: rgba(5, 10, 20, 0.9);
+    }
+
+    .kaleido-filmstrip {
+        flex: 1;
+        min-height: 0;
+        flex-direction: column;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 0.15rem 0.15rem 0.25rem;
+        gap: 0.55rem;
+    }
+
+    .kaleido-filmstrip::-webkit-scrollbar {
+        width: 8px;
+        height: auto;
+    }
+
+    .kaleido-filmstrip::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.6);
+        border-radius: 999px;
+    }
+
+    .kaleido-film-item {
+        min-width: 0;
+        max-width: none;
+        width: 100%;
+        padding: 0.55rem 0.65rem;
+    }
+
+    .kaleido-film-thumb {
+        width: 92px;
+        height: 64px;
+        border-radius: 10px;
+    }
+
+    .kaleido-film-title,
+    .kaleido-film-snippet {
+        white-space: normal;
+        text-overflow: initial;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .kaleido-film-title {
+        -webkit-line-clamp: 2;
+        margin-bottom: 0.15rem;
+    }
+
+    .kaleido-film-snippet {
+        -webkit-line-clamp: 2;
+        opacity: 0.92;
+    }
+
+    /* When filmstrip is hidden, collapse the sidebar to a floating pill group. */
+    .kaleido-strip.kaleido-strip--collapsed {
+        position: absolute;
+        right: 0.9rem;
+        bottom: 0.9rem;
+        width: auto;
+        padding: 0;
+        border: none;
+        background: transparent;
+    }
+
+    .kaleido-strip.kaleido-strip--collapsed .kaleido-stripbar {
+        position: static;
+        padding: 0.25rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(5, 10, 20, 0.72);
+        backdrop-filter: blur(10px) saturate(120%);
+        box-shadow: 0 10px 26px -18px rgba(0, 0, 0, 0.65);
+    }
+
+    .kaleido-shell.kaleido-strip-collapsed .kaleido-content {
+        padding-bottom: 3.8rem;
+    }
 }
 
 body.kaleido-open {

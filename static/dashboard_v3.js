@@ -4721,6 +4721,8 @@ class AudioDashboard {
             if (filmstrip) {
                 try { filmstrip.classList.toggle('kaleido-filmstrip--hidden', stripMode === 'none'); } catch (_) { }
             }
+            try { if (stripEl) stripEl.classList.toggle('kaleido-strip--collapsed', stripMode === 'none'); } catch (_) { }
+            try { sheet.classList.toggle('kaleido-strip-collapsed', stripMode === 'none'); } catch (_) { }
             if (stripMode === 'none') {
                 filmstrip.innerHTML = '';
                 return;

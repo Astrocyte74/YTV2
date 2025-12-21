@@ -14,7 +14,7 @@
     <!-- Shared styles across dashboard and report pages -->
     <link rel="stylesheet" href="/static/shared.css?v=20251110a">
     <!-- Dashboard specific styles -->
-    <link rel="stylesheet" href="dashboard.css?v=20251221f">
+    <link rel="stylesheet" href="dashboard.css?v=20251221g">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -1164,19 +1164,21 @@
                     </div>
                 </div>
                 <div id="wallReaderHero" class="kaleido-hero"></div>
-                <div class="kaleido-content">
-                    <div id="wallReaderBody" class="prose prose-sm dark:prose-invert max-w-none"></div>
-                </div>
-                <div class="kaleido-strip">
-                    <div class="kaleido-stripbar" aria-label="Filmstrip">
-                        <button id="kStripRelated" class="filter-chip" type="button" aria-pressed="false"
-                            title="Show related summaries">Related</button>
-                        <button id="kStripAll" class="filter-chip filter-chip--ghost" type="button" aria-pressed="false"
-                            title="Show all summaries in chronological order">All</button>
-                        <button id="kStripHide" class="filter-chip filter-chip--ghost" type="button" aria-pressed="true"
-                            title="Hide the filmstrip">Hide</button>
+                <div class="kaleido-main">
+                    <div class="kaleido-content">
+                        <div id="wallReaderBody" class="prose prose-sm dark:prose-invert max-w-none"></div>
                     </div>
-                    <div id="wallReaderFilmstrip" class="kaleido-filmstrip"></div>
+                    <div class="kaleido-strip">
+                        <div class="kaleido-stripbar" aria-label="Filmstrip">
+                            <button id="kStripRelated" class="filter-chip" type="button" aria-pressed="false"
+                                title="Show related summaries">Related</button>
+                            <button id="kStripAll" class="filter-chip filter-chip--ghost" type="button" aria-pressed="false"
+                                title="Show all summaries in chronological order">All</button>
+                            <button id="kStripHide" class="filter-chip filter-chip--ghost" type="button" aria-pressed="true"
+                                title="Hide the filmstrip">Hide</button>
+                        </div>
+                        <div id="wallReaderFilmstrip" class="kaleido-filmstrip"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1241,7 +1243,7 @@
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
     <script src="ui_flags.js?v=8"></script>
-    <script src="dashboard_v3.js?v=pg118kaleido12"></script>
+    <script src="dashboard_v3.js?v=pg118kaleido14"></script>
 
 </body>
 
