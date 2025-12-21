@@ -3411,7 +3411,12 @@ class AudioDashboard {
     getReaderDisplayPrefs() {
         try {
             const raw = localStorage.getItem(this.readerPrefsKey()) || localStorage.getItem('readerDisplayPrefs');
-            if (!raw) return { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
+            if (!raw) {
+                const isDesktop = (typeof window !== 'undefined' && (window.innerWidth || 0) >= 1024);
+                return isDesktop
+                    ? { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'narrow' }
+                    : { size: 'l', line: 'loose', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'full' };
+            }
             const obj = JSON.parse(raw);
             // Back-compat: remap older measures to new scale
             let storedMeasure = obj.measure;
@@ -3427,7 +3432,10 @@ class AudioDashboard {
                 measure: (storedMeasure && READER_MEASURE_MAP[storedMeasure]) ? storedMeasure : 'narrow'
             };
         } catch (_) {
-            return { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
+            const isDesktop = (typeof window !== 'undefined' && (window.innerWidth || 0) >= 1024);
+            return isDesktop
+                ? { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'narrow' }
+                : { size: 'l', line: 'loose', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'full' };
         }
     }
     setReaderDisplayPrefs(next) {
@@ -4397,6 +4405,7 @@ class AudioDashboard {
         const sourceEl = document.getElementById('wallReaderSource');
         const heroEl = document.getElementById('wallReaderHero');
         const filmstrip = document.getElementById('wallReaderFilmstrip');
+        const stripEl = modal ? modal.querySelector('.kaleido-strip') : null;
         const closeBtn = document.getElementById('wallReaderClose');
         const backdrop = modal ? modal.querySelector('.kaleido-backdrop') : null;
         const prevBtns = modal ? Array.from(modal.querySelectorAll('[data-kaleido-prev]')) : [];
@@ -4405,6 +4414,7 @@ class AudioDashboard {
         const filterReset = document.getElementById('kFilterReset');
         const item = (this.currentItems || []).find(x => x.file_stem === id);
         if (!modal || !body || !sheet || !titleEl || !heroEl || !item) return;
+        try { sheet.classList.remove('kaleido-scrolled'); } catch (_) { }
 
         const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
         const card = cardEl || (grid ? grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`) : null);
@@ -4488,6 +4498,14 @@ class AudioDashboard {
         const currentIdx = card ? cardsAll.indexOf(card) : (cardsAll.findIndex(c => c.getAttribute('data-report-id') === id));
         const buildFilmstrip = (simOnlyActive) => {
             if (!filmstrip) return;
+            const isMobile = (typeof window !== 'undefined' && (window.innerWidth || 0) <= 640);
+            if (stripEl) {
+                try { stripEl.classList.toggle('kaleido-strip--hidden', isMobile && !simOnlyActive); } catch (_) { }
+            }
+            if (isMobile && !simOnlyActive) {
+                filmstrip.innerHTML = '';
+                return;
+            }
             const pool = simOnlyActive && grid
                 ? Array.from(grid.querySelectorAll('.wall-card.wall-card--similar'))
                 : cardsAll;
@@ -4561,6 +4579,20 @@ class AudioDashboard {
         applyFilterState(simActiveInitial);
         buildFilmstrip(simActiveInitial);
 
+        // Mobile: collapse chrome a bit once you start scrolling the reader body
+        try {
+            const scroller = modal.querySelector('.kaleido-content');
+            const syncScroll = () => {
+                const isMobile = (typeof window !== 'undefined' && (window.innerWidth || 0) <= 640);
+                const top = scroller ? (scroller.scrollTop || 0) : 0;
+                sheet.classList.toggle('kaleido-scrolled', isMobile && top > 12);
+            };
+            if (scroller) {
+                on(scroller, 'scroll', syncScroll, { passive: true });
+                syncScroll();
+            }
+        } catch (_) { }
+
         const close = () => {
             const targetRect = (this._kaleidoOriginCard || card || (grid && grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`)))?.getBoundingClientRect();
             if (sheet && targetRect) {
@@ -4574,6 +4606,7 @@ class AudioDashboard {
                 sheet.style.opacity = '0';
             }
             if (backdrop) backdrop.style.opacity = '0';
+            try { sheet.classList.remove('kaleido-scrolled'); } catch (_) { }
             if (card) card.classList.remove('wall-card--selected');
             if (this._kaleidoTeardown) {
                 this._kaleidoTeardown.forEach(fn => { try { fn(); } catch (_) { } });
