@@ -4410,8 +4410,9 @@ class AudioDashboard {
         const backdrop = modal ? modal.querySelector('.kaleido-backdrop') : null;
         const prevBtns = modal ? Array.from(modal.querySelectorAll('[data-kaleido-prev]')) : [];
         const nextBtns = modal ? Array.from(modal.querySelectorAll('[data-kaleido-next]')) : [];
-        const filterSimilar = document.getElementById('kFilterSimilar');
-        const filterReset = document.getElementById('kFilterReset');
+        const stripRelated = document.getElementById('kStripRelated');
+        const stripAll = document.getElementById('kStripAll');
+        const stripHide = document.getElementById('kStripHide');
         const item = (this.currentItems || []).find(x => x.file_stem === id);
         if (!modal || !body || !sheet || !titleEl || !heroEl || !item) return;
         try { sheet.classList.remove('kaleido-scrolled'); } catch (_) { }
@@ -4455,8 +4456,7 @@ class AudioDashboard {
             heroEl.innerHTML = '';
         }
 
-        const applyFilterState = (active) => {
-            if (filterSimilar) filterSimilar.setAttribute('aria-pressed', active ? 'true' : 'false');
+        const applyRelatedState = (active) => {
             let similarIds = [];
             if (!grid) return similarIds;
             if (active && this.flags && this.flags.wallSimilarityEnabled) {
@@ -4499,15 +4499,33 @@ class AudioDashboard {
         const itemsAll = this.currentItems || [];
         const byId = new Map(itemsAll.map(it => [it.file_stem, it]));
         const cardsAll = grid ? Array.from(grid.querySelectorAll('.wall-card')) : [];
-        const allIds = (grid ? cardsAll.map(c => c.getAttribute('data-report-id')) : itemsAll.map(it => it.file_stem))
+        const allIdsRaw = (grid ? cardsAll.map(c => c.getAttribute('data-report-id')) : itemsAll.map(it => it.file_stem))
             .filter(Boolean);
+        const allPos = new Map(allIdsRaw.map((cid, idx) => [cid, idx]));
+
+        const tsFor = (it) => {
+            try {
+                const t = it?.indexed_at || it?.indexedAt || it?.created_at || it?.updated_at || it?.timestamp || null;
+                if (!t) return 0;
+                const ms = Date.parse(String(t));
+                return Number.isFinite(ms) ? ms : 0;
+            } catch (_) { return 0; }
+        };
+
+        // Chronological (newest first). If timestamps missing, preserve original order.
+        const allIdsChrono = allIdsRaw.slice().sort((a, b) => {
+            const ta = tsFor(byId.get(a));
+            const tb = tsFor(byId.get(b));
+            if (ta !== tb) return tb - ta;
+            return (allPos.get(a) ?? 0) - (allPos.get(b) ?? 0);
+        });
 
         const computeSimilarIds = () => {
             try {
                 if (!this.flags || !this.flags.wallSimilarityEnabled) return [];
                 const base = byId.get(id);
                 if (!base) return [];
-                const scored = allIds
+                const scored = allIdsRaw
                     .filter(cid => cid && cid !== id)
                     .map(cid => {
                         const it = byId.get(cid);
@@ -4533,10 +4551,14 @@ class AudioDashboard {
             return out;
         };
 
-        let simActive = filterSimilar ? (filterSimilar.getAttribute('aria-pressed') === 'true') : false;
+        let stripMode = 'none'; // 'none' | 'all' | 'related'
         let simIds = [];
 
-        const getPoolIds = (active) => active ? uniq([id, ...simIds]) : uniq(allIds);
+        const getPoolIds = (mode) => {
+            if (mode === 'related') return uniq([id, ...simIds]);
+            // All + None still navigate through the full result set
+            return uniq(allIdsChrono);
+        };
 
         const openById = (targetId) => {
             if (!targetId) return;
@@ -4553,14 +4575,14 @@ class AudioDashboard {
         };
 
         const updateNavButtons = () => {
-            const pool = getPoolIds(simActive);
+            const pool = getPoolIds(stripMode);
             const idx = pool.indexOf(id);
             disableNav(prevBtns, idx <= 0);
             disableNav(nextBtns, idx === -1 || idx >= pool.length - 1);
         };
 
         const goByOffset = (delta) => {
-            const pool = getPoolIds(simActive);
+            const pool = getPoolIds(stripMode);
             if (!pool.length) return;
             const idx = pool.indexOf(id);
             const cur = idx === -1 ? 0 : idx;
@@ -4575,14 +4597,14 @@ class AudioDashboard {
         const buildFilmstrip = () => {
             if (!filmstrip) return;
             const isMobile = (typeof window !== 'undefined' && (window.innerWidth || 0) <= 640);
-            if (stripEl) {
-                try { stripEl.classList.toggle('kaleido-strip--hidden', isMobile && !simActive); } catch (_) { }
+            if (filmstrip) {
+                try { filmstrip.classList.toggle('kaleido-filmstrip--hidden', stripMode === 'none'); } catch (_) { }
             }
-            if (isMobile && !simActive) {
+            if (stripMode === 'none') {
                 filmstrip.innerHTML = '';
                 return;
             }
-            const poolIds = getPoolIds(simActive);
+            const poolIds = stripMode === 'all' ? getPoolIds('all') : getPoolIds(stripMode);
             const nodes = poolIds.map(cid => {
                 const itm = byId.get(cid) || null;
                 const thumb = itm ? (itm.summary_image_url ? this.normalizeAssetUrl(itm.summary_image_url) : (itm.thumbnail_url || '')) : '';
@@ -4608,32 +4630,64 @@ class AudioDashboard {
             });
         };
 
-        const setSimilarMode = (active) => {
-            simActive = !!active;
-            const idsFromGrid = applyFilterState(simActive) || [];
-            simIds = simActive
-                ? (idsFromGrid.length ? idsFromGrid : computeSimilarIds())
-                : [];
-            if (simActive && !simIds.length) {
-                try { this.showToast('No related summaries in this result set', 'info'); } catch (_) { }
+        const setStripButtons = () => {
+            const setBtn = (btn, pressed) => { if (btn) btn.setAttribute('aria-pressed', pressed ? 'true' : 'false'); };
+            setBtn(stripRelated, stripMode === 'related');
+            setBtn(stripAll, stripMode === 'all');
+            setBtn(stripHide, stripMode === 'none');
+        };
+
+        const setStripMode = (mode) => {
+            stripMode = (mode === 'related' || mode === 'all' || mode === 'none') ? mode : 'none';
+            try { localStorage.setItem('kaleidoStripMode', stripMode); } catch (_) { }
+            setStripButtons();
+
+            if (stripMode === 'related') {
+                const idsFromGrid = applyRelatedState(true) || [];
+                simIds = idsFromGrid.length ? idsFromGrid : computeSimilarIds();
+                if (!simIds.length) {
+                    try { this.showToast('No related summaries in this result set', 'info'); } catch (_) { }
+                }
+            } else {
+                simIds = [];
+                try { applyRelatedState(false); } catch (_) { }
             }
+
             updateNavButtons();
             buildFilmstrip();
         };
 
-        if (filterSimilar) {
-            on(filterSimilar, 'click', (e) => {
+        // Restore last chosen mode; default to Hide on mobile, All on desktop.
+        try {
+            const saved = (localStorage.getItem('kaleidoStripMode') || '').toLowerCase();
+            const isMobile = (typeof window !== 'undefined' && (window.innerWidth || 0) <= 640);
+            if (saved === 'related' || saved === 'all' || saved === 'none') stripMode = saved;
+            else stripMode = isMobile ? 'none' : 'all';
+        } catch (_) {
+            const isMobile = (typeof window !== 'undefined' && (window.innerWidth || 0) <= 640);
+            stripMode = isMobile ? 'none' : 'all';
+        }
+
+        if (stripRelated) {
+            on(stripRelated, 'click', (e) => {
                 e.preventDefault();
-                setSimilarMode(!simActive);
+                setStripMode(stripMode === 'related' ? 'none' : 'related');
             });
         }
-        if (filterReset) {
-            on(filterReset, 'click', (e) => {
+        if (stripAll) {
+            on(stripAll, 'click', (e) => {
                 e.preventDefault();
-                setSimilarMode(false);
+                setStripMode(stripMode === 'all' ? 'none' : 'all');
             });
         }
-        setSimilarMode(simActive);
+        if (stripHide) {
+            on(stripHide, 'click', (e) => {
+                e.preventDefault();
+                setStripMode('none');
+            });
+        }
+
+        setStripMode(stripMode);
 
         // Swipe left/right to navigate between summaries (mobile)
         try {
