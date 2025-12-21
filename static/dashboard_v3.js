@@ -8337,12 +8337,15 @@ class AudioDashboard {
               </div>`;
             overlay.appendChild(panel);
             document.body.appendChild(overlay);
-            this._openImagesModalReportId = reportId;
 
             const input = panel.querySelector('#adminTokenInput');
             const save = panel.querySelector('[data-save]');
             const cancel = panel.querySelector('[data-cancel]');
             const close = panel.querySelector('[data-close]');
+            try {
+                const existing = this.reprocessToken || localStorage.getItem('ytv2.reprocessToken') || '';
+                if (input && existing) input.value = String(existing);
+            } catch (_) { }
             setTimeout(() => input && input.focus(), 10);
 
             const cleanup = () => { try { document.body.removeChild(overlay); } catch (_) { } };
