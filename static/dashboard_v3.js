@@ -3433,7 +3433,7 @@ class AudioDashboard {
             if (!raw) {
                 const isDesktop = (typeof window !== 'undefined' && (window.innerWidth || 0) >= 1024);
                 return isDesktop
-                    ? { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'narrow' }
+                    ? { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'medium' }
                     : { size: 'l', line: 'loose', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'full' };
             }
             const obj = JSON.parse(raw);
@@ -3453,7 +3453,7 @@ class AudioDashboard {
         } catch (_) {
             const isDesktop = (typeof window !== 'undefined' && (window.innerWidth || 0) >= 1024);
             return isDesktop
-                ? { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'narrow' }
+                ? { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'medium' }
                 : { size: 'l', line: 'loose', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'full' };
         }
     }
@@ -4845,13 +4845,14 @@ class AudioDashboard {
             }, { passive: true });
         } catch (_) { }
 
-        // Mobile: collapse chrome a bit once you start scrolling the reader body
+        // Collapse chrome a bit once you start scrolling the reader body (mobile + desktop)
         try {
             const scroller = modal.querySelector('.kaleido-content');
             const syncScroll = () => {
-                const isMobile = (typeof window !== 'undefined' && (window.innerWidth || 0) <= 640);
                 const top = scroller ? (scroller.scrollTop || 0) : 0;
-                sheet.classList.toggle('kaleido-scrolled', isMobile && top > 12);
+                const w = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 1024;
+                const threshold = w <= 640 ? 12 : 24;
+                sheet.classList.toggle('kaleido-scrolled', top > threshold);
             };
             if (scroller) {
                 on(scroller, 'scroll', syncScroll, { passive: true });

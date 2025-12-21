@@ -2289,7 +2289,7 @@ body:not(.dark) .reader-display-popover {
 .kaleido-shell {
     position: relative;
     z-index: 1;
-    width: min(1100px, calc(100vw - 32px));
+    width: min(1280px, calc(100vw - 48px));
     max-height: min(90vh, 1080px);
     background: rgba(5, 10, 20, 0.94);
     color: #e2e8f0;
@@ -2563,16 +2563,11 @@ body:not(.dark) .reader-display-popover {
 }
 
 #wallReaderBody {
-    max-width: 82ch;
-    margin-left: auto;
-    margin-right: auto;
-    padding: 1.25rem 1.2rem;
+    padding: 1.1rem 0;
     border-radius: 0;
     background: transparent;
     border: none;
     box-shadow: none;
-    hyphens: none;
-    line-height: 1.55;
 }
 
 .kaleido-nav {
@@ -2954,6 +2949,14 @@ body.kaleido-open #mobileMiniPlayer {
         margin-bottom: 0.1rem;
     }
 
+}
+
+@media (min-width: 641px) {
+    /* Desktop: shrink the hero once you start scrolling to maximize reading space. */
+    .kaleido-shell.kaleido-scrolled .kaleido-hero {
+        height: 90px;
+        margin-bottom: 0.15rem;
+    }
 }
 
 .wall-expander {
