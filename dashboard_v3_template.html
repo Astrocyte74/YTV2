@@ -14,7 +14,7 @@
     <!-- Shared styles across dashboard and report pages -->
     <link rel="stylesheet" href="/static/shared.css?v=20251110a">
     <!-- Dashboard specific styles -->
-    <link rel="stylesheet" href="dashboard.css?v=20251221g">
+    <link rel="stylesheet" href="dashboard.css?v=20251221h">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -1163,10 +1163,12 @@
                         </div>
                     </div>
                 </div>
-                <div id="wallReaderHero" class="kaleido-hero"></div>
                 <div class="kaleido-main">
-                    <div class="kaleido-content">
-                        <div id="wallReaderBody" class="prose prose-sm dark:prose-invert max-w-none"></div>
+                    <div class="kaleido-reader">
+                        <div id="wallReaderHero" class="kaleido-hero"></div>
+                        <div class="kaleido-content">
+                            <div id="wallReaderBody" class="prose prose-sm dark:prose-invert max-w-none"></div>
+                        </div>
                     </div>
                     <div class="kaleido-strip">
                         <div class="kaleido-stripbar" aria-label="Filmstrip">
@@ -1243,7 +1245,7 @@
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
     <script src="ui_flags.js?v=8"></script>
-    <script src="dashboard_v3.js?v=pg118kaleido14"></script>
+    <script src="dashboard_v3.js?v=pg118kaleido15"></script>
 
 </body>
 

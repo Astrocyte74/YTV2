@@ -2561,6 +2561,13 @@ body:not(.dark) .reader-display-popover {
     flex-direction: column;
 }
 
+.kaleido-reader {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
 .kaleido-content {
     flex: 1;
     overflow-y: auto;
@@ -3026,8 +3033,22 @@ body.kaleido-open #mobileMiniPlayer {
         margin-bottom: 0.25rem;
     }
 
+    /* Mobile: make hero scroll away with the text, and only reach filmstrip at the end. */
+    .kaleido-main {
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        scroll-behavior: smooth;
+    }
+
+    .kaleido-reader {
+        flex: 0 0 auto;
+        min-height: auto;
+    }
+
     .kaleido-content {
         padding: 0 0.9rem 0.6rem;
+        overflow: visible;
+        flex: 0 0 auto;
     }
 
     #wallReaderBody {
@@ -3057,12 +3078,6 @@ body.kaleido-open #mobileMiniPlayer {
 
     .kaleido-film-snippet {
         display: none;
-    }
-
-    /* When the reader body is scrolled, reduce fixed chrome to focus on text. */
-    .kaleido-shell.kaleido-scrolled .kaleido-hero {
-        height: 90px;
-        margin-bottom: 0.1rem;
     }
 
 }

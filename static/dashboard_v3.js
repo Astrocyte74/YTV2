@@ -4847,14 +4847,19 @@ class AudioDashboard {
             }, { passive: true });
         } catch (_) { }
 
-        // Collapse chrome a bit once you start scrolling the reader body (mobile + desktop)
+        // Collapse chrome a bit once you start scrolling the reader body (desktop).
+        // Mobile uses a unified scroller where the hero naturally scrolls away.
         try {
-            const scroller = modal.querySelector('.kaleido-content');
+            const w = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 1024;
+            const isMobile = w <= 640;
+            const scroller = isMobile ? (modal.querySelector('.kaleido-main') || modal.querySelector('.kaleido-content')) : modal.querySelector('.kaleido-content');
             const syncScroll = () => {
+                if (isMobile) {
+                    sheet.classList.remove('kaleido-scrolled');
+                    return;
+                }
                 const top = scroller ? (scroller.scrollTop || 0) : 0;
-                const w = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 1024;
-                const threshold = w <= 640 ? 12 : 24;
-                sheet.classList.toggle('kaleido-scrolled', top > threshold);
+                sheet.classList.toggle('kaleido-scrolled', top > 24);
             };
             if (scroller) {
                 on(scroller, 'scroll', syncScroll, { passive: true });
