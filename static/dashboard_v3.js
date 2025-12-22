@@ -3087,7 +3087,7 @@ class AudioDashboard {
         this.reprocessModal.classList.remove('hidden');
         this.reprocessModal.classList.add('flex');
         this.reprocessModal.setAttribute('aria-hidden', 'false');
-        const focusTarget = this.confirmReprocessBtn || this.cancelReprocessBtn;
+        const focusTarget = (this.confirmReprocessBtn && !this.confirmReprocessBtn.disabled) ? this.confirmReprocessBtn : (this.cancelReprocessBtn || this.confirmReprocessBtn);
         if (focusTarget) focusTarget.focus();
     }
 
@@ -3163,11 +3163,8 @@ class AudioDashboard {
 
     initReprocessState(item) {
         const existing = this.getExistingReprocessOutputs(item);
-        const selected = new Set(['comprehensive']);
-        // Only preselect English audio when the item actually has an 'audio' variant (or an explicit audio_url).
-        if (existing['audio'] && existing['audio'].exists) {
-            selected.add('audio');
-        }
+        // Start with nothing selected. Selection means "regenerate", not "already exists".
+        const selected = new Set();
         const audioLevels = {};
         if (existing['audio-fr']?.level) audioLevels['audio-fr'] = existing['audio-fr'].level;
         if (existing['audio-es']?.level) audioLevels['audio-es'] = existing['audio-es'].level;
@@ -3196,28 +3193,35 @@ class AudioDashboard {
             const isActive = selected.has(variant.id);
             const isDone = !!existing[variant.id]?.exists;
             const baseClasses = [
-                'flex', 'items-center', 'justify-between', 'gap-2', 'px-3', 'py-2', 'rounded-xl', 'text-sm', 'transition', 'duration-150', 'border'
+                'w-full', 'flex', 'items-center', 'justify-between', 'gap-3', 'px-4', 'py-3', 'rounded-xl', 'text-sm', 'transition', 'duration-150', 'border', 'text-left'
             ];
             if (isActive) {
-                baseClasses.push('bg-gradient-to-r', 'from-audio-500', 'to-indigo-500', 'text-white', 'border-transparent', 'shadow');
+                baseClasses.push('bg-audio-600', 'text-white', 'border-transparent', 'shadow');
             } else {
-                baseClasses.push('bg-white/85', 'dark:bg-slate-900/60', 'text-slate-600', 'dark:text-slate-200', 'border-white/60', 'dark:border-slate-700/60', 'hover:bg-white');
-                if (isDone) {
-                    baseClasses.push('border-emerald-200/70', 'dark:border-emerald-400/20');
-                }
+                baseClasses.push('bg-white/85', 'dark:bg-slate-900/60', 'text-slate-700', 'dark:text-slate-100', 'border-white/60', 'dark:border-slate-700/60', 'hover:bg-white/95', 'dark:hover:bg-slate-900/70');
             }
             const prof = variant.proficiency ? (levelLabel(variant.id, variant.language) || '') : '';
-            const label = prof ? `${variant.label} • ${prof}` : variant.label;
+            const label = variant.label;
+            const subLabel = prof ? prof : (isDone ? 'Already generated' : '');
+            const regenBadge = isActive
+                ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap border border-white/30 bg-white/15 text-white" title="Selected to regenerate">Regenerate</span>`
+                : '';
             const doneBadge = isDone
-                ? `<span class="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-200 dark:border-emerald-400/20" title="Already generated">✓ Done</span>`
+                ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap border border-emerald-300/40 bg-emerald-500/10 text-emerald-200" title="Already generated">Done</span>`
+                : '';
+            const rightBadges = (regenBadge || doneBadge)
+                ? `<span class="flex items-center gap-2 flex-shrink-0">${regenBadge}${doneBadge}</span>`
                 : '';
             return `
-                <button type="button" data-variant="${variant.id}" class="${baseClasses.join(' ')}">
-                    <span class="flex items-center gap-2 min-w-0">
-                        <span class="text-lg">${variant.icon}</span>
-                        <span class="font-medium truncate">${this.escapeHtml(label)}</span>
+                <button type="button" data-variant="${variant.id}" aria-pressed="${isActive ? 'true' : 'false'}" class="${baseClasses.join(' ')}">
+                    <span class="flex items-start gap-3 min-w-0">
+                        <span class="text-lg leading-none mt-0.5">${variant.icon}</span>
+                        <span class="min-w-0">
+                            <span class="font-semibold leading-snug block">${this.escapeHtml(label)}</span>
+                            ${subLabel ? `<span class="text-xs opacity-80 block mt-0.5">${this.escapeHtml(subLabel)}</span>` : ''}
+                        </span>
                     </span>
-                    ${doneBadge}
+                    ${rightBadges}
                 </button>
             `;
         }).join('');
@@ -3226,6 +3230,15 @@ class AudioDashboard {
         this.reprocessVariantGrid.querySelectorAll('[data-variant]').forEach((btn) => {
             btn.addEventListener('click', () => this.toggleVariantSelection(btn.dataset.variant));
         });
+        // Disable Start until at least one output is selected.
+        try {
+            if (this.confirmReprocessBtn) {
+                const any = selected.size > 0;
+                this.confirmReprocessBtn.disabled = !any;
+                this.confirmReprocessBtn.classList.toggle('opacity-50', !any);
+                this.confirmReprocessBtn.classList.toggle('cursor-not-allowed', !any);
+            }
+        } catch (_) { }
     }
 
     renderProficiencyControls() {
