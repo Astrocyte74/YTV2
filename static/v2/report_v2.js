@@ -172,6 +172,328 @@
 
 	  const copyBtn = $("copyLinkBtn");
 	  const reprocessBtn = $("reprocessBtn");
+	  const reportReprocessModal = $("reportReprocessModal");
+	  const reportReprocessText = $("reportReprocessText");
+	  const reportReprocessVariantGrid = $("reportReprocessVariantGrid");
+	  const reportReprocessLanguageLevel = $("reportReprocessLanguageLevel");
+	  const reportReprocessCancel = $("reportReprocessCancel");
+	  const reportReprocessStart = $("reportReprocessStart");
+	  const reportReprocessStatus = $("reportReprocessStatus");
+	  const reportReprocessTokenToggle = $("reportReprocessTokenToggle");
+	  const reportReprocessTokenRow = $("reportReprocessTokenRow");
+	  const reportReprocessTokenInput = $("reportReprocessTokenInput");
+	  const reportReprocessTokenSave = $("reportReprocessTokenSave");
+	  const reportReprocessTokenClear = $("reportReprocessTokenClear");
+	  const reportReprocessTokenStatus = $("reportReprocessTokenStatus");
+
+	  const REPROCESS_VARIANTS = [
+	    { id: 'comprehensive', label: 'Comprehensive', icon: '📝', kind: 'text' },
+	    { id: 'bullet-points', label: 'Key Points', icon: '🎯', kind: 'text' },
+	    { id: 'key-insights', label: 'Insights', icon: '💡', kind: 'text' },
+	    { id: 'audio', label: 'Audio (EN)', icon: '🎙️', kind: 'audio' },
+	    { id: 'audio-fr', label: 'Audio français', icon: '🎙️🇫🇷', kind: 'audio', proficiency: true },
+	    { id: 'audio-es', label: 'Audio español', icon: '🎙️🇪🇸', kind: 'audio', proficiency: true }
+	  ];
+
+	  const PROFICIENCY_LEVELS = [
+	    { level: 'beginner', label: 'Beginner', icon: '🟢' },
+	    { level: 'intermediate', label: 'Intermediate', icon: '🟡' },
+	    { level: 'advanced', label: 'Advanced', icon: '🔵' }
+	  ];
+
+	  const normalizeReprocessVariantId = (id) => {
+	    const raw = (id ?? '').toString().trim().toLowerCase();
+	    if (!raw) return '';
+	    const baseOnly = raw.includes(':') ? raw.split(':')[0].trim() : raw;
+	    let norm = baseOnly.replace(/\s+/g, '-').replace(/_/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+	    const alias = {
+	      'summary': 'comprehensive',
+	      'full': 'comprehensive',
+	      'keypoints': 'bullet-points',
+	      'key-points': 'bullet-points',
+	      'keypoints-summary': 'bullet-points',
+	      'insights': 'key-insights',
+	      'keyinsights': 'key-insights',
+	      'audio-en': 'audio'
+	    };
+	    if (alias[norm]) return alias[norm];
+	    if (norm.startsWith('audio-fr-')) return 'audio-fr';
+	    if (norm.startsWith('audio-es-')) return 'audio-es';
+	    if (norm.startsWith('audio-en-')) return 'audio';
+	    return norm;
+	  };
+
+	  const REPROCESS_TOKEN_KEY = 'ytv2.reprocessToken';
+	  const getReprocessToken = () => {
+	    try { return localStorage.getItem(REPROCESS_TOKEN_KEY) || ''; } catch { return ''; }
+	  };
+	  const setReprocessToken = (token) => {
+	    try {
+	      if (!token) localStorage.removeItem(REPROCESS_TOKEN_KEY);
+	      else localStorage.setItem(REPROCESS_TOKEN_KEY, token);
+	    } catch {}
+	  };
+
+	  const reprocessState = {
+	    open: false,
+	    videoId: '',
+	    title: '',
+	    existing: {},
+	    selected: new Set(),
+	    audioLevels: { 'audio-fr': 'intermediate', 'audio-es': 'intermediate' }
+	  };
+
+	  const resolveExistingOutputs = () => {
+	    const existing = {};
+	    const add = (id, info = {}) => {
+	      const norm = normalizeReprocessVariantId(id);
+	      if (!norm) return;
+	      existing[norm] = { ...(existing[norm] || {}), ...info, exists: true };
+	    };
+
+	    const variantData = Array.isArray(window.SUMMARY_VARIANT_DATA) ? window.SUMMARY_VARIANT_DATA : [];
+	    variantData.forEach((v) => {
+	      const base = normalizeReprocessVariantId(v?.variant || v?.id || v?.summary_type || v?.type);
+	      if (!base) return;
+	      let level = '';
+	      const raw = (v?.variant || v?.summary_type || '').toString().trim().toLowerCase();
+	      if (raw.includes(':')) level = raw.split(':')[1]?.trim() || '';
+	      if ((v?.summary_type || '').toString().includes(':')) {
+	        const parts = String(v.summary_type).toLowerCase().split(':');
+	        if (parts[1]) level = parts[1].trim();
+	      }
+	      const kind = (v?.kind || (base.startsWith('audio') ? 'audio' : 'text')) || 'text';
+	      add(base, { kind, level: level || undefined });
+	    });
+
+	    // If an audio file is present on the page, treat audio(EN) as existing.
+	    try {
+	      const src = resolveAudioSource('');
+	      if (src) add('audio', { kind: 'audio' });
+	    } catch {}
+
+	    return existing;
+	  };
+
+	  const setReprocessStatus = (text) => {
+	    if (!reportReprocessStatus) return;
+	    reportReprocessStatus.textContent = text || '';
+	  };
+
+	  const updateReprocessTokenUi = () => {
+	    const token = getReprocessToken();
+	    if (reportReprocessTokenStatus) {
+	      reportReprocessTokenStatus.textContent = token
+	        ? 'Token is saved locally in this browser.'
+	        : 'No token saved yet.';
+	    }
+	    if (reportReprocessTokenInput && document.activeElement !== reportReprocessTokenInput) {
+	      reportReprocessTokenInput.value = '';
+	    }
+	    if (reportReprocessStart) {
+	      reportReprocessStart.disabled = reprocessState.selected.size === 0 || !token;
+	    }
+	  };
+
+	  const renderReprocessLanguageControls = () => {
+	    if (!reportReprocessLanguageLevel) return;
+	    const selected = reprocessState.selected;
+	    const needs = ['audio-fr', 'audio-es'].filter((id) => selected.has(id));
+	    if (!needs.length) {
+	      reportReprocessLanguageLevel.innerHTML = '';
+	      reportReprocessLanguageLevel.classList.add('hidden');
+	      return;
+	    }
+	    const row = (id, label) => {
+	      const current = reprocessState.audioLevels[id] || 'intermediate';
+	      const chips = PROFICIENCY_LEVELS.map((lvl) => {
+	        const active = current === lvl.level;
+	        return `<button type="button" data-audio-level="${id}:${lvl.level}"
+	          class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition
+	          ${active ? 'bg-sky-500/90 text-white' : 'bg-white/5 text-slate-200 hover:bg-white/10 border border-white/10'}">
+	          <span>${lvl.icon}</span><span>${lvl.label}</span>
+	        </button>`;
+	      }).join('');
+	      return `<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+	        <div class="text-sm font-medium text-slate-100">${label}</div>
+	        <div class="flex flex-wrap gap-1.5">${chips}</div>
+	      </div>`;
+	    };
+	    reportReprocessLanguageLevel.innerHTML = `
+	      <div class="space-y-3">
+	        <div class="text-xs font-semibold uppercase tracking-wide text-slate-400">Audio proficiency</div>
+	        ${needs.includes('audio-fr') ? row('audio-fr', 'Audio français level') : ''}
+	        ${needs.includes('audio-es') ? row('audio-es', 'Audio español level') : ''}
+	      </div>
+	    `;
+	    reportReprocessLanguageLevel.classList.remove('hidden');
+	    reportReprocessLanguageLevel.querySelectorAll('[data-audio-level]').forEach((btn) => {
+	      btn.addEventListener('click', (event) => {
+	        event.preventDefault();
+	        const parts = String(btn.dataset.audioLevel || '').split(':');
+	        const variantId = parts[0];
+	        const level = parts[1];
+	        if (!variantId || !level) return;
+	        reprocessState.audioLevels[variantId] = level;
+	        renderReprocessLanguageControls();
+	      });
+	    });
+	  };
+
+	  const renderReprocessVariantGrid = () => {
+	    if (!reportReprocessVariantGrid) return;
+	    const existing = reprocessState.existing || {};
+	    const selected = reprocessState.selected;
+	    const card = (variant) => {
+	      const isSelected = selected.has(variant.id);
+	      const isDone = Boolean(existing[variant.id]?.exists);
+	      const badge = isSelected
+	        ? `<span class="ml-auto inline-flex items-center rounded-full bg-sky-500/90 px-2 py-1 text-xs font-semibold text-white">Regenerate</span>`
+	        : isDone
+	          ? `<span class="ml-auto inline-flex items-center rounded-full bg-emerald-500/20 px-2 py-1 text-xs font-semibold text-emerald-200 border border-emerald-400/20">Done</span>`
+	          : '';
+	      const sub = isDone && !isSelected ? `<div class="mt-0.5 text-xs text-slate-400">Already generated</div>` : '';
+	      return `
+	        <button type="button" data-reprocess-variant="${variant.id}"
+	          class="group flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition
+	          ${isSelected ? 'border-sky-400/50 bg-sky-500/20' : 'border-white/10 bg-white/5 hover:bg-white/10'}">
+	          <span class="text-lg">${variant.icon}</span>
+	          <span class="min-w-0">
+	            <div class="truncate text-sm font-semibold text-slate-100">${variant.label}</div>
+	            ${sub}
+	          </span>
+	          ${badge}
+	        </button>
+	      `;
+	    };
+	    reportReprocessVariantGrid.innerHTML = REPROCESS_VARIANTS.map(card).join('');
+	    reportReprocessVariantGrid.querySelectorAll('[data-reprocess-variant]').forEach((btn) => {
+	      btn.addEventListener('click', (event) => {
+	        event.preventDefault();
+	        const id = btn.dataset.reprocessVariant;
+	        if (!id) return;
+	        if (reprocessState.selected.has(id)) reprocessState.selected.delete(id);
+	        else reprocessState.selected.add(id);
+	        setReprocessStatus('');
+	        renderReprocessVariantGrid();
+	        renderReprocessLanguageControls();
+	        updateReprocessTokenUi();
+	      });
+	    });
+	  };
+
+	  const openReportReprocessModal = () => {
+	    if (!reportReprocessModal || !reprocessBtn) return;
+	    reprocessState.videoId = reprocessBtn.dataset.videoId || '';
+	    reprocessState.title = (document.querySelector('h1')?.textContent || document.title || '').trim();
+	    reprocessState.existing = resolveExistingOutputs();
+	    reprocessState.selected = new Set();
+
+	    // Seed proficiency from existing (when present)
+	    try {
+	      if (reprocessState.existing['audio-fr']?.level) reprocessState.audioLevels['audio-fr'] = reprocessState.existing['audio-fr'].level;
+	      if (reprocessState.existing['audio-es']?.level) reprocessState.audioLevels['audio-es'] = reprocessState.existing['audio-es'].level;
+	    } catch {}
+
+	    if (reportReprocessText) {
+	      reportReprocessText.textContent = `Re-run the summarizer for “${reprocessState.title || 'this video'}”?`;
+	    }
+	    setReprocessStatus('');
+	    renderReprocessVariantGrid();
+	    renderReprocessLanguageControls();
+	    updateReprocessTokenUi();
+
+	    reportReprocessModal.classList.remove('hidden');
+	    reportReprocessModal.classList.add('flex');
+	    reprocessState.open = true;
+	  };
+
+	  const closeReportReprocessModal = () => {
+	    if (!reportReprocessModal) return;
+	    reportReprocessModal.classList.add('hidden');
+	    reportReprocessModal.classList.remove('flex');
+	    reprocessState.open = false;
+	    setReprocessStatus('');
+	    if (reportReprocessTokenRow) reportReprocessTokenRow.classList.add('hidden');
+	  };
+
+	  const getSelectedSummaryTypesForReport = () => {
+	    const out = [];
+	    reprocessState.selected.forEach((id) => {
+	      const meta = REPROCESS_VARIANTS.find((v) => v.id === id);
+	      if (!meta) return;
+	      if (meta.proficiency) {
+	        const level = reprocessState.audioLevels[id] || 'intermediate';
+	        out.push(`${id}:${level}`);
+	      } else {
+	        out.push(id);
+	      }
+	    });
+	    return out;
+	  };
+
+	  const submitReportReprocess = async () => {
+	    const videoId = reprocessState.videoId;
+	    if (!videoId) return;
+	    const token = getReprocessToken();
+	    if (!token) {
+	      setReprocessStatus('Admin token required.');
+	      updateReprocessTokenUi();
+	      if (reportReprocessTokenRow) reportReprocessTokenRow.classList.remove('hidden');
+	      return;
+	    }
+	    const summaryTypes = getSelectedSummaryTypesForReport();
+	    if (!summaryTypes.length) {
+	      setReprocessStatus('Select at least one output to regenerate.');
+	      updateReprocessTokenUi();
+	      return;
+	    }
+
+	    if (reportReprocessStart) reportReprocessStart.disabled = true;
+	    setReprocessStatus('');
+	    try {
+	      const payload = {
+	        video_id: videoId,
+	        regenerate_audio: summaryTypes.some((t) => String(t).startsWith('audio')),
+	        summary_types: summaryTypes
+	      };
+	      const resp = await fetch('/api/reprocess', {
+	        method: 'POST',
+	        headers: {
+	          'Content-Type': 'application/json',
+	          'X-Reprocess-Token': token
+	        },
+	        body: JSON.stringify(payload)
+	      });
+	      if (!resp.ok) {
+	        let text = '';
+	        try {
+	          const ct = resp.headers.get('content-type') || '';
+	          if (ct.includes('application/json')) {
+	            const j = await resp.json();
+	            text = j?.message || j?.error || JSON.stringify(j);
+	          } else {
+	            text = await resp.text();
+	          }
+	        } catch {
+	          try { text = await resp.text(); } catch {}
+	        }
+	        throw new Error(text || `HTTP ${resp.status}`);
+	      }
+	      closeReportReprocessModal();
+	      if (reprocessBtn) {
+	        const prev = reprocessBtn.textContent;
+	        reprocessBtn.textContent = 'Scheduled';
+	        window.setTimeout(() => {
+	          reprocessBtn.textContent = prev || 'Reprocess';
+	        }, 1400);
+	      }
+	    } catch (err) {
+	      setReprocessStatus(`Reprocess failed: ${err?.message || err}`);
+	    } finally {
+	      if (reportReprocessStart) reportReprocessStart.disabled = reprocessState.selected.size === 0 || !getReprocessToken();
+	    }
+	  };
 
   let rates = [1, 1.25, 1.5, 1.75, 2];
   let rIdx = 0;
@@ -421,14 +743,65 @@
 	    } catch {}
 	  });
 
-	  // Reprocess shortcut (admin-only action happens on the dashboard)
+	  // Reprocess (in-place on report page)
 	  reprocessBtn?.addEventListener("click", (event) => {
 	    event.preventDefault();
 	    event.stopPropagation();
-	    const videoId = reprocessBtn.dataset.videoId || '';
-	    if (!videoId) return;
-	    window.location.assign(`/?reprocess=${encodeURIComponent(videoId)}`);
+	    openReportReprocessModal();
 	  });
+
+	  if (reportReprocessCancel) {
+	    reportReprocessCancel.addEventListener('click', (event) => {
+	      event.preventDefault();
+	      closeReportReprocessModal();
+	    });
+	  }
+	  if (reportReprocessStart) {
+	    reportReprocessStart.addEventListener('click', (event) => {
+	      event.preventDefault();
+	      submitReportReprocess();
+	    });
+	  }
+	  if (reportReprocessModal) {
+	    reportReprocessModal.querySelectorAll('[data-report-reprocess-close]').forEach((el) => {
+	      el.addEventListener('click', (event) => {
+	        event.preventDefault();
+	        closeReportReprocessModal();
+	      });
+	    });
+	    document.addEventListener('keydown', (event) => {
+	      if (!reprocessState.open) return;
+	      if (event.key === 'Escape') closeReportReprocessModal();
+	    });
+	  }
+
+	  if (reportReprocessTokenToggle && reportReprocessTokenRow) {
+	    reportReprocessTokenToggle.addEventListener('click', (event) => {
+	      event.preventDefault();
+	      reportReprocessTokenRow.classList.toggle('hidden');
+	      updateReprocessTokenUi();
+	      if (!reportReprocessTokenRow.classList.contains('hidden') && reportReprocessTokenInput) {
+	        reportReprocessTokenInput.focus();
+	      }
+	    });
+	  }
+	  if (reportReprocessTokenSave) {
+	    reportReprocessTokenSave.addEventListener('click', (event) => {
+	      event.preventDefault();
+	      const token = (reportReprocessTokenInput?.value || '').trim();
+	      if (!token) return;
+	      setReprocessToken(token);
+	      updateReprocessTokenUi();
+	      if (reportReprocessTokenRow) reportReprocessTokenRow.classList.add('hidden');
+	    });
+	  }
+	  if (reportReprocessTokenClear) {
+	    reportReprocessTokenClear.addEventListener('click', (event) => {
+	      event.preventDefault();
+	      setReprocessToken('');
+	      updateReprocessTokenUi();
+	    });
+	  }
 
   // Theme toggle functionality
   const themeToggle = $("themeToggle");
