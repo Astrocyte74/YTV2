@@ -931,48 +931,94 @@ class AudioDashboard {
         }
     }
 
-    async loadInitialData() {
-        try {
-            // Apply theme at startup
-            this.applyTheme(this.themeMode);
-            this.updateThemeChecks();
-            // Load filters first to avoid race with initial content fetch
-            await this.loadFilters();
-            await this.waitForFiltersReady({ min: 1, timeoutMs: 3000 });
-            await this.loadContent();
-            // Queue UI visibility based on flag
-            if (this.queueSidebar) {
-                if (this.flags.queueEnabled) this.queueSidebar.classList.remove('hidden');
-                else this.queueSidebar.classList.add('hidden');
-            }
-            if (this.queueToggle) {
-                if (!this.flags.queueEnabled) this.queueToggle.classList.add('hidden');
-                else this.queueToggle.classList.remove('hidden');
-            }
-            // Restore queue if enabled
-            if (this.flags.queueEnabled) {
-                this.restoreQueue();
-            }
-            if (!this.currentAudio) {
-                const playableItems = this.getPlayableItems(this.currentItems);
-                if (playableItems.length) {
-                    if (this.autoPlayOnLoad) {
-                        this.setCurrentFromItem(playableItems[0]);
-                    } else {
-                        this.showNowPlayingPlaceholder();
-                    }
-                } else {
-                    this.showNowPlayingPlaceholder();
-                }
-            }
-        } catch (error) {
-            console.error('Failed to load initial data:', error);
-            this.showError('Failed to load dashboard data');
-        } finally {
-            this.initialLoadComplete = true;
-            this.flushRealtimeBuffer(true);
-        }
-    }
+	    async loadInitialData() {
+	        try {
+	            // Apply theme at startup
+	            this.applyTheme(this.themeMode);
+	            this.updateThemeChecks();
+	            // Load filters first to avoid race with initial content fetch
+	            await this.loadFilters();
+	            await this.waitForFiltersReady({ min: 1, timeoutMs: 3000 });
+	            await this.loadContent();
+	            await this.maybeOpenReprocessFromUrl();
+	            // Queue UI visibility based on flag
+	            if (this.queueSidebar) {
+	                if (this.flags.queueEnabled) this.queueSidebar.classList.remove('hidden');
+	                else this.queueSidebar.classList.add('hidden');
+	            }
+	            if (this.queueToggle) {
+	                if (!this.flags.queueEnabled) this.queueToggle.classList.add('hidden');
+	                else this.queueToggle.classList.remove('hidden');
+	            }
+	            // Restore queue if enabled
+	            if (this.flags.queueEnabled) {
+	                this.restoreQueue();
+	            }
+	            if (!this.currentAudio) {
+	                const playableItems = this.getPlayableItems(this.currentItems);
+	                if (playableItems.length) {
+	                    if (this.autoPlayOnLoad) {
+	                        this.setCurrentFromItem(playableItems[0]);
+	                    } else {
+	                        this.showNowPlayingPlaceholder();
+	                    }
+	                } else {
+	                    this.showNowPlayingPlaceholder();
+	                }
+	            }
+	        } catch (error) {
+	            console.error('Failed to load initial data:', error);
+	            this.showError('Failed to load dashboard data');
+	        } finally {
+	            this.initialLoadComplete = true;
+	            this.flushRealtimeBuffer(true);
+	        }
+	    }
+
+	    async maybeOpenReprocessFromUrl() {
+	        if (this._handledReprocessParam) return;
+	        this._handledReprocessParam = true;
+	        if (typeof window === 'undefined') return;
+	        let params;
+	        try { params = new URLSearchParams(window.location.search || ''); } catch (_) { params = null; }
+	        if (!params) return;
+	        const requested = (params.get('reprocess') || '').trim();
+	        if (!requested) return;
+
+	        // Remove from URL immediately to avoid re-opening on reloads/navigation.
+	        try {
+	            params.delete('reprocess');
+	            const next = window.location.pathname + (params.toString() ? `?${params.toString()}` : '') + (window.location.hash || '');
+	            window.history.replaceState({}, '', next);
+	        } catch (_) { }
+
+	        const wanted = requested;
+	        let item = (this.currentItems || []).find((x) => {
+	            const vid = x?.video_id || x?.videoId || x?.id || '';
+	            const stem = x?.file_stem || x?.fileStem || '';
+	            return vid === wanted || stem === wanted;
+	        }) || null;
+
+	        if (!item) {
+	            try {
+	                const resp = await fetch(`/api/reports/${encodeURIComponent(wanted)}`, { cache: 'no-store' });
+	                if (resp.ok) {
+	                    const data = await resp.json();
+	                    if (data && typeof data === 'object') item = data;
+	                }
+	            } catch (e) {
+	                console.warn('Failed to fetch report detail for reprocess', e);
+	            }
+	        }
+
+	        if (!item) {
+	            this.showToast('Reprocess: report not found', 'warn');
+	            return;
+	        }
+
+	        const reportId = item.file_stem || item.fileStem || wanted;
+	        this.openReprocessModal(reportId, null, item);
+	    }
 
     // Realtime ingest event handling -------------------------------------------------
 
@@ -3053,25 +3099,25 @@ class AudioDashboard {
         }
     }
 
-    openReprocessModal(reportId, card) {
-        if (!this.reprocessModal) {
-            this.showToast('Reprocess dialog unavailable', 'error');
-            return;
-        }
-        const item = (this.currentItems || []).find((x) => x.file_stem === reportId) || null;
-        const title = item?.title || card?.querySelector('h3')?.textContent?.trim() || reportId;
-        const videoId = item?.video_id || card?.dataset.videoId;
-        if (!videoId) {
-            this.showToast('Missing video id for reprocess', 'error');
-            return;
-        }
+	    openReprocessModal(reportId, card, itemOverride = null) {
+	        if (!this.reprocessModal) {
+	            this.showToast('Reprocess dialog unavailable', 'error');
+	            return;
+	        }
+	        const item = itemOverride || (this.currentItems || []).find((x) => x.file_stem === reportId) || null;
+	        const title = item?.title || card?.querySelector('h3')?.textContent?.trim() || reportId;
+	        const videoId = item?.video_id || item?.videoId || item?.id || card?.dataset.videoId;
+	        if (!videoId) {
+	            this.showToast('Missing video id for reprocess', 'error');
+	            return;
+	        }
 
-        this.pendingReprocess = {
-            id: reportId,
-            videoId,
-            title,
-            hasAudio: Boolean(item?.media?.has_audio || card?.dataset.hasAudio === 'true')
-        };
+	        this.pendingReprocess = {
+	            id: reportId || item?.file_stem || videoId,
+	            videoId,
+	            title,
+	            hasAudio: Boolean(item?.media?.has_audio || card?.dataset.hasAudio === 'true')
+	        };
 
         if (this.reprocessText) {
             const safeTitle = this.escapeHtml(title || 'this video');

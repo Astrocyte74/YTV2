@@ -168,9 +168,10 @@
   const mTimeMeta = $("mTimeMeta");
   const mSeek = $("mSeek");
   const mRateBtn = $("mRateBtn");
-  const closeSticky = $("closeSticky");
+	  const closeSticky = $("closeSticky");
 
-  const copyBtn = $("copyLinkBtn");
+	  const copyBtn = $("copyLinkBtn");
+	  const reprocessBtn = $("reprocessBtn");
 
   let rates = [1, 1.25, 1.5, 1.75, 2];
   let rIdx = 0;
@@ -411,14 +412,23 @@
     sticky.style.display = "none";
   });
 
-  // copy link
-  copyBtn?.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      copyBtn.textContent = "Copied!";
-      setTimeout(() => (copyBtn.textContent = "Copy link"), 1200);
-    } catch {}
-  });
+	  // copy link
+	  copyBtn?.addEventListener("click", async () => {
+	    try {
+	      await navigator.clipboard.writeText(window.location.href);
+	      copyBtn.textContent = "Copied!";
+	      setTimeout(() => (copyBtn.textContent = "Copy link"), 1200);
+	    } catch {}
+	  });
+
+	  // Reprocess shortcut (admin-only action happens on the dashboard)
+	  reprocessBtn?.addEventListener("click", (event) => {
+	    event.preventDefault();
+	    event.stopPropagation();
+	    const videoId = reprocessBtn.dataset.videoId || '';
+	    if (!videoId) return;
+	    window.location.assign(`/?reprocess=${encodeURIComponent(videoId)}`);
+	  });
 
   // Theme toggle functionality
   const themeToggle = $("themeToggle");

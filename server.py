@@ -1250,6 +1250,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             "vocabulary": vocabulary,
             "back_url": "/",
             "youtube_url": video.get("url") or report_data.get("url") or report_data.get("canonical_url", ""),
+            "video_id": video_id,
+            "report_id": report_data.get('file_stem') or report_data.get('id') or video_id,
+            "deployment_commit": COMMIT_SHA,
             "cache_bust": cache_bust,
             "summary_variants": report_data.get('summary_variants') or summary.get('variants') or [],
             "summary_variant_default": chosen_default
