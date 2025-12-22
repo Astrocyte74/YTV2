@@ -4943,7 +4943,7 @@ class AudioDashboard {
                 return { id: cid, title: titleTxt, thumb, snippet, active: cid === id };
             }).filter(x => !!x.id);
             filmstrip.innerHTML = nodes.map(n => `
-                <button class="kaleido-film-item ${n.active ? 'is-active' : ''}" data-film-id="${this.escapeHtml(n.id)}" aria-label="${this.escapeHtml(n.title || 'Open')}">
+                <button class="kaleido-film-item ${n.active ? 'is-active' : ''}" data-film-id="${this.escapeHtml(n.id)}" aria-label="${this.escapeHtml(n.title || 'Open')}" title="${this.escapeHtml(n.title || '')}">
                     <div class="kaleido-film-thumb">${n.thumb ? `<img src="${n.thumb}" alt="">` : ''}</div>
                     <div class="kaleido-film-meta">
                         <div class="kaleido-film-title">${this.escapeHtml(n.title || '')}</div>
