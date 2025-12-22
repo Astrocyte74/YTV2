@@ -707,6 +707,22 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             if isinstance(val, str) and val.strip() == token:
                 return True
         return False
+
+    def _reprocess_auth_ok(self) -> bool:
+        """Verify DEBUG_TOKEN for reprocess actions.
+
+        Accepts:
+          - X-Reprocess-Token: <DEBUG_TOKEN>
+          - Authorization: Bearer <DEBUG_TOKEN>
+        """
+        token = (os.getenv('DEBUG_TOKEN') or '').strip()
+        if not token:
+            return False
+        supplied = (self.headers.get('X-Reprocess-Token') or '').strip()
+        if supplied and supplied == token:
+            return True
+        auth = (self.headers.get('Authorization', '') or '').strip()
+        return auth.startswith('Bearer ') and auth[7:] == token
     
     @staticmethod
     def _maybe_parse_dict_string(value):
@@ -1320,6 +1336,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_select_image_variant()
         elif self.path == '/api/set-image-display-mode':
             self.handle_set_image_display_mode()
+        elif self.path == '/api/reprocess':
+            self.handle_reprocess_request()
         # New ingest endpoints for NAS sync (T-Y020C)
         elif self.path == '/ingest/report':
             self.handle_ingest_report()
@@ -4791,6 +4809,107 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"error": str(e)}).encode())
+
+    def handle_reprocess_request(self):
+        """POST /api/reprocess — admin-only. Proxy to NAS if configured.
+
+        The dashboard UI uses this to request a re-run of summarization for a video.
+        This service does not run the summarizer itself; it forwards the request to
+        the NAS service (NGROK_BASE_URL / NGROK_URL) when configured.
+
+        Body: { video_id, regenerate_audio?: bool, summary_types?: [..] }
+        Auth: X-Reprocess-Token == DEBUG_TOKEN (or Bearer DEBUG_TOKEN).
+        """
+        try:
+            if not self._reprocess_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            length = int(self.headers.get('Content-Length', 0))
+            raw = self.rfile.read(length) if length else b'{}'
+            try:
+                data = json.loads(raw.decode('utf-8') or '{}')
+            except Exception as e:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "invalid_json", "message": str(e)}).encode())
+                return
+
+            video_id = (data.get('video_id') or '').strip()
+            if not video_id:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id required"}).encode())
+                return
+
+            base_url = (os.getenv('NGROK_BASE_URL') or os.getenv('NGROK_URL') or '').strip()
+            if not base_url:
+                self.send_response(503)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "nas_not_configured",
+                    "message": "Reprocess requires the NAS bridge. Set NGROK_BASE_URL (or NGROK_URL) on the dashboard service to point at the NAS service."
+                }).encode())
+                return
+
+            target = base_url.rstrip('/') + '/api/reprocess'
+            headers = {
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true'
+            }
+            tok = (self.headers.get('X-Reprocess-Token') or '').strip()
+            if tok:
+                headers['X-Reprocess-Token'] = tok
+
+            user = os.getenv('NGROK_BASIC_USER', '')
+            pwd = os.getenv('NGROK_BASIC_PASS', '')
+            auth = (user, pwd) if (user or pwd) else None
+
+            try:
+                resp = requests.post(target, headers=headers, json=data, auth=auth, timeout=15)
+            except RequestException as e:
+                logger.warning(f"Reprocess proxy request failed: {e}")
+                self.send_response(502)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "reprocess_upstream_unavailable"}).encode())
+                return
+
+            self.send_response(resp.status_code)
+            self.set_cors_headers()
+            self.send_header('Content-type', resp.headers.get('Content-Type', 'application/json'))
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(resp.content)
+
+            # Best-effort local SSE hint
+            if resp.status_code in (200, 202):
+                try:
+                    report_event_stream.broadcast('reprocess-scheduled', {
+                        "video_id": video_id,
+                        "summary_types": data.get("summary_types") if isinstance(data.get("summary_types"), list) else [],
+                        "timestamp": datetime.utcnow().isoformat() + "Z"
+                    })
+                except Exception:
+                    logger.exception("Failed to broadcast reprocess-scheduled for %s", video_id)
+        except Exception as e:
+            logger.exception("handle_reprocess_request failed")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "reprocess_proxy_error", "message": str(e)}).encode())
 
     def handle_backfill_original_prompts(self):
         """POST /api/admin/backfill-original-prompts — admin-only (DEBUG_TOKEN).

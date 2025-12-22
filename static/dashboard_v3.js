@@ -3942,7 +3942,9 @@ class AudioDashboard {
             if (summaryTypes.length) {
                 payload.summary_types = summaryTypes;
             }
-            const response = await this.nasFetch('/api/reprocess', {
+            // Reprocess is served by the dashboard (and may proxy to NAS via NGROK_BASE_URL),
+            // so always call the local endpoint to avoid CORS / base_url ambiguity.
+            const response = await fetch('/api/reprocess', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
