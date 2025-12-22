@@ -3109,38 +3109,115 @@ class AudioDashboard {
         }
     }
 
-    initReprocessState(item) {
-        this.reprocessState = {
-            selected: new Set(['comprehensive']),
-            audioLevels: {
-                'audio-fr': 'intermediate',
-                'audio-es': 'intermediate'
-            }
+    getExistingReprocessOutputs(item) {
+        const out = {};
+        const add = (id, info = {}) => {
+            if (!id) return;
+            const norm = String(id).trim().toLowerCase();
+            if (!norm) return;
+            out[norm] = { ...(out[norm] || {}), ...info, exists: true };
         };
+        try {
+            const pools = [];
+            if (Array.isArray(item?.summary_variants)) pools.push(item.summary_variants);
+            if (Array.isArray(item?.summary?.variants)) pools.push(item.summary.variants);
+            pools.forEach(arr => {
+                arr.forEach(v => {
+                    if (!v || typeof v !== 'object') return;
+                    let base = (v.variant || v.id || v.name || v.summary_type || v.type || '').toString().trim().toLowerCase();
+                    if (!base) return;
+                    let id = base;
+                    let level = '';
+                    if (base.includes(':')) {
+                        const parts = base.split(':');
+                        id = (parts[0] || '').trim() || base;
+                        level = (parts[1] || '').trim();
+                    }
+                    const st = (v.summary_type || '').toString().trim().toLowerCase();
+                    if (st && st.includes(':')) {
+                        const parts = st.split(':');
+                        const id2 = (parts[0] || '').trim();
+                        const lvl2 = (parts[1] || '').trim();
+                        if (id2) id = id2;
+                        if (lvl2) level = lvl2;
+                    }
+                    const kind = (v.kind || (String(id).startsWith('audio') ? 'audio' : 'text')) || 'text';
+                    add(id, { kind, level: level || undefined });
+                });
+            });
+        } catch (_) { }
 
-        if (item?.media?.has_audio) {
-            this.reprocessState.selected.add('audio');
+        try {
+            if ((item?.summary_text || item?.summary_html) && !out['comprehensive']) add('comprehensive', { kind: 'text' });
+        } catch (_) { }
+        try {
+            const v = (item?.summary_variant || item?.summary_type_latest || item?.summary_type || '').toString().trim().toLowerCase();
+            if (v && !out[v]) add(v, { kind: String(v).startsWith('audio') ? 'audio' : 'text' });
+        } catch (_) { }
+        try {
+            const au = item?.media?.audio_url;
+            if (au && !out['audio']) add('audio', { kind: 'audio' });
+        } catch (_) { }
+        return out;
+    }
+
+    initReprocessState(item) {
+        const existing = this.getExistingReprocessOutputs(item);
+        const selected = new Set(['comprehensive']);
+        // Only preselect English audio when the item actually has an 'audio' variant (or an explicit audio_url).
+        if (existing['audio'] && existing['audio'].exists) {
+            selected.add('audio');
         }
+        const audioLevels = {};
+        if (existing['audio-fr']?.level) audioLevels['audio-fr'] = existing['audio-fr'].level;
+        if (existing['audio-es']?.level) audioLevels['audio-es'] = existing['audio-es'].level;
+        this.reprocessState = {
+            selected,
+            audioLevels,
+            existing
+        };
     }
 
     renderReprocessVariants() {
         if (!this.reprocessVariantGrid) return;
         const selected = (this.reprocessState && this.reprocessState.selected) || new Set();
+        const existing = (this.reprocessState && this.reprocessState.existing) || {};
+        const levelLabel = (variantId, lang) => {
+            try {
+                const lvl = existing[variantId]?.level;
+                if (!lvl) return '';
+                const opt = PROFICIENCY_LEVELS.find(o => o.level === lvl);
+                if (!opt) return '';
+                return (opt.labels && (opt.labels[lang] || opt.labels.default)) ? (opt.labels[lang] || opt.labels.default) : '';
+            } catch (_) { return ''; }
+        };
 
         const html = REPROCESS_VARIANTS.map((variant) => {
             const isActive = selected.has(variant.id);
+            const isDone = !!existing[variant.id]?.exists;
             const baseClasses = [
-                'flex', 'items-center', 'gap-2', 'px-3', 'py-2', 'rounded-xl', 'text-sm', 'transition', 'duration-150', 'border'
+                'flex', 'items-center', 'justify-between', 'gap-2', 'px-3', 'py-2', 'rounded-xl', 'text-sm', 'transition', 'duration-150', 'border'
             ];
             if (isActive) {
                 baseClasses.push('bg-gradient-to-r', 'from-audio-500', 'to-indigo-500', 'text-white', 'border-transparent', 'shadow');
             } else {
                 baseClasses.push('bg-white/85', 'dark:bg-slate-900/60', 'text-slate-600', 'dark:text-slate-200', 'border-white/60', 'dark:border-slate-700/60', 'hover:bg-white');
+                if (isDone) {
+                    baseClasses.push('border-emerald-200/70', 'dark:border-emerald-400/20');
+                }
             }
+            const prof = variant.proficiency ? (levelLabel(variant.id, variant.language) || '') : '';
+            const label = prof ? `${variant.label} • ${prof}` : variant.label;
+            const doneBadge = isDone
+                ? `<span class="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-200 dark:border-emerald-400/20" title="Already generated">✓ Done</span>`
+                : '';
             return `
                 <button type="button" data-variant="${variant.id}" class="${baseClasses.join(' ')}">
-                    <span class="text-lg">${variant.icon}</span>
-                    <span class="font-medium">${variant.label}</span>
+                    <span class="flex items-center gap-2 min-w-0">
+                        <span class="text-lg">${variant.icon}</span>
+                        <span class="font-medium truncate">${this.escapeHtml(label)}</span>
+                    </span>
+                    ${doneBadge}
                 </button>
             `;
         }).join('');
@@ -3217,7 +3294,8 @@ class AudioDashboard {
         } else {
             this.reprocessState.selected.add(variantId);
             if (variant.proficiency && !this.reprocessState.audioLevels[variantId]) {
-                this.reprocessState.audioLevels[variantId] = 'intermediate';
+                const fallback = (this.reprocessState.existing && this.reprocessState.existing[variantId] && this.reprocessState.existing[variantId].level) || 'intermediate';
+                this.reprocessState.audioLevels[variantId] = fallback;
             }
         }
 
