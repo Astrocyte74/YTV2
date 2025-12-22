@@ -473,6 +473,17 @@ class AudioDashboard {
                     this.searchClearHeader.classList.toggle('hidden', !has);
                 } catch (_) { }
             };
+            // Shortcut hint: ⌘K (mac) / Ctrl K (others)
+            try {
+                const hintEl = document.getElementById('searchShortcutHint');
+                if (hintEl) {
+                    const plat = (typeof navigator !== 'undefined')
+                        ? String(navigator.platform || navigator.userAgentData?.platform || navigator.userAgent || '')
+                        : '';
+                    const isMac = /Mac|iPhone|iPad|iPod/i.test(plat);
+                    hintEl.textContent = isMac ? '⌘K' : 'Ctrl K';
+                }
+            } catch (_) { }
             this.searchInputHeader.addEventListener('input', this.debounce(() => {
                 const v = this.searchInputHeader.value;
                 if (this.searchInput && this.searchInput.value !== v) this.searchInput.value = v;
@@ -798,8 +809,8 @@ class AudioDashboard {
         }
         if (this.sidebarExpandToggle) {
             this.sidebarExpandToggle.addEventListener('click', () => {
-                this.sidebarCollapsed = false;
-                localStorage.setItem('ytv2.sidebarCollapsed', '0');
+                this.sidebarCollapsed = !this.sidebarCollapsed;
+                localStorage.setItem('ytv2.sidebarCollapsed', this.sidebarCollapsed ? '1' : '0');
                 this.applySidebarCollapsedState();
             });
         }
@@ -6625,28 +6636,48 @@ class AudioDashboard {
             this.gridViewBtnMobile,
             this.wallViewBtnMobile
         ].filter(Boolean);
-        if (!buttons.length) return;
+        const settingsButtons = {
+            list: this.viewListSettingBtn,
+            grid: this.viewGridSettingBtn,
+            wall: this.viewWallSettingBtn
+        };
 
         const activeClasses = ['bg-audio-600', 'text-white', 'shadow-lg'];
         const inactiveClasses = ['bg-white/80', 'dark:bg-slate-900/70', 'text-slate-600', 'dark:text-slate-200', 'border', 'border-white/60', 'dark:border-slate-700/70', 'shadow-sm'];
 
-        buttons.forEach(btn => {
-            btn.classList.remove(...activeClasses, ...inactiveClasses);
-            btn.classList.add(...inactiveClasses);
-        });
+        if (buttons.length) {
+            buttons.forEach(btn => {
+                btn.classList.remove(...activeClasses, ...inactiveClasses);
+                btn.classList.add(...inactiveClasses);
+            });
 
-        const map = {
-            list: [this.listViewBtn, this.listViewBtnMobile],
-            grid: [this.gridViewBtn, this.gridViewBtnMobile],
-            wall: [this.wallViewBtn, this.wallViewBtnMobile]
-        };
-        const desired = (map[this.viewMode] || []).filter(Boolean);
-        const fallback = (map.list || []).filter(Boolean);
-        const targets = desired.length ? desired : (fallback.length ? fallback : [buttons[0]]);
-        targets.forEach(btn => {
-            btn.classList.remove(...inactiveClasses);
-            btn.classList.add(...activeClasses);
-        });
+            const map = {
+                list: [this.listViewBtn, this.listViewBtnMobile],
+                grid: [this.gridViewBtn, this.gridViewBtnMobile],
+                wall: [this.wallViewBtn, this.wallViewBtnMobile]
+            };
+            const desired = (map[this.viewMode] || []).filter(Boolean);
+            const fallback = (map.list || []).filter(Boolean);
+            const targets = desired.length ? desired : (fallback.length ? fallback : [buttons[0]]);
+            targets.forEach(btn => {
+                btn.classList.remove(...inactiveClasses);
+                btn.classList.add(...activeClasses);
+            });
+        }
+
+        // Sync the settings menu view buttons too.
+        try {
+            const setBtnActive = (btn, active) => {
+                if (!btn) return;
+                btn.classList.toggle('bg-audio-600', !!active);
+                btn.classList.toggle('text-white', !!active);
+                btn.classList.toggle('border-transparent', !!active);
+                btn.classList.toggle('bg-white/80', !active);
+                btn.classList.toggle('dark:bg-slate-900/70', !active);
+            };
+            Object.values(settingsButtons).forEach(b => setBtnActive(b, false));
+            setBtnActive(settingsButtons[this.viewMode] || settingsButtons.list, true);
+        } catch (_) { }
 
         document.body.classList.toggle('wall-mode', this.viewMode === 'wall');
         if (this.resultsHero) {
@@ -6667,7 +6698,10 @@ class AudioDashboard {
             this.sidebarCollapseToggle.setAttribute('aria-pressed', shouldCollapse ? 'true' : 'false');
         }
         if (this.sidebarExpandToggle) {
-            this.sidebarExpandToggle.setAttribute('aria-hidden', shouldCollapse ? 'false' : 'true');
+            this.sidebarExpandToggle.setAttribute('aria-pressed', shouldCollapse ? 'false' : 'true');
+            const label = this.sidebarExpandToggle.querySelector('span');
+            if (label) label.textContent = shouldCollapse ? 'Filters' : 'Hide';
+            this.sidebarExpandToggle.title = shouldCollapse ? 'Show Filters' : 'Hide Filters';
         }
     }
 
@@ -8115,6 +8149,18 @@ class AudioDashboard {
     handleKeyboard(event) {
         // Ignore if typing in an input
         if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
+
+        // Cmd/Ctrl + K focuses search (matches the header hint).
+        // Important: this avoids clobbering the single-key "K" next-track shortcut.
+        if ((event.metaKey || event.ctrlKey) && event.code === 'KeyK') {
+            event.preventDefault();
+            const target = this.searchInputHeader || this.searchInputTop || this.searchInput;
+            if (target) {
+                try { target.focus(); } catch (_) { }
+                try { target.select(); } catch (_) { }
+            }
+            return;
+        }
 
         switch (event.code) {
             case 'Space':
