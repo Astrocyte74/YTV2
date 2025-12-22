@@ -3109,19 +3109,71 @@ class AudioDashboard {
         }
     }
 
-    getExistingReprocessOutputs(item) {
-        const out = {};
-        const add = (id, info = {}) => {
-            if (!id) return;
-            const norm = String(id).trim().toLowerCase();
-            if (!norm) return;
-            out[norm] = { ...(out[norm] || {}), ...info, exists: true };
-        };
-        try {
-            const pools = [];
-            if (Array.isArray(item?.summary_variants)) pools.push(item.summary_variants);
-            if (Array.isArray(item?.summary?.variants)) pools.push(item.summary.variants);
-            pools.forEach(arr => {
+	    getExistingReprocessOutputs(item) {
+	        const out = {};
+	        const normalizeVariantId = (id) => {
+	            const raw = (id ?? '').toString().trim().toLowerCase();
+	            if (!raw) return '';
+	
+	            // Treat `foo:bar` as a variant id with metadata (e.g. proficiency).
+	            const baseOnly = raw.includes(':') ? raw.split(':')[0].trim() : raw;
+
+	            // Strip accidental label-ish strings and normalize separators
+	            let norm = baseOnly
+	                .replace(/\s+/g, '-')
+	                .replace(/_/g, '-')
+	                .replace(/-+/g, '-')
+	                .replace(/^-|-$/g, '');
+	
+	            // Common aliases from older backends / admin tools
+	            const alias = {
+	                'summary': 'comprehensive',
+	                'full': 'comprehensive',
+	                'comprehensive-summary': 'comprehensive',
+	
+	                'keypoints': 'bullet-points',
+	                'key-point': 'bullet-points',
+	                'key-points': 'bullet-points',
+	                'keypoints-summary': 'bullet-points',
+	                'bulletpoints': 'bullet-points',
+	                'bullet-points': 'bullet-points',
+	
+	                'insights': 'key-insights',
+	                'key-insight': 'key-insights',
+	                'key-insights': 'key-insights',
+	                'keyinsights': 'key-insights',
+	
+	                'audio-en': 'audio',
+	                'audio-english': 'audio',
+	                'audio': 'audio',
+	                'audio-fr': 'audio-fr',
+	                'audio-es': 'audio-es'
+	            };
+	            if (alias[norm]) return alias[norm];
+	
+	            // Some systems encode like `audio-fr-intermediate` instead of `audio-fr:intermediate`
+	            if (norm.startsWith('audio-fr-')) return 'audio-fr';
+	            if (norm.startsWith('audio-es-')) return 'audio-es';
+	            if (norm.startsWith('audio-en-')) return 'audio';
+	
+	            return norm;
+	        };
+	        const add = (id, info = {}) => {
+	            const norm = normalizeVariantId(id);
+	            if (!norm) return;
+	            out[norm] = { ...(out[norm] || {}), ...info, exists: true };
+	        };
+	
+	        const hasVariantsArray =
+	            Array.isArray(item?.summary_variants) ||
+	            Array.isArray(item?.summary?.variants);
+	        const variantFromFieldsRaw = (item?.summary_variant || item?.summary_type_latest || item?.summary_type || '').toString().trim();
+	        const variantFromFields = normalizeVariantId(variantFromFieldsRaw);
+	        try {
+	            const pools = [];
+	            if (Array.isArray(item?.summary_variants)) pools.push(item.summary_variants);
+	            if (Array.isArray(item?.summary?.variants)) pools.push(item.summary.variants);
+	            pools.forEach(arr => {
                 arr.forEach(v => {
                     if (!v || typeof v !== 'object') return;
                     let base = (v.variant || v.id || v.name || v.summary_type || v.type || '').toString().trim().toLowerCase();
@@ -3141,22 +3193,27 @@ class AudioDashboard {
                         if (id2) id = id2;
                         if (lvl2) level = lvl2;
                     }
-                    const kind = (v.kind || (String(id).startsWith('audio') ? 'audio' : 'text')) || 'text';
-                    add(id, { kind, level: level || undefined });
-                });
-            });
-        } catch (_) { }
+	                    const kind = (v.kind || (String(id).startsWith('audio') ? 'audio' : 'text')) || 'text';
+	                    add(id, { kind, level: level || undefined });
+	                });
+	            });
+	        } catch (_) { }
 
-        try {
-            if ((item?.summary_text || item?.summary_html) && !out['comprehensive']) add('comprehensive', { kind: 'text' });
-        } catch (_) { }
-        try {
-            const v = (item?.summary_variant || item?.summary_type_latest || item?.summary_type || '').toString().trim().toLowerCase();
-            if (v && !out[v]) add(v, { kind: String(v).startsWith('audio') ? 'audio' : 'text' });
-        } catch (_) { }
-        try {
-            const au = item?.media?.audio_url;
-            if (au && !out['audio']) add('audio', { kind: 'audio' });
+	        try {
+	            // Only infer "comprehensive" when we truly don't know which variant the main text is.
+	            // `summary_text/html` can represent the *currently selected/latest* text variant (e.g. insights),
+	            // so inferring comprehensive unconditionally causes false "Done" states.
+	            const hasAnyTextVariant = Object.keys(out).some((k) => (out[k]?.kind || '').toString() === 'text');
+	            if ((item?.summary_text || item?.summary_html) && !hasVariantsArray && !variantFromFields && !hasAnyTextVariant) {
+	                add('comprehensive', { kind: 'text' });
+	            }
+	        } catch (_) { }
+	        try {
+	            if (variantFromFields) add(variantFromFields, { kind: String(variantFromFields).startsWith('audio') ? 'audio' : 'text' });
+	        } catch (_) { }
+	        try {
+	            const au = item?.media?.audio_url;
+	            if (au && !out['audio']) add('audio', { kind: 'audio' });
         } catch (_) { }
         return out;
     }
