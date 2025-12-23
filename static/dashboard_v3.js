@@ -3568,6 +3568,13 @@ class AudioDashboard {
             result.defaultId = result.order[0];
         }
 
+        // If an audio file exists but audio isn't surfaced as a summary variant, still offer an Audio tab.
+        try {
+            if (this.itemHasAudio(data) && !result.map['audio']) {
+                addVariant('audio', { audioSrc: audioSrcForData || null });
+            }
+        } catch (_) { }
+
         return result;
     }
 
@@ -4725,17 +4732,18 @@ class AudioDashboard {
         return this.openWallModalReader(id, cardEl);
     }
 
-    openWallModalReader(id, cardEl) {
-        const modal = document.getElementById('wallReaderModal');
-        const body = document.getElementById('wallReaderBody');
-        const sheet = document.getElementById('wallReaderSheet');
-        const titleEl = document.getElementById('wallReaderTitle');
-        const sourceEl = document.getElementById('wallReaderSource');
-        const heroEl = document.getElementById('wallReaderHero');
-        const filmstrip = document.getElementById('wallReaderFilmstrip');
-        const stripEl = modal ? modal.querySelector('.kaleido-strip') : null;
-        const closeBtn = document.getElementById('wallReaderClose');
-        const backdrop = modal ? modal.querySelector('.kaleido-backdrop') : null;
+	    openWallModalReader(id, cardEl) {
+	        const modal = document.getElementById('wallReaderModal');
+	        const body = document.getElementById('wallReaderBody');
+	        const sheet = document.getElementById('wallReaderSheet');
+	        const titleEl = document.getElementById('wallReaderTitle');
+	        const sourceEl = document.getElementById('wallReaderSource');
+	        const heroEl = document.getElementById('wallReaderHero');
+	        const variantsEl = document.getElementById('wallReaderVariants');
+	        const filmstrip = document.getElementById('wallReaderFilmstrip');
+	        const stripEl = modal ? modal.querySelector('.kaleido-strip') : null;
+	        const closeBtn = document.getElementById('wallReaderClose');
+	        const backdrop = modal ? modal.querySelector('.kaleido-backdrop') : null;
         const prevBtns = modal ? Array.from(modal.querySelectorAll('[data-kaleido-prev]')) : [];
         const nextBtns = modal ? Array.from(modal.querySelectorAll('[data-kaleido-next]')) : [];
         const stripRelated = document.getElementById('kStripRelated');
@@ -4762,16 +4770,93 @@ class AudioDashboard {
             this._kaleidoTeardown.push(() => { try { target.removeEventListener(type, fn, opts); } catch (_) { } });
         };
 
-        // Populate content
-        titleEl.textContent = item.title || 'Summary';
-        const sourceLabel = (item.content_source || 'Source').toString().toUpperCase();
-        if (sourceEl) sourceEl.textContent = sourceLabel;
-        body.innerHTML = this.renderWallReaderSection(item);
-        try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
-        try { this.enhanceSummaryHtml(body); } catch (_) { }
+	        // Populate content
+	        titleEl.textContent = item.title || 'Summary';
+	        const sourceLabel = (item.content_source || 'Source').toString().toUpperCase();
+	        if (sourceEl) sourceEl.textContent = sourceLabel;
 
-        // Hero artwork
-        let heroUrl = '';
+	        // Variants (text/audio) inside the reader so mobile can switch + play audio while the mini player is hidden.
+	        const fallbackSummary = this.computeFallbackSummaryHtml(item);
+	        const variantInfo = this.extractVariantInfo(item, fallbackSummary);
+	        const defaultVariant = variantInfo?.defaultId || (variantInfo?.order && variantInfo.order[0]) || null;
+
+	        const renderVariantControls = () => {
+	            if (!variantsEl) return;
+	            if (!variantInfo || !Array.isArray(variantInfo.order) || variantInfo.order.length <= 1) {
+	                variantsEl.innerHTML = '';
+	                variantsEl.classList.add('hidden');
+	                return;
+	            }
+	            variantsEl.classList.remove('hidden');
+	            variantsEl.innerHTML = variantInfo.order.map((variantId) => {
+	                const meta = variantInfo.map[variantId] || {};
+	                const icon = meta.icon ? `<span class="text-base">${meta.icon}</span>` : '';
+	                const label = this.escapeHtml(meta.label || this.prettyVariantLabel(variantId));
+	                return `<button type="button" data-variant="${this.escapeHtml(variantId)}"
+	                      class="kaleido-variant-btn inline-flex items-center gap-2 px-3 py-2 rounded-full border border-white/60 dark:border-slate-700/60 bg-white/80 dark:bg-slate-900/60 text-slate-600 dark:text-slate-200 shadow-sm transition">
+	                      ${icon}<span class="text-sm font-medium">${label}</span>
+	                    </button>`;
+	            }).join('');
+	        };
+
+	        const setActiveVariant = (variantId) => {
+	            if (!variantId || !variantInfo || !variantInfo.map[variantId]) return;
+	            const entry = variantInfo.map[variantId];
+
+	            if (variantsEl) {
+	                variantsEl.querySelectorAll('[data-variant]').forEach((btn) => {
+	                    const isActive = btn.getAttribute('data-variant') === variantId;
+	                    btn.classList.toggle('bg-audio-500', isActive);
+	                    btn.classList.toggle('text-white', isActive);
+	                    btn.classList.toggle('border-transparent', isActive);
+	                    btn.classList.toggle('shadow', isActive);
+	                    btn.classList.toggle('bg-white/80', !isActive);
+	                    btn.classList.toggle('dark:bg-slate-900/60', !isActive);
+	                    btn.classList.toggle('text-slate-600', !isActive);
+	                    btn.classList.toggle('dark:text-slate-200', !isActive);
+	                    btn.classList.toggle('border-white/60', !isActive);
+	                    btn.classList.toggle('dark:border-slate-700/60', !isActive);
+	                });
+	                variantsEl.dataset.currentVariant = variantId;
+	            }
+
+	            if (entry.kind === 'audio') {
+	                const reportId = variantInfo.reportId || id;
+	                const audioSrc = entry.audioSrc || variantInfo.audioSrc || null;
+	                body.innerHTML = this.renderInlineAudioVariant(reportId, entry, audioSrc);
+	                this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
+	                this.refreshAudioVariantBlocks();
+	                return;
+	            }
+
+	            body.innerHTML = entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>';
+	            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
+	            try { this.enhanceSummaryHtml(body); } catch (_) { }
+	        };
+
+	        renderVariantControls();
+	        if (variantInfo && Array.isArray(variantInfo.order) && variantInfo.order.length > 1) {
+	            if (variantsEl) {
+	                variantsEl.querySelectorAll('[data-variant]').forEach((btn) => {
+	                    on(btn, 'click', (e) => {
+	                        e.preventDefault();
+	                        e.stopPropagation();
+	                        const v = btn.getAttribute('data-variant');
+	                        setActiveVariant(v);
+	                    });
+	                });
+	            }
+	            setActiveVariant(defaultVariant || variantInfo.order[0]);
+	        } else if (variantInfo && Array.isArray(variantInfo.order) && variantInfo.order.length === 1) {
+	            setActiveVariant(variantInfo.order[0]);
+	        } else {
+	            body.innerHTML = this.renderWallReaderSection(item);
+	            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
+	            try { this.enhanceSummaryHtml(body); } catch (_) { }
+	        }
+
+	        // Hero artwork
+	        let heroUrl = '';
         try {
             heroUrl = item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
             if (!heroUrl && item.thumbnail_url) heroUrl = item.thumbnail_url;
@@ -7261,6 +7346,7 @@ class AudioDashboard {
         const available = Boolean(audioSrc);
         const isActive = this.currentAudio && this.currentAudio.id === reportId;
         const isPlaying = isActive && this.isPlaying;
+        const inKaleido = (typeof document !== 'undefined' && document.body && document.body.classList && document.body.classList.contains('kaleido-open'));
         const statusText = !available
             ? 'Audio summary is not available for this item.'
             : isActive
@@ -7286,7 +7372,7 @@ class AudioDashboard {
                     <div class="space-y-1">
                         <p class="font-semibold text-slate-800 dark:text-slate-100">${this.escapeHtml(entry.label || 'Audio summary')}</p>
                         <p class="text-slate-600 dark:text-slate-300" data-audio-status>${statusText}</p>
-                        <p class="text-xs text-slate-500 dark:text-slate-400">Use the primary player controls to scrub or adjust speed.</p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400">${inKaleido ? 'Tip: close the reader for scrub/speed controls.' : 'Use the primary player controls to scrub or adjust speed.'}</p>
                     </div>
                     <div class="flex items-center gap-2 self-start md:self-auto">
                         ${downloadLink}

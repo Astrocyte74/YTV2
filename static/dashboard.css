@@ -2576,6 +2576,31 @@ body:not(.dark) .reader-display-popover {
     -webkit-overflow-scrolling: touch;
 }
 
+.kaleido-variants {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0.55rem 0.15rem 0.7rem;
+    margin: 0.15rem -0.1rem 0.35rem;
+    scrollbar-width: thin;
+}
+
+.kaleido-variants::-webkit-scrollbar {
+    height: 6px;
+}
+
+.kaleido-variants::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.55);
+    border-radius: 999px;
+}
+
+.kaleido-variants .kaleido-variant-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
 #wallReaderBody {
     padding: 1.1rem 0;
     border-radius: 0;
