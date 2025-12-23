@@ -7371,14 +7371,17 @@ class AudioDashboard {
                 <div class="kaleido-audio-row">
                     <button type="button" ${buttonState}
                             class="kaleido-audio-play"
-                            data-variant-audio-btn>
-                        ${isActive && isPlaying ? 'Pause' : 'Play'}
+                            data-variant-audio-btn data-listen-button data-default-label="Play" data-playing-label="Pause"
+                            aria-pressed="${isActive && isPlaying ? 'true' : 'false'}">
+                        <span class="kaleido-audio-play-icon" data-icon-play aria-hidden="true">▶</span>
+                        <span class="kaleido-audio-play-icon hidden" data-icon-pause aria-hidden="true">⏸</span>
+                        <span class="kaleido-audio-play-label" data-label>${isActive && isPlaying ? 'Pause' : 'Play'}</span>
                     </button>
                     <div class="kaleido-audio-time" data-kaleido-audio-time>0:00 / —</div>
                 </div>
                 <input type="range" min="0" max="1000" value="0"
                        class="kaleido-audio-seek"
-                       data-kaleido-audio-seek ${available ? '' : 'disabled aria-disabled="true"'} />
+                       data-kaleido-audio-seek ${available ? '' : 'disabled aria-disabled=\"true\"'} />
                 <div class="kaleido-audio-actions">
                     ${downloadLink}
                 </div>
@@ -7432,6 +7435,11 @@ class AudioDashboard {
             if (seek && durOk && !seeking) {
                 const v = Math.max(0, Math.min(1000, Math.round((cur / dur) * 1000)));
                 seek.value = String(v);
+            }
+            if (seek) {
+                const v = Number(seek.value || 0);
+                const pct = Math.max(0, Math.min(100, (v / 1000) * 100));
+                seek.style.background = `linear-gradient(90deg, rgba(56,189,248,0.95) 0%, rgba(99,102,241,0.9) ${pct}%, rgba(255,255,255,0.12) ${pct}%, rgba(255,255,255,0.12) 100%)`;
             }
         };
 
@@ -7494,11 +7502,15 @@ class AudioDashboard {
             const available = block.getAttribute('data-audio-available') === '1';
             const statusEl = block.querySelector('[data-audio-status]');
             const button = block.querySelector('[data-variant-audio-btn]');
+            const labelEl = button ? button.querySelector('[data-label]') : null;
+            const playIcon = button ? button.querySelector('[data-icon-play]') : null;
+            const pauseIcon = button ? button.querySelector('[data-icon-pause]') : null;
 
             if (!available) {
                 if (statusEl) statusEl.textContent = 'Audio summary is not available for this item.';
                 if (button) {
-                    button.textContent = 'Unavailable';
+                    if (labelEl) labelEl.textContent = 'Unavailable';
+                    else button.textContent = 'Unavailable';
                     button.disabled = true;
                 }
                 return;
@@ -7515,7 +7527,21 @@ class AudioDashboard {
 
             if (button) {
                 button.disabled = false;
-                button.textContent = isActive && isPlaying ? 'Pause audio' : 'Play audio';
+                const defaultLabel = button.getAttribute('data-default-label') || 'Play';
+                const playingLabel = button.getAttribute('data-playing-label') || 'Pause';
+                const nextLabel = isActive && isPlaying ? playingLabel : defaultLabel;
+                if (labelEl) labelEl.textContent = nextLabel;
+                else button.textContent = nextLabel;
+                button.setAttribute('aria-pressed', String(isActive && isPlaying));
+                if (playIcon && pauseIcon) {
+                    if (isActive && isPlaying) {
+                        playIcon.classList.add('hidden');
+                        pauseIcon.classList.remove('hidden');
+                    } else {
+                        playIcon.classList.remove('hidden');
+                        pauseIcon.classList.add('hidden');
+                    }
+                }
             }
         });
     }

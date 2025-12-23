@@ -2290,6 +2290,7 @@ body:not(.dark) .reader-display-popover {
     position: relative;
     z-index: 1;
     width: min(1280px, calc(100vw - 48px));
+    height: min(90vh, 1080px);
     max-height: min(90vh, 1080px);
     background: rgba(5, 10, 20, 0.94);
     color: #e2e8f0;
@@ -2606,7 +2607,9 @@ body:not(.dark) .reader-display-popover {
     min-height: 56vh;
     border-radius: 1rem;
     border: 1px solid rgba(255, 255, 255, 0.10);
-    background: rgba(15, 23, 42, 0.55);
+    background: radial-gradient(140% 120% at 20% 10%, rgba(56, 189, 248, 0.16), transparent 55%),
+        radial-gradient(120% 140% at 90% 0%, rgba(99, 102, 241, 0.18), transparent 60%),
+        rgba(15, 23, 42, 0.55);
     box-shadow: 0 16px 44px -26px rgba(0, 0, 0, 0.65);
     padding: 1rem;
 }
@@ -2629,12 +2632,26 @@ body:not(.dark) .reader-display-popover {
 .kaleido-audio-play {
     appearance: none;
     border: 1px solid rgba(255, 255, 255, 0.16);
-    background: linear-gradient(90deg, rgba(56, 189, 248, 0.95), rgba(99, 102, 241, 0.9));
+    background: linear-gradient(90deg, rgba(56, 189, 248, 0.95), rgba(99, 102, 241, 0.92));
     color: white;
     font-weight: 700;
     border-radius: 999px;
     padding: 0.55rem 1.05rem;
     box-shadow: 0 18px 44px -28px rgba(56, 189, 248, 0.55);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+}
+
+.kaleido-audio-play-icon {
+    display: inline-flex;
+    width: 1.05rem;
+    justify-content: center;
+    opacity: 0.95;
+}
+
+.kaleido-audio-play-label {
+    letter-spacing: 0.01em;
 }
 
 .kaleido-audio-play:disabled {
@@ -2652,6 +2669,43 @@ body:not(.dark) .reader-display-popover {
 .kaleido-audio-seek {
     width: 100%;
     accent-color: rgb(56, 189, 248);
+    height: 20px;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+    outline: none;
+}
+
+.kaleido-audio-seek::-webkit-slider-runnable-track {
+    height: 8px;
+    background: transparent;
+    border-radius: 999px;
+}
+
+.kaleido-audio-seek::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(226, 232, 240, 0.95);
+    border: 1px solid rgba(15, 23, 42, 0.25);
+    box-shadow: 0 10px 24px -16px rgba(0, 0, 0, 0.65);
+    margin-top: -5px;
+}
+
+.kaleido-audio-seek::-moz-range-track {
+    height: 8px;
+    background: transparent;
+    border-radius: 999px;
+}
+
+.kaleido-audio-seek::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: rgba(226, 232, 240, 0.95);
+    border: 1px solid rgba(15, 23, 42, 0.25);
+    box-shadow: 0 10px 24px -16px rgba(0, 0, 0, 0.65);
 }
 
 .kaleido-audio-actions {
@@ -5402,8 +5456,8 @@ input[type="checkbox"][data-category-parent]:indeterminate::after {
 
 /* Mobile sheet container */
 #wallReaderSheet {
-    height: auto;
-    max-height: min(92vh, 1080px);
+    height: 100svh;
+    max-height: 100svh;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
 }
