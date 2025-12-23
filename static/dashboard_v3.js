@@ -4825,6 +4825,7 @@ class AudioDashboard {
 	                const audioSrc = entry.audioSrc || variantInfo.audioSrc || null;
 	                body.innerHTML = this.renderInlineAudioVariant(reportId, entry, audioSrc);
 	                this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
+	                this.bindKaleidoInlineAudioControls(body, on);
 	                this.refreshAudioVariantBlocks();
 	                return;
 	            }
@@ -7365,16 +7366,38 @@ class AudioDashboard {
                </a>`
             : '';
 
+        const kaleidoControls = inKaleido ? `
+            <div class="kaleido-audio-controls" data-kaleido-audio-controls>
+                <div class="kaleido-audio-row">
+                    <button type="button" ${buttonState}
+                            class="kaleido-audio-play"
+                            data-variant-audio-btn>
+                        ${isActive && isPlaying ? 'Pause' : 'Play'}
+                    </button>
+                    <div class="kaleido-audio-time" data-kaleido-audio-time>0:00 / —</div>
+                </div>
+                <input type="range" min="0" max="1000" value="0"
+                       class="kaleido-audio-seek"
+                       data-kaleido-audio-seek ${available ? '' : 'disabled aria-disabled="true"'} />
+                <div class="kaleido-audio-actions">
+                    ${downloadLink}
+                </div>
+            </div>
+        ` : '';
+
+        const containerClass = inKaleido
+            ? 'kaleido-audio-panel'
+            : 'rounded-xl border border-slate-200/80 bg-slate-50/80 p-4 text-sm dark:border-slate-700/70 dark:bg-slate-800/60';
+
         return `
-            <div class="rounded-xl border border-slate-200/80 bg-slate-50/80 p-4 text-sm dark:border-slate-700/70 dark:bg-slate-800/60"
+            <div class="${containerClass}"
                  data-audio-variant data-report-id="${reportId || ''}" data-audio-available="${available ? '1' : ''}">
-                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div class="space-y-1">
-                        <p class="font-semibold text-slate-800 dark:text-slate-100">${this.escapeHtml(entry.label || 'Audio summary')}</p>
-                        <p class="text-slate-600 dark:text-slate-300" data-audio-status>${statusText}</p>
-                        <p class="text-xs text-slate-500 dark:text-slate-400">${inKaleido ? 'Tip: close the reader for scrub/speed controls.' : 'Use the primary player controls to scrub or adjust speed.'}</p>
-                    </div>
-                    <div class="flex items-center gap-2 self-start md:self-auto">
+                <div class="space-y-2">
+                    <p class="font-semibold ${inKaleido ? 'text-slate-100' : 'text-slate-800 dark:text-slate-100'}">${this.escapeHtml(entry.label || 'Audio summary')}</p>
+                    <p class="${inKaleido ? 'text-slate-200/90' : 'text-slate-600 dark:text-slate-300'}" data-audio-status>${statusText}</p>
+                </div>
+                ${inKaleido ? kaleidoControls : `
+                    <div class="mt-3 flex items-center gap-2">
                         ${downloadLink}
                         <button type="button" ${buttonState}
                                 class="inline-flex items-center gap-2 rounded-full border border-white/40 bg-gradient-to-r from-audio-500 to-indigo-500 px-4 py-1.5 text-sm font-semibold text-white shadow-md disabled:cursor-not-allowed disabled:border-slate-400 disabled:bg-slate-300 disabled:text-slate-600 dark:disabled:border-slate-600 dark:disabled:bg-slate-700 dark:disabled:text-slate-300"
@@ -7382,9 +7405,56 @@ class AudioDashboard {
                             ${buttonLabel}
                         </button>
                     </div>
-                </div>
+                `}
             </div>
         `;
+    }
+
+    bindKaleidoInlineAudioControls(container, on) {
+        if (!container || typeof on !== 'function') return;
+        if (!this.audioElement) return;
+        const seek = container.querySelector('[data-kaleido-audio-seek]');
+        const time = container.querySelector('[data-kaleido-audio-time]');
+        if (!seek && !time) return;
+
+        let seeking = false;
+        const fmt = (sec) => {
+            try { return this.formatDuration(sec); } catch (_) { return '0:00'; }
+        };
+        const update = () => {
+            if (!this.audioElement) return;
+            const dur = Number(this.audioElement.duration || 0);
+            const cur = Number(this.audioElement.currentTime || 0);
+            const durOk = Number.isFinite(dur) && dur > 0;
+            if (time) {
+                time.textContent = `${fmt(cur)} / ${durOk ? fmt(dur) : '—'}`;
+            }
+            if (seek && durOk && !seeking) {
+                const v = Math.max(0, Math.min(1000, Math.round((cur / dur) * 1000)));
+                seek.value = String(v);
+            }
+        };
+
+        if (seek) {
+            on(seek, 'input', () => {
+                const dur = Number(this.audioElement.duration || 0);
+                if (!Number.isFinite(dur) || dur <= 0) return;
+                const v = Number(seek.value || 0);
+                const t = (v / 1000) * dur;
+                if (Number.isFinite(t)) this.audioElement.currentTime = Math.max(0, Math.min(dur, t));
+            });
+            on(seek, 'pointerdown', () => { seeking = true; });
+            on(seek, 'pointerup', () => { seeking = false; update(); });
+            on(seek, 'touchstart', () => { seeking = true; }, { passive: true });
+            on(seek, 'touchend', () => { seeking = false; update(); }, { passive: true });
+        }
+
+        on(this.audioElement, 'timeupdate', update);
+        on(this.audioElement, 'loadedmetadata', update);
+        on(this.audioElement, 'durationchange', update);
+        on(this.audioElement, 'play', update);
+        on(this.audioElement, 'pause', update);
+        update();
     }
 
     attachInlineAudioVariantHandlers(container, reportId, audioSrc) {
