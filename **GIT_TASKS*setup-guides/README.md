@@ -21,7 +21,6 @@
 | `03-mobile-usage.md` | Phone-friendly AI task execution guide |
 | `04-troubleshooting.md` | Common issues and solutions |
 | `05-quality-gates.md` | Quality gates, CI/CD pipeline, and merge protection |
-| `06-customization.md` | Adapting for your specific project needs |
 
 ## ⚡ Quick Start (45 minutes)
 

@@ -136,6 +136,7 @@ dmypy.json
 downloads/
 exports/
 logs/
+back_Fill_logs*.md
 cache/
 .cache/
 temp/
