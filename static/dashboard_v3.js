@@ -2848,7 +2848,7 @@ class AudioDashboard {
         if (!root) return;
         const label = this.formatPlaybackRate(this.getEffectivePlaybackRate());
         try {
-            root.querySelectorAll('[data-kaleido-audio-rate]').forEach((btn) => {
+            root.querySelectorAll('[data-kaleido-audio-rate], [data-playback-rate]').forEach((btn) => {
                 if (!btn) return;
                 btn.textContent = label;
                 btn.setAttribute('aria-label', `Playback speed ${label}`);
@@ -5377,18 +5377,21 @@ class AudioDashboard {
         }
         section.style.overflow = 'hidden';
         section.style.height = '0px';
-        section.innerHTML = `
-            <div class="wall-expander__header">
-                <div class="flex items-center gap-3">
-                    ${imgSrc ? `<img class="wall-expander__thumb" alt="" src="${imgSrc}">` : ''}
-                    <h4 class="wall-expander__title">${this.escapeHtml(item.title || 'Summary')}</h4>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="reader-display" title="Display options" aria-haspopup="dialog" aria-expanded="false">Aa</button>
-                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-page" title="Open page">Open</button>
-                    <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                            <circle cx="5" cy="12" r="1.5"></circle>
+	        section.innerHTML = `
+	            <div class="wall-expander__header">
+	                <div class="flex items-center gap-3">
+	                    ${imgSrc ? `<img class="wall-expander__thumb" alt="" src="${imgSrc}">` : ''}
+	                    <h4 class="wall-expander__title">${this.escapeHtml(item.title || 'Summary')}</h4>
+	                </div>
+	                <div class="flex items-center gap-2">
+	                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-source" title="Open source">Source</button>
+	                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-copy-link" title="Copy link">Copy</button>
+	                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-playback-rate title="Playback speed">${this.formatPlaybackRate(this.getEffectivePlaybackRate())}</button>
+	                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="reader-display" title="Display options" aria-haspopup="dialog" aria-expanded="false">Aa</button>
+	                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-page" title="Open page">Open</button>
+	                    <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
+	                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+	                            <circle cx="5" cy="12" r="1.5"></circle>
                             <circle cx="12" cy="12" r="1.5"></circle>
                             <circle cx="19" cy="12" r="1.5"></circle>
                         </svg>
@@ -5456,10 +5459,42 @@ class AudioDashboard {
             ];
             this._wallConnectorHandlers.forEach(h => window.addEventListener(h.type, h.fn, h.opts));
         } catch (_) { }
-        const closeBtn = section.querySelector('[data-action="wall-reader-close"]');
-        const displayBtn = section.querySelector('[data-action="reader-display"]');
-        const openBtn = section.querySelector('[data-action="wall-reader-open-page"]');
-        const menuBtn = section.querySelector('[data-action="menu"]');
+	        const closeBtn = section.querySelector('[data-action="wall-reader-close"]');
+	        const displayBtn = section.querySelector('[data-action="reader-display"]');
+	        const openBtn = section.querySelector('[data-action="wall-reader-open-page"]');
+	        const copyBtn = section.querySelector('[data-action="wall-reader-copy-link"]');
+	        const sourceBtn = section.querySelector('[data-action="wall-reader-open-source"]');
+	        const speedBtn = section.querySelector('[data-playback-rate]');
+	        const menuBtn = section.querySelector('[data-action="menu"]');
+	        // Mirror Kaleido top actions (Copy / Source / Playback speed)
+	        try {
+	            if (copyBtn) {
+	                copyBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.copyLink(cardEl, id); });
+	            }
+	            if (sourceBtn) {
+	                const slug = (item.content_source || 'youtube').toString().toLowerCase();
+	                const label = slug === 'youtube' ? 'YouTube' : (slug === 'reddit' ? 'Reddit' : 'Source');
+	                sourceBtn.textContent = label;
+	                const canOpen = (slug === 'youtube') ? Boolean(item.video_id) : Boolean(item.canonical_url);
+	                sourceBtn.disabled = !canOpen;
+	                sourceBtn.classList.toggle('opacity-50', !canOpen);
+	                sourceBtn.classList.toggle('cursor-not-allowed', !canOpen);
+	                sourceBtn.addEventListener('click', (e) => {
+	                    e.preventDefault();
+	                    e.stopPropagation();
+	                    this.openSourceLink(slug, item.video_id, item.canonical_url);
+	                });
+	            }
+	            if (speedBtn) {
+	                this.updatePlaybackRateUi(section);
+	                speedBtn.addEventListener('click', (e) => {
+	                    e.preventDefault();
+	                    e.stopPropagation();
+	                    this.cyclePlaybackRate();
+	                    this.updatePlaybackRateUi(section);
+	                });
+	            }
+	        } catch (_) { }
         // Inject a refresh button into header actions
         try {
             const actions = section.querySelector('.wall-expander__header .flex.items-center.gap-2');
