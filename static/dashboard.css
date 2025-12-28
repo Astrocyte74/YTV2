@@ -2715,6 +2715,28 @@ body:not(.dark) .reader-display-popover {
     gap: 0.6rem;
 }
 
+.kaleido-audio-rate {
+    appearance: none;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(226, 232, 240, 0.95);
+    border-radius: 999px;
+    padding: 0.22rem 0.7rem;
+    font-weight: 700;
+    font-size: 0.75rem;
+    letter-spacing: 0.01em;
+    backdrop-filter: blur(10px);
+}
+
+.kaleido-audio-rate:hover {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.kaleido-audio-rate:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 #wallReaderBody {
     padding: 1.1rem 0;
     border-radius: 0;

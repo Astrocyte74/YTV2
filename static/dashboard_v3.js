@@ -181,6 +181,8 @@ class AudioDashboard {
         this.reprocessToken = null;
         this.reprocessTokenSource = null;
         this.pendingReprocess = null;
+        this.playbackRateKey = 'ytv2.playbackRate';
+        this.playbackRates = [1, 1.25, 1.5, 1.75, 2];
 
         // Filter state helpers
         this.initialSourceFilters = null;
@@ -205,6 +207,7 @@ class AudioDashboard {
         this.audioElement = document.getElementById('audioElement');
         // Bottom container removed; mini player is always visible in sidebar
         this.audioPlayerContainer = null;
+        this.applyStoredPlaybackRate();
 
         // Player controls
         this.playPauseBtn = document.getElementById('playPauseBtn');
@@ -2785,6 +2788,74 @@ class AudioDashboard {
         if (win) win.opener = null;
     }
 
+    getStoredPlaybackRate() {
+        try {
+            const raw = localStorage.getItem(this.playbackRateKey);
+            const v = Number.parseFloat(String(raw || ''));
+            if (!Number.isFinite(v) || v <= 0) return 1;
+            const rates = Array.isArray(this.playbackRates) && this.playbackRates.length ? this.playbackRates : [1, 1.25, 1.5, 1.75, 2];
+            // Snap to known rates to avoid weird floats
+            const nearest = rates.reduce((best, r) => (Math.abs(r - v) < Math.abs(best - v) ? r : best), 1);
+            return nearest;
+        } catch (_) {
+            return 1;
+        }
+    }
+
+    getEffectivePlaybackRate() {
+        try {
+            const r = Number(this.audioElement?.playbackRate);
+            if (Number.isFinite(r) && r > 0) return r;
+        } catch (_) { }
+        return this.getStoredPlaybackRate();
+    }
+
+    formatPlaybackRate(rate) {
+        const r = Number(rate);
+        if (!Number.isFinite(r) || r <= 0) return '1×';
+        const txt = Number.isInteger(r) ? String(r) : String(r).replace(/0+$/, '').replace(/\.$/, '');
+        return `${txt}×`;
+    }
+
+    applyStoredPlaybackRate() {
+        if (!this.audioElement) return;
+        const rate = this.getStoredPlaybackRate();
+        try { this.audioElement.playbackRate = rate; } catch (_) { }
+    }
+
+    setPlaybackRate(rate, { persist = true } = {}) {
+        const next = Number(rate);
+        if (!Number.isFinite(next) || next <= 0) return;
+        if (this.audioElement) {
+            try { this.audioElement.playbackRate = next; } catch (_) { }
+        }
+        if (persist) {
+            try { localStorage.setItem(this.playbackRateKey, String(next)); } catch (_) { }
+        }
+        this.updatePlaybackRateUi();
+    }
+
+    cyclePlaybackRate() {
+        const rates = Array.isArray(this.playbackRates) && this.playbackRates.length ? this.playbackRates : [1, 1.25, 1.5, 1.75, 2];
+        const cur = this.getEffectivePlaybackRate();
+        const idx = Math.max(0, rates.findIndex(r => Math.abs(r - cur) < 0.001));
+        const next = rates[(idx + 1) % rates.length];
+        this.setPlaybackRate(next, { persist: true });
+        return next;
+    }
+
+    updatePlaybackRateUi(root = document) {
+        if (!root) return;
+        const label = this.formatPlaybackRate(this.getEffectivePlaybackRate());
+        try {
+            root.querySelectorAll('[data-kaleido-audio-rate]').forEach((btn) => {
+                if (!btn) return;
+                btn.textContent = label;
+                btn.setAttribute('aria-label', `Playback speed ${label}`);
+            });
+        } catch (_) { }
+    }
+
     async expandCardInline(id) {
         const card = this.contentGrid.querySelector(`[data-report-id="${id}"]`);
         if (!card) return;
@@ -4883,19 +4954,38 @@ class AudioDashboard {
             return similarIds;
         };
 
-        // Menu + display + open page
-        try {
-            const openBtn = modal.querySelector('[data-action="wall-reader-open-page"]');
-            const displayBtn = modal.querySelector('[data-action="reader-display"]');
-            const menuBtn = modal.querySelector('[data-action="menu"]');
-            const menu = modal.querySelector('[data-kebab-menu]');
-            if (openBtn) {
-                on(openBtn, 'click', (e) => { e.preventDefault(); window.location.href = `/${encodeURIComponent(id)}.json?v=2`; });
-            }
-            if (displayBtn) {
-                on(displayBtn, 'click', (e) => { e.preventDefault(); e.stopPropagation(); this.openReaderDisplayPopover(modal, body, displayBtn); });
-            }
-            if (menuBtn && menu) {
+	        // Menu + display + open page
+	        try {
+	            const openBtn = modal.querySelector('[data-action="wall-reader-open-page"]');
+	            const copyBtn = modal.querySelector('[data-action="wall-reader-copy-link"]');
+	            const sourceBtn = modal.querySelector('[data-action="wall-reader-open-source"]');
+	            const displayBtn = modal.querySelector('[data-action="reader-display"]');
+	            const menuBtn = modal.querySelector('[data-action="menu"]');
+	            const menu = modal.querySelector('[data-kebab-menu]');
+	            if (openBtn) {
+	                on(openBtn, 'click', (e) => { e.preventDefault(); window.location.href = `/${encodeURIComponent(id)}.json?v=2`; });
+	            }
+	            if (copyBtn) {
+	                on(copyBtn, 'click', (e) => { e.preventDefault(); e.stopPropagation(); this.copyLink(card || modal, id); });
+	            }
+	            if (sourceBtn) {
+	                const slug = (item.content_source || 'youtube').toString().toLowerCase();
+	                const label = slug === 'youtube' ? 'YouTube' : (slug === 'reddit' ? 'Reddit' : 'Source');
+	                sourceBtn.textContent = label;
+	                const canOpen = (slug === 'youtube') ? Boolean(item.video_id) : Boolean(item.canonical_url);
+	                sourceBtn.disabled = !canOpen;
+	                sourceBtn.classList.toggle('opacity-50', !canOpen);
+	                sourceBtn.classList.toggle('cursor-not-allowed', !canOpen);
+	                on(sourceBtn, 'click', (e) => {
+	                    e.preventDefault();
+	                    e.stopPropagation();
+	                    this.openSourceLink(slug, item.video_id, item.canonical_url);
+	                });
+	            }
+	            if (displayBtn) {
+	                on(displayBtn, 'click', (e) => { e.preventDefault(); e.stopPropagation(); this.openReaderDisplayPopover(modal, body, displayBtn); });
+	            }
+	            if (menuBtn && menu) {
                 menu.classList.add('hidden');
                 on(menuBtn, 'click', (e) => { e.stopPropagation(); this.toggleKebabMenu(modal, true, menuBtn); });
                 on(menu, 'click', (e) => {
@@ -7379,14 +7469,15 @@ class AudioDashboard {
                     </button>
                     <div class="kaleido-audio-time" data-kaleido-audio-time>0:00 / —</div>
                 </div>
-                <input type="range" min="0" max="1000" value="0"
-                       class="kaleido-audio-seek"
-                       data-kaleido-audio-seek ${available ? '' : 'disabled aria-disabled=\"true\"'} />
-                <div class="kaleido-audio-actions">
-                    ${downloadLink}
-                </div>
-            </div>
-        ` : '';
+	                <input type="range" min="0" max="1000" value="0"
+	                       class="kaleido-audio-seek"
+	                       data-kaleido-audio-seek ${available ? '' : 'disabled aria-disabled=\"true\"'} />
+	                <div class="kaleido-audio-actions">
+	                    ${downloadLink}
+	                    <button type="button" class="kaleido-audio-rate" data-kaleido-audio-rate ${available ? '' : 'disabled aria-disabled=\"true\"'} title="Playback speed">${this.formatPlaybackRate(this.getEffectivePlaybackRate())}</button>
+	                </div>
+	            </div>
+	        ` : '';
 
         const containerClass = inKaleido
             ? 'kaleido-audio-panel'
@@ -7413,18 +7504,19 @@ class AudioDashboard {
         `;
     }
 
-    bindKaleidoInlineAudioControls(container, on) {
-        if (!container || typeof on !== 'function') return;
-        if (!this.audioElement) return;
-        const seek = container.querySelector('[data-kaleido-audio-seek]');
-        const time = container.querySelector('[data-kaleido-audio-time]');
-        if (!seek && !time) return;
+	    bindKaleidoInlineAudioControls(container, on) {
+	        if (!container || typeof on !== 'function') return;
+	        if (!this.audioElement) return;
+	        const seek = container.querySelector('[data-kaleido-audio-seek]');
+	        const time = container.querySelector('[data-kaleido-audio-time]');
+	        const rateBtn = container.querySelector('[data-kaleido-audio-rate]');
+	        if (!seek && !time && !rateBtn) return;
 
         let seeking = false;
         const fmt = (sec) => {
             try { return this.formatDuration(sec); } catch (_) { return '0:00'; }
         };
-        const update = () => {
+	        const update = () => {
             if (!this.audioElement) return;
             const dur = Number(this.audioElement.duration || 0);
             const cur = Number(this.audioElement.currentTime || 0);
@@ -7441,9 +7533,23 @@ class AudioDashboard {
                 const pct = Math.max(0, Math.min(100, (v / 1000) * 100));
                 seek.style.background = `linear-gradient(90deg, rgba(56,189,248,0.95) 0%, rgba(99,102,241,0.9) ${pct}%, rgba(255,255,255,0.12) ${pct}%, rgba(255,255,255,0.12) 100%)`;
             }
-        };
+	        };
 
-        if (seek) {
+	        if (rateBtn) {
+	            const syncRate = () => {
+	                this.updatePlaybackRateUi(container);
+	            };
+	            syncRate();
+	            on(rateBtn, 'click', (e) => {
+	                e.preventDefault();
+	                e.stopPropagation();
+	                this.cyclePlaybackRate();
+	                syncRate();
+	            });
+	            on(this.audioElement, 'ratechange', syncRate);
+	        }
+
+	        if (seek) {
             on(seek, 'input', () => {
                 const dur = Number(this.audioElement.duration || 0);
                 if (!Number.isFinite(dur) || dur <= 0) return;
@@ -7458,12 +7564,12 @@ class AudioDashboard {
         }
 
         on(this.audioElement, 'timeupdate', update);
-        on(this.audioElement, 'loadedmetadata', update);
-        on(this.audioElement, 'durationchange', update);
-        on(this.audioElement, 'play', update);
-        on(this.audioElement, 'pause', update);
-        update();
-    }
+	        on(this.audioElement, 'loadedmetadata', update);
+	        on(this.audioElement, 'durationchange', update);
+	        on(this.audioElement, 'play', update);
+	        on(this.audioElement, 'pause', update);
+	        update();
+	    }
 
     attachInlineAudioVariantHandlers(container, reportId, audioSrc) {
         const block = container.querySelector('[data-audio-variant]');
