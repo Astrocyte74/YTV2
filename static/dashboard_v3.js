@@ -153,6 +153,9 @@ class AudioDashboard {
         this.viewMode = (localStorage.getItem('ytv2.viewMode') || 'list');
         // Inline expand state
         this.currentExpandedId = null;
+        // Active reader state (for URL popstate sync)
+        this._activeReader = null; // { id, mode, close }
+        this._kaleidoSetVariant = null;
         // Queue persistence key (Phase 3)
         this.queueKey = 'ytv2.queue';
         // Telemetry buffer
@@ -208,6 +211,7 @@ class AudioDashboard {
         // Bottom container removed; mini player is always visible in sidebar
         this.audioPlayerContainer = null;
         this.applyStoredPlaybackRate();
+        this.updatePlaybackRateUi();
 
         // Player controls
         this.playPauseBtn = document.getElementById('playPauseBtn');
@@ -219,6 +223,8 @@ class AudioDashboard {
         this.progressBar = document.getElementById('progressBar');
         this.currentTimeEl = document.getElementById('currentTime');
         this.totalTimeEl = document.getElementById('totalTime');
+        this.playbackRateBtn = document.getElementById('playbackRateBtn');
+        this.miniPlayerCloseBtn = document.getElementById('miniPlayerCloseBtn');
 
         // Mobile mini-player elements
         this.mobileMiniPlayer = document.getElementById('mobileMiniPlayer');
@@ -232,6 +238,8 @@ class AudioDashboard {
         this.mobileCurrentTimeEl = document.getElementById('mobileCurrentTime');
         this.mobileNowPlayingTitle = document.getElementById('mobileNowPlayingTitle');
         this.mobileNowPlayingThumb = document.getElementById('mobileNowPlayingThumb');
+        this.mobilePlaybackRateBtn = document.getElementById('mobilePlaybackRateBtn');
+        this.mobileMiniPlayerCloseBtn = document.getElementById('mobileMiniPlayerCloseBtn');
 
         // Top mini-player (desktop collapsed) elements
         this.topMiniPlayer = document.getElementById('topMiniPlayer');
@@ -386,6 +394,8 @@ class AudioDashboard {
         }
         this.progressContainer.addEventListener('mousedown', (e) => this.beginProgressDrag(e, false));
         if (this.volumeBtn) this.volumeBtn.addEventListener('click', () => this.toggleMute());
+        if (this.playbackRateBtn) this.playbackRateBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.cyclePlaybackRate(); });
+        if (this.miniPlayerCloseBtn) this.miniPlayerCloseBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.showNowPlayingPlaceholder(); });
 
         // Mobile mini-player controls
         if (this.mobilePlayPauseBtn) this.mobilePlayPauseBtn.addEventListener('click', () => this.togglePlayPause());
@@ -407,6 +417,8 @@ class AudioDashboard {
             this.mobileProgressContainer.addEventListener('mousedown', (e) => this.beginProgressDrag(e, true));
             this.mobileProgressContainer.addEventListener('touchstart', (e) => this.beginProgressDrag(e, true), { passive: true });
         }
+        if (this.mobilePlaybackRateBtn) this.mobilePlaybackRateBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.cyclePlaybackRate(); });
+        if (this.mobileMiniPlayerCloseBtn) this.mobileMiniPlayerCloseBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.showNowPlayingPlaceholder(); });
         if (this.settingsToggle) this.settingsToggle.addEventListener('click', (e) => { e.stopPropagation(); this.toggleSettings(); });
         const refreshBtn = document.getElementById('refreshBtn');
         if (refreshBtn) refreshBtn.addEventListener('click', (e) => { e.preventDefault(); try { location.reload(); } catch (_) { window.location.href = window.location.href; } });
@@ -877,6 +889,8 @@ class AudioDashboard {
         }
         // URL hash handling for deep links
         window.addEventListener('hashchange', () => this.onHashChange());
+        // URL state handling for reader deep links (back/forward)
+        window.addEventListener('popstate', () => this.applyHashDeepLink());
         // Telemetry flush on unload/hidden
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden' && this.telemetryBuf && this.telemetryBuf.length) {
@@ -3104,6 +3118,19 @@ class AudioDashboard {
         }
     }
 
+    parseUrlParams() {
+        try {
+            const sp = new URLSearchParams(String(window.location.search || ''));
+            return {
+                read: sp.get('read') || '',
+                variant: (sp.get('variant') || sp.get('v') || '').toLowerCase(),
+                videoId: sp.get('video_id') || sp.get('videoId') || sp.get('video') || ''
+            };
+        } catch (_) {
+            return { read: '', variant: '', videoId: '' };
+        }
+    }
+
     onHashChange() {
         const { report: id } = this.parseHashParams();
         if (id) {
@@ -3115,33 +3142,66 @@ class AudioDashboard {
     }
 
     applyHashDeepLink() {
-        const { report: id, read: readId, variant } = this.parseHashParams();
-        if (id) {
-            if (this.flags.cardExpandInline && this.viewMode !== 'wall') {
-                const card = this.contentGrid.querySelector(`[data-report-id="${id}"]`);
-                if (card) this.expandCardInline(id);
-            }
+        const { report: hashReport, read: hashRead, variant: hashVariant } = this.parseHashParams();
+        const { read: urlRead, variant: urlVariant, videoId } = this.parseUrlParams();
+
+        const desiredVariant = (urlVariant || hashVariant || '').toLowerCase();
+        let targetId = (urlRead || hashRead || '').trim();
+
+        if (!targetId && videoId) {
+            try {
+                const found = (this.currentItems || []).find((x) => String(x?.video_id || x?.videoId || '').trim() === String(videoId).trim());
+                if (found && found.file_stem) targetId = String(found.file_stem);
+            } catch (_) { }
+        }
+
+        if (targetId) {
+            // Store variant so readers can select the correct tab after opening.
+            this._pendingReadVariant = { id: targetId, variant: desiredVariant };
+            // If the reader is already open on the right item, only switch variants.
+            try {
+                if (this._activeReader && this._activeReader.id === targetId && this._kaleidoSetVariant && desiredVariant) {
+                    this._kaleidoSetVariant(desiredVariant);
+                    return;
+                }
+            } catch (_) { }
+            this.handleRead(targetId);
             return;
         }
-        if (readId) {
-            // Store variant so readers can select the correct tab after opening.
-            this._pendingReadVariant = { id: readId, variant: (variant || '').toLowerCase() };
-            const card = this.contentGrid && this.contentGrid.querySelector(`[data-report-id="${CSS.escape(readId)}"]`);
-            this.handleRead(readId, card);
+
+        // No reader state: close any open reader, then handle legacy hash expansion.
+        try {
+            if (this._activeReader && this._activeReader.close) {
+                this._activeReader.close();
+            }
+        } catch (_) { }
+
+        if (hashReport) {
+            if (this.flags.cardExpandInline && this.viewMode !== 'wall') {
+                const card = this.contentGrid.querySelector(`[data-report-id="${hashReport}"]`);
+                if (card) this.expandCardInline(hashReport);
+            }
         }
     }
 
-    setReadDeepLink(reportId, variantId = '', { replace = true } = {}) {
+    setReadDeepLink(reportId, variantId = '', { replace = true, videoId = '' } = {}) {
         try {
             const id = String(reportId || '').trim();
             const v = String(variantId || '').trim().toLowerCase();
-            const nextHash = id ? (() => {
-                const sp = new URLSearchParams();
-                sp.set('read', id);
-                if (v) sp.set('variant', v);
-                return `#${sp.toString()}`;
-            })() : '';
-            const nextUrl = window.location.pathname + window.location.search + nextHash;
+            const vid = String(videoId || '').trim();
+
+            const url = new URL(window.location.href);
+            if (id) url.searchParams.set('read', id);
+            else url.searchParams.delete('read');
+
+            if (v) url.searchParams.set('variant', v);
+            else url.searchParams.delete('variant');
+
+            if (vid) url.searchParams.set('video_id', vid);
+            else url.searchParams.delete('video_id');
+
+            const qs = url.searchParams.toString();
+            const nextUrl = url.pathname + (qs ? `?${qs}` : '') + url.hash;
             if (replace) history.replaceState({}, document.title, nextUrl);
             else history.pushState({}, document.title, nextUrl);
         } catch (_) { }
@@ -3149,10 +3209,21 @@ class AudioDashboard {
 
     clearReadDeepLinkIfMatches(reportId) {
         try {
-            const { read } = this.parseHashParams();
-            if (!read) return;
-            if (String(read) !== String(reportId || '')) return;
-            const nextUrl = window.location.pathname + window.location.search;
+            const id = String(reportId || '').trim();
+            if (!id) return;
+            const url = new URL(window.location.href);
+            const cur = String(url.searchParams.get('read') || '').trim();
+            if (cur && cur !== id) return;
+            if (!cur) {
+                // Back-compat: allow closing when legacy hash read matches.
+                const { read } = this.parseHashParams();
+                if (!read || String(read) !== id) return;
+            }
+            url.searchParams.delete('read');
+            url.searchParams.delete('variant');
+            url.searchParams.delete('video_id');
+            const qs = url.searchParams.toString();
+            const nextUrl = url.pathname + (qs ? `?${qs}` : '') + url.hash;
             history.replaceState({}, document.title, nextUrl);
         } catch (_) { }
     }
@@ -5060,10 +5131,10 @@ class AudioDashboard {
 	            }).join('');
 	        };
 
-		        const setActiveVariant = (variantId) => {
-		            if (!variantId || !variantInfo || !variantInfo.map[variantId]) return;
-		            const entry = variantInfo.map[variantId];
-		            try { this.setReadDeepLink(id, variantId, { replace: true }); } catch (_) { }
+			        const setActiveVariant = (variantId) => {
+			            if (!variantId || !variantInfo || !variantInfo.map[variantId]) return;
+			            const entry = variantInfo.map[variantId];
+			            try { this.setReadDeepLink(id, variantId, { replace: true, videoId: item?.video_id || '' }); } catch (_) { }
 
 		            if (variantsEl) {
 		                variantsEl.querySelectorAll('[data-variant]').forEach((btn) => {
@@ -5092,12 +5163,19 @@ class AudioDashboard {
 		                return;
 		            }
 
-		            body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + (entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>');
-		            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
-		            try { this.enhanceSummaryHtml(body); } catch (_) { }
-		        };
+			            body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + (entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>');
+			            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
+			            try { this.enhanceSummaryHtml(body); } catch (_) { }
+			        };
 
-		        renderVariantControls();
+			        // Allow URL (popstate) to switch variants without reopening the reader.
+			        try {
+			            this._kaleidoSetVariant = (v) => { try { setActiveVariant(String(v || '').toLowerCase()); } catch (_) { } };
+			        } catch (_) {
+			            this._kaleidoSetVariant = null;
+			        }
+
+			        renderVariantControls();
 		        // Deep-link / restore selected variant if requested via hash.
 		        let requestedVariant = '';
 		        try {
@@ -5158,36 +5236,69 @@ class AudioDashboard {
         };
 
 	        // Menu + display + open page
-	        try {
-	            const openBtn = modal.querySelector('[data-action="wall-reader-open-page"]');
-	            const copyBtn = modal.querySelector('[data-action="wall-reader-copy-link"]');
-	            const sourceBtn = modal.querySelector('[data-action="wall-reader-open-source"]');
-	            const displayBtn = modal.querySelector('[data-action="reader-display"]');
-	            const menuBtn = modal.querySelector('[data-action="menu"]');
-	            const menu = modal.querySelector('[data-kebab-menu]');
-	            if (openBtn) {
-	                on(openBtn, 'click', (e) => { e.preventDefault(); window.location.href = `/${encodeURIComponent(id)}.json?v=2`; });
+		        try {
+		            const openBtn = modal.querySelector('[data-action="wall-reader-open-page"]');
+		            const copyBtn = modal.querySelector('[data-action="wall-reader-copy-link"]');
+		            const sourceBtn = modal.querySelector('[data-action="wall-reader-open-source"]');
+		            const youtubeBtn = modal.querySelector('[data-action="wall-reader-open-youtube"]');
+		            const reprocessBtn = modal.querySelector('[data-action="wall-reader-reprocess"]');
+		            const displayBtn = modal.querySelector('[data-action="reader-display"]');
+		            const menuBtn = modal.querySelector('[data-action="menu"]');
+		            const menu = modal.querySelector('[data-kebab-menu]');
+		            if (openBtn) {
+		                on(openBtn, 'click', (e) => { e.preventDefault(); window.location.href = `/${encodeURIComponent(id)}.json?v=2`; });
 	            }
-	            if (copyBtn) {
-	                on(copyBtn, 'click', (e) => { e.preventDefault(); e.stopPropagation(); this.copyLink(card || modal, id); });
-	            }
-	            if (sourceBtn) {
-	                const slug = (item.content_source || 'youtube').toString().toLowerCase();
-	                const label = slug === 'youtube' ? 'YouTube' : (slug === 'reddit' ? 'Reddit' : 'Source');
-	                sourceBtn.textContent = label;
-	                const canOpen = (slug === 'youtube') ? Boolean(item.video_id) : Boolean(item.canonical_url);
-	                sourceBtn.disabled = !canOpen;
-	                sourceBtn.classList.toggle('opacity-50', !canOpen);
-	                sourceBtn.classList.toggle('cursor-not-allowed', !canOpen);
-	                on(sourceBtn, 'click', (e) => {
-	                    e.preventDefault();
-	                    e.stopPropagation();
-	                    this.openSourceLink(slug, item.video_id, item.canonical_url);
-	                });
-	            }
-	            if (displayBtn) {
-	                on(displayBtn, 'click', (e) => { e.preventDefault(); e.stopPropagation(); this.openReaderDisplayPopover(modal, body, displayBtn); });
-	            }
+		            if (copyBtn) {
+		                on(copyBtn, 'click', (e) => { e.preventDefault(); e.stopPropagation(); this.copyLink(card || modal, id); });
+		            }
+		            const slug = (item.content_source || 'youtube').toString().toLowerCase();
+		            const canYoutube = Boolean(item.video_id);
+
+		            if (youtubeBtn) {
+		                youtubeBtn.classList.toggle('hidden', !canYoutube);
+		                youtubeBtn.disabled = !canYoutube;
+		                youtubeBtn.classList.toggle('opacity-50', !canYoutube);
+		                youtubeBtn.classList.toggle('cursor-not-allowed', !canYoutube);
+		                on(youtubeBtn, 'click', (e) => {
+		                    e.preventDefault();
+		                    e.stopPropagation();
+		                    if (!canYoutube) return;
+		                    this.openYoutube(item.video_id);
+		                });
+		            }
+
+		            if (sourceBtn) {
+		                // For YouTube sources we show a dedicated YouTube button, so Source is reserved for canonical links.
+		                const canOpen = slug !== 'youtube' ? Boolean(item.canonical_url) : false;
+		                const label = slug === 'reddit' ? 'Reddit' : 'Source';
+		                sourceBtn.textContent = label;
+		                sourceBtn.classList.toggle('hidden', slug === 'youtube');
+		                sourceBtn.disabled = !canOpen;
+		                sourceBtn.classList.toggle('opacity-50', !canOpen);
+		                sourceBtn.classList.toggle('cursor-not-allowed', !canOpen);
+		                on(sourceBtn, 'click', (e) => {
+		                    e.preventDefault();
+		                    e.stopPropagation();
+		                    if (!canOpen) return;
+		                    this.openSourceLink(slug, item.video_id, item.canonical_url);
+		                });
+		            }
+
+		            if (reprocessBtn) {
+		                reprocessBtn.classList.toggle('hidden', !canYoutube);
+		                reprocessBtn.disabled = !canYoutube;
+		                reprocessBtn.classList.toggle('opacity-50', !canYoutube);
+		                reprocessBtn.classList.toggle('cursor-not-allowed', !canYoutube);
+		                on(reprocessBtn, 'click', (e) => {
+		                    e.preventDefault();
+		                    e.stopPropagation();
+		                    if (!canYoutube) return;
+		                    this.openReprocessModal(id, card || modal, item);
+		                });
+		            }
+		            if (displayBtn) {
+		                on(displayBtn, 'click', (e) => { e.preventDefault(); e.stopPropagation(); this.openReaderDisplayPopover(modal, body, displayBtn); });
+		            }
 	            if (menuBtn && menu) {
                 menu.classList.add('hidden');
                 on(menuBtn, 'click', (e) => { e.stopPropagation(); this.toggleKebabMenu(modal, true, menuBtn); });
@@ -5453,9 +5564,13 @@ class AudioDashboard {
             }
         } catch (_) { }
 
-	        const close = () => {
-	            try { this.clearReadDeepLinkIfMatches(id); } catch (_) { }
-	            const targetRect = (this._kaleidoOriginCard || card || (grid && grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`)))?.getBoundingClientRect();
+		        const close = () => {
+		            try {
+		                if (this._activeReader && this._activeReader.id === id) this._activeReader = null;
+		                this._kaleidoSetVariant = null;
+		            } catch (_) { }
+		            try { this.clearReadDeepLinkIfMatches(id); } catch (_) { }
+		            const targetRect = (this._kaleidoOriginCard || card || (grid && grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`)))?.getBoundingClientRect();
 	            if (sheet && targetRect) {
 	                const rectNow = sheet.getBoundingClientRect();
 	                const dx = targetRect.left - rectNow.left;
@@ -5483,13 +5598,16 @@ class AudioDashboard {
                 modal.classList.remove('kaleido-visible');
                 if (sheet) { sheet.style.transform = ''; sheet.style.opacity = ''; sheet.style.transition = ''; }
             }, 210);
-            this.sendTelemetry('read_close', { id, view: 'wall' });
-        };
+		            this.sendTelemetry('read_close', { id, view: 'wall' });
+		        };
 
-        const onEsc = (e) => {
-            if (e.key === 'Escape') return close();
-            if (e.key === 'ArrowRight') return goByOffset(1);
-            if (e.key === 'ArrowLeft') return goByOffset(-1);
+		        // Track the open reader so URL popstate can close/switch.
+		        try { this._activeReader = { id, mode: 'modal', close }; } catch (_) { }
+
+	        const onEsc = (e) => {
+	            if (e.key === 'Escape') return close();
+	            if (e.key === 'ArrowRight') return goByOffset(1);
+	            if (e.key === 'ArrowLeft') return goByOffset(-1);
         };
         const onBackdrop = (e) => { if (e.target === backdrop) close(); };
 
@@ -5524,15 +5642,19 @@ class AudioDashboard {
                 sheet.style.opacity = '1';
                 sheet.style.transform = 'scale(1)';
             }
-        } else if (sheet) {
-            sheet.style.opacity = '1';
-            sheet.style.transform = 'translate(0, 0) scale(1)';
-        }
+	        } else if (sheet) {
+	            sheet.style.opacity = '1';
+	            sheet.style.transform = 'translate(0, 0) scale(1)';
+	        }
 
-	        this._kaleidoOriginCard = card || this._kaleidoOriginCard;
-	        try { this.setReadDeepLink(id, defaultVariant || '', { replace: true }); } catch (_) { }
-	        this.sendTelemetry('read_open', { id, view: 'wall' });
-	    }
+		        this._kaleidoOriginCard = card || this._kaleidoOriginCard;
+		        try {
+		            const cur = (this.parseUrlParams && this.parseUrlParams().read) ? String(this.parseUrlParams().read) : '';
+		            const replace = cur === String(id);
+		            this.setReadDeepLink(id, defaultVariant || '', { replace, videoId: item?.video_id || '' });
+		        } catch (_) { }
+		        this.sendTelemetry('read_open', { id, view: 'wall' });
+		    }
 
     openWallRowReader(id, cardEl) {
         const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
@@ -5543,6 +5665,7 @@ class AudioDashboard {
             // Toggle: clicking again on same item collapses
             prev.parentElement.removeChild(prev);
             try { cardEl.classList.remove('wall-card--selected'); } catch (_) { }
+            try { if (this._activeReader && this._activeReader.id === id) this._activeReader = null; } catch (_) { }
             // When the inline reader is fully closed, drop the global flag
             try { document.body.classList.remove('wall-reader-open'); } catch (_) { }
             try { this.clearReadDeepLinkIfMatches(id); } catch (_) { }
@@ -5583,18 +5706,20 @@ class AudioDashboard {
         }
         section.style.overflow = 'hidden';
         section.style.height = '0px';
-	        section.innerHTML = `
-	            <div class="wall-expander__header">
-	                <div class="flex items-center gap-3">
-	                    ${imgSrc ? `<img class="wall-expander__thumb" alt="" src="${imgSrc}">` : ''}
-	                    <h4 class="wall-expander__title">${this.escapeHtml(item.title || 'Summary')}</h4>
-	                </div>
-	                <div class="flex items-center gap-2">
-	                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-source" title="Open source">Source</button>
-	                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-copy-link" title="Copy link">Copy</button>
-	                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-playback-rate title="Playback speed">${this.formatPlaybackRate(this.getEffectivePlaybackRate())}</button>
-	                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="reader-display" title="Display options" aria-haspopup="dialog" aria-expanded="false">Aa</button>
-	                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-page" title="Open page">Open</button>
+		        section.innerHTML = `
+		            <div class="wall-expander__header">
+		                <div class="flex items-center gap-3">
+		                    ${imgSrc ? `<img class="wall-expander__thumb" alt="" src="${imgSrc}">` : ''}
+		                    <h4 class="wall-expander__title">${this.escapeHtml(item.title || 'Summary')}</h4>
+		                </div>
+		                <div class="flex items-center gap-2">
+		                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-source" title="Open source">Source</button>
+		                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-youtube" title="Open on YouTube">YouTube</button>
+		                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-copy-link" title="Copy link">Copy</button>
+		                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-reprocess" title="Reprocess">Reprocess</button>
+		                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-playback-rate title="Playback speed">${this.formatPlaybackRate(this.getEffectivePlaybackRate())}</button>
+		                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="reader-display" title="Display options" aria-haspopup="dialog" aria-expanded="false">Aa</button>
+		                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-page" title="Open page">Open</button>
 	                    <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
 	                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
 	                            <circle cx="5" cy="12" r="1.5"></circle>
@@ -5617,7 +5742,11 @@ class AudioDashboard {
             <div class="prose prose-sm dark:prose-invert max-w-none" data-summary-body>${this.renderWallReaderSection(item)}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
-        try { this.setReadDeepLink(id, '', { replace: true }); } catch (_) { }
+        try {
+            const cur = (this.parseUrlParams && this.parseUrlParams().read) ? String(this.parseUrlParams().read) : '';
+            const replace = cur === String(id);
+            this.setReadDeepLink(id, '', { replace, videoId: item?.video_id || '' });
+        } catch (_) { }
         // Animate open height
         requestAnimationFrame(() => {
             const full = section.scrollHeight;
@@ -5668,34 +5797,65 @@ class AudioDashboard {
             this._wallConnectorHandlers.forEach(h => window.addEventListener(h.type, h.fn, h.opts));
         } catch (_) { }
 	        const closeBtn = section.querySelector('[data-action="wall-reader-close"]');
-	        const displayBtn = section.querySelector('[data-action="reader-display"]');
-	        const openBtn = section.querySelector('[data-action="wall-reader-open-page"]');
-	        const copyBtn = section.querySelector('[data-action="wall-reader-copy-link"]');
-	        const sourceBtn = section.querySelector('[data-action="wall-reader-open-source"]');
-	        const speedBtn = section.querySelector('[data-playback-rate]');
-	        const menuBtn = section.querySelector('[data-action="menu"]');
+		        const displayBtn = section.querySelector('[data-action="reader-display"]');
+		        const openBtn = section.querySelector('[data-action="wall-reader-open-page"]');
+		        const copyBtn = section.querySelector('[data-action="wall-reader-copy-link"]');
+		        const sourceBtn = section.querySelector('[data-action="wall-reader-open-source"]');
+		        const youtubeBtn = section.querySelector('[data-action="wall-reader-open-youtube"]');
+		        const reprocessBtn = section.querySelector('[data-action="wall-reader-reprocess"]');
+		        const speedBtn = section.querySelector('[data-playback-rate]');
+		        const menuBtn = section.querySelector('[data-action="menu"]');
 	        // Mirror Kaleido top actions (Copy / Source / Playback speed)
-	        try {
-	            if (copyBtn) {
-	                copyBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.copyLink(cardEl, id); });
-	            }
-	            if (sourceBtn) {
-	                const slug = (item.content_source || 'youtube').toString().toLowerCase();
-	                const label = slug === 'youtube' ? 'YouTube' : (slug === 'reddit' ? 'Reddit' : 'Source');
-	                sourceBtn.textContent = label;
-	                const canOpen = (slug === 'youtube') ? Boolean(item.video_id) : Boolean(item.canonical_url);
-	                sourceBtn.disabled = !canOpen;
-	                sourceBtn.classList.toggle('opacity-50', !canOpen);
-	                sourceBtn.classList.toggle('cursor-not-allowed', !canOpen);
-	                sourceBtn.addEventListener('click', (e) => {
-	                    e.preventDefault();
-	                    e.stopPropagation();
-	                    this.openSourceLink(slug, item.video_id, item.canonical_url);
-	                });
-	            }
-	            if (speedBtn) {
-	                this.updatePlaybackRateUi(section);
-	                speedBtn.addEventListener('click', (e) => {
+		        try {
+		            if (copyBtn) {
+		                copyBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.copyLink(cardEl, id); });
+		            }
+		            if (sourceBtn) {
+		                const slug = (item.content_source || 'youtube').toString().toLowerCase();
+		                const canYoutube = Boolean(item.video_id);
+		                const canSource = slug !== 'youtube' ? Boolean(item.canonical_url) : false;
+		                const label = slug === 'reddit' ? 'Reddit' : 'Source';
+		                sourceBtn.textContent = label;
+		                sourceBtn.classList.toggle('hidden', slug === 'youtube');
+		                sourceBtn.disabled = !canSource;
+		                sourceBtn.classList.toggle('opacity-50', !canSource);
+		                sourceBtn.classList.toggle('cursor-not-allowed', !canSource);
+		                sourceBtn.addEventListener('click', (e) => {
+		                    e.preventDefault();
+		                    e.stopPropagation();
+		                    if (!canSource) return;
+		                    this.openSourceLink(slug, item.video_id, item.canonical_url);
+		                });
+
+		                if (youtubeBtn) {
+		                    youtubeBtn.classList.toggle('hidden', !canYoutube);
+		                    youtubeBtn.disabled = !canYoutube;
+		                    youtubeBtn.classList.toggle('opacity-50', !canYoutube);
+		                    youtubeBtn.classList.toggle('cursor-not-allowed', !canYoutube);
+		                    youtubeBtn.addEventListener('click', (e) => {
+		                        e.preventDefault();
+		                        e.stopPropagation();
+		                        if (!canYoutube) return;
+		                        this.openYoutube(item.video_id);
+		                    });
+		                }
+
+		                if (reprocessBtn) {
+		                    reprocessBtn.classList.toggle('hidden', !canYoutube);
+		                    reprocessBtn.disabled = !canYoutube;
+		                    reprocessBtn.classList.toggle('opacity-50', !canYoutube);
+		                    reprocessBtn.classList.toggle('cursor-not-allowed', !canYoutube);
+		                    reprocessBtn.addEventListener('click', (e) => {
+		                        e.preventDefault();
+		                        e.stopPropagation();
+		                        if (!canYoutube) return;
+		                        this.openReprocessModal(id, cardEl, item);
+		                    });
+		                }
+		            }
+		            if (speedBtn) {
+		                this.updatePlaybackRateUi(section);
+		                speedBtn.addEventListener('click', (e) => {
 	                    e.preventDefault();
 	                    e.stopPropagation();
 	                    this.cyclePlaybackRate();
@@ -5735,6 +5895,7 @@ class AudioDashboard {
             }
         } catch (_) { }
         const onClose = () => {
+            try { if (this._activeReader && this._activeReader.id === id) this._activeReader = null; } catch (_) { }
             if (!section || !section.parentElement) return;
             // Animate collapse
             section.style.overflow = 'hidden';
@@ -5762,6 +5923,7 @@ class AudioDashboard {
             this.sendTelemetry('read_close', { id, view: 'wall' });
             try { cardEl.classList.remove('wall-card--selected'); } catch (_) { }
         };
+        try { this._activeReader = { id, mode: 'inline', close: onClose }; } catch (_) { }
         const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
         const onArrow = (e) => {
             if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
