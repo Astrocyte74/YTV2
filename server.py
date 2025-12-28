@@ -1227,6 +1227,20 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         if not chosen_default:
             chosen_default = hinted or ('comprehensive' if 'comprehensive' in avail_ids else ('bullet-points' if 'bullet-points' in avail_ids else (next(iter(avail_ids)) if avail_ids else 'comprehensive')))
 
+        source_url = video.get("url") or report_data.get("url") or report_data.get("canonical_url", "")
+        canonical_url = report_data.get("canonical_url", "") or ""
+        content_source = (report_data.get("content_source") or report_data.get("source") or "").strip().lower()
+        try:
+            url_for_infer = (canonical_url or source_url or "").lower()
+            if not content_source:
+                if "reddit.com" in url_for_infer:
+                    content_source = "reddit"
+                elif "youtube.com" in url_for_infer or "youtu.be" in url_for_infer:
+                    content_source = "youtube"
+        except Exception:
+            pass
+        source_label = "YouTube" if content_source == "youtube" else ("Reddit" if content_source == "reddit" else "Source")
+
         return {
             "title": title,
             "thumbnail": thumbnail,
@@ -1249,7 +1263,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             "summary_html": summary_html,
             "vocabulary": vocabulary,
             "back_url": "/",
-            "youtube_url": video.get("url") or report_data.get("url") or report_data.get("canonical_url", ""),
+            # Back-compat: historically misnamed; this is the "open source" URL (YouTube, Reddit, etc.)
+            "youtube_url": source_url,
+            "source_url": source_url,
+            "source_label": source_label,
+            "content_source": content_source,
+            "canonical_url": canonical_url,
             "video_id": video_id,
             "report_id": report_data.get('file_stem') or report_data.get('id') or video_id,
             "deployment_commit": COMMIT_SHA,

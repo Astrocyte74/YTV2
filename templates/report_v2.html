@@ -66,13 +66,47 @@
             <span id="themeText">Theme</span>
           </button>
         </div>
-        <a href="{{ youtube_url }}" target="_blank" rel="noopener"
-           class="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">
-          <svg class="size-4" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-          </svg>
-          YouTube
-        </a>
+        {% set open_url = source_url or youtube_url or '' %}
+        {% if not open_url and video_id %}
+          {% set open_url = "https://www.youtube.com/watch?v=" ~ video_id %}
+        {% endif %}
+        {% set open_label = source_label or '' %}
+        {% set open_kind = (content_source or '') %}
+        {% if not open_kind %}
+          {% set u = (open_url|string)|lower %}
+          {% if 'reddit.com' in u %}
+            {% set open_kind = 'reddit' %}
+          {% elif 'youtube.com' in u or 'youtu.be' in u %}
+            {% set open_kind = 'youtube' %}
+          {% else %}
+            {% set open_kind = 'source' %}
+          {% endif %}
+        {% endif %}
+        {% if not open_label %}
+          {% if open_kind == 'youtube' %}
+            {% set open_label = 'YouTube' %}
+          {% elif open_kind == 'reddit' %}
+            {% set open_label = 'Reddit' %}
+          {% else %}
+            {% set open_label = 'Source' %}
+          {% endif %}
+        {% endif %}
+        {% if open_url %}
+          <a href="{{ open_url }}" target="_blank" rel="noopener"
+             class="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">
+            {% if open_kind == 'youtube' %}
+              <svg class="size-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+              </svg>
+            {% else %}
+              <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H19m0 0v5.5M19 6l-7 7"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M10 7H7.5A2.5 2.5 0 0 0 5 9.5v7A2.5 2.5 0 0 0 7.5 19h7A2.5 2.5 0 0 0 17 16.5V14"/>
+              </svg>
+            {% endif %}
+            {{ open_label }}
+          </a>
+        {% endif %}
         {% if video_id %}
         <button id="reprocessBtn"
            data-video-id="{{ video_id }}"
