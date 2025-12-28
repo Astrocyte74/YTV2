@@ -5613,7 +5613,7 @@ class AudioDashboard {
                     </button>
                 </div>
             </div>
-            ${this.renderReaderMetaBlock(item, { open: true })}
+            ${this.renderReaderMetaBlock(item, { open: false })}
             <div class="prose prose-sm dark:prose-invert max-w-none" data-summary-body>${this.renderWallReaderSection(item)}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
