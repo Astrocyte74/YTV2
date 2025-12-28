@@ -3203,7 +3203,7 @@ class AudioDashboard {
         return uniq;
     }
 
-    renderReaderMetaBlock(item, { open = false } = {}) {
+    renderReaderMetaBlock(item, { open = true } = {}) {
         if (!item) return '';
         const channel = (item.channel_name || item.channel || '').toString().trim();
         const hasAudio = this.itemHasAudio ? this.itemHasAudio(item) : false;
@@ -3212,36 +3212,83 @@ class AudioDashboard {
         const fmt = (sec) => {
             try { return this.formatDuration(sec); } catch (_) { return ''; }
         };
-        const parts = [];
-        if (channel) parts.push(channel);
-        if (videoDur > 0) parts.push(`Video ${fmt(videoDur)}`);
-        if (hasAudio && audioDur > 0) parts.push(`Audio ${fmt(audioDur)}`);
-        const summary = parts.length ? parts.join(' • ') : 'Channel, duration, categories, topics';
+        const summaryParts = [];
+        if (channel) summaryParts.push(channel);
+        if (videoDur > 0) summaryParts.push(`Video ${fmt(videoDur)}`);
+        if (hasAudio && audioDur > 0) summaryParts.push(`Audio ${fmt(audioDur)}`);
+        const summary = summaryParts.length ? summaryParts.join(' • ') : '';
 
-        const pill = (text) => `<span class="inline-flex items-center gap-1 rounded-full border border-slate-200/70 bg-white/70 px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-white/20 dark:bg-white/10 dark:text-slate-100/90">${this.escapeHtml(text)}</span>`;
         const cat = this.extractCatsAndSubcats ? this.extractCatsAndSubcats(item) : { categories: [], subcatPairs: [] };
         const categories = Array.isArray(cat.categories) ? cat.categories : [];
         const subcatPairs = Array.isArray(cat.subcatPairs) ? cat.subcatPairs : [];
         const topics = this.extractTopics(item);
 
-        const catChips = categories.slice(0, 5).map(pill).join('');
-        const subChips = subcatPairs.slice(0, 7).map(([, s]) => pill(s)).join('');
-        const topicChips = topics.slice(0, 10).map(pill).join('');
+        const maxCats = 10;
+        const maxSubs = 12;
+        const maxTopics = 14;
 
-        const extraCounts = [];
-        if (categories.length > 5) extraCounts.push(`${categories.length - 5} more categories`);
-        if (subcatPairs.length > 7) extraCounts.push(`${subcatPairs.length - 7} more subcategories`);
-        if (topics.length > 10) extraCounts.push(`${topics.length - 10} more topics`);
-        const moreLine = extraCounts.length ? `<div class="mt-2 text-[11px] text-slate-500 dark:text-slate-200/70">${this.escapeHtml('+' + extraCounts.join(', '))}</div>` : '';
+        const chip = (text, tone) => {
+            const base = 'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium';
+            const toneCls = tone === 'blue'
+                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                : tone === 'purple'
+                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                    : tone === 'green'
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                        : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200';
+            return `<span class="${base} ${toneCls}">${this.escapeHtml(text)}</span>`;
+        };
+
+        const catChips = categories.slice(0, maxCats).map((c) => chip(c, 'blue')).join('');
+        const subChips = subcatPairs.slice(0, maxSubs).map(([, s]) => chip(s, 'purple')).join('');
+        const topicChips = topics.slice(0, maxTopics).map((t) => chip(t, 'green')).join('');
+
+        const moreBits = [];
+        if (categories.length > maxCats) moreBits.push(chip(`+${categories.length - maxCats} more`, 'slate'));
+        if (subcatPairs.length > maxSubs) moreBits.push(chip(`+${subcatPairs.length - maxSubs} more`, 'slate'));
+        if (topics.length > maxTopics) moreBits.push(chip(`+${topics.length - maxTopics} more`, 'slate'));
+
+        const value = (text) => `<span class="font-medium text-slate-900 dark:text-slate-100">${this.escapeHtml(text)}</span>`;
+        const chipsWrap = (html) => (html ? `<div class="flex flex-wrap gap-1">${html}</div>` : '');
+
+        const row = (icon, label, bodyHtml, { span = 1 } = {}) => {
+            if (!bodyHtml) return '';
+            const spanCls = span === 2 ? 'md:col-span-2' : '';
+            return `
+              <div class="flex items-center gap-2 ${spanCls}">
+                <span class="text-slate-400">${icon}</span>
+                <span class="text-slate-600 dark:text-slate-400">${this.escapeHtml(label)}</span>
+                ${bodyHtml}
+              </div>
+            `;
+        };
+
+        const channelRow = channel ? row('📺', 'Channel', value(channel)) : '';
+        const videoDurRow = (videoDur > 0) ? row('🎬', 'Video Duration', value(fmt(videoDur))) : '';
+        const audioDurRow = (hasAudio && audioDur > 0) ? row('🎵', 'Audio Duration', value(fmt(audioDur))) : '';
+        const catsRow = row('🏷️', 'Categories', chipsWrap(catChips + moreBits.join('')), { span: 2 });
+        const subsRow = row('📋', 'Subcategories', chipsWrap(subChips), { span: 2 });
+        const topicsRow = row('🔖', 'Key Topics', chipsWrap(topicChips), { span: 2 });
+
+        const anyRows = !!(channelRow || videoDurRow || audioDurRow || catChips || subChips || topicChips);
+        if (!anyRows) return '';
 
         return `
-          <details class="not-prose mt-3 rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-100/90" ${open ? 'open' : ''} data-reader-meta>
-            <summary class="cursor-pointer select-none text-sm font-semibold">${this.escapeHtml('Details')}<span class="ml-2 text-xs font-normal text-slate-500 dark:text-slate-200/70">${this.escapeHtml(summary)}</span></summary>
-            <div class="mt-2 space-y-2">
-              ${channel ? `<div class="flex flex-wrap gap-1.5">${pill(`Channel: ${channel}`)}</div>` : ''}
-              ${(catChips || subChips) ? `<div class="flex flex-wrap gap-1.5">${catChips}${subChips}</div>` : ''}
-              ${topicChips ? `<div class="flex flex-wrap gap-1.5">${topicChips}</div>` : ''}
-              ${moreLine}
+          <details class="reader-meta not-prose mt-3 rounded-lg border border-slate-200 bg-slate-50/50 p-3 dark:border-slate-700 dark:bg-slate-800/80" ${open ? 'open' : ''} data-reader-meta>
+            <summary class="reader-meta__summary flex items-center justify-between gap-3 cursor-pointer select-none">
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="text-base font-semibold text-slate-900 dark:text-slate-100">Details</span>
+                ${summary ? `<span class="truncate text-sm text-slate-600 dark:text-slate-300">${this.escapeHtml(summary)}</span>` : ''}
+              </div>
+              <span class="text-slate-500 dark:text-slate-300 transition-transform" data-reader-meta-chevron>▾</span>
+            </summary>
+            <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+              ${channelRow}
+              ${videoDurRow}
+              ${audioDurRow}
+              ${catsRow}
+              ${subsRow}
+              ${topicsRow}
             </div>
           </details>
         `;
@@ -5566,7 +5613,7 @@ class AudioDashboard {
                     </button>
                 </div>
             </div>
-            ${this.renderReaderMetaBlock(item, { open: false })}
+            ${this.renderReaderMetaBlock(item, { open: true })}
             <div class="prose prose-sm dark:prose-invert max-w-none" data-summary-body>${this.renderWallReaderSection(item)}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
