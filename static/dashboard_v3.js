@@ -3070,13 +3070,42 @@ class AudioDashboard {
     }
 
     parseHash() {
-        const h = window.location.hash || '';
-        const m = h.match(/^#report=([^&]+)/);
-        return m ? decodeURIComponent(m[1]) : '';
+        const params = this.parseHashParams();
+        return params.report || '';
+    }
+
+    parseHashParams() {
+        const hash = String(window.location.hash || '');
+        if (!hash || hash === '#') return { report: '', read: '', variant: '' };
+        // Back-compat: #read=<id> (optionally with &variant=...)
+        if (hash.startsWith('#read=')) {
+            try {
+                const sp = new URLSearchParams(hash.slice(1));
+                return {
+                    report: sp.get('report') || '',
+                    read: sp.get('read') || '',
+                    variant: (sp.get('variant') || sp.get('v') || '').toLowerCase()
+                };
+            } catch (_) {
+                const rid = decodeURIComponent(hash.slice('#read='.length).split('&')[0] || '');
+                return { report: '', read: rid, variant: '' };
+            }
+        }
+        // Default: treat the fragment as a querystring (e.g. #report=..., #read=..., etc)
+        try {
+            const sp = new URLSearchParams(hash.slice(1));
+            return {
+                report: sp.get('report') || '',
+                read: sp.get('read') || '',
+                variant: (sp.get('variant') || sp.get('v') || '').toLowerCase()
+            };
+        } catch (_) {
+            return { report: '', read: '', variant: '' };
+        }
     }
 
     onHashChange() {
-        const id = this.parseHash();
+        const { report: id } = this.parseHashParams();
         if (id) {
             this.expandCardInline(id);
         } else if (this.currentExpandedId) {
@@ -3086,7 +3115,7 @@ class AudioDashboard {
     }
 
     applyHashDeepLink() {
-        const id = this.parseHash();
+        const { report: id, read: readId, variant } = this.parseHashParams();
         if (id) {
             if (this.flags.cardExpandInline && this.viewMode !== 'wall') {
                 const card = this.contentGrid.querySelector(`[data-report-id="${id}"]`);
@@ -3094,14 +3123,128 @@ class AudioDashboard {
             }
             return;
         }
-        const hash = String(window.location.hash || '');
-        if (hash.startsWith('#read=')) {
-            const rid = decodeURIComponent(hash.slice('#read='.length));
-            if (rid) {
-                const card = this.contentGrid && this.contentGrid.querySelector(`[data-report-id="${CSS.escape(rid)}"]`);
-                this.handleRead(rid, card);
-            }
+        if (readId) {
+            // Store variant so readers can select the correct tab after opening.
+            this._pendingReadVariant = { id: readId, variant: (variant || '').toLowerCase() };
+            const card = this.contentGrid && this.contentGrid.querySelector(`[data-report-id="${CSS.escape(readId)}"]`);
+            this.handleRead(readId, card);
         }
+    }
+
+    setReadDeepLink(reportId, variantId = '', { replace = true } = {}) {
+        try {
+            const id = String(reportId || '').trim();
+            const v = String(variantId || '').trim().toLowerCase();
+            const nextHash = id ? (() => {
+                const sp = new URLSearchParams();
+                sp.set('read', id);
+                if (v) sp.set('variant', v);
+                return `#${sp.toString()}`;
+            })() : '';
+            const nextUrl = window.location.pathname + window.location.search + nextHash;
+            if (replace) history.replaceState({}, document.title, nextUrl);
+            else history.pushState({}, document.title, nextUrl);
+        } catch (_) { }
+    }
+
+    clearReadDeepLinkIfMatches(reportId) {
+        try {
+            const { read } = this.parseHashParams();
+            if (!read) return;
+            if (String(read) !== String(reportId || '')) return;
+            const nextUrl = window.location.pathname + window.location.search;
+            history.replaceState({}, document.title, nextUrl);
+        } catch (_) { }
+    }
+
+    extractTopics(item) {
+        const out = [];
+        const push = (v) => {
+            const s = (v == null) ? '' : String(v).trim();
+            if (!s) return;
+            out.push(s);
+        };
+        const readArray = (arr) => {
+            if (!Array.isArray(arr)) return;
+            arr.forEach(push);
+        };
+        try {
+            const raw = item?.topics_json ?? item?.topics ?? item?.analysis?.topics ?? item?.analysis?.key_topics ?? null;
+            if (typeof raw === 'string') {
+                try {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) readArray(parsed);
+                    else if (parsed && typeof parsed === 'object') {
+                        readArray(parsed.key_topics);
+                        readArray(parsed.topics);
+                        readArray(parsed.named_entities);
+                    }
+                } catch {
+                    // tolerate comma-separated strings
+                    raw.split(',').forEach(push);
+                }
+            } else if (Array.isArray(raw)) {
+                readArray(raw);
+            } else if (raw && typeof raw === 'object') {
+                readArray(raw.key_topics);
+                readArray(raw.topics);
+                readArray(raw.named_entities);
+            }
+        } catch (_) { }
+        const uniq = [];
+        const seen = new Set();
+        out.forEach((s) => {
+            if (!s) return;
+            const k = s.toLowerCase();
+            if (seen.has(k)) return;
+            seen.add(k);
+            uniq.push(s);
+        });
+        return uniq;
+    }
+
+    renderReaderMetaBlock(item, { open = false } = {}) {
+        if (!item) return '';
+        const channel = (item.channel_name || item.channel || '').toString().trim();
+        const hasAudio = this.itemHasAudio ? this.itemHasAudio(item) : false;
+        const videoDur = Number(item?.media_metadata?.video_duration_seconds || item?.duration_seconds || 0);
+        const audioDur = Number(item?.media_metadata?.mp3_duration_seconds || 0);
+        const fmt = (sec) => {
+            try { return this.formatDuration(sec); } catch (_) { return ''; }
+        };
+        const parts = [];
+        if (channel) parts.push(channel);
+        if (videoDur > 0) parts.push(`Video ${fmt(videoDur)}`);
+        if (hasAudio && audioDur > 0) parts.push(`Audio ${fmt(audioDur)}`);
+        const summary = parts.length ? parts.join(' • ') : 'Channel, duration, categories, topics';
+
+        const pill = (text) => `<span class="inline-flex items-center gap-1 rounded-full border border-slate-200/70 bg-white/70 px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-white/20 dark:bg-white/10 dark:text-slate-100/90">${this.escapeHtml(text)}</span>`;
+        const cat = this.extractCatsAndSubcats ? this.extractCatsAndSubcats(item) : { categories: [], subcatPairs: [] };
+        const categories = Array.isArray(cat.categories) ? cat.categories : [];
+        const subcatPairs = Array.isArray(cat.subcatPairs) ? cat.subcatPairs : [];
+        const topics = this.extractTopics(item);
+
+        const catChips = categories.slice(0, 5).map(pill).join('');
+        const subChips = subcatPairs.slice(0, 7).map(([, s]) => pill(s)).join('');
+        const topicChips = topics.slice(0, 10).map(pill).join('');
+
+        const extraCounts = [];
+        if (categories.length > 5) extraCounts.push(`${categories.length - 5} more categories`);
+        if (subcatPairs.length > 7) extraCounts.push(`${subcatPairs.length - 7} more subcategories`);
+        if (topics.length > 10) extraCounts.push(`${topics.length - 10} more topics`);
+        const moreLine = extraCounts.length ? `<div class="mt-2 text-[11px] text-slate-500 dark:text-slate-200/70">${this.escapeHtml('+' + extraCounts.join(', '))}</div>` : '';
+
+        return `
+          <details class="not-prose mt-3 rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-100/90" ${open ? 'open' : ''} data-reader-meta>
+            <summary class="cursor-pointer select-none text-sm font-semibold">${this.escapeHtml('Details')}<span class="ml-2 text-xs font-normal text-slate-500 dark:text-slate-200/70">${this.escapeHtml(summary)}</span></summary>
+            <div class="mt-2 space-y-2">
+              ${channel ? `<div class="flex flex-wrap gap-1.5">${pill(`Channel: ${channel}`)}</div>` : ''}
+              ${(catChips || subChips) ? `<div class="flex flex-wrap gap-1.5">${catChips}${subChips}</div>` : ''}
+              ${topicChips ? `<div class="flex flex-wrap gap-1.5">${topicChips}</div>` : ''}
+              ${moreLine}
+            </div>
+          </details>
+        `;
     }
 
     toggleDeletePopover(card, show) {
@@ -4870,13 +5013,14 @@ class AudioDashboard {
 	            }).join('');
 	        };
 
-	        const setActiveVariant = (variantId) => {
-	            if (!variantId || !variantInfo || !variantInfo.map[variantId]) return;
-	            const entry = variantInfo.map[variantId];
+		        const setActiveVariant = (variantId) => {
+		            if (!variantId || !variantInfo || !variantInfo.map[variantId]) return;
+		            const entry = variantInfo.map[variantId];
+		            try { this.setReadDeepLink(id, variantId, { replace: true }); } catch (_) { }
 
-	            if (variantsEl) {
-	                variantsEl.querySelectorAll('[data-variant]').forEach((btn) => {
-	                    const isActive = btn.getAttribute('data-variant') === variantId;
+		            if (variantsEl) {
+		                variantsEl.querySelectorAll('[data-variant]').forEach((btn) => {
+		                    const isActive = btn.getAttribute('data-variant') === variantId;
 	                    btn.classList.toggle('bg-audio-500', isActive);
 	                    btn.classList.toggle('text-white', isActive);
 	                    btn.classList.toggle('border-transparent', isActive);
@@ -4891,41 +5035,53 @@ class AudioDashboard {
 	                variantsEl.dataset.currentVariant = variantId;
 	            }
 
-	            if (entry.kind === 'audio') {
-	                const reportId = variantInfo.reportId || id;
-	                const audioSrc = entry.audioSrc || variantInfo.audioSrc || null;
-	                body.innerHTML = this.renderInlineAudioVariant(reportId, entry, audioSrc);
-	                this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
-	                this.bindKaleidoInlineAudioControls(body, on);
-	                this.refreshAudioVariantBlocks();
-	                return;
-	            }
+		            if (entry.kind === 'audio') {
+		                const reportId = variantInfo.reportId || id;
+		                const audioSrc = entry.audioSrc || variantInfo.audioSrc || null;
+		                body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + this.renderInlineAudioVariant(reportId, entry, audioSrc);
+		                this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
+		                this.bindKaleidoInlineAudioControls(body, on);
+		                this.refreshAudioVariantBlocks();
+		                return;
+		            }
 
-	            body.innerHTML = entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>';
-	            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
-	            try { this.enhanceSummaryHtml(body); } catch (_) { }
-	        };
+		            body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + (entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>');
+		            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
+		            try { this.enhanceSummaryHtml(body); } catch (_) { }
+		        };
 
-	        renderVariantControls();
-	        if (variantInfo && Array.isArray(variantInfo.order) && variantInfo.order.length > 1) {
-	            if (variantsEl) {
-	                variantsEl.querySelectorAll('[data-variant]').forEach((btn) => {
-	                    on(btn, 'click', (e) => {
+		        renderVariantControls();
+		        // Deep-link / restore selected variant if requested via hash.
+		        let requestedVariant = '';
+		        try {
+		            const pending = this._pendingReadVariant;
+		            if (pending && pending.id === id) {
+		                requestedVariant = (pending.variant || '').toLowerCase();
+		                this._pendingReadVariant = null;
+		            }
+		        } catch (_) { }
+		        if (variantInfo && Array.isArray(variantInfo.order) && variantInfo.order.length > 1) {
+		            if (variantsEl) {
+		                variantsEl.querySelectorAll('[data-variant]').forEach((btn) => {
+		                    on(btn, 'click', (e) => {
 	                        e.preventDefault();
 	                        e.stopPropagation();
 	                        const v = btn.getAttribute('data-variant');
 	                        setActiveVariant(v);
-	                    });
-	                });
-	            }
-	            setActiveVariant(defaultVariant || variantInfo.order[0]);
-	        } else if (variantInfo && Array.isArray(variantInfo.order) && variantInfo.order.length === 1) {
-	            setActiveVariant(variantInfo.order[0]);
-	        } else {
-	            body.innerHTML = this.renderWallReaderSection(item);
-	            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
-	            try { this.enhanceSummaryHtml(body); } catch (_) { }
-	        }
+		                    });
+		                });
+		            }
+		            const initial = (requestedVariant && variantInfo.map[requestedVariant])
+		                ? requestedVariant
+		                : (defaultVariant || variantInfo.order[0]);
+		            setActiveVariant(initial);
+		        } else if (variantInfo && Array.isArray(variantInfo.order) && variantInfo.order.length === 1) {
+		            setActiveVariant(variantInfo.order[0]);
+		        } else {
+		            body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + this.renderWallReaderSection(item);
+		            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
+		            try { this.enhanceSummaryHtml(body); } catch (_) { }
+		        }
 
 	        // Hero artwork
 	        let heroUrl = '';
@@ -5250,12 +5406,13 @@ class AudioDashboard {
             }
         } catch (_) { }
 
-        const close = () => {
-            const targetRect = (this._kaleidoOriginCard || card || (grid && grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`)))?.getBoundingClientRect();
-            if (sheet && targetRect) {
-                const rectNow = sheet.getBoundingClientRect();
-                const dx = targetRect.left - rectNow.left;
-                const dy = targetRect.top - rectNow.top;
+	        const close = () => {
+	            try { this.clearReadDeepLinkIfMatches(id); } catch (_) { }
+	            const targetRect = (this._kaleidoOriginCard || card || (grid && grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`)))?.getBoundingClientRect();
+	            if (sheet && targetRect) {
+	                const rectNow = sheet.getBoundingClientRect();
+	                const dx = targetRect.left - rectNow.left;
+	                const dy = targetRect.top - rectNow.top;
                 const sx = targetRect.width / Math.max(1, rectNow.width);
                 const sy = targetRect.height / Math.max(1, rectNow.height);
                 sheet.style.transition = 'transform 200ms ease, opacity 180ms ease';
@@ -5325,9 +5482,10 @@ class AudioDashboard {
             sheet.style.transform = 'translate(0, 0) scale(1)';
         }
 
-        this._kaleidoOriginCard = card || this._kaleidoOriginCard;
-        this.sendTelemetry('read_open', { id, view: 'wall' });
-    }
+	        this._kaleidoOriginCard = card || this._kaleidoOriginCard;
+	        try { this.setReadDeepLink(id, defaultVariant || '', { replace: true }); } catch (_) { }
+	        this.sendTelemetry('read_open', { id, view: 'wall' });
+	    }
 
     openWallRowReader(id, cardEl) {
         const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
@@ -5340,6 +5498,7 @@ class AudioDashboard {
             try { cardEl.classList.remove('wall-card--selected'); } catch (_) { }
             // When the inline reader is fully closed, drop the global flag
             try { document.body.classList.remove('wall-reader-open'); } catch (_) { }
+            try { this.clearReadDeepLinkIfMatches(id); } catch (_) { }
             this.sendTelemetry('read_close', { id, view: 'wall', toggled: true });
             return;
         }
@@ -5407,9 +5566,11 @@ class AudioDashboard {
                     </button>
                 </div>
             </div>
+            ${this.renderReaderMetaBlock(item, { open: false })}
             <div class="prose prose-sm dark:prose-invert max-w-none" data-summary-body>${this.renderWallReaderSection(item)}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
+        try { this.setReadDeepLink(id, '', { replace: true }); } catch (_) { }
         // Animate open height
         requestAnimationFrame(() => {
             const full = section.scrollHeight;
@@ -5540,6 +5701,7 @@ class AudioDashboard {
                 if (section && section.parentElement) section.parentElement.removeChild(section);
                 section.removeEventListener('transitionend', finalize);
                 try { document.body.classList.remove('wall-reader-open'); } catch (_) { }
+                try { this.clearReadDeepLinkIfMatches(id); } catch (_) { }
                 try { this.removeWallConnectorOverlay(); } catch (_) { }
                 try { this.clearSimilarityView(grid); } catch (_) { }
                 if (this._wallConnectorHandlers) {
