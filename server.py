@@ -420,10 +420,21 @@ def verify_clerk_bearer(auth_header: str) -> dict:
             options={'verify_aud': False}  # Clerk tokens don't always have aud
         )
 
-        # Extract email
+        # Log decoded token for debugging
+        logger.info(f"✅ JWT decoded successfully. Claims: {list(decoded.keys())}")
+        logger.info(f"📝 Full token payload: {json.dumps({k: v for k, v in decoded.items() if k not in ['exp', 'iat', 'nbf']}, indent=2)}")
+
+        # Extract email - try multiple possible claim names
         email = decoded.get('email')
         if not email:
-            raise PermissionError('Token missing email claim')
+            # Clerk might use different claim names
+            email = decoded.get('https://custom.claim.email')  # Custom namespace
+        if not email:
+            email = decoded.get('mailto')  # Alternative
+        if not email:
+            email = decoded.get('preferred_username')  # Another alternative
+        if not email:
+            raise PermissionError(f'Token missing email claim. Available claims: {list(decoded.keys())}')
 
         # Check if email is approved
         if email not in CLERK_APPROVED_EMAILS:
