@@ -369,51 +369,11 @@ def verify_clerk_bearer(auth_header: str) -> dict:
         if not jwk_key:
             raise PermissionError('Invalid token: key not found')
 
-        # Convert JWK to PEM key manually
-        def base64url_decode(data: str) -> bytes:
-            # Add padding if needed
-            padding = 4 - len(data) % 4
-            if padding != 4:
-                data += '=' * padding
-            return base64.urlsafe_b64decode(data.encode())
-
-        # Decode modulus and exponent from JWK
-        n = int.from_bytes(base64url_decode(jwk_key['n']), byteorder='big')
-        e = int.from_bytes(base64url_decode(jwk_key['e']), byteorder='big')
-
-        # Build DER-encoded RSA public key
-        # DER encoding of RSA public key: SEQUENCE { INTEGER n, INTEGER e }
-        def encode_int(value: int) -> bytes:
-            """Encode integer as DER"""
-            byte_repr = value.to_bytes((value.bit_length() + 7) // 8, byteorder='big')
-            # Ensure high bit is 0 (prepend 0x00 if needed)
-            if byte_repr[0] & 0x80:
-                byte_repr = b'\x00' + byte_repr
-            # DER length encoding
-            length = len(byte_repr)
-            if length < 128:
-                return bytes([0x02, length]) + byte_repr
-            else:
-                # Encode length in long form
-                length_bytes = length.to_bytes((length.bit_length() + 7) // 8, byteorder='big')
-                return bytes([0x02, 0x80 | len(length_bytes)]) + length_bytes + byte_repr
-
-        n_der = encode_int(n)
-        e_der = encode_int(e)
-
-        # Combine into SEQUENCE
-        total_length = len(n_der) + len(e_der)
-        if total_length < 128:
-            seq_length_bytes = bytes([total_length])
-        else:
-            len_len = (total_length.bit_length() + 7) // 8
-            seq_length_bytes = bytes([0x80 | len_len]) + total_length.to_bytes(len_len, byteorder='big')
-
-        der_bytes = bytes([0x30]) + seq_length_bytes + n_der + e_der
-
-        # Add PEM headers
-        pem_b64 = base64.b64encode(der_bytes).decode('ascii')
-        pem_key = f'-----BEGIN PUBLIC KEY-----\n{pem_b64}\n-----END PUBLIC KEY-----'
+        # Use PyJWT's PyJWKClient for proper JWK handling
+        # This handles all the JWK to PEM conversion internally
+        jwks_client = jwt.PyJWKClient(jwks_url)
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        pem_key = signing_key.key
 
         # Verify the token
         decoded = jwt.decode(
