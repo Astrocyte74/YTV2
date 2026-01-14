@@ -441,8 +441,9 @@ def verify_clerk_bearer(auth_header: str) -> dict:
             email = cached_user.get('email')
             logger.info(f"✅ Using cached email for user {user_id}: {email}")
         else:
-            # Fetch user from Clerk API
-            clerk_api_url = f"{iss}/v1/users/{user_id}"
+            # Fetch user from Clerk Backend API
+            # Note: Clerk Backend API uses api.clerk.com, not the accounts domain
+            clerk_api_url = f"https://api.clerk.com/v1/users/{user_id}"
             try:
                 response = requests.get(
                     clerk_api_url,
