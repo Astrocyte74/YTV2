@@ -338,42 +338,78 @@ def verify_clerk_bearer(auth_header: str) -> dict:
         # Build JWKS URL
         jwks_url = f"{iss}/.well-known/jwks.json"
 
-        # Fetch JWKS (with simple caching)
-        jwks_cache_key = f"jwks_{iss}"
-        jwks_cached = _TOKEN_CACHE.get(jwks_cache_key)
-        jwks = None
+        # Try using PyJWT's PyJWKClient first (available in PyJWT 2.0+)
+        try:
+            jwks_client = jwt.PyJWKClient(jwks_url)
+            signing_key = jwks_client.get_signing_key(kid)
+            pem_key = signing_key.key
+        except (AttributeError, TypeError) as e:
+            # Fallback: manual JWK to PEM conversion using cryptography library
+            logger.info(f"PyJWKClient not available ({e}), using manual JWK conversion")
 
-        if jwks_cached and jwks_cached.get('exp', 0) > _now():
-            jwks = jwks_cached['jwks']
-        else:
+            # Fetch JWKS
+            response = requests.get(jwks_url, timeout=5)
+            response.raise_for_status()
+            jwks = response.json()
+
+            # Find the matching key
+            jwk_key = None
+            for key in jwks.get('keys', []):
+                if key.get('kid') == kid:
+                    jwk_key = key
+                    break
+
+            if not jwk_key:
+                raise PermissionError('Invalid token: key not found')
+
+            # Manual JWK to PEM conversion
+            def base64url_decode(data: str) -> bytes:
+                padding = 4 - len(data) % 4
+                if padding != 4:
+                    data += '=' * padding
+                return base64.urlsafe_b64decode(data.encode())
+
+            n = int.from_bytes(base64url_decode(jwk_key['n']), 'big')
+            e = int.from_bytes(base64url_decode(jwk_key['e']), 'big')
+
+            # Try to use cryptography library
             try:
-                response = requests.get(jwks_url, timeout=5)
-                response.raise_for_status()
-                jwks = response.json()
-                # Cache for 1 hour
-                _TOKEN_CACHE[jwks_cache_key] = {
-                    'jwks': jwks,
-                    'exp': _now() + 3600
-                }
-            except Exception as e:
-                logger.warning(f"Failed to fetch Clerk JWKS: {e}")
-                raise PermissionError('Failed to verify token')
+                from cryptography.hazmat.primitives.asymmetric import rsa
+                from cryptography.hazmat.backends import default_backend
+                from cryptography.hazmat.primitives import serialization
 
-        # Find the matching key
-        jwk_key = None
-        for key in jwks.get('keys', []):
-            if key.get('kid') == kid:
-                jwk_key = key
-                break
+                public_key = rsa.RSAPublicNumbers(e, n).public_key(default_backend())
+                pem_key = public_key.public_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo
+                )
+            except ImportError:
+                # Ultimate fallback: manual DER encoding (no dependencies)
+                logger.warning("cryptography not available, using manual DER encoding")
 
-        if not jwk_key:
-            raise PermissionError('Invalid token: key not found')
+                def encode_int(value: int) -> bytes:
+                    byte_repr = value.to_bytes((value.bit_length() + 7) // 8, 'big')
+                    if byte_repr[0] & 0x80:
+                        byte_repr = b'\x00' + byte_repr
+                    length = len(byte_repr)
+                    if length < 128:
+                        return bytes([0x02, length]) + byte_repr
+                    else:
+                        length_bytes = length.to_bytes((length.bit_length() + 7) // 8, 'big')
+                        return bytes([0x02, 0x80 | len(length_bytes)]) + length_bytes + byte_repr
 
-        # Use PyJWT's PyJWKClient for proper JWK handling
-        # This handles all the JWK to PEM conversion internally
-        jwks_client = jwt.PyJWKClient(jwks_url)
-        signing_key = jwks_client.get_signing_key(kid)
-        pem_key = signing_key.key
+                n_der = encode_int(n)
+                e_der = encode_int(e)
+                total_length = len(n_der) + len(e_der)
+                if total_length < 128:
+                    seq_length_bytes = bytes([total_length])
+                else:
+                    len_len = (total_length.bit_length() + 7) // 8
+                    seq_length_bytes = bytes([0x80 | len_len]) + total_length.to_bytes(len_len, 'big')
+
+                der_bytes = bytes([0x30]) + seq_length_bytes + n_der + e_der
+                pem_b64 = base64.b64encode(der_bytes).decode('ascii')
+                pem_key = f'-----BEGIN PUBLIC KEY-----\n{pem_b64}\n-----END PUBLIC KEY-----'
 
         # Verify the token
         decoded = jwt.decode(
