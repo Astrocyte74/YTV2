@@ -601,19 +601,33 @@ def _build_team_name_random_prompt(context: Dict[str, Any]) -> Dict[str, str]:
     count = context.get('count', 1)
     game_topic = context.get('gameTopic', '')
     existing_names = context.get('existingNames', [])
+    reference_material = context.get('referenceMaterial', '')
 
     existing_text = ""
     if existing_names and len(existing_names) > 0:
         names_list = ', '.join([f'"{n}"' for n in existing_names])
         existing_text = f"\n\nIMPORTANT: Do NOT use these existing team names: {names_list}"
 
-    topic_line = f"\n\nGame theme/topic: \"{game_topic}\"\nConsider making the team names thematically related to this game topic." if game_topic else ''
+    # Build context information for themed names
+    context_lines = []
+    if game_topic:
+        context_lines.append(f"Game theme/topic: \"{game_topic}\"")
+
+    if reference_material:
+        # Include a snippet of the reference material for inspiration
+        snippet = reference_material[:300] + "..." if len(reference_material) > 300 else reference_material
+        context_lines.append(f"Game is based on this content:\n\"\"\"\n{snippet}\n\"\"\"")
+
+    topic_section = ""
+    if context_lines:
+        topic_section = "\n\n" + "\n".join(context_lines)
+        topic_section += "\n\nConsider making the team names thematically related to the game content above."
 
     count_text = f"{count}" if count > 1 else "1"
 
     user_prompt = f"""Generate {count_text} creative and fun team name(s) for a trivia game.
 
-Make them memorable, clever, and fun. Use wordplay, puns, or creative concepts related to knowledge, trivia, or competition.{topic_line}{existing_text}
+Make them memorable, clever, and fun. Use wordplay, puns, or creative concepts related to knowledge, trivia, or competition.{topic_section}{existing_text}
 
 Return JSON format:
 {{
@@ -631,8 +645,22 @@ def _build_team_name_enhance_prompt(context: Dict[str, Any]) -> Dict[str, str]:
     current_name = context.get('currentName', '')
     game_topic = context.get('gameTopic', '')
     existing_names = context.get('existingNames', [])
+    reference_material = context.get('referenceMaterial', '')
 
-    topic_line = f"\n\nGame theme/topic: \"{game_topic}\"\nConsider enhancing the name to be thematically related to this game topic." if game_topic else ''
+    # Build context information for themed enhancement
+    context_lines = []
+    if game_topic:
+        context_lines.append(f"Game theme/topic: \"{game_topic}\"")
+
+    if reference_material:
+        # Include a snippet of the reference material for inspiration
+        snippet = reference_material[:300] + "..." if len(reference_material) > 300 else reference_material
+        context_lines.append(f"Game is based on this content:\n\"\"\"\n{snippet}\n\"\"\"")
+
+    topic_section = ""
+    if context_lines:
+        topic_section = "\n\n" + "\n".join(context_lines)
+        topic_section += "\n\nConsider enhancing the name to be thematically related to the game content above."
 
     existing_text = ""
     if existing_names and len(existing_names) > 0:
@@ -641,7 +669,7 @@ def _build_team_name_enhance_prompt(context: Dict[str, Any]) -> Dict[str, str]:
 
     user_prompt = f"""Make this team name more creative and fun for a trivia game: "{current_name}"
 
-Transform it into something more memorable, clever, or humorous. Keep the spirit of the original but make it better.{topic_line}{existing_text}
+Transform it into something more memorable, clever, or humorous. Keep the spirit of the original but make it better.{topic_section}{existing_text}
 
 Return JSON format:
 {{
