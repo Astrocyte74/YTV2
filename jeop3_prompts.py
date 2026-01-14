@@ -131,7 +131,7 @@ Generate something completely different and fresh.
 
 {sample_content}
 
-Analyze the categories and questions above, then create titles that capture the theme and tone.
+Analyze the content above to identify the main topics, themes, and tone. Then create catchy, engaging titles that capture the essence of this material.
 
 {difficulty_text}
 
