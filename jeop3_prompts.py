@@ -534,7 +534,8 @@ def _build_team_name_random_prompt(context: Dict[str, Any]) -> Dict[str, str]:
 
     existing_text = ""
     if existing_names and len(existing_names) > 0:
-        existing_text = f"\n\nIMPORTANT: Do NOT use these existing team names: {', '.join(f'"{n}"' for n in existing_names)}"
+        names_list = ', '.join([f'"{n}"' for n in existing_names])
+        existing_text = f"\n\nIMPORTANT: Do NOT use these existing team names: {names_list}"
 
     topic_line = f"\n\nGame theme/topic: \"{game_topic}\"\nConsider making the team names thematically related to this game topic." if game_topic else ''
 
@@ -565,7 +566,8 @@ def _build_team_name_enhance_prompt(context: Dict[str, Any]) -> Dict[str, str]:
 
     existing_text = ""
     if existing_names and len(existing_names) > 0:
-        existing_text = f"\n\nIMPORTANT: The enhanced name should not conflict with these existing team names: {', '.join(f'"{n}"' for n in existing_names)}"
+        names_list = ', '.join([f'"{n}"' for n in existing_names])
+        existing_text = f"\n\nIMPORTANT: The enhanced name should not conflict with these existing team names: {names_list}"
 
     user_prompt = f"""Make this team name more creative and fun for a trivia game: "{current_name}"
 
