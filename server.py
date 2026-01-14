@@ -1369,6 +1369,16 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_debug_content()
         elif self.path == '/api/fetch-article':
             self.handle_fetch_article()
+        elif self.path == '/api/ai/generate':
+            # Jeop3 AI generation endpoint
+            if not check_ip_minute(self):
+                self.send_response(429)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Rate limit exceeded"}).encode())
+                return
+            self.handle_jeop3_generate()
         elif self.path == '/api/generate-quiz':
             # Per-IP rate limit for public generation
             if not check_ip_minute(self):
@@ -2635,7 +2645,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             elif path.startswith('/api/reports/'):
                 self.serve_api_report_detail()
             elif path == '/api/health':
-                self.serve_api_health()
+                self.serve_jeop3_health()
             elif path == '/api/health/auth':
                 self.serve_api_health_auth()
             elif path == '/api/config':
@@ -5248,6 +5258,55 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({'status': 'error'}).encode())
 
+    def serve_jeop3_health(self):
+        """
+        GET /api/health - Jeop3 compatibility endpoint
+
+        Returns models in Jeop3 format:
+        {
+          "status": "ok",
+          "models": [
+            {"id": "or:google/gemini-2.5-flash-lite", "name": "google/gemini-2.5-flash-lite", "provider": "openrouter"},
+            ...
+          ]
+        }
+        """
+        try:
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+
+            # Get models from environment or use defaults
+            or_models = os.getenv('OR_MODELS', 'google/gemini-2.5-flash-lite,google/gemini-2.5-flash')
+            ollama_models = os.getenv('OLLAMA_MODELS', '')
+
+            models = []
+            for model in or_models.split(','):
+                model = model.strip()
+                if model:
+                    models.append({
+                        "id": f"or:{model}",
+                        "name": model,
+                        "provider": "openrouter"
+                    })
+
+            self.wfile.write(json.dumps({
+                'status': 'ok',
+                'models': models,
+                'providers': {
+                    'openrouter': [m['name'] for m in models if m['provider'] == 'openrouter'],
+                    'ollama': ollama_models.split(',') if ollama_models else []
+                }
+            }).encode())
+        except Exception as e:
+            logger.error(f"Error serving /api/health for Jeop3: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'status': 'error'}).encode())
+
     def serve_api_health_auth(self):
         """GET /api/health/auth - requires valid Google bearer token"""
         try:
@@ -5642,6 +5701,242 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"error": "Failed to generate quiz"}).encode())
+
+    def handle_jeop3_generate(self):
+        """
+        Handle POST /api/ai/generate - Jeop3 AI generation endpoint
+
+        Jeop3 format:
+        {
+            "promptType": "categories-generate" | "game-title" | etc.,
+            "context": { theme, difficulty, count, ... },
+            "difficulty": "easy" | "normal" | "hard",
+            "model": "or:google/gemini-2.5-flash-lite"  (optional)
+        }
+
+        Response format:
+        {
+            "result": "JSON string with generated content",
+            "model": "or:google/gemini-2.5-flash-lite"
+        }
+        """
+        try:
+            import jeop3_prompts
+
+            # Log for debugging
+            origin = self.headers.get('Origin', 'unknown')
+            logger.info(f"🎮 Jeop3 AI generation request from origin: {origin}")
+
+            # Get request body
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Request body is required"}).encode())
+                return
+
+            body = self.rfile.read(content_length).decode('utf-8')
+
+            try:
+                request_data = json.loads(body)
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Invalid JSON in request body"}).encode())
+                return
+
+            # Extract Jeop3-specific parameters
+            prompt_type = request_data.get('promptType')
+            if not prompt_type:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "promptType is required",
+                    "allowed": list(jeop3_prompts.ALLOWED_PROMPT_TYPES)
+                }).encode())
+                return
+
+            context = request_data.get('context', {})
+            difficulty = request_data.get('difficulty', 'normal')
+            model_param = request_data.get('model', '')
+
+            # Validate prompt type
+            if prompt_type not in jeop3_prompts.ALLOWED_PROMPT_TYPES:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "Invalid prompt type",
+                    "allowed": list(jeop3_prompts.ALLOWED_PROMPT_TYPES)
+                }).encode())
+                return
+
+            # Parse model parameter (format: "or:model-name" or "ollama:model-name")
+            if model_param:
+                parts = model_param.split(':', 1)
+                if len(parts) == 2:
+                    provider, model_name = parts
+                    if provider == 'or' or provider == 'openrouter':
+                        primary_model = model_name
+                    elif provider == 'ollama':
+                        # Ollama not supported yet, fall back to default
+                        primary_model = 'google/gemini-2.5-flash-lite'
+                    else:
+                        primary_model = 'google/gemini-2.5-flash-lite'
+                else:
+                    primary_model = 'google/gemini-2.5-flash-lite'
+            else:
+                primary_model = 'google/gemini-2.5-flash-lite'
+
+            # Build Jeop3 prompt
+            try:
+                prompts = jeop3_prompts.build_jeop3_prompt(prompt_type, context, difficulty)
+            except ValueError as e:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode())
+                return
+
+            # Check for OpenRouter API key
+            openrouter_key = os.getenv('OPENROUTER_API_KEY')
+            if not openrouter_key:
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "OpenRouter API key not configured"}).encode())
+                return
+
+            # Prepare OpenRouter request
+            payload = {
+                "model": primary_model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": prompts['system']
+                    },
+                    {
+                        "role": "user",
+                        "content": prompts['user']
+                    }
+                ],
+                "max_tokens": self._get_jeop3_max_tokens(prompt_type),
+                "response_format": {"type": "json_object"}
+            }
+
+            # Call OpenRouter
+            request_obj = Request(
+                'https://openrouter.ai/api/v1/chat/completions',
+                data=json.dumps(payload).encode('utf-8'),
+                headers={
+                    'Authorization': f'Bearer {openrouter_key}',
+                    'Content-Type': 'application/json',
+                    'HTTP-Referer': 'https://quizzernator.onrender.com',
+                    'X-Title': 'Jeop3 Generator'
+                }
+            )
+
+            try:
+                with urlopen(request_obj, timeout=45) as response:
+                    raw_payload = response.read().decode('utf-8')
+                    try:
+                        response_data = json.loads(raw_payload)
+                    except json.JSONDecodeError:
+                        logger.error("OpenRouter response was not valid JSON: %s", raw_payload[:500])
+                        self.send_response(502)
+                        self.set_cors_headers()
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            "error": "OpenRouter returned unreadable response",
+                            "raw": raw_payload[:500]
+                        }).encode())
+                        return
+
+                    choices = response_data.get('choices', [])
+                    if not choices:
+                        logger.error("OpenRouter returned no choices: %s", raw_payload[:500])
+                        self.send_response(502)
+                        self.set_cors_headers()
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            "error": "OpenRouter returned no choices"
+                        }).encode())
+                        return
+
+                    content = choices[0].get('message', {}).get('content', '')
+
+                    # Log success
+                    model_used = response_data.get('model', primary_model)
+                    logger.info(f"✅ Jeop3 generation success: {model_used} | Type: {prompt_type} | Length: {len(content)} chars")
+
+                    # Return in Jeop3 format
+                    self.send_response(200)
+                    self.set_cors_headers()
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "result": content,
+                        "model": f"or:{model_used}"
+                    }).encode())
+
+            except HTTPError as e:
+                logger.error(f"OpenRouter HTTP error: {e.code} - {e.reason}")
+                self.send_response(e.code)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "OpenRouter service error",
+                    "status": e.code,
+                    "message": str(e.reason)
+                }).encode())
+            except Exception as e:
+                logger.exception("OpenRouter request failed")
+                self.send_response(502)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "OpenRouter request failed",
+                    "message": str(e)
+                }).encode())
+
+        except Exception as e:
+            logger.exception("Jeop3 generation failed")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "error": "AI generation failed",
+                "message": str(e)
+            }).encode())
+
+    def _get_jeop3_max_tokens(self, prompt_type: str) -> int:
+        """Get max tokens based on Jeop3 prompt type"""
+        token_limits = {
+            'categories-generate': 8000,
+            'category-replace-all': 4000,
+            'questions-generate-five': 3000,
+            'category-generate-clues': 3000,
+            'game-title': 500,
+            'category-title-generate': 300,
+            'team-name-random': 200,
+            'team-name-enhance': 200,
+            'default': 2000,
+        }
+        return token_limits.get(prompt_type, token_limits['default'])
 
     def _get_quiz_storage_path(self):
         """Get the quiz storage directory path"""
