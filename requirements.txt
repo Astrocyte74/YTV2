@@ -35,4 +35,4 @@ psycopg2-binary>=2.9.0
 google-auth>=2.16.0
 
 # Clerk JWT verification for Jeop3 game creation auth
-pyjwt>=2.8.0
+pyjwt>=2.9.0
