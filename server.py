@@ -5936,6 +5936,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         """Get max tokens based on Jeop3 prompt type"""
         token_limits = {
             'categories-generate': 8000,
+            'categories-generate-from-content': 8000,
             'category-replace-all': 4000,
             'questions-generate-five': 3000,
             'category-generate-clues': 3000,
