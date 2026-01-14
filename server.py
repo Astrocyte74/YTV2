@@ -5782,6 +5782,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 return
 
             # Parse model parameter (format: "or:model-name" or "ollama:model-name")
+            logger.info(f"🤖 Model param from request: '{model_param}'")
             if model_param:
                 parts = model_param.split(':', 1)
                 if len(parts) == 2:
@@ -5798,10 +5799,15 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             else:
                 primary_model = 'google/gemini-2.5-flash-lite'
 
+            logger.info(f"🎯 Using model: {primary_model}")
+
             # Build Jeop3 prompt
+            logger.info(f"🔨 Building Jeop3 prompt: type={prompt_type}, context keys={list(context.keys())}, difficulty={difficulty}")
             try:
                 prompts = jeop3_prompts.build_jeop3_prompt(prompt_type, context, difficulty)
+                logger.info(f"✅ Jeop3 prompt built successfully, system length: {len(prompts.get('system', ''))}, user length: {len(prompts.get('user', ''))}")
             except ValueError as e:
+                logger.error(f"❌ Jeop3 400: ValueError from build_jeop3_prompt: {e}")
                 self.send_response(400)
                 self.set_cors_headers()
                 self.send_header('Content-type', 'application/json')
@@ -5916,7 +5922,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 }).encode())
 
         except Exception as e:
-            logger.exception("Jeop3 generation failed")
+            logger.exception(f"❌ Jeop3 generation failed with unexpected error: {e}")
             self.send_response(500)
             self.set_cors_headers()
             self.send_header('Content-type', 'application/json')
