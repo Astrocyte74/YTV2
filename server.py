@@ -372,7 +372,7 @@ def verify_clerk_bearer(auth_header: str) -> dict:
         # Use PyJWT's PyJWKClient for proper JWK handling
         # This handles all the JWK to PEM conversion internally
         jwks_client = jwt.PyJWKClient(jwks_url)
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
+        signing_key = jwks_client.get_signing_key(kid)
         pem_key = signing_key.key
 
         # Verify the token
