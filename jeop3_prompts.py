@@ -201,11 +201,11 @@ Return JSON format:
       "title": "Creative Display Name",
       "contentTopic": "Descriptive Topic Name",
       "clues": [
-        { "value": 200, "clue": "...", "response": "..." },
-        { "value": 400, "clue": "...", "response": "..." },
-        { "value": 600, "clue": "...", "response": "..." },
-        { "value": 800, "clue": "...", "response": "..." },
-        { "value": 1000, "clue": "...", "response": "..." }
+        {{ "value": 200, "clue": "...", "response": "..." }},
+        {{ "value": 400, "clue": "...", "response": "..." }},
+        {{ "value": 600, "clue": "...", "response": "..." }},
+        {{ "value": 800, "clue": "...", "response": "..." }},
+        {{ "value": 1000, "clue": "...", "response": "..." }}
       ]
     }}
   ]
@@ -305,7 +305,7 @@ Fill missing values to complete [200, 400, 600, 800, 1000] set.
 Return JSON format:
 {{
   "clues": [
-    { "value": 200, "clue": "...", "response": "..." }
+    {{ "value": 200, "clue": "...", "response": "..." }}
   ]
 }}"""
 
@@ -343,7 +343,7 @@ Return JSON format:
   "category": {{
     "title": "{category_title}",
     "clues": [
-      { "value": 200, "clue": "...", "response": "..." }
+      {{ "value": 200, "clue": "...", "response": "..." }}
     ]
   }}
 }}"""
@@ -378,11 +378,11 @@ Theme: {theme}
 Return JSON format:
 {{
   "clues": [
-    { "value": 200, "clue": "...", "response": "..." },
-    { "value": 400, "clue": "...", "response": "..." },
-    { "value": 600, "clue": "...", "response": "..." },
-    { "value": 800, "clue": "...", "response": "..." },
-    { "value": 1000, "clue": "...", "response": "..." }
+    {{ "value": 200, "clue": "...", "response": "..." }},
+    {{ "value": 400, "clue": "...", "response": "..." }},
+    {{ "value": 600, "clue": "...", "response": "..." }},
+    {{ "value": 800, "clue": "...", "response": "..." }},
+    {{ "value": 1000, "clue": "...", "response": "..." }}
   ]
 }}"""
 
