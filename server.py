@@ -277,6 +277,142 @@ def verify_google_bearer(auth_header: str) -> dict:
             continue
     raise PermissionError('Invalid token')
 
+# ============================================
+# Clerk JWT Verification for Jeop3 Auth
+# ============================================
+
+# Approved emails for game creation (comma-separated in env, or this default set)
+CLERK_APPROVED_EMAILS = set(_parse_csv_env(os.getenv('CLERK_APPROVED_EMAILS', '')))
+# Add default approved email if env is empty
+if not CLERK_APPROVED_EMAILS:
+    CLERK_APPROVED_EMAILS = {'your@email.com'}  # Default - change this!
+
+def verify_clerk_bearer(auth_header: str) -> dict:
+    """
+    Verify a Clerk JWT token and return user info.
+
+    Args:
+        auth_header: The Authorization header value (e.g., "Bearer <token>")
+
+    Returns:
+        dict with user info including 'sub' (user_id) and 'email'
+
+    Raises:
+        PermissionError: If token is invalid or email not approved
+    """
+    if not auth_header or not auth_header.startswith('Bearer '):
+        raise PermissionError('Missing bearer token')
+
+    token = auth_header.split(' ', 1)[1].strip()
+
+    # Check cache first
+    cached = _TOKEN_CACHE.get(token)
+    if cached and cached.get('exp', 0) > _now():
+        return cached
+
+    # Get Clerk JWKS URL from env or use default
+    clerk_secret_key = os.getenv('CLERK_SECRET_KEY', '')
+    if not clerk_secret_key:
+        raise PermissionError('Clerk not configured on server')
+
+    # Extract the Clerk domain from the secret key to build JWKS URL
+    # Secret key format: sk_test_XXXXXXXXXXXXX
+    # We need to get the issuer URL from the token
+    import jwt
+    import json
+
+    try:
+        # Decode without verification first to get the issuer (kid is in header)
+        headers = jwt.get_unverified_header(token)
+        kid = headers.get('kid')
+        if not kid:
+            raise PermissionError('Invalid token: missing kid')
+
+        # Get the issuer from the token
+        unverified = jwt.decode(token, options={"verify_signature": False})
+        iss = unverified.get('iss')
+        if not iss:
+            raise PermissionError('Invalid token: missing iss')
+
+        # Build JWKS URL
+        jwks_url = f"{iss}/.well-known/jwks.json"
+
+        # Fetch JWKS (with simple caching)
+        jwks_cache_key = f"jwks_{iss}"
+        jwks_cached = _TOKEN_CACHE.get(jwks_cache_key)
+        jwks = None
+
+        if jwks_cached and jwks_cached.get('exp', 0) > _now():
+            jwks = jwks_cached['jwks']
+        else:
+            try:
+                response = requests.get(jwks_url, timeout=5)
+                response.raise_for_status()
+                jwks = response.json()
+                # Cache for 1 hour
+                _TOKEN_CACHE[jwks_cache_key] = {
+                    'jwks': jwks,
+                    'exp': _now() + 3600
+                }
+            except Exception as e:
+                logger.warning(f"Failed to fetch Clerk JWKS: {e}")
+                raise PermissionError('Failed to verify token')
+
+        # Find the matching key
+        rsa_key = None
+        for key in jwks.get('keys', []):
+            if key.get('kid') == kid:
+                rsa_key = {
+                    'kty': key['kty'],
+                    'kid': key['kid'],
+                    'use': key['use'],
+                    'n': key['n'],
+                    'e': key['e']
+                }
+                break
+
+        if not rsa_key:
+            raise PermissionError('Invalid token: key not found')
+
+        # Verify the token
+        decoded = jwt.decode(
+            token,
+            rsa_key,
+            algorithms=['RS256'],
+            issuer=iss,
+            audience=['api-test']  # Clerk default audience
+        )
+
+        # Extract email
+        email = decoded.get('email')
+        if not email:
+            raise PermissionError('Token missing email claim')
+
+        # Check if email is approved
+        if email not in CLERK_APPROVED_EMAILS:
+            logger.warning(f"Unauthorized email attempt: {email}")
+            raise PermissionError('Email not authorized for game creation')
+
+        # Return user info
+        exp_ts = float(decoded.get('exp', 0))
+        user = {
+            'user_id': decoded.get('sub'),
+            'email': email,
+            'iss': iss,
+            'exp': exp_ts
+        }
+
+        # Cache the token
+        _TOKEN_CACHE[token] = user
+
+        return user
+
+    except jwt.InvalidTokenError as e:
+        raise PermissionError(f'Invalid token: {e}')
+    except Exception as e:
+        logger.warning(f"Clerk auth error: {e}")
+        raise PermissionError('Failed to verify token')
+
 class SSEClient:
     """Lightweight holder for per-connection event queues."""
 
@@ -5335,8 +5471,25 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({'success': False, 'error': 'Internal error'}).encode())
 
     def handle_fetch_article(self):
-        """Handle POST /api/fetch-article - Fetch external article content"""
+        """Handle POST /api/fetch-article - Fetch external article content
+
+        Authentication: Requires Clerk JWT with approved email
+        """
         try:
+            # Verify Clerk JWT for article fetching
+            auth_header = self.headers.get('Authorization', '')
+            try:
+                user_info = verify_clerk_bearer(auth_header)
+                logger.info(f"✅ Clerk auth verified for fetch article: {user_info['email']}")
+            except PermissionError as e:
+                logger.warning(f"❌ Clerk auth failed for fetch article: {e}")
+                self.send_response(403)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode())
+                return
+
             origin = self.headers.get('Origin', 'unknown')
             logger.info(f"📰 Fetch article request from origin: {origin}")
 
@@ -5719,8 +5872,24 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             "result": "JSON string with generated content",
             "model": "or:google/gemini-2.5-flash-lite"
         }
+
+        Authentication: Requires Clerk JWT with approved email
         """
         try:
+            # Verify Clerk JWT for game creation
+            auth_header = self.headers.get('Authorization', '')
+            try:
+                user_info = verify_clerk_bearer(auth_header)
+                logger.info(f"✅ Clerk auth verified for {user_info['email']}")
+            except PermissionError as e:
+                logger.warning(f"❌ Clerk auth failed: {e}")
+                self.send_response(403)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode())
+                return
+
             import jeop3_prompts
 
             # Log for debugging
