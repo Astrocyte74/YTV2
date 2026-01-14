@@ -424,17 +424,62 @@ def verify_clerk_bearer(auth_header: str) -> dict:
         logger.info(f"✅ JWT decoded successfully. Claims: {list(decoded.keys())}")
         logger.info(f"📝 Full token payload: {json.dumps({k: v for k, v in decoded.items() if k not in ['exp', 'iat', 'nbf']}, indent=2)}")
 
-        # Extract email - try multiple possible claim names
-        email = decoded.get('email')
-        if not email:
-            # Clerk might use different claim names
-            email = decoded.get('https://custom.claim.email')  # Custom namespace
-        if not email:
-            email = decoded.get('mailto')  # Alternative
-        if not email:
-            email = decoded.get('preferred_username')  # Another alternative
-        if not email:
-            raise PermissionError(f'Token missing email claim. Available claims: {list(decoded.keys())}')
+        # Clerk JWT doesn't include email by default - fetch from Clerk API
+        user_id = decoded.get('sub')
+        if not user_id:
+            raise PermissionError('Token missing sub claim')
+
+        # Get email from Clerk Backend API using the secret key
+        clerk_secret_key = os.getenv('CLERK_SECRET_KEY')
+        if not clerk_secret_key:
+            raise PermissionError('Clerk not configured on server')
+
+        # Check cache first
+        cache_key = f"clerk_user_{user_id}"
+        cached_user = _TOKEN_CACHE.get(cache_key)
+        if cached_user and cached_user.get('exp', 0) > _now():
+            email = cached_user.get('email')
+            logger.info(f"✅ Using cached email for user {user_id}: {email}")
+        else:
+            # Fetch user from Clerk API
+            clerk_api_url = f"{iss}/v1/users/{user_id}"
+            try:
+                response = requests.get(
+                    clerk_api_url,
+                    headers={
+                        'Authorization': f'Bearer {clerk_secret_key}',
+                        'Content-Type': 'application/json'
+                    },
+                    timeout=10
+                )
+                response.raise_for_status()
+                user_data = response.json()
+
+                # Extract primary email address
+                email = None
+                if user_data.get('email_addresses'):
+                    for addr in user_data['email_addresses']:
+                        if addr.get('id') == user_data.get('primary_email_address_id'):
+                            email = addr.get('email_address')
+                            break
+                    # Fallback to first email if primary not found
+                    if not email and user_data['email_addresses']:
+                        email = user_data['email_addresses'][0].get('email_address')
+
+                if not email:
+                    raise PermissionError(f'User {user_id} has no email address')
+
+                # Cache for 1 hour
+                _TOKEN_CACHE[cache_key] = {
+                    'email': email,
+                    'user_id': user_id,
+                    'exp': _now() + 3600
+                }
+                logger.info(f"✅ Fetched email for user {user_id}: {email}")
+
+            except requests.RequestException as e:
+                logger.warning(f"Failed to fetch user from Clerk API: {e}")
+                raise PermissionError('Failed to verify user email')
 
         # Check if email is approved
         if email not in CLERK_APPROVED_EMAILS:
