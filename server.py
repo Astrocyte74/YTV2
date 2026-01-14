@@ -5738,6 +5738,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 return
 
             body = self.rfile.read(content_length).decode('utf-8')
+            logger.info(f"📥 Jeop3 request body: {body[:500]}...")  # Log first 500 chars
 
             try:
                 request_data = json.loads(body)
@@ -5752,6 +5753,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # Extract Jeop3-specific parameters
             prompt_type = request_data.get('promptType')
             if not prompt_type:
+                logger.warning(f"❌ Jeop3 400: Missing promptType. Request data keys: {list(request_data.keys())}")
                 self.send_response(400)
                 self.set_cors_headers()
                 self.send_header('Content-type', 'application/json')
@@ -5768,6 +5770,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
             # Validate prompt type
             if prompt_type not in jeop3_prompts.ALLOWED_PROMPT_TYPES:
+                logger.warning(f"❌ Jeop3 400: Invalid promptType '{prompt_type}'. Allowed: {list(jeop3_prompts.ALLOWED_PROMPT_TYPES)}")
                 self.send_response(400)
                 self.set_cors_headers()
                 self.send_header('Content-type', 'application/json')
