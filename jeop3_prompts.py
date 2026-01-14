@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional
 ALLOWED_PROMPT_TYPES = {
     'game-title',
     'categories-generate',
+    'categories-generate-from-content',
     'category-rename',
     'category-title-generate',
     'category-generate-clues',
@@ -65,6 +66,9 @@ def build_jeop3_prompt(prompt_type: str, context: Dict[str, Any], difficulty: st
 
     elif prompt_type == 'categories-generate':
         return _build_categories_generate_prompt(context, difficulty_text)
+
+    elif prompt_type == 'categories-generate-from-content':
+        return _build_categories_generate_from_content_prompt(context, difficulty_text)
 
     elif prompt_type == 'category-rename':
         return _build_category_rename_prompt(context)
@@ -191,6 +195,72 @@ Difficulty: {difficulty_text}
 IMPORTANT: Each category needs TWO names:
 1. "title" - A creative, catchy display name for players (e.g., "Geography Genius", "Word Wizards")
 2. "contentTopic" - The descriptive topic name for AI context (e.g., "World Capitals", "Literary Terms")
+
+The title should be fun and creative while the contentTopic should be clear and descriptive.
+
+Return JSON format:
+{{
+  "categories": [
+    {{
+      "title": "Creative Display Name",
+      "contentTopic": "Descriptive Topic Name",
+      "clues": [
+        {{ "value": 200, "clue": "...", "response": "..." }},
+        {{ "value": 400, "clue": "...", "response": "..." }},
+        {{ "value": 600, "clue": "...", "response": "..." }},
+        {{ "value": 800, "clue": "...", "response": "..." }},
+        {{ "value": 1000, "clue": "...", "response": "..." }}
+      ]
+    }}
+  ]
+}}"""
+
+    return {
+        'system': SYSTEM_INSTRUCTION,
+        'user': user_prompt
+    }
+
+
+def _build_categories_generate_from_content_prompt(context: Dict[str, Any], difficulty_text: str) -> Dict[str, str]:
+    """Build categories generation prompt based on source material."""
+    count = context.get('count', 6)
+    reference_material = context.get('referenceMaterial', '')
+    theme = context.get('theme', 'general')
+
+    value_guidance = ""
+    if difficulty_text == 'Balanced difficulty level.':
+        value_guidance = f"""
+Value guidelines:
+- 200: {VALUE_GUIDANCE[200]}
+- 400: {VALUE_GUIDANCE[400]}
+- 600: {VALUE_GUIDANCE[600]}
+- 800: {VALUE_GUIDANCE[800]}
+- 1000: {VALUE_GUIDANCE[1000]}
+"""
+
+    # Limit reference material to prevent prompt overflow
+    max_reference_chars = 50000
+    if len(reference_material) > max_reference_chars:
+        reference_snippet = reference_material[:max_reference_chars] + "\n\n[Content truncated for length...]"
+    else:
+        reference_snippet = reference_material
+
+    user_prompt = f"""Generate {count} Jeopardy categories based on the following source material.
+
+Source material:
+\"\"\"{reference_snippet}\"\"\"
+
+Theme: {theme}
+Difficulty: {difficulty_text}
+{value_guidance}
+
+IMPORTANT INSTRUCTIONS:
+1. Create categories that cover the key topics, people, events, places, and concepts from the source material above
+2. All clues must be answerable using ONLY the information provided in the source material
+3. Do NOT fabricate facts or include outside knowledge
+4. Each category needs TWO names:
+   - "title" - A creative, catchy display name for players (e.g., "Historical Events", "Famous Figures")
+   - "contentTopic" - The descriptive topic name for AI context (e.g., "World War II Battles", "Scientists")
 
 The title should be fun and creative while the contentTopic should be clear and descriptive.
 
