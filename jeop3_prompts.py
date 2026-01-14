@@ -140,9 +140,9 @@ Analyze the content above to identify the main topics, themes, and tone. Then cr
 Return JSON format:
 {{
   "titles": [
-    { "title": "...", "subtitle": "..." },
-    { "title": "...", "subtitle": "..." },
-    { "title": "...", "subtitle": "..." }
+    {{ "title": "...", "subtitle": "..." }},
+    {{ "title": "...", "subtitle": "..." }},
+    {{ "title": "...", "subtitle": "..." }}
   ]
 }}"""
     else:
@@ -159,9 +159,9 @@ Return JSON format:
 Return JSON format:
 {{
   "titles": [
-    { "title": "...", "subtitle": "..." },
-    { "title": "...", "subtitle": "..." },
-    { "title": "...", "subtitle": "..." }
+    {{ "title": "...", "subtitle": "..." }},
+    {{ "title": "...", "subtitle": "..." }},
+    {{ "title": "...", "subtitle": "..." }}
   ]
 }}"""
 
