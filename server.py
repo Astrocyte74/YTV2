@@ -28,6 +28,7 @@ import socket
 import mimetypes
 import requests
 from requests.exceptions import RequestException
+import base64
 from bs4 import BeautifulSoup
 try:
     from google.oauth2 import id_token as google_id_token
@@ -359,28 +360,38 @@ def verify_clerk_bearer(auth_header: str) -> dict:
                 raise PermissionError('Failed to verify token')
 
         # Find the matching key
-        rsa_key = None
+        jwk_key = None
         for key in jwks.get('keys', []):
             if key.get('kid') == kid:
-                rsa_key = {
-                    'kty': key['kty'],
-                    'kid': key['kid'],
-                    'use': key['use'],
-                    'n': key['n'],
-                    'e': key['e']
-                }
+                jwk_key = key
                 break
 
-        if not rsa_key:
+        if not jwk_key:
             raise PermissionError('Invalid token: key not found')
+
+        # Convert JWK to PEM key using PyJWT's built-in JWK support
+        # PyJWT can convert JWK to RSA key automatically
+        from jwt.algorithms import RSAAlgorithm
+
+        # Create a proper JWK dict (PyJWT expects specific format)
+        jwk_dict = {
+            'kty': jwk_key['kty'],
+            'kid': jwk_key['kid'],
+            'use': jwk_key.get('use', 'sig'),
+            'n': jwk_key['n'],
+            'e': jwk_key['e']
+        }
+
+        # Convert JWK to PEM key
+        pem_key = RSAAlgorithm.from_jwk(json.dumps(jwk_dict))
 
         # Verify the token
         decoded = jwt.decode(
             token,
-            rsa_key,
+            pem_key,
             algorithms=['RS256'],
             issuer=iss,
-            audience=['api-test']  # Clerk default audience
+            options={'verify_aud': False}  # Clerk tokens don't always have aud
         )
 
         # Extract email
