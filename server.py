@@ -302,7 +302,11 @@ def verify_clerk_bearer(auth_header: str) -> dict:
         PermissionError: If token is invalid or email not approved
     """
     # Development mode: skip auth if SKIP_AUTH=true
-    if os.getenv('SKIP_AUTH', '').lower() == 'true':
+    # SAFETY CHECK: Only allow skipping auth on localhost
+    skip_auth = os.getenv('SKIP_AUTH', '').lower() == 'true'
+    is_production = os.getenv('RENDER', '') != ''  # Render sets this automatically
+
+    if skip_auth and not is_production:
         logger.warning("⚠️ AUTHENTICATION DISABLED - Development mode (SKIP_AUTH=true)")
         return {
             'user_id': 'dev_user',
@@ -310,6 +314,10 @@ def verify_clerk_bearer(auth_header: str) -> dict:
             'iss': 'development',
             'exp': float('inf')
         }
+
+    if skip_auth and is_production:
+        logger.error("🚨 SECURITY ALERT: SKIP_AUTH=true detected on production! Ignoring.")
+        # Fall through to normal auth check
 
     if not auth_header or not auth_header.startswith('Bearer '):
         raise PermissionError('Missing bearer token')
