@@ -2904,6 +2904,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(410, "Endpoint removed")
             elif path == '/api/backup/exports':
                 self.serve_api_backup_exports()
+            elif path == '/api/backup/exports/list':
+                self.serve_api_backup_exports_list()
             elif path == '/api/report-events':
                 self.serve_api_report_events()
             elif path == '/api/metrics':
@@ -5649,6 +5651,67 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({'error': f'Backup failed: {str(e)}'}).encode())
+
+    def serve_api_backup_exports_list(self):
+        """GET /api/backup/exports/list - List all files in exports directory
+
+        Admin-only endpoint (requires DEBUG_TOKEN). Returns a list of all files
+        in the exports directory with their sizes, so we can download them in batches.
+        """
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Unauthorized: DEBUG_TOKEN required'}).encode())
+                logger.warning("Unauthorized attempt to access /api/backup/exports/list")
+                return
+
+            # Determine exports directory
+            exports_root = Path('/app/data/exports') if Path('/app/data').exists() else Path('./exports')
+
+            if not exports_root.exists():
+                self.send_response(404)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Exports directory not found'}).encode())
+                return
+
+            # List all files
+            files = []
+            for file_path in exports_root.rglob('*'):
+                if file_path.is_file():
+                    files.append({
+                        'path': str(file_path.relative_to(exports_root)),
+                        'size': file_path.stat().st_size,
+                        'name': file_path.name
+                    })
+
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+
+            result = {
+                'exports_root': str(exports_root),
+                'total_files': len(files),
+                'total_size': sum(f['size'] for f in files),
+                'files': files
+            }
+
+            self.wfile.write(json.dumps(result, indent=2).encode())
+
+            logger.info(f"✅ Listed {len(files)} files in exports directory")
+
+        except Exception as e:
+            logger.error(f"Exports list error: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': f'List failed: {str(e)}'}).encode())
 
     def handle_fetch_article(self):
         """Handle POST /api/fetch-article - Fetch external article content
