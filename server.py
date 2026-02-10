@@ -2902,6 +2902,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_refresh()
             elif path == '/api/backup':
                 self.send_error(410, "Endpoint removed")
+            elif path == '/api/backup/exports':
+                self.serve_api_backup_exports()
             elif path == '/api/report-events':
                 self.serve_api_report_events()
             elif path == '/api/metrics':
@@ -5581,6 +5583,75 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({'success': False, 'error': 'Internal error'}).encode())
+
+    def serve_api_backup_exports(self):
+        """GET /api/backup/exports - Download all exports files as a zip archive
+
+        Admin-only endpoint (requires DEBUG_TOKEN). Creates a zip file of the entire
+        exports directory (audio and images) and streams it to the client.
+        """
+        try:
+            # Verify DEBUG_TOKEN for admin access
+            debug_token = os.getenv('DEBUG_TOKEN')
+            auth_header = self.headers.get('Authorization', '').replace('Bearer ', '').strip()
+
+            if not debug_token or auth_header != debug_token:
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Unauthorized: DEBUG_TOKEN required'}).encode())
+                logger.warning("Unauthorized attempt to access /api/backup/exports")
+                return
+
+            # Determine exports directory
+            exports_root = Path('/app/data/exports') if Path('/app/data').exists() else Path('./exports')
+
+            if not exports_root.exists():
+                self.send_response(404)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Exports directory not found'}).encode())
+                return
+
+            import zipfile
+            import io
+
+            # Create zip file in memory
+            logger.info(f"Creating backup of exports directory: {exports_root}")
+            zip_buffer = io.BytesIO()
+
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for file_path in exports_root.rglob('*'):
+                    if file_path.is_file():
+                        # Add file to zip with relative path
+                        arcname = file_path.relative_to(exports_root)
+                        zipf.write(file_path, arcname)
+                        logger.debug(f"Added to backup: {arcname}")
+
+            zip_buffer.seek(0)
+            zip_size = len(zip_buffer.getvalue())
+
+            # Send zip file
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-Type', 'application/zip')
+            self.send_header('Content-Disposition', 'attachment; filename="ytv2_exports_backup.zip"')
+            self.send_header('Content-Length', str(zip_size))
+            self.end_headers()
+
+            self.wfile.write(zip_buffer.getvalue())
+
+            logger.info(f"✅ Exports backup completed: {zip_size} bytes")
+
+        except Exception as e:
+            logger.error(f"Exports backup error: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': f'Backup failed: {str(e)}'}).encode())
 
     def handle_fetch_article(self):
         """Handle POST /api/fetch-article - Fetch external article content
