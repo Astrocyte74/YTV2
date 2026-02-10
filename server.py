@@ -5592,10 +5592,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         """
         try:
             # Verify DEBUG_TOKEN for admin access
-            debug_token = os.getenv('DEBUG_TOKEN')
-            auth_header = self.headers.get('Authorization', '').replace('Bearer ', '').strip()
-
-            if not debug_token or auth_header != debug_token:
+            if not self._debug_auth_ok():
                 self.send_response(401)
                 self.set_cors_headers()
                 self.send_header('Content-type', 'application/json')
