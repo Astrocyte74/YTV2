@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  dashboard:
+    image: ytv2-dashboard:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ytv2-dashboard
+    restart: unless-stopped
+
+    # Environment variables from .env file
+    env_file:
+      - .env
+
+    # Additional environment variables
+    environment:
+      - TZ=${TZ:-America/New_York}
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - PORT=10000
+      # PostgreSQL connection (MUST be set in .env)
+      - DATABASE_URL_POSTGRES_NEW
+
+    # Port mapping for dashboard access
+    ports:
+      - "10000:6452"
+
+    # Volume mounts for data persistence
+    volumes:
+      # Application data directories
+      - ./data:/app/data
+      - ./exports:/app/exports
+      # Static files (CSS/JS) for live development
+      - ./static:/app/static
+      # Optional: Mount cache directory for performance
+      - dashboard-cache:/app/cache
+
+    # Network connection to PostgreSQL
+    networks:
+      - ytv2-network
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # Resource limits (adjust based on your Mac's capabilities)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Named volumes for data persistence
+volumes:
+  dashboard-cache:
+    driver: local
+    name: ytv2-dashboard-cache
+
+# Network configuration
+networks:
+  ytv2-network:
+    driver: bridge
+    name: ytv2-network

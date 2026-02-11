@@ -137,6 +137,7 @@ downloads/
 exports/
 logs/
 back_Fill_logs*.md
+data/*.sql
 cache/
 .cache/
 temp/

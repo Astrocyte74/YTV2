@@ -934,6 +934,28 @@ def extract_html_report_metadata(file_path: Path) -> Dict:
         raise
 
 
+def _get_exports_path() -> Path:
+    """Get the exports directory path, supporting both Docker and local development.
+
+    Returns:
+        Path to the exports directory.
+    """
+    # Docker container path
+    docker_path = Path("/app/data/exports")
+    if docker_path.exists():
+        return docker_path.resolve()
+
+    # Local development path (relative to this file)
+    local_path = Path(__file__).parent / "data" / "exports"
+    if local_path.exists():
+        return local_path.resolve()
+
+    # Fallback to ./data/exports (current working directory)
+    fallback_path = Path("./data/exports")
+    logger.info(f"Using exports path: {fallback_path} (Docker: {docker_path.exists()}, Local: {local_path.exists()})")
+    return fallback_path.resolve()
+
+
 class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     """HTTP request handler with modern template system"""
     
@@ -2485,7 +2507,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(404, "Not found")
                 return
 
-            root = Path("/app/data/exports").resolve()
+            root = _get_exports_path()
 
             # strip leading prefix and build filesystem path
             rel = request_path[len("/exports/"):].lstrip("/")  # "audio/<file>.mp3" or "<file>.mp3"
@@ -2552,8 +2574,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             clean_id = video_id.replace('yt:', '').replace(':', '')
 
             # Search for candidate files in common locations
-            search_dirs = [Path('/app/data/exports')]
-            audio_subdir = Path('/app/data/exports/audio')
+            exports_path = _get_exports_path()
+            search_dirs = [exports_path]
+            audio_subdir = exports_path / "audio"
             if audio_subdir.exists():
                 search_dirs.append(audio_subdir)
             patterns = [
