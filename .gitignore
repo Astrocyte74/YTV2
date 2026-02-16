@@ -181,3 +181,5 @@ docker-compose.cloudflare.yml
 setup-cloudflare.shytv2_content.db
 ytv2_content.db
 ytv2_content_local_backup.db
+.playwright-cli/
+.playwright-cli/
