@@ -2831,21 +2831,116 @@ class AudioDashboard {
                             <div class="wall-dock__top-actions">
                                 <div class="wall-dock__menu-wrap">
                                     <button type="button" class="wall-dock__btn wall-dock__btn--menu summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">•••</button>
-                                    <div class="summary-card__menu wall-dock__menu hidden" data-kebab-menu role="menu">
-                                        <button type="button" class="summary-card__menu-item" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="hybrid" aria-checked="${mode === 'hybrid' ? 'true' : 'false'}">Arrange: Related</button>
-                                        <button type="button" class="summary-card__menu-item" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="category" aria-checked="${mode === 'category' ? 'true' : 'false'}">Arrange: Category</button>
-                                        <button type="button" class="summary-card__menu-item" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="keywords" aria-checked="${mode === 'keywords' ? 'true' : 'false'}">Arrange: Keywords</button>
-                                        <button type="button" class="summary-card__menu-item" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="newest" aria-checked="${mode === 'newest' ? 'true' : 'false'}">Arrange: Newest</button>
-                                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-copy-link">Copy link</button>
-                                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reader-display">Display settings</button>
-                                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-reprocess">Reprocess…</button>
-                                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-open-page">Open report page</button>
-                                    </div>
                                 </div>
                                 <button type="button" class="wall-dock__close" data-action="wall-dock-close" aria-label="Close">✕</button>
                             </div>
                         </div>
                         <h3 id="wallDockTitle" class="wall-dock__title">Summary</h3>
+                        <div class="summary-card__menu wall-dock__menu hidden" data-kebab-menu role="menu">
+                            <section class="wall-dock__menu-section" data-wall-menu-section="arrange">
+                                <p class="wall-dock__menu-label">Arrange Cards</p>
+                                <div class="wall-dock__arrange-grid" role="group" aria-label="Arrange cards">
+                                    <button type="button" class="summary-card__menu-item wall-dock__arrange-btn" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="hybrid" aria-checked="${mode === 'hybrid' ? 'true' : 'false'}">Related</button>
+                                    <button type="button" class="summary-card__menu-item wall-dock__arrange-btn" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="category" aria-checked="${mode === 'category' ? 'true' : 'false'}">Category</button>
+                                    <button type="button" class="summary-card__menu-item wall-dock__arrange-btn" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="keywords" aria-checked="${mode === 'keywords' ? 'true' : 'false'}">Keywords</button>
+                                    <button type="button" class="summary-card__menu-item wall-dock__arrange-btn" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="newest" aria-checked="${mode === 'newest' ? 'true' : 'false'}">Newest</button>
+                                </div>
+                            </section>
+                            <section class="wall-dock__menu-section" data-wall-menu-section="reader">
+                                <p class="wall-dock__menu-label">Reader</p>
+                                <button type="button" class="summary-card__menu-item wall-dock__display-toggle" role="menuitem" data-action="reader-display-inline-toggle" aria-expanded="false" aria-controls="wallDockDisplayPanel">
+                                    <span class="wall-dock__display-toggle-head">
+                                        <span class="wall-dock__display-toggle-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="11" cy="18" r="2"/></svg>
+                                        </span>
+                                        <span class="wall-dock__display-toggle-text">Display</span>
+                                    </span>
+                                    <span class="wall-dock__display-chevron" aria-hidden="true">⌄</span>
+                                </button>
+                                <div id="wallDockDisplayPanel" class="wall-dock__display-panel hidden" data-wall-display-panel>
+                                    <section class="wall-dock__display-group wall-dock__display-group--type">
+                                        <header class="wall-dock__display-group-head">
+                                            <span class="wall-dock__display-group-icon" aria-hidden="true">A</span>
+                                            <span class="wall-dock__display-group-title">Type</span>
+                                        </header>
+                                        <div class="wall-dock__display-row">
+                                            <span class="wall-dock__display-row-icon" aria-hidden="true">SZ</span>
+                                            <div class="wall-dock__display-seg wall-dock__display-seg--dense" role="group" aria-label="Text size">
+                                                <span role="button" data-reader-size-dec aria-pressed="false" title="Smaller text">-</span>
+                                                <span role="button" data-reader-size="s" aria-pressed="false" title="Small">S</span>
+                                                <span role="button" data-reader-size="m" aria-pressed="false" title="Medium">M</span>
+                                                <span role="button" data-reader-size="l" aria-pressed="false" title="Large">L</span>
+                                                <span role="button" data-reader-size-inc aria-pressed="false" title="Larger text">+</span>
+                                            </div>
+                                        </div>
+                                        <div class="wall-dock__display-row">
+                                            <span class="wall-dock__display-row-icon" aria-hidden="true">FN</span>
+                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Font family">
+                                                <span role="button" data-reader-family="sans" aria-pressed="false" title="Sans serif">Sans</span>
+                                                <span role="button" data-reader-family="serif" aria-pressed="false" title="Serif" style="font-family:Georgia,serif">Serif</span>
+                                            </div>
+                                        </div>
+                                        <div class="wall-dock__display-row">
+                                            <span class="wall-dock__display-row-icon" aria-hidden="true">LN</span>
+                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Line spacing">
+                                                <span role="button" data-reader-line="tight" aria-pressed="false" title="Tight spacing">T</span>
+                                                <span role="button" data-reader-line="normal" aria-pressed="false" title="Normal spacing">N</span>
+                                                <span role="button" data-reader-line="loose" aria-pressed="false" title="Loose spacing">L</span>
+                                            </div>
+                                        </div>
+                                    </section>
+                                    <section class="wall-dock__display-group wall-dock__display-group--layout">
+                                        <header class="wall-dock__display-group-head">
+                                            <span class="wall-dock__display-group-icon" aria-hidden="true">[]</span>
+                                            <span class="wall-dock__display-group-title">Layout</span>
+                                        </header>
+                                        <div class="wall-dock__display-row">
+                                            <span class="wall-dock__display-row-icon" aria-hidden="true">P</span>
+                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Paragraph style">
+                                                <span role="button" data-reader-para="spaced" aria-pressed="false" title="Spaced paragraphs">Sp</span>
+                                                <span role="button" data-reader-para="indented" aria-pressed="false" title="Indented paragraphs">In</span>
+                                            </div>
+                                        </div>
+                                        <div class="wall-dock__display-row">
+                                            <span class="wall-dock__display-row-icon" aria-hidden="true">J</span>
+                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Justification">
+                                                <span role="button" data-reader-justify="left" aria-pressed="false" title="Left aligned">Left</span>
+                                                <span role="button" data-reader-justify="justify" aria-pressed="false" title="Justified">Just</span>
+                                            </div>
+                                        </div>
+                                        <div class="wall-dock__display-row">
+                                            <span class="wall-dock__display-row-icon" aria-hidden="true">W</span>
+                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Reading width">
+                                                <span role="button" data-reader-measure="narrow" aria-pressed="false" title="Narrow">N</span>
+                                                <span role="button" data-reader-measure="medium" aria-pressed="false" title="Medium">M</span>
+                                                <span role="button" data-reader-measure="wide" aria-pressed="false" title="Wide">W</span>
+                                                <span role="button" data-reader-measure="full" aria-pressed="false" title="Full width">F</span>
+                                            </div>
+                                        </div>
+                                    </section>
+                                    <section class="wall-dock__display-group wall-dock__display-group--theme">
+                                        <header class="wall-dock__display-group-head">
+                                            <span class="wall-dock__display-group-icon" aria-hidden="true">O</span>
+                                            <span class="wall-dock__display-group-title">Tone</span>
+                                            <button type="button" class="wall-dock__display-reset" data-reader-reset-inline title="Reset reader settings">Reset</button>
+                                        </header>
+                                        <div class="wall-dock__display-row wall-dock__display-row--full">
+                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Reader theme">
+                                                <span role="button" data-reader-theme="light" aria-pressed="false" title="Light theme">Lt</span>
+                                                <span role="button" data-reader-theme="sepia" aria-pressed="false" title="Sepia theme">Se</span>
+                                                <span role="button" data-reader-theme="dark" aria-pressed="false" title="Dark theme">Dk</span>
+                                            </div>
+                                        </div>
+                                    </section>
+                                </div>
+                                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-copy-link">Copy link</button>
+                                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-open-page">Open report page</button>
+                            </section>
+                            <section class="wall-dock__menu-section" data-wall-menu-section="actions">
+                                <p class="wall-dock__menu-label">Actions</p>
+                                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-reprocess">Reprocess…</button>
+                            </section>
+                        </div>
                     </div>
                     <div id="wallDockBody" class="wall-dock__body prose prose-sm dark:prose-invert max-w-none"></div>
                 </aside>
@@ -5776,7 +5871,8 @@ class AudioDashboard {
         const copyBtn = dock.querySelector('[data-action="wall-reader-copy-link"]');
         const sourceBtn = dock.querySelector('[data-action="wall-reader-open-source"]');
         const reprocessBtn = dock.querySelector('[data-action="wall-reader-reprocess"]');
-        const displayBtn = dock.querySelector('[data-action="reader-display"]');
+        const displayInlineBtn = dock.querySelector('[data-action="reader-display-inline-toggle"]');
+        const displayPanel = dock.querySelector('[data-wall-display-panel]');
         const menuBtn = dock.querySelector('[data-action="menu"]');
         const menu = dock.querySelector('[data-kebab-menu]');
         const closeBtn = dock.querySelector('[data-action="wall-dock-close"]');
@@ -5799,12 +5895,83 @@ class AudioDashboard {
             this.copyLink(card || dock, id);
             if (menu && menuBtn) this.toggleKebabMenu(dock, false, menuBtn);
         });
-        if (displayBtn) on(displayBtn, 'click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (menu && menuBtn) this.toggleKebabMenu(dock, false, menuBtn);
-            this.openReaderDisplayPopover(dock, body, menuBtn || displayBtn);
-        });
+        const syncInlineDisplayPanel = (prefsInput = null) => {
+            if (!displayPanel) return;
+            const prefs = prefsInput || this.getReaderDisplayPrefs();
+            displayPanel.querySelectorAll('[data-reader-size]').forEach((el) => {
+                el.setAttribute('aria-pressed', el.getAttribute('data-reader-size') === prefs.size ? 'true' : 'false');
+            });
+            displayPanel.querySelectorAll('[data-reader-line]').forEach((el) => {
+                el.setAttribute('aria-pressed', el.getAttribute('data-reader-line') === prefs.line ? 'true' : 'false');
+            });
+            displayPanel.querySelectorAll('[data-reader-family]').forEach((el) => {
+                el.setAttribute('aria-pressed', el.getAttribute('data-reader-family') === prefs.family ? 'true' : 'false');
+            });
+            displayPanel.querySelectorAll('[data-reader-theme]').forEach((el) => {
+                el.setAttribute('aria-pressed', el.getAttribute('data-reader-theme') === prefs.theme ? 'true' : 'false');
+            });
+            displayPanel.querySelectorAll('[data-reader-para]').forEach((el) => {
+                el.setAttribute('aria-pressed', el.getAttribute('data-reader-para') === prefs.paraStyle ? 'true' : 'false');
+            });
+            displayPanel.querySelectorAll('[data-reader-justify]').forEach((el) => {
+                el.setAttribute('aria-pressed', el.getAttribute('data-reader-justify') === prefs.justify ? 'true' : 'false');
+            });
+            displayPanel.querySelectorAll('[data-reader-measure]').forEach((el) => {
+                el.setAttribute('aria-pressed', el.getAttribute('data-reader-measure') === prefs.measure ? 'true' : 'false');
+            });
+        };
+        syncInlineDisplayPanel();
+
+        if (displayInlineBtn && displayPanel) {
+            on(displayInlineBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const expanded = displayInlineBtn.getAttribute('aria-expanded') === 'true';
+                displayInlineBtn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+                displayPanel.classList.toggle('hidden', expanded);
+            });
+            on(displayPanel, 'click', (e) => {
+                const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-theme], [data-reader-para], [data-reader-justify], [data-reader-measure], [data-reader-size-inc], [data-reader-size-dec], [data-reader-reset-inline]');
+                if (!btn) return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (btn.hasAttribute('data-reader-reset-inline')) {
+                    const defaults = { size: 'm', line: 'normal', family: 'sans', theme: 'light', systemTheme: false, paraStyle: 'spaced', justify: 'left', measure: 'medium' };
+                    const merged = this.setReaderDisplayPrefs(defaults);
+                    this.applyReaderDisplayPrefs(dock, body);
+                    syncInlineDisplayPanel(merged);
+                    return;
+                }
+                const size = btn.getAttribute('data-reader-size');
+                const line = btn.getAttribute('data-reader-line');
+                const family = btn.getAttribute('data-reader-family');
+                const theme = btn.getAttribute('data-reader-theme');
+                const para = btn.getAttribute('data-reader-para');
+                const justify = btn.getAttribute('data-reader-justify');
+                const measure = btn.getAttribute('data-reader-measure');
+                const inc = btn.hasAttribute('data-reader-size-inc');
+                const dec = btn.hasAttribute('data-reader-size-dec');
+                const next = {};
+                if (size && READER_SIZE_MAP[size]) next.size = size;
+                if (inc || dec) {
+                    const order = ['s', 'm', 'l', 'xl', 'xxl'];
+                    const cur = this.getReaderDisplayPrefs().size || 'm';
+                    let idx = Math.max(0, order.indexOf(cur));
+                    if (inc && idx < order.length - 1) idx += 1;
+                    if (dec && idx > 0) idx -= 1;
+                    next.size = order[idx];
+                }
+                if (line && READER_LINE_MAP[line]) next.line = line;
+                if (family && READER_FAMILY_MAP[family]) next.family = family;
+                if (theme && READER_THEMES.includes(theme)) next.theme = theme;
+                if (para && READER_PARA_STYLES.includes(para)) next.paraStyle = para;
+                if (justify && READER_JUSTIFY.includes(justify)) next.justify = justify;
+                if (measure && READER_MEASURE_MAP[measure]) next.measure = measure;
+                const merged = this.setReaderDisplayPrefs(next);
+                this.applyReaderDisplayPrefs(dock, body);
+                syncInlineDisplayPanel(merged);
+            });
+        }
 
         if (sourceBtn) {
             const canOpen = (slug === 'youtube') ? canYoutube : Boolean(item.canonical_url);
@@ -5835,6 +6002,8 @@ class AudioDashboard {
             reprocessBtn.classList.toggle('hidden', !canYoutube);
             reprocessBtn.disabled = !canYoutube;
             reprocessBtn.classList.toggle('is-disabled', !canYoutube);
+            const reprocessSection = dock.querySelector('[data-wall-menu-section="actions"]');
+            if (reprocessSection) reprocessSection.classList.toggle('hidden', !canYoutube);
             on(reprocessBtn, 'click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -5850,6 +6019,10 @@ class AudioDashboard {
                 e.preventDefault();
                 e.stopPropagation();
                 const expanded = menuBtn.getAttribute('aria-expanded') === 'true';
+                if (!expanded && displayInlineBtn && displayPanel) {
+                    displayInlineBtn.setAttribute('aria-expanded', 'false');
+                    displayPanel.classList.add('hidden');
+                }
                 this.toggleKebabMenu(dock, !expanded, menuBtn);
             });
             on(menu, 'click', (e) => {
@@ -8842,9 +9015,11 @@ class AudioDashboard {
                    Download
                </a>`
             : '';
-        const waveformBars = Array.from({ length: 42 }).map((_, idx) => {
-            const h = 24 + ((idx * 7) % 52);
-            return `<span class="kaleido-audio-wavebar" data-wave-index="${idx}" style="--h:${h}%"></span>`;
+        const waveformBars = Array.from({ length: 56 }).map((_, idx) => {
+            const h = 22 + ((idx * 9) % 58);
+            const durationMs = 300 + ((idx % 7) * 40);
+            const delayMs = (idx % 5) * 25;
+            return `<span class="kaleido-audio-wavebar" data-wave-index="${idx}" style="--h:${h}%;--wave-d:${durationMs}ms;--wave-delay:${delayMs}ms"></span>`;
         }).join('');
 
         const enhancedControls = useEnhancedPlayer ? `
@@ -8865,19 +9040,36 @@ class AudioDashboard {
                         <span class="kaleido-audio-play-label" data-label>${isActive && isPlaying ? 'Pause' : 'Play'}</span>
                     </button>
                     <button type="button" class="kaleido-audio-skip" data-kaleido-audio-skip-back ${available ? '' : 'disabled aria-disabled=\"true\"'} title="Skip back 15s" data-skip-seconds="-15">
-                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12.5 3C17.15 3 21.08 6.03 22.47 10.22L20.1 11C19.05 7.81 16.04 5.5 12.5 5.5C10.54 5.5 8.77 6.22 7.38 7.38L10 10H3V3L5.6 5.6C7.45 4 9.85 3 12.5 3M10 12V22H8V14H6V12H10M18 14V20C18 21.11 17.11 22 16 22H14C12.9 22 12 21.1 12 20V14C12 12.9 12.9 12 14 12H16C17.11 12 18 12.9 18 14M14 14V20H16V14H14Z"/></svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">
+                            <path d="M11 7 6 12l5 5"></path>
+                            <path d="M18 7 13 12l5 5"></path>
+                        </svg>
                         <span class="kaleido-audio-skip-label">-15s</span>
                     </button>
                     <button type="button" class="kaleido-audio-skip" data-kaleido-audio-skip-forward ${available ? '' : 'disabled aria-disabled=\"true\"'} title="Skip forward 15s" data-skip-seconds="15">
-                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M10 3C4.58 3 0.12 6.75 0 12H2.5C2.62 7.91 6.25 4.5 10.75 4.5C13.56 4.5 16.13 5.71 17.88 7.7L15 10.5H23V2.5L20.38 5.12C18.04 2.88 14.7 1.5 10.75 1.5V3Z"/></svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">
+                            <path d="M13 7 18 12l-5 5"></path>
+                            <path d="M6 7 11 12l-5 5"></path>
+                        </svg>
                         <span class="kaleido-audio-skip-label">+15s</span>
                     </button>
                     <div class="kaleido-audio-time" data-kaleido-audio-time>0:00 / —</div>
                     <div class="kaleido-audio-volume" data-kaleido-audio-volume>
                         <button type="button" class="kaleido-audio-volume-btn" data-kaleido-audio-volume-btn ${available ? '' : 'disabled aria-disabled=\"true\"'} title="Mute/Unmute">
-                            <svg class="kaleido-audio-volume-icon" data-volume-high viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0h-2.5l-5 5v5h5l5 5V3.23z"/></svg>
-                            <svg class="kaleido-audio-volume-icon hidden" data-volume-low viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M5 9v6h4l5 5V4L9 9H5z"/></svg>
-                            <svg class="kaleido-audio-volume-icon hidden" data-volume-mute viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zM19 12c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+                            <svg class="kaleido-audio-volume-icon" data-volume-high viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true">
+                                <polygon points="11 5 6 9 3 9 3 15 6 15 11 19 11 5"></polygon>
+                                <path d="M15.5 8.5a5 5 0 0 1 0 7"></path>
+                                <path d="M18.8 5.6a9 9 0 0 1 0 12.8"></path>
+                            </svg>
+                            <svg class="kaleido-audio-volume-icon hidden" data-volume-low viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true">
+                                <polygon points="11 5 6 9 3 9 3 15 6 15 11 19 11 5"></polygon>
+                                <path d="M15.8 9.2a4 4 0 0 1 0 5.6"></path>
+                            </svg>
+                            <svg class="kaleido-audio-volume-icon hidden" data-volume-mute viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true">
+                                <polygon points="11 5 6 9 3 9 3 15 6 15 11 19 11 5"></polygon>
+                                <path d="m15 9 6 6"></path>
+                                <path d="m21 9-6 6"></path>
+                            </svg>
                         </button>
                         <input type="range" min="0" max="100" value="100" class="kaleido-audio-volume-slider" data-kaleido-audio-volume-slider ${available ? '' : 'disabled aria-disabled=\"true\"'} />
                     </div>
@@ -8949,7 +9141,7 @@ class AudioDashboard {
             try {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 analyser = audioContext.createAnalyser();
-                analyser.fftSize = 64;
+                analyser.fftSize = 256;
                 source = audioContext.createMediaElementSource(this.audioElement);
                 source.connect(analyser);
                 analyser.connect(audioContext.destination);
@@ -8963,12 +9155,21 @@ class AudioDashboard {
             if (!analyser || !waveBars.length) return;
             const dataArray = new Uint8Array(analyser.frequencyBinCount);
             analyser.getByteFrequencyData(dataArray);
-            const step = Math.floor(dataArray.length / waveBars.length);
+            const binCount = dataArray.length || 1;
+            const barCount = waveBars.length || 1;
             waveBars.forEach((bar, idx) => {
-                const value = dataArray[idx * step] || 0;
-                const height = Math.max(20, (value / 255) * 100);
+                const start = Math.floor((idx / barCount) * binCount);
+                const end = Math.max(start + 1, Math.floor(((idx + 1) / barCount) * binCount));
+                let peak = 0;
+                for (let i = start; i < end; i += 1) {
+                    const val = dataArray[i] || 0;
+                    if (val > peak) peak = val;
+                }
+                const amp = Math.pow(peak / 255, 0.62);
+                const contour = 0.9 + (Math.sin(idx * 0.42) * 0.12);
+                const height = Math.max(22, Math.min(100, 22 + (amp * 76 * contour)));
                 bar.style.setProperty('--h', `${height}%`);
-                bar.style.setProperty('--wave-scale', height / 50);
+                bar.style.setProperty('--wave-scale', (0.86 + amp * 0.92).toFixed(3));
             });
             animationFrame = requestAnimationFrame(updateWaveform);
         };
@@ -8979,6 +9180,7 @@ class AudioDashboard {
                 audioContext.resume();
             }
             if (animationFrame) cancelAnimationFrame(animationFrame);
+            waveBars.forEach((bar) => bar.classList.add('is-animated'));
             updateWaveform();
         };
 
@@ -8988,9 +9190,10 @@ class AudioDashboard {
                 animationFrame = null;
             }
             waveBars.forEach((bar, idx) => {
-                const h = 24 + ((idx * 7) % 52);
+                const h = 22 + ((idx * 9) % 58);
                 bar.style.setProperty('--h', `${h}%`);
                 bar.style.removeProperty('--wave-scale');
+                bar.classList.remove('is-animated');
             });
         };
 
