@@ -1,7 +1,9 @@
 /**
  * YTV2 Dashboard V3 - Audio-Centric Interface
  * Phase 3 implementation with integrated audio player and modern UX
+ * @version 2026-02-16-FIX4
  */
+console.log('[YTV2] Dashboard JS loaded - version 2026-02-16-FIX4');
 
 // Subcategory to parent category mapping (authoritative source from youtube_summarizer.py)
 const SUBCATEGORY_PARENTS = {
@@ -122,7 +124,7 @@ class AudioDashboard {
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallSimilarityMode')) this.flags.wallSimilarityMode = 'halo';
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallFlipEnabled')) this.flags.wallFlipEnabled = true;
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallMegaSpanEnabled')) this.flags.wallMegaSpanEnabled = true;
-        if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallKaleidoPreferred')) this.flags.wallKaleidoPreferred = true;
+        if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallKaleidoPreferred')) this.flags.wallKaleidoPreferred = false;
         this.config = (typeof window !== 'undefined' && window.DASHBOARD_CONFIG) ? window.DASHBOARD_CONFIG : {};
         // Debug: allow slowing FLIP with URL ?flip=slow|slower|off or ?flipms=NNN
         this.flipDebugMs = 0;
@@ -2533,6 +2535,7 @@ class AudioDashboard {
     }
 
     renderContent(items) {
+        console.log('[DEBUG] renderContent called with', items?.length, 'items, viewMode:', this.viewMode);
         // Safety check for undefined items
         if (!items || !Array.isArray(items)) {
             console.warn('renderContent called with invalid items:', items);
@@ -2575,16 +2578,26 @@ class AudioDashboard {
         this.decorateCards(items);
 
         // Make whole card clickable (except controls)
+        console.log('[DEBUG] Attaching click handlers to', this.contentGrid.querySelectorAll('[data-card]').length, 'cards');
         this.contentGrid.querySelectorAll('[data-card]').forEach(card => {
             card.addEventListener('click', (e) => {
-                if (this._suppressOpen) { e.preventDefault(); e.stopPropagation(); return; }
+                console.log('[DEBUG] Card clicked', { viewMode: this.viewMode, target: e.target.tagName });
+                if (this._suppressOpen) { e.preventDefault(); e.stopPropagation(); console.log('[DEBUG] Suppressed'); return; }
                 // Ignore if click on a control, action, or filter chip
-                if (e.target.closest('[data-control]') || e.target.closest('[data-action]') || e.target.closest('[data-filter-chip]')) return;
-                if (this.viewMode === 'wall') {
+                if (e.target.closest('[data-control]') || e.target.closest('[data-action]') || e.target.closest('[data-filter-chip]')) {
+                    console.log('[DEBUG] Ignored - control/action/chip');
+                    return;
+                }
+                // Check if this is a wall card (either by viewMode or by DOM structure)
+                const isWallCard = this.viewMode === 'wall' || card.closest('.wall-grid') || card.classList.contains('wall-card');
+                console.log('[DEBUG] isWallCard:', isWallCard);
+                if (isWallCard) {
                     const id = card.getAttribute('data-report-id');
+                    console.log('[DEBUG] Wall card ID:', id);
                     if (id) { e.preventDefault(); e.stopPropagation(); this.handleWallRead(id, card); return; }
                 }
                 const href = card.dataset.href;
+                console.log('[DEBUG] Navigating to:', href);
                 if (href) window.location.href = href;
             });
             card.addEventListener('keydown', (e) => {
@@ -5044,27 +5057,33 @@ class AudioDashboard {
 
     // --- Wall reader handlers ---
     handleWallRead(id, cardEl) {
-        const preferKaleido = !this.flags || this.flags.wallKaleidoPreferred !== false;
+        console.log('[DEBUG] handleWallRead called with id:', id);
+        const preferKaleido = !!(this.flags && this.flags.wallKaleidoPreferred === true);
+        console.log('[DEBUG] preferKaleido:', preferKaleido, 'flags:', this.flags);
         if (preferKaleido) {
-            return this.openWallModalReader(id, cardEl);
+            console.log('[DEBUG] calling openWallModalReader');
+            const opened = this.openWallModalReader(id, cardEl);
+            if (opened !== false) return opened;
+            console.warn('[DEBUG] openWallModalReader unavailable, falling back to inline wall reader');
         }
+        const useInline = (this.flags && Object.prototype.hasOwnProperty.call(this.flags, 'wallReadInline')) ? !!this.flags.wallReadInline : true;
         const useMega = this.flags && this.flags.wallMegaSpanEnabled;
         const useFlip = this.flags && this.flags.wallFlipEnabled;
-        const useInline = (this.flags && Object.prototype.hasOwnProperty.call(this.flags, 'wallReadInline')) ? !!this.flags.wallReadInline : true;
         const isDesktop = window.innerWidth >= 1024;
+        if (useInline && isDesktop) {
+            return this.openWallRowReader(id, cardEl);
+        }
         if (useMega && isDesktop) {
             return this.openWallMegaCard(id, cardEl);
         }
         if (useFlip && isDesktop) {
             return this.openWallFlipCard(id, cardEl);
         }
-        if (useInline && isDesktop) {
-            return this.openWallRowReader(id, cardEl);
-        }
         return this.openWallModalReader(id, cardEl);
     }
 
 	    openWallModalReader(id, cardEl) {
+	        console.log('[DEBUG] openWallModalReader called with id:', id);
 	        const modal = document.getElementById('wallReaderModal');
 	        const body = document.getElementById('wallReaderBody');
 	        const sheet = document.getElementById('wallReaderSheet');
@@ -5076,13 +5095,17 @@ class AudioDashboard {
 	        const stripEl = modal ? modal.querySelector('.kaleido-strip') : null;
 	        const closeBtn = document.getElementById('wallReaderClose');
 	        const backdrop = modal ? modal.querySelector('.kaleido-backdrop') : null;
+        console.log('[DEBUG] Modal elements:', { modal: !!modal, body: !!body, sheet: !!sheet, titleEl: !!titleEl, heroEl: !!heroEl });
         const prevBtns = modal ? Array.from(modal.querySelectorAll('[data-kaleido-prev]')) : [];
         const nextBtns = modal ? Array.from(modal.querySelectorAll('[data-kaleido-next]')) : [];
         const stripRelated = document.getElementById('kStripRelated');
         const stripAll = document.getElementById('kStripAll');
         const stripHide = document.getElementById('kStripHide');
         const item = (this.currentItems || []).find(x => x.file_stem === id);
-        if (!modal || !body || !sheet || !titleEl || !heroEl || !item) return;
+        if (!modal || !body || !sheet || !titleEl || !item) {
+            console.warn('[DEBUG] Missing required wall reader elements', { modal: !!modal, body: !!body, sheet: !!sheet, titleEl: !!titleEl, item: !!item });
+            return false;
+        }
         try { sheet.classList.remove('kaleido-scrolled'); } catch (_) { }
 
         const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
@@ -5214,12 +5237,14 @@ class AudioDashboard {
             heroUrl = item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
             if (!heroUrl && item.thumbnail_url) heroUrl = item.thumbnail_url;
         } catch (_) { }
-        if (heroUrl) {
-            heroEl.dataset.empty = 'false';
-            heroEl.innerHTML = `<img class="kaleido-hero-img" src="${heroUrl}" alt="">`;
-        } else {
-            heroEl.dataset.empty = 'true';
-            heroEl.innerHTML = '';
+        if (heroEl) {
+            if (heroUrl) {
+                heroEl.dataset.empty = 'false';
+                heroEl.innerHTML = `<img class="kaleido-hero-img" src="${heroUrl}" alt="">`;
+            } else {
+                heroEl.dataset.empty = 'true';
+                heroEl.innerHTML = '';
+            }
         }
 
         const applyRelatedState = (active) => {
@@ -5653,8 +5678,9 @@ class AudioDashboard {
 		            const replace = cur === String(id);
 		            this.setReadDeepLink(id, defaultVariant || '', { replace, videoId: item?.video_id || '' });
 		        } catch (_) { }
-		        this.sendTelemetry('read_open', { id, view: 'wall' });
-		    }
+			        this.sendTelemetry('read_open', { id, view: 'wall' });
+                    return true;
+			    }
 
     openWallRowReader(id, cardEl) {
         const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
