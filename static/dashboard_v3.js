@@ -8917,6 +8917,9 @@ class AudioDashboard {
 	    bindKaleidoInlineAudioControls(container, on) {
 	        if (!container || typeof on !== 'function') return;
 	        if (!this.audioElement) return;
+            // Guard: prevent multiple bindings to the same container
+            if (container._kaleidoControlsBound) return;
+            container._kaleidoControlsBound = true;
 	        const seek = container.querySelector('[data-kaleido-audio-seek]');
 	        const time = container.querySelector('[data-kaleido-audio-time]');
 	        const rateBtn = container.querySelector('[data-kaleido-audio-rate]');
@@ -9199,6 +9202,7 @@ class AudioDashboard {
 	            container.removeEventListener('focusin', activateKeyboardHandler);
 	            container.removeEventListener('focusout', deactivateKeyboardHandler);
 	            deactivateKeyboardHandler();
+	            container._kaleidoControlsBound = false;
 	        };
 
 	        container._kaleidoCleanup = cleanup;
