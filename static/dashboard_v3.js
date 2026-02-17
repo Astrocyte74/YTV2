@@ -5729,6 +5729,10 @@ class AudioDashboard {
                 this.bindReaderMetaInteractions(body, on);
                 this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
                 this.bindKaleidoInlineAudioControls(body, on);
+                // Add kaleido cleanup to teardown array
+                if (body._kaleidoCleanup) {
+                    this._wallDockTeardown.push(body._kaleidoCleanup);
+                }
                 this.refreshAudioVariantBlocks();
                 return;
             }
@@ -6116,6 +6120,10 @@ class AudioDashboard {
                         this.bindReaderMetaInteractions(body, on);
 		                this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
 		                this.bindKaleidoInlineAudioControls(body, on);
+		                // Add kaleido cleanup to teardown array
+		                if (body._kaleidoCleanup) {
+		                    this._wallDockTeardown.push(body._kaleidoCleanup);
+		                }
 		                this.refreshAudioVariantBlocks();
 		                return;
 		            }
@@ -8856,7 +8864,23 @@ class AudioDashboard {
                         <span class="kaleido-audio-play-icon hidden" data-icon-pause aria-hidden="true">⏸</span>
                         <span class="kaleido-audio-play-label" data-label>${isActive && isPlaying ? 'Pause' : 'Play'}</span>
                     </button>
+                    <button type="button" class="kaleido-audio-skip" data-kaleido-audio-skip-back ${available ? '' : 'disabled aria-disabled=\"true\"'} title="Skip back 15s" data-skip-seconds="-15">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12.5 3C17.15 3 21.08 6.03 22.47 10.22L20.1 11C19.05 7.81 16.04 5.5 12.5 5.5C10.54 5.5 8.77 6.22 7.38 7.38L10 10H3V3L5.6 5.6C7.45 4 9.85 3 12.5 3M10 12V22H8V14H6V12H10M18 14V20C18 21.11 17.11 22 16 22H14C12.9 22 12 21.1 12 20V14C12 12.9 12.9 12 14 12H16C17.11 12 18 12.9 18 14M14 14V20H16V14H14Z"/></svg>
+                        <span class="kaleido-audio-skip-label">-15s</span>
+                    </button>
+                    <button type="button" class="kaleido-audio-skip" data-kaleido-audio-skip-forward ${available ? '' : 'disabled aria-disabled=\"true\"'} title="Skip forward 15s" data-skip-seconds="15">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M10 3C4.58 3 0.12 6.75 0 12H2.5C2.62 7.91 6.25 4.5 10.75 4.5C13.56 4.5 16.13 5.71 17.88 7.7L15 10.5H23V2.5L20.38 5.12C18.04 2.88 14.7 1.5 10.75 1.5V3Z"/></svg>
+                        <span class="kaleido-audio-skip-label">+15s</span>
+                    </button>
                     <div class="kaleido-audio-time" data-kaleido-audio-time>0:00 / —</div>
+                    <div class="kaleido-audio-volume" data-kaleido-audio-volume>
+                        <button type="button" class="kaleido-audio-volume-btn" data-kaleido-audio-volume-btn ${available ? '' : 'disabled aria-disabled=\"true\"'} title="Mute/Unmute">
+                            <svg class="kaleido-audio-volume-icon" data-volume-high viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zm-4 0h-2.5l-5 5v5h5l5 5V3.23z"/></svg>
+                            <svg class="kaleido-audio-volume-icon hidden" data-volume-low viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M5 9v6h4l5 5V4L9 9H5z"/></svg>
+                            <svg class="kaleido-audio-volume-icon hidden" data-volume-mute viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zM19 12c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+                        </button>
+                        <input type="range" min="0" max="100" value="100" class="kaleido-audio-volume-slider" data-kaleido-audio-volume-slider ${available ? '' : 'disabled aria-disabled=\"true\"'} />
+                    </div>
                     <button type="button" class="kaleido-audio-rate" data-kaleido-audio-rate ${available ? '' : 'disabled aria-disabled=\"true\"'} title="Playback speed">${this.formatPlaybackRate(this.getEffectivePlaybackRate())}</button>
                     ${downloadLink}
                 </div>
@@ -8898,11 +8922,78 @@ class AudioDashboard {
 	        const rateBtn = container.querySelector('[data-kaleido-audio-rate]');
             const wave = container.querySelector('[data-kaleido-audio-wave]');
             const waveBars = wave ? Array.from(wave.querySelectorAll('.kaleido-audio-wavebar')) : [];
-	        if (!seek && !time && !rateBtn && !wave) return;
+	            const skipBack = container.querySelector('[data-kaleido-audio-skip-back]');
+            const skipForward = container.querySelector('[data-kaleido-audio-skip-forward]');
+            const volumeBtn = container.querySelector('[data-kaleido-audio-volume-btn]');
+            const volumeSlider = container.querySelector('[data-kaleido-audio-volume-slider]');
+	        if (!seek && !time && !rateBtn && !wave && !skipBack && !skipForward && !volumeBtn) return;
 
         let seeking = false;
         const fmt = (sec) => {
             try { return this.formatDuration(sec); } catch (_) { return '0:00'; }
+        };
+
+        // Web Audio API for real-time waveform visualization
+        let audioContext = null;
+        let analyser = null;
+        let source = null;
+        let animationFrame = null;
+
+        const setupAudioContext = () => {
+            if (audioContext) return;
+            // Guard: Only create MediaElementSource once per audio element
+            if (this.audioElement._audioSourceConnected) return;
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 64;
+                source = audioContext.createMediaElementSource(this.audioElement);
+                source.connect(analyser);
+                analyser.connect(audioContext.destination);
+                this.audioElement._audioSourceConnected = true;
+            } catch (e) {
+                console.warn('Web Audio API not available:', e);
+            }
+        };
+
+        const updateWaveform = () => {
+            if (!analyser || !waveBars.length) return;
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(dataArray);
+            const step = Math.floor(dataArray.length / waveBars.length);
+            waveBars.forEach((bar, idx) => {
+                const value = dataArray[idx * step] || 0;
+                const height = Math.max(20, (value / 255) * 100);
+                bar.style.setProperty('--h', `${height}%`);
+                bar.style.setProperty('--wave-scale', height / 50);
+            });
+            animationFrame = requestAnimationFrame(updateWaveform);
+        };
+
+        const startWaveform = () => {
+            if (!audioContext) setupAudioContext();
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            if (animationFrame) cancelAnimationFrame(animationFrame);
+            updateWaveform();
+        };
+
+        const stopWaveform = () => {
+            if (animationFrame) {
+                cancelAnimationFrame(animationFrame);
+                animationFrame = null;
+            }
+            waveBars.forEach((bar, idx) => {
+                const h = 24 + ((idx * 7) % 52);
+                bar.style.setProperty('--h', `${h}%`);
+                bar.style.removeProperty('--wave-scale');
+            });
+        };
+
+        const skip = (seconds) => {
+            if (!this.audioElement) return;
+            this.audioElement.currentTime = Math.max(0, Math.min(this.audioElement.duration || 0, this.audioElement.currentTime + seconds));
         };
 	        const update = () => {
             if (!this.audioElement) return;
@@ -8926,14 +9017,146 @@ class AudioDashboard {
             }
             if (wave) {
                 wave.style.setProperty('--wave-progress', `${pct}%`);
-                if (waveBars.length) {
-                    const activeCount = Math.round((pct / 100) * waveBars.length);
-                    waveBars.forEach((bar, idx) => {
-                        bar.classList.toggle('is-active', idx < activeCount);
-                    });
-                }
             }
 	        };
+
+        // Skip buttons
+        if (skipBack) {
+            on(skipBack, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                skip(-15);
+            });
+        }
+
+        if (skipForward) {
+            on(skipForward, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                skip(15);
+            });
+        }
+
+        // Volume control
+        const updateVolumeVisual = (vol) => {
+            if (!volumeSlider) return;
+            const clampedVol = Math.max(0, Math.min(1, vol));
+            volumeSlider.value = String(Math.round(clampedVol * 100));
+            volumeSlider.style.background = `linear-gradient(90deg, rgba(56,189,248,0.95) 0%, rgba(99,102,241,0.9) ${clampedVol * 100}%, rgba(255,255,255,0.12) ${clampedVol * 100}%, rgba(255,255,255,0.12) 100%)`;
+            // Update icon
+            if (volumeBtn) {
+                const highIcon = volumeBtn.querySelector('[data-volume-high]');
+                const lowIcon = volumeBtn.querySelector('[data-volume-low]');
+                const muteIcon = volumeBtn.querySelector('[data-volume-mute]');
+                if (highIcon && lowIcon && muteIcon) {
+                    highIcon.classList.add('hidden');
+                    lowIcon.classList.add('hidden');
+                    muteIcon.classList.add('hidden');
+                    if (clampedVol === 0) {
+                        muteIcon.classList.remove('hidden');
+                    } else if (clampedVol < 0.5) {
+                        lowIcon.classList.remove('hidden');
+                    } else {
+                        highIcon.classList.remove('hidden');
+                    }
+                }
+            }
+        };
+
+        if (volumeBtn && volumeSlider) {
+            const currentVol = this.audioElement.volume || 1;
+            updateVolumeVisual(currentVol);
+            on(volumeSlider, 'input', (e) => {
+                const vol = Number(e.target.value) / 100;
+                this.audioElement.volume = Math.max(0, Math.min(1, vol));
+                updateVolumeVisual(vol);
+            });
+            on(volumeBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (this.audioElement.volume > 0) {
+                    this.audioElement._savedVolume = this.audioElement.volume;
+                    this.audioElement.volume = 0;
+                } else {
+                    this.audioElement.volume = this.audioElement._savedVolume || 1;
+                }
+                updateVolumeVisual(this.audioElement.volume);
+            });
+        }
+
+        // Keyboard shortcuts - only active when container is hovered or focused
+        let keyboardHandlerActive = false;
+
+        const activateKeyboardHandler = () => {
+            keyboardHandlerActive = true;
+            container.classList.add('keyboard-shortcuts-active');
+        };
+
+        const deactivateKeyboardHandler = () => {
+            keyboardHandlerActive = false;
+            container.classList.remove('keyboard-shortcuts-active');
+        };
+
+        const keyboardHandler = (e) => {
+            // Only handle if active, audio is loaded, and not in an input
+            if (!keyboardHandlerActive) return;
+            if (!this.currentAudio) return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+            switch(e.key) {
+                case ' ':
+                    e.preventDefault();
+                    this.togglePlayPause();
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    skip(e.shiftKey ? -5 : -15);
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    skip(e.shiftKey ? 5 : 15);
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    if (this.audioElement) {
+                        this.audioElement.volume = Math.min(1, this.audioElement.volume + 0.1);
+                        updateVolumeVisual(this.audioElement.volume);
+                    }
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    if (this.audioElement) {
+                        this.audioElement.volume = Math.max(0, this.audioElement.volume - 0.1);
+                        updateVolumeVisual(this.audioElement.volume);
+                    }
+                    break;
+                case 'm':
+                case 'M':
+                    e.preventDefault();
+                    if (volumeBtn) volumeBtn.click();
+                    break;
+            }
+        };
+
+        // Activate keyboard shortcuts on hover/focus
+        on(container, 'mouseenter', activateKeyboardHandler);
+        on(container, 'mouseleave', deactivateKeyboardHandler);
+        on(container, 'focusin', activateKeyboardHandler);
+        on(container, 'focusout', (e) => {
+            // Only deactivate if focus is leaving the container entirely
+            if (!container.contains(e.relatedTarget)) {
+                deactivateKeyboardHandler();
+            }
+        });
+
+        // Start/stop waveform based on play state
+        on(this.audioElement, 'play', () => {
+            update();
+            startWaveform();
+        });
+        on(this.audioElement, 'pause', () => {
+            update();
+            stopWaveform();
+        });
 
 	        if (rateBtn) {
 	            const syncRate = () => {
@@ -8966,8 +9189,20 @@ class AudioDashboard {
         on(this.audioElement, 'timeupdate', update);
 	        on(this.audioElement, 'loadedmetadata', update);
 	        on(this.audioElement, 'durationchange', update);
-	        on(this.audioElement, 'play', update);
-	        on(this.audioElement, 'pause', update);
+	        document.addEventListener('keydown', keyboardHandler);
+
+	        const cleanup = () => {
+	            stopWaveform();
+	            document.removeEventListener('keydown', keyboardHandler);
+	            container.removeEventListener('mouseenter', activateKeyboardHandler);
+	            container.removeEventListener('mouseleave', deactivateKeyboardHandler);
+	            container.removeEventListener('focusin', activateKeyboardHandler);
+	            container.removeEventListener('focusout', deactivateKeyboardHandler);
+	            deactivateKeyboardHandler();
+	        };
+
+	        container._kaleidoCleanup = cleanup;
+
 	        update();
 	    }
 
@@ -8982,9 +9217,11 @@ class AudioDashboard {
                 event.stopPropagation();
                 if (!audioSrc) return;
                 const isActive = this.currentAudio && this.currentAudio.id === reportId;
-                if (isActive && this.isPlaying) {
+                if (isActive) {
+                    // Already loaded, just toggle play/pause
                     this.togglePlayPause();
                 } else {
+                    // New track, load it
                     this.playAudio(reportId);
                 }
                 this.refreshAudioVariantBlocks();
