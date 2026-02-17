@@ -43,6 +43,48 @@
     return htmlLines.join('\n');
   };
 
+  const initReportMetaTabs = () => {
+    const metas = document.querySelectorAll('[data-report-meta]');
+    if (!metas.length) return;
+    const setTabState = (btn, active) => {
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      btn.classList.toggle('bg-slate-100', active);
+      btn.classList.toggle('text-slate-700', active);
+      btn.classList.toggle('dark:bg-slate-800', active);
+      btn.classList.toggle('dark:text-slate-200', active);
+      btn.classList.toggle('bg-white', !active);
+      btn.classList.toggle('text-slate-600', !active);
+      btn.classList.toggle('dark:bg-slate-900', !active);
+      btn.classList.toggle('dark:text-slate-300', !active);
+    };
+
+    metas.forEach((metaRoot) => {
+      const tabs = Array.from(metaRoot.querySelectorAll('[data-report-meta-tab]'));
+      const panels = Array.from(metaRoot.querySelectorAll('[data-report-meta-panel]'));
+      if (!tabs.length || !panels.length) return;
+      const activate = (tabId) => {
+        const wanted = String(tabId || '');
+        tabs.forEach((btn) => {
+          const active = btn.getAttribute('data-report-meta-tab') === wanted;
+          setTabState(btn, active);
+        });
+        panels.forEach((panel) => {
+          const active = panel.getAttribute('data-report-meta-panel') === wanted;
+          panel.classList.toggle('hidden', !active);
+        });
+      };
+      tabs.forEach((btn) => {
+        btn.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          activate(btn.getAttribute('data-report-meta-tab'));
+        });
+      });
+      const initiallyPressed = tabs.find((btn) => btn.getAttribute('aria-pressed') === 'true');
+      activate(initiallyPressed?.getAttribute('data-report-meta-tab') || tabs[0].getAttribute('data-report-meta-tab'));
+    });
+  };
+
   const initSummaryVariants = () => {
     const variantData = Array.isArray(window.SUMMARY_VARIANT_DATA) ? window.SUMMARY_VARIANT_DATA : [];
     const defaultVariant = normalizeVariantId(window.SUMMARY_DEFAULT_VARIANT || 'comprehensive');
@@ -899,5 +941,6 @@
   updateButtons();
   updateTime();
   maybeShowSticky();
+  initReportMetaTabs();
   initSummaryVariants();
 })();

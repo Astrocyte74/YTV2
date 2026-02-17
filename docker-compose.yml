@@ -33,6 +33,9 @@ services:
       - ./exports:/app/exports
       # Static files (CSS/JS) for live development
       - ./static:/app/static
+      # Template and server for live development
+      - ./dashboard_v3_template.html:/app/dashboard_v3_template.html
+      - ./server.py:/app/server.py
       # Optional: Mount cache directory for performance
       - dashboard-cache:/app/cache
 

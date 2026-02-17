@@ -23,6 +23,11 @@ try {
       twChipsMode: 'textlist',         // 'textlist' | 'chips'
       twChipsVisible: 3,               // how many items before +N more
       twChipBarPosition: 'topRight',   // 'belowTitle' | 'underMedia' | 'top' | 'topRight'
+      // Wall docked reader (desktop)
+      wallDockedReaderEnabled: true,
+      wallKaleidoPreferred: false,
+      // Auto-open the first summary card in wall mode (desktop dock only)
+      wallDockAutoOpenFirst: true,
       metricsEnabled: false,
     });
   }

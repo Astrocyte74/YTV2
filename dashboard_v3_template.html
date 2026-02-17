@@ -14,7 +14,7 @@
     <!-- Shared styles across dashboard and report pages -->
     <link rel="stylesheet" href="/static/shared.css?v=20251110a">
     <!-- Dashboard specific styles -->
-    <link rel="stylesheet" href="dashboard.css?v=20251221j">
+    <link rel="stylesheet" href="dashboard.css?v=20260217k">
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -455,6 +455,19 @@
                                             class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">Grid</button>
                                         <button id="viewWallSettingBtn"
                                             class="px-3 py-1.5 rounded-full text-sm font-medium border border-slate-200 dark:border-slate-600">Wall</button>
+                                    </div>
+                                    <div class="px-3 pt-1 pb-2 border-t border-slate-200/70 dark:border-slate-700/70">
+                                        <p class="text-[11px] uppercase tracking-wide text-slate-400 mb-2">Wall Shuffle Default</p>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <button id="wallArrangeHybridSettingBtn"
+                                                class="px-3 py-1.5 rounded-full text-xs font-medium border border-slate-200 dark:border-slate-600 bg-white/80 dark:bg-slate-900/70 text-slate-600 dark:text-slate-200">Related</button>
+                                            <button id="wallArrangeCategorySettingBtn"
+                                                class="px-3 py-1.5 rounded-full text-xs font-medium border border-slate-200 dark:border-slate-600 bg-white/80 dark:bg-slate-900/70 text-slate-600 dark:text-slate-200">Category</button>
+                                            <button id="wallArrangeKeywordsSettingBtn"
+                                                class="px-3 py-1.5 rounded-full text-xs font-medium border border-slate-200 dark:border-slate-600 bg-white/80 dark:bg-slate-900/70 text-slate-600 dark:text-slate-200">Keywords</button>
+                                            <button id="wallArrangeNewestSettingBtn"
+                                                class="px-3 py-1.5 rounded-full text-xs font-medium border border-slate-200 dark:border-slate-600 bg-white/80 dark:bg-slate-900/70 text-slate-600 dark:text-slate-200">Newest</button>
+                                        </div>
                                     </div>
                                 </div>
                             </details>
@@ -1253,8 +1266,8 @@
     <!-- JavaScript -->
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
-    <script src="ui_flags.js?v=9"></script>
-    <script src="dashboard_v3.js?v=fix4-20260216"></script>
+    <script src="ui_flags.js?v=10"></script>
+    <script src="dashboard_v3.js?v=fix17-20260217"></script>
 
 </body>
 

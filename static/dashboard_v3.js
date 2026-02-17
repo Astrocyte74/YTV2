@@ -125,6 +125,8 @@ class AudioDashboard {
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallFlipEnabled')) this.flags.wallFlipEnabled = true;
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallMegaSpanEnabled')) this.flags.wallMegaSpanEnabled = true;
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallKaleidoPreferred')) this.flags.wallKaleidoPreferred = false;
+        if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallDockedReaderEnabled')) this.flags.wallDockedReaderEnabled = true;
+        if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallDockAutoOpenFirst')) this.flags.wallDockAutoOpenFirst = true;
         this.config = (typeof window !== 'undefined' && window.DASHBOARD_CONFIG) ? window.DASHBOARD_CONFIG : {};
         // Debug: allow slowing FLIP with URL ?flip=slow|slower|off or ?flipms=NNN
         this.flipDebugMs = 0;
@@ -142,6 +144,8 @@ class AudioDashboard {
                 if (Number.isFinite(n)) this.flipDebugMs = n;
             }
         } catch (_) { }
+        this.initialFilterPayload = this.parseInitialFilterPayloadFromUrl();
+        this._appliedInitialFilterPayload = false;
         const autoPlayConfig = this.config && this.config.autoPlayOnLoad;
         this.autoPlayOnLoad = autoPlayConfig === undefined;
         if (autoPlayConfig !== undefined) {
@@ -158,6 +162,17 @@ class AudioDashboard {
         // Active reader state (for URL popstate sync)
         this._activeReader = null; // { id, mode, close }
         this._kaleidoSetVariant = null;
+        this._wallDockTeardown = [];
+        this._wallDockSelectedId = '';
+        this.wallDockArrangeModeKey = 'ytv2.wallDockArrangeMode';
+        this.wallDockArrangeMode = 'hybrid';
+        this._wallDockAutoOpenedOnce = false;
+        try {
+            const modeRaw = localStorage.getItem(this.wallDockArrangeModeKey);
+            this.wallDockArrangeMode = this.normalizeWallDockArrangeMode(modeRaw || this.flags.wallDockArrangeModeDefault || 'hybrid');
+        } catch (_) {
+            this.wallDockArrangeMode = this.normalizeWallDockArrangeMode(this.flags.wallDockArrangeModeDefault || 'hybrid');
+        }
         // Queue persistence key (Phase 3)
         this.queueKey = 'ytv2.queue';
         // Telemetry buffer
@@ -353,6 +368,10 @@ class AudioDashboard {
         this.viewListSettingBtn = document.getElementById('viewListSettingBtn');
         this.viewGridSettingBtn = document.getElementById('viewGridSettingBtn');
         this.viewWallSettingBtn = document.getElementById('viewWallSettingBtn');
+        this.wallArrangeHybridSettingBtn = document.getElementById('wallArrangeHybridSettingBtn');
+        this.wallArrangeCategorySettingBtn = document.getElementById('wallArrangeCategorySettingBtn');
+        this.wallArrangeKeywordsSettingBtn = document.getElementById('wallArrangeKeywordsSettingBtn');
+        this.wallArrangeNewestSettingBtn = document.getElementById('wallArrangeNewestSettingBtn');
         this.imgModeThumbSettingBtn = document.getElementById('imgModeThumbSettingBtn');
         this.imgModeAiSettingBtn = document.getElementById('imgModeAiSettingBtn');
         this.imgModeAi2SettingBtn = document.getElementById('imgModeAi2SettingBtn');
@@ -446,6 +465,10 @@ class AudioDashboard {
         if (this.viewListSettingBtn) this.viewListSettingBtn.addEventListener('click', () => this.setViewMode('list'));
         if (this.viewGridSettingBtn) this.viewGridSettingBtn.addEventListener('click', () => this.setViewMode('grid'));
         if (this.viewWallSettingBtn) this.viewWallSettingBtn.addEventListener('click', () => this.setViewMode('wall'));
+        if (this.wallArrangeHybridSettingBtn) this.wallArrangeHybridSettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('hybrid'));
+        if (this.wallArrangeCategorySettingBtn) this.wallArrangeCategorySettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('category'));
+        if (this.wallArrangeKeywordsSettingBtn) this.wallArrangeKeywordsSettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('keywords'));
+        if (this.wallArrangeNewestSettingBtn) this.wallArrangeNewestSettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('newest'));
         if (this.imgModeThumbSettingBtn) this.imgModeThumbSettingBtn.addEventListener('click', () => this.setImageMode('thumbnail'));
         if (this.imgModeAiSettingBtn) this.imgModeAiSettingBtn.addEventListener('click', () => this.setImageMode('ai'));
         if (this.imgModeAi2SettingBtn) this.imgModeAi2SettingBtn.addEventListener('click', () => this.setImageMode('ai2'));
@@ -467,6 +490,7 @@ class AudioDashboard {
             this.updateAdminTokenSourceLabel();
         });
         this.updateImageModeUI();
+        this.updateWallArrangeSettingUI();
 
         // Search and filters
         this.searchInput.addEventListener('input', this.debounce(() => this.handleSearch(), 500));
@@ -549,7 +573,9 @@ class AudioDashboard {
             try {
                 const modal = document.getElementById('wallReaderModal');
                 const isModalOpen = modal && !modal.classList.contains('hidden');
-                if (!isModalOpen) {
+                const dock = this.contentGrid ? this.contentGrid.querySelector('#wallDockReader') : null;
+                const isDockOpen = dock && !dock.classList.contains('hidden');
+                if (!isModalOpen && !isDockOpen) {
                     document.body.classList.remove('kaleido-open', 'wall-reader-open');
                     const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
                     this.clearSimilarityView(grid);
@@ -956,10 +982,11 @@ class AudioDashboard {
 	            this.applyTheme(this.themeMode);
 	            this.updateThemeChecks();
 	            // Load filters first to avoid race with initial content fetch
-	            await this.loadFilters();
-	            await this.waitForFiltersReady({ min: 1, timeoutMs: 3000 });
-	            await this.loadContent();
-	            await this.maybeOpenReprocessFromUrl();
+                await this.loadFilters();
+                await this.waitForFiltersReady({ min: 1, timeoutMs: 3000 });
+                this.applyInitialFilterPayload();
+                await this.loadContent();
+                await this.maybeOpenReprocessFromUrl();
 	            // Queue UI visibility based on flag
 	            if (this.queueSidebar) {
 	                if (this.flags.queueEnabled) this.queueSidebar.classList.remove('hidden');
@@ -994,9 +1021,9 @@ class AudioDashboard {
 	        }
 	    }
 
-	    async maybeOpenReprocessFromUrl() {
-	        if (this._handledReprocessParam) return;
-	        this._handledReprocessParam = true;
+    async maybeOpenReprocessFromUrl() {
+        if (this._handledReprocessParam) return;
+        this._handledReprocessParam = true;
 	        if (typeof window === 'undefined') return;
 	        let params;
 	        try { params = new URLSearchParams(window.location.search || ''); } catch (_) { params = null; }
@@ -1036,8 +1063,124 @@ class AudioDashboard {
 	        }
 
 	        const reportId = item.file_stem || item.fileStem || wanted;
-	        this.openReprocessModal(reportId, null, item);
-	    }
+        this.openReprocessModal(reportId, null, item);
+    }
+
+    parseInitialFilterPayloadFromUrl() {
+        if (typeof window === 'undefined') return null;
+        let sp;
+        try { sp = new URLSearchParams(window.location.search || ''); } catch (_) { return null; }
+        if (!sp) return null;
+
+        const readList = (keys = []) => {
+            const out = [];
+            const seen = new Set();
+            const push = (raw) => {
+                const val = String(raw || '').trim();
+                if (!val) return;
+                const k = val.toLowerCase();
+                if (seen.has(k)) return;
+                seen.add(k);
+                out.push(val);
+            };
+            keys.forEach((key) => {
+                sp.getAll(key).forEach((raw) => {
+                    String(raw || '').split(',').forEach((part) => push(part));
+                });
+            });
+            return out;
+        };
+
+        const search = (sp.get('q') || sp.get('search') || '').trim();
+        const filters = {
+            category: readList(['category', 'categories']),
+            subcategory: readList(['subcategory', 'subcategories']),
+            channel: readList(['channel', 'channels']),
+            source: readList(['source', 'content_source']),
+            content_type: readList(['content_type', 'contentType']),
+            summary_type: readList(['summary_type', 'summaryType']),
+            language: readList(['language', 'languages']),
+            complexity: readList(['complexity', 'complexity_level'])
+        };
+
+        const hasFilters = Object.values(filters).some((arr) => Array.isArray(arr) && arr.length > 0);
+        if (!search && !hasFilters) return null;
+        return { search, filters };
+    }
+
+    applyInitialFilterPayload() {
+        if (this._appliedInitialFilterPayload) return;
+        this._appliedInitialFilterPayload = true;
+        const payload = this.initialFilterPayload;
+        if (!payload || typeof payload !== 'object') return;
+
+        const normalize = (v) => String(v || '').trim().toLowerCase();
+        const setSearch = (q) => {
+            const query = String(q || '').trim();
+            if (!query) return;
+            this.searchQuery = query;
+            if (this.searchInput) this.searchInput.value = query;
+            if (this.searchInputTop) this.searchInputTop.value = query;
+            if (this.searchInputHeader) this.searchInputHeader.value = query;
+        };
+        const applyGroup = (filterType, requestedValues = [], { clearOnEmpty = false } = {}) => {
+            const values = Array.isArray(requestedValues) ? requestedValues : [];
+            if (!values.length && !clearOnEmpty) return false;
+            const inputs = Array.from(document.querySelectorAll(`input[data-filter="${filterType}"]`));
+            if (!inputs.length) return false;
+            if (!values.length && clearOnEmpty) {
+                inputs.forEach((el) => { el.checked = false; });
+                return true;
+            }
+            const wanted = new Set(values.map(normalize).filter(Boolean));
+            let matched = 0;
+            inputs.forEach((el) => {
+                const active = wanted.has(normalize(el.value));
+                el.checked = active;
+                if (active) matched += 1;
+            });
+            if (!matched) {
+                // Ignore unresolvable URL values and keep this filter section broad.
+                inputs.forEach((el) => { el.checked = true; });
+                return false;
+            }
+            return true;
+        };
+
+        setSearch(payload.search || '');
+
+        const filters = payload.filters || {};
+        const categoryValues = Array.isArray(filters.category) ? filters.category : [];
+        const subcategoryValues = Array.isArray(filters.subcategory) ? filters.subcategory : [];
+
+        if (categoryValues.length > 0) {
+            applyGroup('category', categoryValues);
+            // Mirror "category chip" behavior: categories are broad unless subcategories are explicitly requested.
+            if (subcategoryValues.length === 0) applyGroup('subcategory', [], { clearOnEmpty: true });
+        }
+
+        if (subcategoryValues.length > 0) {
+            const subApplied = applyGroup('subcategory', subcategoryValues);
+            if (subApplied) {
+                document.querySelectorAll('input[data-filter="subcategory"]:checked').forEach((subInput) => {
+                    const parent = subInput.getAttribute('data-parent-category') || '';
+                    if (!parent) return;
+                    const parentInput = document.querySelector(`input[data-filter="category"][value="${CSS.escape(parent)}"]`);
+                    if (parentInput) parentInput.checked = true;
+                });
+            }
+        }
+
+        applyGroup('channel', filters.channel || []);
+        applyGroup('source', filters.source || []);
+        applyGroup('content_type', filters.content_type || []);
+        applyGroup('summary_type', filters.summary_type || []);
+        applyGroup('language', filters.language || []);
+        applyGroup('complexity', filters.complexity || []);
+
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateHeroBadges();
+    }
 
     // Realtime ingest event handling -------------------------------------------------
 
@@ -2536,6 +2679,9 @@ class AudioDashboard {
 
     renderContent(items) {
         console.log('[DEBUG] renderContent called with', items?.length, 'items, viewMode:', this.viewMode);
+        if (this.viewMode === 'wall') {
+            try { this.closeWallDockReader({ clearDeepLink: false, skipTelemetry: true }); } catch (_) { }
+        }
         // Safety check for undefined items
         if (!items || !Array.isArray(items)) {
             console.warn('renderContent called with invalid items:', items);
@@ -2570,7 +2716,7 @@ class AudioDashboard {
         if (this.viewMode === 'grid') {
             html = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(i => this.createGridCard(i)).join('')}</div>`;
         } else if (this.viewMode === 'wall') {
-            html = `<div class="wall-grid">${items.map(i => this.renderWallCardTW(i)).join('')}</div>`;
+            html = this.renderWallWorkspace(items);
         } else {
             html = items.map(i => this.createContentCard(i)).join('');
         }
@@ -2630,6 +2776,7 @@ class AudioDashboard {
 
         // Apply deep-link expansion if present
         this.applyHashDeepLink();
+        this.autoOpenWallDockIfConfigured();
 
         // After render, ensure currentAudio still exists; if not, advance or clear
         if (this.currentAudio) {
@@ -2639,6 +2786,70 @@ class AudioDashboard {
                 else { this.audioElement.pause(); this.isPlaying = false; this.currentAudio = null; this.updatePlayButton(); this.updateNowPlayingPreview(); }
             }
         }
+    }
+
+    autoOpenWallDockIfConfigured() {
+        if (this.viewMode !== 'wall') return;
+        if (!this.flags || this.flags.wallDockAutoOpenFirst !== true) return;
+        if (this._wallDockAutoOpenedOnce) return;
+        if (!this.isWallDockAvailable()) return;
+
+        const { read: urlRead } = this.parseUrlParams();
+        const { read: hashRead } = this.parseHashParams();
+        if (urlRead || hashRead || (this._activeReader && this._activeReader.id)) {
+            this._wallDockAutoOpenedOnce = true;
+            return;
+        }
+
+        const workspace = this.contentGrid && this.contentGrid.querySelector('[data-wall-workspace]');
+        const grid = workspace ? workspace.querySelector('.wall-grid') : null;
+        const firstCard = grid ? grid.querySelector('.wall-card[data-report-id]') : null;
+        const firstId = firstCard ? firstCard.getAttribute('data-report-id') : '';
+        if (!firstId) return;
+
+        this._wallDockAutoOpenedOnce = true;
+        requestAnimationFrame(() => {
+            try {
+                if (this.viewMode !== 'wall') return;
+                if (this._activeReader && this._activeReader.id) return;
+                this.handleWallRead(firstId, firstCard);
+            } catch (_) { }
+        });
+    }
+
+    renderWallWorkspace(items) {
+        const mode = this.normalizeWallDockArrangeMode(this.wallDockArrangeMode || this.flags.wallDockArrangeModeDefault || 'hybrid');
+        this.wallDockArrangeMode = mode;
+        return `
+            <section class="wall-workspace" data-wall-workspace>
+                <div class="wall-grid">${items.map(i => this.renderWallCardTW(i)).join('')}</div>
+                <aside id="wallDockReader" class="wall-dock hidden" aria-hidden="true" aria-label="Summary reader">
+                    <button type="button" class="wall-dock__return hidden" data-action="wall-dock-return" aria-hidden="true">↑ Back to active card</button>
+                    <div class="wall-dock__chrome">
+                        <div class="wall-dock__topline">
+                            <button type="button" id="wallDockSource" class="wall-dock__source wall-dock__source-btn" data-action="wall-reader-open-source">Source</button>
+                            <div class="wall-dock__top-actions">
+                                <div class="wall-dock__menu-wrap">
+                                    <button type="button" class="wall-dock__btn wall-dock__btn--menu summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">•••</button>
+                                    <div class="summary-card__menu wall-dock__menu hidden" data-kebab-menu role="menu">
+                                        <button type="button" class="summary-card__menu-item" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="hybrid" aria-checked="${mode === 'hybrid' ? 'true' : 'false'}">Arrange: Related</button>
+                                        <button type="button" class="summary-card__menu-item" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="category" aria-checked="${mode === 'category' ? 'true' : 'false'}">Arrange: Category</button>
+                                        <button type="button" class="summary-card__menu-item" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="keywords" aria-checked="${mode === 'keywords' ? 'true' : 'false'}">Arrange: Keywords</button>
+                                        <button type="button" class="summary-card__menu-item" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="newest" aria-checked="${mode === 'newest' ? 'true' : 'false'}">Arrange: Newest</button>
+                                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-copy-link">Copy link</button>
+                                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reader-display">Display settings</button>
+                                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-reprocess">Reprocess…</button>
+                                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-open-page">Open report page</button>
+                                    </div>
+                                </div>
+                                <button type="button" class="wall-dock__close" data-action="wall-dock-close" aria-label="Close">✕</button>
+                            </div>
+                        </div>
+                        <h3 id="wallDockTitle" class="wall-dock__title">Summary</h3>
+                    </div>
+                    <div id="wallDockBody" class="wall-dock__body prose prose-sm dark:prose-invert max-w-none"></div>
+                </aside>
+            </section>`;
     }
 
     decorateCards(items) {
@@ -3297,7 +3508,6 @@ class AudioDashboard {
             try { return this.formatDuration(sec); } catch (_) { return ''; }
         };
         const summaryParts = [];
-        if (channel) summaryParts.push(channel);
         if (videoDur > 0) summaryParts.push(`Video ${fmt(videoDur)}`);
         if (hasAudio && audioDur > 0) summaryParts.push(`Audio ${fmt(audioDur)}`);
         const summary = summaryParts.length ? summaryParts.join(' • ') : '';
@@ -3307,75 +3517,164 @@ class AudioDashboard {
         const subcatPairs = Array.isArray(cat.subcatPairs) ? cat.subcatPairs : [];
         const topics = this.extractTopics(item);
 
-        const maxCats = 10;
-        const maxSubs = 12;
-        const maxTopics = 14;
+        const maxCats = 24;
+        const maxSubs = 28;
+        const maxTopics = 32;
 
-        const chip = (text, tone) => {
-            const base = 'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium';
-            const toneCls = tone === 'blue'
-                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                : tone === 'purple'
-                    ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
-                    : tone === 'green'
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                        : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200';
-            return `<span class="${base} ${toneCls}">${this.escapeHtml(text)}</span>`;
+        const filterChip = (filterType, valueText, { label = '', parentCategory = '' } = {}) => {
+            const value = (valueText || '').toString().trim();
+            if (!value) return '';
+            const safeValue = this.escapeHtml(value);
+            const safeLabel = this.escapeHtml((label || value).toString().trim());
+            const parentAttr = parentCategory ? ` data-parent-category="${this.escapeHtml(parentCategory)}"` : '';
+            return `<button type="button" class="reader-meta-chip" data-filter-chip="${this.escapeHtml(filterType)}" data-filter-value="${safeValue}"${parentAttr} title="Filter by ${safeLabel}">${safeLabel}</button>`;
         };
 
-        const catChips = categories.slice(0, maxCats).map((c) => chip(c, 'blue')).join('');
-        const subChips = subcatPairs.slice(0, maxSubs).map(([, s]) => chip(s, 'purple')).join('');
-        const topicChips = topics.slice(0, maxTopics).map((t) => chip(t, 'green')).join('');
-
-        const moreBits = [];
-        if (categories.length > maxCats) moreBits.push(chip(`+${categories.length - maxCats} more`, 'slate'));
-        if (subcatPairs.length > maxSubs) moreBits.push(chip(`+${subcatPairs.length - maxSubs} more`, 'slate'));
-        if (topics.length > maxTopics) moreBits.push(chip(`+${topics.length - maxTopics} more`, 'slate'));
-
-        const value = (text) => `<span class="font-medium text-slate-900 dark:text-slate-100">${this.escapeHtml(text)}</span>`;
-        const chipsWrap = (html) => (html ? `<div class="flex flex-wrap gap-1">${html}</div>` : '');
-
-        const row = (icon, label, bodyHtml, { span = 1 } = {}) => {
-            if (!bodyHtml) return '';
-            const spanCls = span === 2 ? 'md:col-span-2' : '';
-            return `
-              <div class="flex items-center gap-2 ${spanCls}">
-                <span class="text-slate-400">${icon}</span>
-                <span class="text-slate-600 dark:text-slate-400">${this.escapeHtml(label)}</span>
-                ${bodyHtml}
-              </div>
-            `;
+        const chipsWrap = (chipsHtml, moreCount = 0) => {
+            if (!chipsHtml && !moreCount) return '';
+            return `<div class="reader-meta-chipset">${chipsHtml}${moreCount > 0 ? `<span class="reader-meta-chip reader-meta-chip--more">+${moreCount} more</span>` : ''}</div>`;
         };
 
-        const channelRow = channel ? row('📺', 'Channel', value(channel)) : '';
-        const videoDurRow = (videoDur > 0) ? row('🎬', 'Video Duration', value(fmt(videoDur))) : '';
-        const audioDurRow = (hasAudio && audioDur > 0) ? row('🎵', 'Audio Duration', value(fmt(audioDur))) : '';
-        const catsRow = row('🏷️', 'Categories', chipsWrap(catChips + moreBits.join('')), { span: 2 });
-        const subsRow = row('📋', 'Subcategories', chipsWrap(subChips), { span: 2 });
-        const topicsRow = row('🔖', 'Key Topics', chipsWrap(topicChips), { span: 2 });
+        const catVisible = categories.slice(0, maxCats);
+        const subVisible = subcatPairs.slice(0, maxSubs);
+        const topicVisible = topics.slice(0, maxTopics);
+        const catChips = catVisible.map((c) => filterChip('category', c)).join('');
+        const subChips = subVisible.map(([parent, sub]) => filterChip('subcategory', sub, { parentCategory: parent })).join('');
+        const topicChips = topicVisible.map((t) => filterChip('topic', t)).join('');
 
-        const anyRows = !!(channelRow || videoDurRow || audioDurRow || catChips || subChips || topicChips);
+        const tabs = [];
+        if (catChips) tabs.push({ id: 'categories', label: `Categories (${categories.length})`, body: chipsWrap(catChips, Math.max(0, categories.length - maxCats)) });
+        if (subChips) tabs.push({ id: 'subcategories', label: `Subcategories (${subcatPairs.length})`, body: chipsWrap(subChips, Math.max(0, subcatPairs.length - maxSubs)) });
+        if (topicChips) tabs.push({ id: 'topics', label: `Topics (${topics.length})`, body: chipsWrap(topicChips, Math.max(0, topics.length - maxTopics)) });
+
+        const channelBtn = channel
+            ? `<button type="button" class="reader-meta__channel" data-filter-chip="channel" data-filter-value="${this.escapeHtml(channel)}" title="Filter by ${this.escapeHtml(channel)}">${this.escapeHtml(channel)}</button>`
+            : '';
+
+        const anyRows = tabs.length > 0 || channelBtn || summary;
         if (!anyRows) return '';
+        const firstTabId = tabs.length ? tabs[0].id : '';
 
         return `
           <details class="reader-meta not-prose mt-3 rounded-lg border border-slate-200 bg-slate-50/50 p-3 dark:border-slate-700 dark:bg-slate-800/80" ${open ? 'open' : ''} data-reader-meta>
             <summary class="reader-meta__summary flex items-center justify-between gap-3 cursor-pointer select-none">
-              <div class="flex items-center gap-3 min-w-0">
-                <span class="text-base font-semibold text-slate-900 dark:text-slate-100">Details</span>
-                ${summary ? `<span class="truncate text-sm text-slate-600 dark:text-slate-300">${this.escapeHtml(summary)}</span>` : ''}
+              <div class="reader-meta__summary-main min-w-0">
+                <span class="reader-meta__summary-title text-base font-semibold text-slate-900 dark:text-slate-100">Details</span>
+                <div class="reader-meta__summary-subline min-w-0">
+                  ${channelBtn}
+                  ${summary ? `<span class="reader-meta__summary-meta truncate text-sm text-slate-600 dark:text-slate-300">${this.escapeHtml(summary)}</span>` : ''}
+                </div>
               </div>
-              <span class="text-slate-500 dark:text-slate-300 transition-transform" data-reader-meta-chevron>▾</span>
+              <span class="reader-meta__chevron text-slate-500 dark:text-slate-300 transition-transform" data-reader-meta-chevron aria-hidden="true">⌄</span>
             </summary>
-            <div class="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-              ${channelRow}
-              ${videoDurRow}
-              ${audioDurRow}
-              ${catsRow}
-              ${subsRow}
-              ${topicsRow}
+            <div class="reader-meta__inner mt-3 ${tabs.length ? '' : 'hidden'}">
+              <div class="reader-meta-tabs" role="tablist" aria-label="Metadata sections">
+                ${tabs.map((tab) => `
+                  <button type="button" class="reader-meta-tab" data-reader-meta-tab="${this.escapeHtml(tab.id)}" aria-pressed="${tab.id === firstTabId ? 'true' : 'false'}">${this.escapeHtml(tab.label)}</button>
+                `).join('')}
+              </div>
+              <div class="reader-meta-panels">
+                ${tabs.map((tab) => `
+                  <section class="reader-meta-panel${tab.id === firstTabId ? '' : ' hidden'}" data-reader-meta-panel="${this.escapeHtml(tab.id)}">
+                    ${tab.body}
+                  </section>
+                `).join('')}
+              </div>
             </div>
           </details>
         `;
+    }
+
+    renderWallDockVariantTabs(variantInfo, activeVariantId = '') {
+        if (!variantInfo || !Array.isArray(variantInfo.order) || variantInfo.order.length <= 1) return '';
+        const active = String(activeVariantId || '').toLowerCase();
+        const tabs = variantInfo.order.map((variantId) => {
+            const id = String(variantId || '').toLowerCase();
+            const meta = variantInfo.map[id] || {};
+            const label = this.escapeHtml(meta.label || this.prettyVariantLabel(id));
+            const isActive = id === active;
+            return `
+                <button type="button"
+                        class="wall-dock__variant-tab${isActive ? ' is-active' : ''}"
+                        data-wall-dock-variant="${this.escapeHtml(id)}"
+                        role="tab"
+                        aria-selected="${isActive ? 'true' : 'false'}">
+                    ${label}
+                </button>
+            `;
+        }).join('');
+        return `
+            <section class="wall-dock__variant-tabs not-prose" aria-label="Summary variant">
+                <div class="wall-dock__variant-track" role="tablist">
+                    ${tabs}
+                </div>
+            </section>
+        `;
+    }
+
+    applyTopicFilterFromChip(topic) {
+        const q = String(topic || '').trim();
+        if (!q) return;
+        if (this.searchInput) this.searchInput.value = q;
+        if (this.searchInputTop) this.searchInputTop.value = q;
+        if (this.searchInputHeader) this.searchInputHeader.value = q;
+        if (this.searchInput) {
+            this.handleSearch();
+        } else {
+            this.searchQuery = q;
+            this.currentPage = 1;
+            this.updateHeroBadges();
+            this.loadContent();
+        }
+        try { this.showFilterAppliedFeedback('topic', q); } catch (_) { }
+    }
+
+    bindReaderMetaInteractions(root, on = null) {
+        if (!root || typeof root.querySelectorAll !== 'function') return;
+        const bind = (el, type, handler, opts) => {
+            if (!el || !handler) return;
+            if (typeof on === 'function') on(el, type, handler, opts);
+            else el.addEventListener(type, handler, opts);
+        };
+
+        root.querySelectorAll('[data-reader-meta]').forEach((meta) => {
+            const tabs = Array.from(meta.querySelectorAll('[data-reader-meta-tab]'));
+            const panels = Array.from(meta.querySelectorAll('[data-reader-meta-panel]'));
+            if (tabs.length && panels.length) {
+                const activate = (tabId) => {
+                    const wanted = String(tabId || '');
+                    tabs.forEach((btn) => {
+                        const active = btn.getAttribute('data-reader-meta-tab') === wanted;
+                        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+                    });
+                    panels.forEach((panel) => {
+                        const active = panel.getAttribute('data-reader-meta-panel') === wanted;
+                        panel.classList.toggle('hidden', !active);
+                    });
+                };
+                tabs.forEach((btn) => bind(btn, 'click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    activate(btn.getAttribute('data-reader-meta-tab'));
+                }));
+            }
+        });
+
+        root.querySelectorAll('[data-filter-chip]').forEach((chip) => {
+            bind(chip, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const filterType = chip.getAttribute('data-filter-chip') || '';
+                const filterValue = chip.getAttribute('data-filter-value') || '';
+                const parent = chip.getAttribute('data-parent-category') || null;
+                if (!filterType || !filterValue) return;
+                if (filterType === 'topic') {
+                    this.applyTopicFilterFromChip(filterValue);
+                    return;
+                }
+                this.applyFilterFromChip(filterType, filterValue, parent);
+            });
+        });
     }
 
     toggleDeletePopover(card, show) {
@@ -5055,9 +5354,642 @@ class AudioDashboard {
             </article>`;
     }
 
+    normalizeWallDockArrangeMode(mode) {
+        const raw = String(mode || '').toLowerCase();
+        if (raw === 'category' || raw === 'keywords' || raw === 'newest' || raw === 'hybrid') return raw;
+        return 'hybrid';
+    }
+
+    isWallDockAvailable() {
+        const enabled = !this.flags || this.flags.wallDockedReaderEnabled !== false;
+        const desktop = (window.innerWidth || 0) >= 1100;
+        return !!(enabled && desktop && this.viewMode === 'wall');
+    }
+
+    setWallDockArrangeMode(mode) {
+        const next = this.normalizeWallDockArrangeMode(mode);
+        this.wallDockArrangeMode = next;
+        try { localStorage.setItem(this.wallDockArrangeModeKey, next); } catch (_) { }
+        this.updateWallArrangeSettingUI();
+        return next;
+    }
+
+    updateWallArrangeSettingUI() {
+        const buttons = {
+            hybrid: this.wallArrangeHybridSettingBtn,
+            category: this.wallArrangeCategorySettingBtn,
+            keywords: this.wallArrangeKeywordsSettingBtn,
+            newest: this.wallArrangeNewestSettingBtn
+        };
+        const activeMode = this.normalizeWallDockArrangeMode(this.wallDockArrangeMode || this.flags?.wallDockArrangeModeDefault || 'hybrid');
+        const setBtnActive = (btn, active) => {
+            if (!btn) return;
+            btn.classList.toggle('bg-audio-600', !!active);
+            btn.classList.toggle('text-white', !!active);
+            btn.classList.toggle('border-transparent', !!active);
+            btn.classList.toggle('bg-white/80', !active);
+            btn.classList.toggle('dark:bg-slate-900/70', !active);
+            btn.classList.toggle('text-slate-600', !active);
+            btn.classList.toggle('dark:text-slate-200', !active);
+            btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        };
+        Object.entries(buttons).forEach(([mode, btn]) => setBtnActive(btn, mode === activeMode));
+    }
+
+    applyWallArrangeModeFromSettings(mode) {
+        const next = this.setWallDockArrangeMode(mode);
+        const workspace = this.contentGrid && this.contentGrid.querySelector('[data-wall-workspace]');
+        const dock = workspace ? workspace.querySelector('#wallDockReader') : null;
+        if (dock) this.syncWallDockArrangeButtons(dock, next);
+        const activeId = this._wallDockSelectedId || (this._activeReader && this._activeReader.mode === 'dock' ? this._activeReader.id : '');
+        if (activeId && workspace && workspace.classList.contains('wall-dock-open')) {
+            this.applyWallDockArrangement(activeId, next, { scrollSelected: false });
+        }
+    }
+
+    setWallDockWidth(workspace, grid) {
+        if (!workspace || !grid) return;
+        const first = grid.querySelector('.wall-card');
+        const styles = window.getComputedStyle(grid);
+        const gap = parseFloat(styles.columnGap || styles.gap || '16') || 16;
+        const cardW = first ? first.getBoundingClientRect().width : 210;
+        const dockCols = (window.innerWidth || 0) >= 1680 ? 3 : 2;
+        const widthPx = (dockCols * cardW) + (Math.max(0, dockCols - 1) * gap) + 24;
+        const clamped = Math.max(340, Math.min(640, Math.round(widthPx)));
+        workspace.style.setProperty('--wall-dock-w', `${clamped}px`);
+    }
+
+    getWallGridColumnCount(grid) {
+        if (!grid) return 1;
+        const first = grid.querySelector('.wall-card');
+        const styles = window.getComputedStyle(grid);
+        const gap = parseFloat(styles.columnGap || styles.gap || '16') || 16;
+        const cardW = first ? first.getBoundingClientRect().width : 210;
+        const cols = Math.floor((grid.clientWidth + gap) / (Math.max(1, cardW) + gap));
+        return Math.max(1, cols || 1);
+    }
+
+    getWallDockAnchorIndex(grid, totalCount) {
+        if (!totalCount) return 0;
+        const cols = this.getWallGridColumnCount(grid);
+        const targetRow = totalCount > cols ? 1 : 0;
+        const targetCol = Math.floor((cols - 1) / 2);
+        const idx = (targetRow * cols) + targetCol;
+        return Math.max(0, Math.min(totalCount - 1, idx));
+    }
+
+    getWallItemTimestampMs(item) {
+        try {
+            const t = item?.indexed_at || item?.indexedAt || item?.created_at || item?.updated_at || item?.timestamp || null;
+            if (!t) return 0;
+            const ms = Date.parse(String(t));
+            return Number.isFinite(ms) ? ms : 0;
+        } catch (_) {
+            return 0;
+        }
+    }
+
+    rankWallDockCandidates(selectedId, mode, candidateIds) {
+        const id = String(selectedId || '').trim();
+        const list = Array.isArray(candidateIds) ? candidateIds.filter(Boolean) : [];
+        if (!id || !list.length) return [];
+        const itemMap = new Map((this.currentItems || []).map(it => [it.file_stem, it]));
+        const base = itemMap.get(id);
+        if (!base) return list.filter(cid => cid !== id);
+
+        const arrange = this.normalizeWallDockArrangeMode(mode);
+        const fallbackOrder = list.filter(cid => cid !== id);
+        const baseMeta = this.extractCatsAndSubcats(base);
+        const baseCatSet = new Set(baseMeta.categories || []);
+        const basePairSet = new Set((baseMeta.subcatPairs || []).map(p => `${p[0]}>${p[1]}`));
+        const baseTitleTokens = this._tokenizeTitle(base.title || '');
+        const baseSummaryTokens = this._tokenizeTitle(this.getSummarySnippet(base, 260) || '');
+        const now = Date.now() || 1;
+
+        const scored = fallbackOrder.map((cid, index) => {
+            const item = itemMap.get(cid);
+            if (!item) return { id: cid, index, score: Number.NEGATIVE_INFINITY, ts: 0 };
+            const ts = this.getWallItemTimestampMs(item);
+            let score = 0;
+
+            if (arrange === 'newest') {
+                score = ts;
+            } else if (arrange === 'category') {
+                const meta = this.extractCatsAndSubcats(item);
+                const catSet = new Set(meta.categories || []);
+                const pairSet = new Set((meta.subcatPairs || []).map(p => `${p[0]}>${p[1]}`));
+                const catOverlap = [...baseCatSet].filter(x => catSet.has(x)).length;
+                const subOverlap = [...basePairSet].filter(x => pairSet.has(x)).length;
+                const sameSource = String(base.content_source || '').toLowerCase() === String(item.content_source || '').toLowerCase();
+                score = (catOverlap * 3.5) + (subOverlap * 5.0) + (sameSource ? 0.5 : 0);
+            } else if (arrange === 'keywords') {
+                const titleTokens = this._tokenizeTitle(item.title || '');
+                const summaryTokens = this._tokenizeTitle(this.getSummarySnippet(item, 260) || '');
+                score = (this._jaccard(baseTitleTokens, titleTokens) * 2.2) + (this._jaccard(baseSummaryTokens, summaryTokens) * 1.4);
+            } else {
+                score = this.computeHeuristicSimilarity(base, item);
+                const fresh = ts > 0 ? Math.min(1, ts / now) : 0;
+                score += (fresh * 0.25);
+            }
+
+            return { id: cid, index, score, ts };
+        });
+
+        scored.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            if (b.ts !== a.ts) return b.ts - a.ts;
+            return a.index - b.index;
+        });
+        return scored.map(r => r.id);
+    }
+
+    buildWallDockAroundPositions(anchor, count) {
+        const out = [];
+        if (!count || count <= 0) return out;
+        const center = Math.max(0, Math.min(count - 1, anchor));
+        out.push(center);
+        for (let step = 1; out.length < count; step++) {
+            const left = center - step;
+            const right = center + step;
+            if (left >= 0) out.push(left);
+            if (out.length >= count) break;
+            if (right < count) out.push(right);
+            if (left < 0 && right >= count) break;
+        }
+        return out;
+    }
+
+    animateWallDockReflow(cards, beforeRects, selectedId) {
+        if (!Array.isArray(cards) || !beforeRects || typeof beforeRects.get !== 'function') return;
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        cards.forEach((card) => {
+            const cid = card.getAttribute('data-report-id');
+            if (!cid || cid === selectedId) return;
+            const from = beforeRects.get(cid);
+            if (!from) return;
+            const to = card.getBoundingClientRect();
+            const dx = from.left - to.left;
+            const dy = from.top - to.top;
+            if (Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
+            try {
+                card.animate(
+                    [
+                        { transform: `translate(${dx}px, ${dy}px)` },
+                        { transform: 'translate(0px, 0px)' }
+                    ],
+                    {
+                        duration: 360,
+                        easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+                    }
+                );
+            } catch (_) { }
+        });
+    }
+
+    syncWallDockArrangeButtons(dock, mode) {
+        if (!dock) return;
+        const arrange = this.normalizeWallDockArrangeMode(mode);
+        dock.querySelectorAll('[data-wall-arrange-mode]').forEach((btn) => {
+            const active = btn.getAttribute('data-wall-arrange-mode') === arrange;
+            if (btn.hasAttribute('aria-pressed')) btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+            if (btn.getAttribute('role') === 'menuitemradio' || btn.hasAttribute('aria-checked')) {
+                btn.setAttribute('aria-checked', active ? 'true' : 'false');
+            }
+        });
+    }
+
+    applyWallDockArrangement(selectedId, mode, { scrollSelected = false } = {}) {
+        const workspace = this.contentGrid && this.contentGrid.querySelector('[data-wall-workspace]');
+        const grid = workspace ? workspace.querySelector('.wall-grid') : null;
+        if (!grid) return;
+        const cards = Array.from(grid.querySelectorAll('.wall-card'));
+        if (!cards.length) return;
+        const cardIds = cards.map(c => c.getAttribute('data-report-id')).filter(Boolean);
+        if (!cardIds.includes(selectedId)) return;
+
+        const arrange = this.setWallDockArrangeMode(mode || this.wallDockArrangeMode);
+        this.setWallDockWidth(workspace, grid);
+        const beforeRects = new Map(cards.map((card) => {
+            const cid = card.getAttribute('data-report-id');
+            return [cid, card.getBoundingClientRect()];
+        }));
+        const ranked = this.rankWallDockCandidates(selectedId, arrange, cardIds);
+        const rankedSet = new Set(ranked);
+        const sequence = [...ranked, ...cardIds.filter(cid => cid !== selectedId && !rankedSet.has(cid))];
+        const selectedIndex = cardIds.indexOf(selectedId);
+        const selectedCardEl = cards.find((card) => card.getAttribute('data-report-id') === selectedId) || null;
+        const currentOrder = selectedCardEl ? Number.parseInt(selectedCardEl.dataset.wallOrder || '', 10) : Number.NaN;
+        const anchor = Number.isFinite(currentOrder) && currentOrder >= 0
+            ? Math.max(0, Math.min(cardIds.length - 1, currentOrder))
+            : (selectedIndex >= 0 ? selectedIndex : this.getWallDockAnchorIndex(grid, cardIds.length));
+        const positions = this.buildWallDockAroundPositions(anchor, cardIds.length);
+        const slots = new Array(cardIds.length).fill('');
+        slots[anchor] = selectedId;
+        let seqIdx = 0;
+        for (let i = 0; i < positions.length && seqIdx < sequence.length; i++) {
+            const nextPos = positions[i];
+            if (nextPos === anchor) continue;
+            slots[nextPos] = sequence[seqIdx++];
+        }
+        if (seqIdx < sequence.length) {
+            for (let i = 0; i < slots.length && seqIdx < sequence.length; i++) {
+                if (!slots[i]) slots[i] = sequence[seqIdx++];
+            }
+        }
+        const orderMap = new Map(slots.map((cid, idx) => [cid, idx]));
+
+        cards.forEach((card, idx) => {
+            const cid = card.getAttribute('data-report-id');
+            const nextOrder = orderMap.has(cid) ? orderMap.get(cid) : (slots.length + idx);
+            card.style.order = String(nextOrder);
+            card.dataset.wallOrder = String(nextOrder);
+            const active = cid === selectedId;
+            card.classList.toggle('wall-card--selected', active);
+            card.classList.toggle('wall-card--focus-anchor', active);
+        });
+        this.animateWallDockReflow(cards, beforeRects, selectedId);
+
+        const selectedCard = grid.querySelector(`.wall-card[data-report-id="${CSS.escape(selectedId)}"]`);
+        if (selectedCard && scrollSelected) {
+            const mainContent = document.querySelector('main');
+            if (mainContent) {
+                const scrollerRect = mainContent.getBoundingClientRect();
+                const cardRect = selectedCard.getBoundingClientRect();
+                const delta = (cardRect.top - scrollerRect.top) - ((scrollerRect.height * 0.33) - (cardRect.height * 0.5));
+                mainContent.scrollTo({ top: Math.max(0, mainContent.scrollTop + delta), behavior: 'smooth' });
+            }
+        }
+    }
+
+    closeWallDockReader({ clearDeepLink = true, skipTelemetry = false } = {}) {
+        const workspace = this.contentGrid && this.contentGrid.querySelector('[data-wall-workspace]');
+        const grid = workspace ? workspace.querySelector('.wall-grid') : null;
+        const dock = workspace ? workspace.querySelector('#wallDockReader') : null;
+        const activeId = this._wallDockSelectedId || (this._activeReader && this._activeReader.mode === 'dock' ? this._activeReader.id : '') || '';
+
+        if (this._wallDockTeardown && Array.isArray(this._wallDockTeardown)) {
+            this._wallDockTeardown.forEach((fn) => { try { fn(); } catch (_) { } });
+        }
+        this._wallDockTeardown = [];
+
+        if (dock) {
+            dock.classList.add('hidden');
+            dock.setAttribute('aria-hidden', 'true');
+        }
+        if (workspace) {
+            workspace.classList.remove('wall-dock-open');
+            workspace.style.removeProperty('--wall-dock-w');
+            workspace.style.removeProperty('--wall-dock-scroll-shift');
+        }
+        if (grid) {
+            grid.querySelectorAll('.wall-card').forEach((card) => {
+                card.style.removeProperty('order');
+                card.removeAttribute('data-wall-order');
+                card.classList.remove('wall-card--selected');
+                card.classList.remove('wall-card--focus-anchor');
+            });
+        }
+
+        this._wallDockSelectedId = '';
+        if (this._activeReader && this._activeReader.mode === 'dock') this._activeReader = null;
+        this._kaleidoSetVariant = null;
+
+        const modal = document.getElementById('wallReaderModal');
+        const modalOpen = modal && !modal.classList.contains('hidden');
+        const hasInline = !!(grid && grid.querySelector('[data-wall-reader]'));
+        if (!modalOpen && !hasInline) {
+            document.body.classList.remove('wall-reader-open');
+        }
+
+        if (clearDeepLink && activeId) {
+            try { this.clearReadDeepLinkIfMatches(activeId); } catch (_) { }
+        }
+        if (!skipTelemetry && activeId) {
+            this.sendTelemetry('read_close', { id: activeId, view: 'wall', reader: 'dock' });
+        }
+    }
+
+    openWallDockReader(id, cardEl) {
+        if (!this.isWallDockAvailable()) return false;
+
+        const workspace = this.contentGrid && this.contentGrid.querySelector('[data-wall-workspace]');
+        const grid = workspace ? workspace.querySelector('.wall-grid') : null;
+        const dock = workspace ? workspace.querySelector('#wallDockReader') : null;
+        const titleEl = dock ? dock.querySelector('#wallDockTitle') : null;
+        const body = dock ? dock.querySelector('#wallDockBody') : null;
+        const item = (this.currentItems || []).find(x => x.file_stem === id);
+
+        if (!workspace || !grid || !dock || !titleEl || !body || !item) return false;
+
+        if (this._wallDockTeardown && Array.isArray(this._wallDockTeardown)) {
+            this._wallDockTeardown.forEach((fn) => { try { fn(); } catch (_) { } });
+        }
+        this._wallDockTeardown = [];
+        const on = (target, type, fn, opts) => {
+            if (!target || !fn) return;
+            target.addEventListener(type, fn, opts);
+            this._wallDockTeardown.push(() => { try { target.removeEventListener(type, fn, opts); } catch (_) { } });
+        };
+
+        const card = cardEl || grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`);
+        if (card) card.classList.add('wall-card--selected');
+        this._wallDockSelectedId = id;
+
+        this.setWallDockWidth(workspace, grid);
+        dock.classList.remove('hidden');
+        dock.setAttribute('aria-hidden', 'false');
+        workspace.classList.add('wall-dock-open');
+        document.body.classList.add('wall-reader-open');
+
+        titleEl.textContent = item.title || 'Summary';
+
+        const fallbackSummary = this.computeFallbackSummaryHtml(item);
+        const variantInfo = this.extractVariantInfo(item, fallbackSummary);
+        const defaultVariant = variantInfo?.defaultId || (variantInfo?.order && variantInfo.order[0]) || '';
+
+        const setActiveVariant = (variantId) => {
+            const normalized = String(variantId || '').toLowerCase();
+            if (!normalized || !variantInfo || !variantInfo.map[normalized]) return;
+            const entry = variantInfo.map[normalized];
+            const variantTabsHtml = this.renderWallDockVariantTabs(variantInfo, normalized);
+            try { this.setReadDeepLink(id, normalized, { replace: true, videoId: item?.video_id || '' }); } catch (_) { }
+            dock.dataset.currentVariant = normalized;
+
+            if (entry.kind === 'audio') {
+                const reportId = variantInfo.reportId || id;
+                const audioSrc = entry.audioSrc || variantInfo.audioSrc || null;
+                body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + variantTabsHtml + this.renderInlineAudioVariant(reportId, entry, audioSrc, { docked: true });
+                body.querySelectorAll('[data-wall-dock-variant]').forEach((btn) => {
+                    on(btn, 'click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setActiveVariant(btn.getAttribute('data-wall-dock-variant'));
+                    });
+                });
+                this.bindReaderMetaInteractions(body, on);
+                this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
+                this.bindKaleidoInlineAudioControls(body, on);
+                this.refreshAudioVariantBlocks();
+                return;
+            }
+
+            body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + variantTabsHtml + (entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>');
+            body.querySelectorAll('[data-wall-dock-variant]').forEach((btn) => {
+                on(btn, 'click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setActiveVariant(btn.getAttribute('data-wall-dock-variant'));
+                });
+            });
+            this.bindReaderMetaInteractions(body, on);
+            try { this.applyReaderDisplayPrefs(dock, body); } catch (_) { }
+            try { this.enhanceSummaryHtml(body); } catch (_) { }
+        };
+
+        this._kaleidoSetVariant = (v) => { try { setActiveVariant(String(v || '').toLowerCase()); } catch (_) { } };
+
+        let requestedVariant = '';
+        try {
+            const pending = this._pendingReadVariant;
+            if (pending && pending.id === id) {
+                requestedVariant = (pending.variant || '').toLowerCase();
+                this._pendingReadVariant = null;
+            }
+        } catch (_) { }
+
+        if (variantInfo && Array.isArray(variantInfo.order) && variantInfo.order.length > 0) {
+            const initialVariant = (requestedVariant && variantInfo.map[requestedVariant]) ? requestedVariant : (defaultVariant || variantInfo.order[0]);
+            setActiveVariant(initialVariant);
+        } else {
+            body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + this.renderWallReaderSection(item);
+            this.bindReaderMetaInteractions(body, on);
+            try { this.applyReaderDisplayPrefs(dock, body); } catch (_) { }
+            try { this.enhanceSummaryHtml(body); } catch (_) { }
+            try { this.setReadDeepLink(id, '', { replace: true, videoId: item?.video_id || '' }); } catch (_) { }
+        }
+
+        const openBtn = dock.querySelector('[data-action="wall-reader-open-page"]');
+        const copyBtn = dock.querySelector('[data-action="wall-reader-copy-link"]');
+        const sourceBtn = dock.querySelector('[data-action="wall-reader-open-source"]');
+        const reprocessBtn = dock.querySelector('[data-action="wall-reader-reprocess"]');
+        const displayBtn = dock.querySelector('[data-action="reader-display"]');
+        const menuBtn = dock.querySelector('[data-action="menu"]');
+        const menu = dock.querySelector('[data-kebab-menu]');
+        const closeBtn = dock.querySelector('[data-action="wall-dock-close"]');
+        const returnBtn = dock.querySelector('[data-action="wall-dock-return"]');
+        const slug = (item.content_source || 'youtube').toString().toLowerCase();
+        const canYoutube = Boolean(item.video_id);
+        const sourceKind = slug === 'youtube' ? 'youtube' : (slug === 'reddit' ? 'reddit' : (item.canonical_url ? 'web' : 'source'));
+
+        if (closeBtn) on(closeBtn, 'click', (e) => { e.preventDefault(); this.closeWallDockReader(); });
+
+        if (openBtn) on(openBtn, 'click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            window.location.href = `/${encodeURIComponent(id)}.json?v=2`;
+            if (menu && menuBtn) this.toggleKebabMenu(dock, false, menuBtn);
+        });
+        if (copyBtn) on(copyBtn, 'click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.copyLink(card || dock, id);
+            if (menu && menuBtn) this.toggleKebabMenu(dock, false, menuBtn);
+        });
+        if (displayBtn) on(displayBtn, 'click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (menu && menuBtn) this.toggleKebabMenu(dock, false, menuBtn);
+            this.openReaderDisplayPopover(dock, body, menuBtn || displayBtn);
+        });
+
+        if (sourceBtn) {
+            const canOpen = (slug === 'youtube') ? canYoutube : Boolean(item.canonical_url);
+            const hostLabel = (() => {
+                try {
+                    if (!item.canonical_url) return '';
+                    const host = new URL(item.canonical_url).hostname.replace(/^www\./i, '');
+                    return host || '';
+                } catch (_) { return ''; }
+            })();
+            const label = slug === 'youtube'
+                ? 'YouTube'
+                : (slug === 'reddit' ? 'Reddit' : (hostLabel || 'Source'));
+            sourceBtn.textContent = label;
+            sourceBtn.dataset.sourceKind = sourceKind;
+            sourceBtn.title = canOpen ? `Open ${label}` : `${label} unavailable`;
+            sourceBtn.disabled = !canOpen;
+            sourceBtn.classList.toggle('is-disabled', !canOpen);
+            on(sourceBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!canOpen) return;
+                this.openSourceLink(slug, item.video_id, item.canonical_url);
+            });
+        }
+
+        if (reprocessBtn) {
+            reprocessBtn.classList.toggle('hidden', !canYoutube);
+            reprocessBtn.disabled = !canYoutube;
+            reprocessBtn.classList.toggle('is-disabled', !canYoutube);
+            on(reprocessBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!canYoutube) return;
+                this.openReprocessModal(id, card || dock, item);
+                if (menu && menuBtn) this.toggleKebabMenu(dock, false, menuBtn);
+            });
+        }
+
+        if (menuBtn && menu) {
+            menu.classList.add('hidden');
+            on(menuBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const expanded = menuBtn.getAttribute('aria-expanded') === 'true';
+                this.toggleKebabMenu(dock, !expanded, menuBtn);
+            });
+            on(menu, 'click', (e) => {
+                const actionEl = e.target.closest('[data-action]');
+                if (!actionEl) return;
+                const action = actionEl.getAttribute('data-action');
+                if (action === 'wall-arrange-set') {
+                    const nextMode = this.setWallDockArrangeMode(actionEl.getAttribute('data-wall-arrange-mode'));
+                    this.syncWallDockArrangeButtons(dock, nextMode);
+                    this.applyWallDockArrangement(id, nextMode, { scrollSelected: false });
+                    requestAnimationFrame(() => { updateReturnBtnVisibility(); });
+                    this.toggleKebabMenu(dock, false, menuBtn);
+                    return;
+                }
+            });
+        }
+
+        const getSelectedCardEl = () => {
+            const selectedId = this._wallDockSelectedId || id;
+            if (!selectedId) return null;
+            const selector = `.wall-card[data-report-id="${CSS.escape(selectedId)}"]`;
+            return grid.querySelector(selector) || card || null;
+        };
+        const isSelectedCardVisible = () => {
+            const selected = getSelectedCardEl();
+            if (!selected) return true;
+            const rect = selected.getBoundingClientRect();
+            const viewportTop = 84;
+            const viewportBottom = window.innerHeight - 18;
+            const visiblePx = Math.min(rect.bottom, viewportBottom) - Math.max(rect.top, viewportTop);
+            const minVisible = Math.max(44, Math.min(rect.height * 0.32, 120));
+            return visiblePx >= minVisible;
+        };
+        const updateReturnBtnVisibility = () => {
+            if (!returnBtn) return;
+            const show = workspace.classList.contains('wall-dock-open') && !isSelectedCardVisible();
+            returnBtn.classList.toggle('hidden', !show);
+            returnBtn.setAttribute('aria-hidden', show ? 'false' : 'true');
+        };
+        if (returnBtn) {
+            on(returnBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const selected = getSelectedCardEl();
+                if (!selected) return;
+                selected.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+                selected.classList.add('wall-card--return-target');
+                window.setTimeout(() => { try { selected.classList.remove('wall-card--return-target'); } catch (_) { } }, 900);
+                window.setTimeout(() => { try { updateReturnBtnVisibility(); } catch (_) { } }, 460);
+            });
+        }
+
+        this.syncWallDockArrangeButtons(dock, this.wallDockArrangeMode);
+        requestAnimationFrame(() => {
+            this.applyWallDockArrangement(id, this.wallDockArrangeMode, { scrollSelected: false });
+            updateReturnBtnVisibility();
+        });
+
+        const getOrderedIds = () => Array.from(grid.querySelectorAll('.wall-card'))
+            .map((el) => ({ id: el.getAttribute('data-report-id'), ord: Number.parseInt(el.dataset.wallOrder || '0', 10) }))
+            .filter((x) => !!x.id)
+            .sort((a, b) => (a.ord - b.ord))
+            .map((x) => x.id);
+
+        const goByOffset = (delta) => {
+            const ordered = getOrderedIds();
+            const idx = ordered.indexOf(id);
+            if (idx === -1) return;
+            const nextIdx = Math.max(0, Math.min(ordered.length - 1, idx + delta));
+            const nextId = ordered[nextIdx];
+            if (!nextId || nextId === id) return;
+            const nextCard = grid.querySelector(`[data-card][data-report-id="${CSS.escape(nextId)}"]`);
+            this.openWallDockReader(nextId, nextCard);
+        };
+
+        const onKey = (e) => {
+            if (e.key === 'Escape') { this.closeWallDockReader(); return; }
+            if (e.key === 'ArrowRight') { e.preventDefault(); goByOffset(1); return; }
+            if (e.key === 'ArrowLeft') { e.preventDefault(); goByOffset(-1); return; }
+        };
+        on(document, 'keydown', onKey);
+
+        const onResize = () => {
+            if (!this.isWallDockAvailable()) {
+                this.closeWallDockReader({ clearDeepLink: false, skipTelemetry: true });
+                return;
+            }
+            this.setWallDockWidth(workspace, grid);
+            this.applyWallDockArrangement(id, this.wallDockArrangeMode, { scrollSelected: false });
+            updateReturnBtnVisibility();
+        };
+        on(window, 'resize', onResize, { passive: true });
+
+        // Keep dock sticky and visibly drift downward as the user scrolls.
+        const mainScroller = document.querySelector('main');
+        const rootScroller = document.scrollingElement || document.documentElement || document.body;
+        let lastShiftPx = '';
+        const updateDockScrollShift = () => {
+            if (!workspace) return;
+            const stMain = Number(mainScroller?.scrollTop || 0);
+            const stRoot = Number(rootScroller?.scrollTop || 0);
+            const stDocEl = Number(document.documentElement?.scrollTop || 0);
+            const stBody = Number(document.body?.scrollTop || 0);
+            const stWindow = Number(window.scrollY || 0);
+            const st = Math.max(stMain, stRoot, stDocEl, stBody, stWindow);
+            const shift = Math.max(0, Math.min(96, Math.round(st * 0.16)));
+            const next = `${shift}px`;
+            if (next === lastShiftPx) return;
+            lastShiftPx = next;
+            workspace.style.setProperty('--wall-dock-scroll-shift', next);
+        };
+        let scrollTicking = false;
+        const onMainScroll = () => {
+            if (scrollTicking) return;
+            scrollTicking = true;
+            requestAnimationFrame(() => {
+                scrollTicking = false;
+                updateDockScrollShift();
+                updateReturnBtnVisibility();
+            });
+        };
+        updateDockScrollShift();
+        updateReturnBtnVisibility();
+        const scrollTargets = [mainScroller, window, rootScroller].filter(Boolean);
+        Array.from(new Set(scrollTargets)).forEach((target) => on(target, 'scroll', onMainScroll, { passive: true }));
+
+        // Safety poll for environments that update scrollTop without dispatching scroll events.
+        const stickyPoll = window.setInterval(() => {
+            updateDockScrollShift();
+            updateReturnBtnVisibility();
+        }, 180);
+        this._wallDockTeardown.push(() => { try { window.clearInterval(stickyPoll); } catch (_) { } });
+
+        this._activeReader = { id, mode: 'dock', close: () => this.closeWallDockReader() };
+        this.sendTelemetry('read_open', { id, view: 'wall', reader: 'dock' });
+        return true;
+    }
+
     // --- Wall reader handlers ---
     handleWallRead(id, cardEl) {
         console.log('[DEBUG] handleWallRead called with id:', id);
+        if (this.openWallDockReader(id, cardEl) !== false) {
+            return true;
+        }
         const preferKaleido = !!(this.flags && this.flags.wallKaleidoPreferred === true);
         console.log('[DEBUG] preferKaleido:', preferKaleido, 'flags:', this.flags);
         if (preferKaleido) {
@@ -5069,7 +6001,8 @@ class AudioDashboard {
         const useInline = (this.flags && Object.prototype.hasOwnProperty.call(this.flags, 'wallReadInline')) ? !!this.flags.wallReadInline : true;
         const useMega = this.flags && this.flags.wallMegaSpanEnabled;
         const useFlip = this.flags && this.flags.wallFlipEnabled;
-        const isDesktop = window.innerWidth >= 1024;
+        const isDesktop = window.innerWidth >= 1100;
+        try { this.closeWallDockReader({ clearDeepLink: false, skipTelemetry: true }); } catch (_) { }
         if (useInline && isDesktop) {
             return this.openWallRowReader(id, cardEl);
         }
@@ -5180,6 +6113,7 @@ class AudioDashboard {
 		                const reportId = variantInfo.reportId || id;
 		                const audioSrc = entry.audioSrc || variantInfo.audioSrc || null;
 		                body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + this.renderInlineAudioVariant(reportId, entry, audioSrc);
+                        this.bindReaderMetaInteractions(body, on);
 		                this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
 		                this.bindKaleidoInlineAudioControls(body, on);
 		                this.refreshAudioVariantBlocks();
@@ -5187,8 +6121,9 @@ class AudioDashboard {
 		            }
 
 			            body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + (entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>');
-			            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
-			            try { this.enhanceSummaryHtml(body); } catch (_) { }
+                    this.bindReaderMetaInteractions(body, on);
+		            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
+		            try { this.enhanceSummaryHtml(body); } catch (_) { }
 			        };
 
 			        // Allow URL (popstate) to switch variants without reopening the reader.
@@ -5227,6 +6162,7 @@ class AudioDashboard {
 		            setActiveVariant(variantInfo.order[0]);
 		        } else {
 		            body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + this.renderWallReaderSection(item);
+                this.bindReaderMetaInteractions(body, on);
 		            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
 		            try { this.enhanceSummaryHtml(body); } catch (_) { }
 		        }
@@ -5768,6 +6704,7 @@ class AudioDashboard {
             <div class="prose prose-sm dark:prose-invert max-w-none" data-summary-body>${this.renderWallReaderSection(item)}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
+        this.bindReaderMetaInteractions(section);
         try {
             const cur = (this.parseUrlParams && this.parseUrlParams().read) ? String(this.parseUrlParams().read) : '';
             const replace = cur === String(id);
@@ -6883,12 +7820,14 @@ class AudioDashboard {
         const map = {
             category: 'Category',
             categories: 'Category',
+            subcategory: 'Subcategory',
             channel: 'Channel',
             channels: 'Channel',
             content_type: 'Content',
             content_type_filters: 'Content',
             summary_type: 'Summary',
-            language: 'Language'
+            language: 'Language',
+            topic: 'Topic'
         };
         return map[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     }
@@ -7484,6 +8423,9 @@ class AudioDashboard {
         } catch (_) { }
 
         document.body.classList.toggle('wall-mode', this.viewMode === 'wall');
+        if (this.viewMode !== 'wall') {
+            try { this.closeWallDockReader({ clearDeepLink: false, skipTelemetry: true }); } catch (_) { }
+        }
         if (this.resultsHero) {
             this.resultsHero.classList.add('hidden');
         }
@@ -7865,16 +8807,21 @@ class AudioDashboard {
         `;
     }
 
-    renderInlineAudioVariant(reportId, entry, audioSrc) {
+    renderInlineAudioVariant(reportId, entry, audioSrc, options = {}) {
+        const opts = options || {};
+        const isDocked = Boolean(opts.docked);
         const available = Boolean(audioSrc);
         const isActive = this.currentAudio && this.currentAudio.id === reportId;
         const isPlaying = isActive && this.isPlaying;
         const inKaleido = (typeof document !== 'undefined' && document.body && document.body.classList && document.body.classList.contains('kaleido-open'));
+        const useEnhancedPlayer = inKaleido || isDocked;
+        const titleClass = (inKaleido || isDocked) ? 'text-slate-100' : 'text-slate-800 dark:text-slate-100';
+        const statusClass = (inKaleido || isDocked) ? 'text-slate-200/90' : 'text-slate-600 dark:text-slate-300';
         const statusText = !available
             ? 'Audio summary is not available for this item.'
             : isActive
-                ? (isPlaying ? 'Now playing via the global controls.' : 'Ready – press play to resume.')
-                : 'Ready to play. Use the button below to start playback.';
+                ? (isPlaying ? 'Playing now.' : 'Paused. Press play to resume.')
+                : (isDocked ? 'Ready to play while you read.' : 'Ready to play. Use the button below to start playback.');
         const buttonLabel = !available
             ? 'Unavailable'
             : isActive && isPlaying ? 'Pause audio' : 'Play audio';
@@ -7887,9 +8834,19 @@ class AudioDashboard {
                    Download
                </a>`
             : '';
+        const waveformBars = Array.from({ length: 42 }).map((_, idx) => {
+            const h = 24 + ((idx * 7) % 52);
+            return `<span class="kaleido-audio-wavebar" data-wave-index="${idx}" style="--h:${h}%"></span>`;
+        }).join('');
 
-        const kaleidoControls = inKaleido ? `
+        const enhancedControls = useEnhancedPlayer ? `
             <div class="kaleido-audio-controls" data-kaleido-audio-controls>
+                <div class="kaleido-audio-wave" data-kaleido-audio-wave aria-hidden="true">
+                    ${waveformBars}
+                </div>
+                <input type="range" min="0" max="1000" value="0"
+                       class="kaleido-audio-seek${isDocked ? ' kaleido-audio-seek--dock' : ''}"
+                       data-kaleido-audio-seek ${available ? '' : 'disabled aria-disabled=\"true\"'} />
                 <div class="kaleido-audio-row">
                     <button type="button" ${buttonState}
                             class="kaleido-audio-play"
@@ -7900,29 +8857,26 @@ class AudioDashboard {
                         <span class="kaleido-audio-play-label" data-label>${isActive && isPlaying ? 'Pause' : 'Play'}</span>
                     </button>
                     <div class="kaleido-audio-time" data-kaleido-audio-time>0:00 / —</div>
+                    <button type="button" class="kaleido-audio-rate" data-kaleido-audio-rate ${available ? '' : 'disabled aria-disabled=\"true\"'} title="Playback speed">${this.formatPlaybackRate(this.getEffectivePlaybackRate())}</button>
+                    ${downloadLink}
                 </div>
-	                <input type="range" min="0" max="1000" value="0"
-	                       class="kaleido-audio-seek"
-	                       data-kaleido-audio-seek ${available ? '' : 'disabled aria-disabled=\"true\"'} />
-	                <div class="kaleido-audio-actions">
-	                    ${downloadLink}
-	                    <button type="button" class="kaleido-audio-rate" data-kaleido-audio-rate ${available ? '' : 'disabled aria-disabled=\"true\"'} title="Playback speed">${this.formatPlaybackRate(this.getEffectivePlaybackRate())}</button>
-	                </div>
-	            </div>
-	        ` : '';
+            </div>
+        ` : '';
 
         const containerClass = inKaleido
             ? 'kaleido-audio-panel'
+            : isDocked
+                ? 'kaleido-audio-panel kaleido-audio-panel--dock'
             : 'rounded-xl border border-slate-200/80 bg-slate-50/80 p-4 text-sm dark:border-slate-700/70 dark:bg-slate-800/60';
 
         return `
             <div class="${containerClass}"
                  data-audio-variant data-report-id="${reportId || ''}" data-audio-available="${available ? '1' : ''}">
                 <div class="space-y-2">
-                    <p class="font-semibold ${inKaleido ? 'text-slate-100' : 'text-slate-800 dark:text-slate-100'}">${this.escapeHtml(entry.label || 'Audio summary')}</p>
-                    <p class="${inKaleido ? 'text-slate-200/90' : 'text-slate-600 dark:text-slate-300'}" data-audio-status>${statusText}</p>
+                    <p class="font-semibold ${titleClass}">${this.escapeHtml(entry.label || 'Audio summary')}</p>
+                    <p class="${statusClass}" data-audio-status>${statusText}</p>
                 </div>
-                ${inKaleido ? kaleidoControls : `
+                ${useEnhancedPlayer ? enhancedControls : `
                     <div class="mt-3 flex items-center gap-2">
                         ${downloadLink}
                         <button type="button" ${buttonState}
@@ -7942,7 +8896,9 @@ class AudioDashboard {
 	        const seek = container.querySelector('[data-kaleido-audio-seek]');
 	        const time = container.querySelector('[data-kaleido-audio-time]');
 	        const rateBtn = container.querySelector('[data-kaleido-audio-rate]');
-	        if (!seek && !time && !rateBtn) return;
+            const wave = container.querySelector('[data-kaleido-audio-wave]');
+            const waveBars = wave ? Array.from(wave.querySelectorAll('.kaleido-audio-wavebar')) : [];
+	        if (!seek && !time && !rateBtn && !wave) return;
 
         let seeking = false;
         const fmt = (sec) => {
@@ -7960,10 +8916,22 @@ class AudioDashboard {
                 const v = Math.max(0, Math.min(1000, Math.round((cur / dur) * 1000)));
                 seek.value = String(v);
             }
+            let pct = 0;
             if (seek) {
                 const v = Number(seek.value || 0);
-                const pct = Math.max(0, Math.min(100, (v / 1000) * 100));
+                pct = Math.max(0, Math.min(100, (v / 1000) * 100));
                 seek.style.background = `linear-gradient(90deg, rgba(56,189,248,0.95) 0%, rgba(99,102,241,0.9) ${pct}%, rgba(255,255,255,0.12) ${pct}%, rgba(255,255,255,0.12) 100%)`;
+            } else if (durOk) {
+                pct = Math.max(0, Math.min(100, (cur / dur) * 100));
+            }
+            if (wave) {
+                wave.style.setProperty('--wave-progress', `${pct}%`);
+                if (waveBars.length) {
+                    const activeCount = Math.round((pct / 100) * waveBars.length);
+                    waveBars.forEach((bar, idx) => {
+                        bar.classList.toggle('is-active', idx < activeCount);
+                    });
+                }
             }
 	        };
 
@@ -8040,6 +9008,7 @@ class AudioDashboard {
             const available = block.getAttribute('data-audio-available') === '1';
             const statusEl = block.querySelector('[data-audio-status]');
             const button = block.querySelector('[data-variant-audio-btn]');
+            const isDockedPlayer = block.classList.contains('kaleido-audio-panel--dock');
             const labelEl = button ? button.querySelector('[data-label]') : null;
             const playIcon = button ? button.querySelector('[data-icon-play]') : null;
             const pauseIcon = button ? button.querySelector('[data-icon-pause]') : null;
@@ -8059,8 +9028,8 @@ class AudioDashboard {
 
             if (statusEl) {
                 statusEl.textContent = isActive
-                    ? (isPlaying ? 'Now playing via the global controls.' : 'Ready – press play to resume.')
-                    : 'Ready to play. Use the button below to start playback.';
+                    ? (isPlaying ? 'Playing now.' : 'Paused. Press play to resume.')
+                    : (isDockedPlayer ? 'Ready to play while you read.' : 'Ready to play. Use the button below to start playback.');
             }
 
             if (button) {

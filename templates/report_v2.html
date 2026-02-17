@@ -223,45 +223,72 @@
             </div>
             {% endif %}
             
-            {% if categories and categories|length > 0 %}
-            <div class="flex items-center gap-2 lg:col-span-2">
-              <span class="text-slate-400">🏷️</span>
-              <span class="text-slate-600 dark:text-slate-400">Categories</span>
-              <div class="flex flex-wrap gap-1">
-                {% for category in categories %}
-                  <span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                    {{ category }}
-                  </span>
-                {% endfor %}
-              </div>
-            </div>
-            {% endif %}
-            
-            {% if subcategory_pairs and subcategory_pairs|length > 0 %}
-            <div class="flex items-center gap-2 lg:col-span-2">
-              <span class="text-slate-400">📋</span>
-              <span class="text-slate-600 dark:text-slate-400">Subcategories</span>
-              <div class="flex flex-wrap gap-1">
-                {% for pair in subcategory_pairs %}
-                  <span class="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-800 dark:bg-purple-900 dark:text-purple-200">
-                    {{ pair[1] }}
-                  </span>
-                {% endfor %}
-              </div>
-            </div>
-            {% endif %}
-            
-            {% if key_topics and key_topics|length > 0 %}
-            <div class="flex items-center gap-2 lg:col-span-2">
-              <span class="text-slate-400">🔖</span>
-              <span class="text-slate-600 dark:text-slate-400">Key Topics</span>
-              <div class="flex flex-wrap gap-1">
-                {% for topic in key_topics %}
-                  <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200">
-                    {{ topic }}
-                  </span>
-                {% endfor %}
-              </div>
+            {% set has_taxonomy = (categories and categories|length > 0) or (subcategory_pairs and subcategory_pairs|length > 0) or (key_topics and key_topics|length > 0) %}
+            {% if has_taxonomy %}
+            <div class="lg:col-span-2">
+              <details class="group rounded-lg border border-slate-200 bg-white/70 p-2.5 dark:border-slate-700 dark:bg-slate-900/60" data-report-meta>
+                <summary class="flex cursor-pointer items-center justify-between gap-2 text-sm font-medium text-slate-800 dark:text-slate-100">
+                  <span>Filters & Taxonomy</span>
+                  <span class="text-slate-500 transition-transform group-open:rotate-180">▾</span>
+                </summary>
+                <div class="mt-2.5 space-y-2.5">
+                  <div class="flex flex-wrap gap-1.5" role="tablist" aria-label="Metadata filters">
+                    <button type="button" class="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200" data-report-meta-tab="overview" aria-pressed="true">Overview</button>
+                    {% if categories and categories|length > 0 %}
+                    <button type="button" class="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300" data-report-meta-tab="categories" aria-pressed="false">Categories ({{ categories|length }})</button>
+                    {% endif %}
+                    {% if subcategory_pairs and subcategory_pairs|length > 0 %}
+                    <button type="button" class="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300" data-report-meta-tab="subcategories" aria-pressed="false">Subcategories ({{ subcategory_pairs|length }})</button>
+                    {% endif %}
+                    {% if key_topics and key_topics|length > 0 %}
+                    <button type="button" class="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300" data-report-meta-tab="topics" aria-pressed="false">Topics ({{ key_topics|length }})</button>
+                    {% endif %}
+                  </div>
+
+                  <section data-report-meta-panel="overview" class="space-y-2">
+                    <div class="flex flex-wrap gap-1.5">
+                      <a href="/?channel={{ channel|urlencode }}" class="inline-flex items-center rounded-full border border-cyan-300 bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-900 transition-colors hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-100 dark:hover:bg-cyan-900/60">📺 {{ channel }}</a>
+                      {% if video_duration_str %}
+                      <span class="inline-flex items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">🎬 {{ video_duration_str }}</span>
+                      {% endif %}
+                      {% if audio_dur_pretty %}
+                      <span class="inline-flex items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">🎵 {{ audio_dur_pretty }}</span>
+                      {% endif %}
+                    </div>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">Open each chip to jump back to the dashboard with that filter pre-applied.</p>
+                  </section>
+
+                  {% if categories and categories|length > 0 %}
+                  <section data-report-meta-panel="categories" class="hidden">
+                    <div class="flex flex-wrap gap-1.5">
+                      {% for category in categories %}
+                      <a href="/?category={{ category|urlencode }}" class="inline-flex items-center rounded-full border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-900 transition-colors hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-900/40 dark:text-blue-100 dark:hover:bg-blue-900/60">{{ category }}</a>
+                      {% endfor %}
+                    </div>
+                  </section>
+                  {% endif %}
+
+                  {% if subcategory_pairs and subcategory_pairs|length > 0 %}
+                  <section data-report-meta-panel="subcategories" class="hidden">
+                    <div class="flex flex-wrap gap-1.5">
+                      {% for pair in subcategory_pairs %}
+                      <a href="/?category={{ pair[0]|urlencode }}&subcategory={{ pair[1]|urlencode }}" class="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-900 transition-colors hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-100 dark:hover:bg-emerald-900/60">{{ pair[1] }}</a>
+                      {% endfor %}
+                    </div>
+                  </section>
+                  {% endif %}
+
+                  {% if key_topics and key_topics|length > 0 %}
+                  <section data-report-meta-panel="topics" class="hidden">
+                    <div class="flex flex-wrap gap-1.5">
+                      {% for topic in key_topics %}
+                      <a href="/?q={{ topic|urlencode }}" class="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100 dark:hover:bg-amber-900/60">#{{ topic }}</a>
+                      {% endfor %}
+                    </div>
+                  </section>
+                  {% endif %}
+                </div>
+              </details>
             </div>
             {% endif %}
             
@@ -441,6 +468,6 @@
     </div>
   </div>
 
-  <script src="/static/v2/report_v2.js?v={{ deployment_commit }}-{{ cache_bust }}"></script>
+  <script src="/static/v2/report_v2.js?v={{ deployment_commit }}-{{ cache_bust }}-meta01"></script>
 </body>
 </html>
