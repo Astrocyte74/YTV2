@@ -1058,7 +1058,7 @@ class AudioDashboard {
 	        }
 
 	        if (!item) {
-	            this.showToast('Reprocess: report not found', 'warn');
+	            this.showToast('Regenerate: report not found', 'warn');
 	            return;
 	        }
 
@@ -1341,7 +1341,7 @@ class AudioDashboard {
             this.showToast(`Audio ready for ${this.describeVideo(data)}`, 'success');
         }
         if (eventName === 'reprocess-complete') {
-            this.showToast(`Reprocess finished for ${this.describeVideo(data)}`, 'success');
+            this.showToast(`Regenerate finished for ${this.describeVideo(data)}`, 'success');
         }
 
         // If Manage Images modal is open for this video, hot‑refresh it in place
@@ -1543,10 +1543,10 @@ class AudioDashboard {
     handleReprocessLifecycle(eventName, payload = {}) {
         const label = this.describeVideo(payload);
         if (eventName === 'reprocess-scheduled') {
-            this.showToast(`Reprocess scheduled for ${label}`, 'info');
+            this.showToast(`Regenerate scheduled for ${label}`, 'info');
         }
         if (eventName === 'reprocess-requested') {
-            this.showToast(`Reprocess started for ${label}`, 'info');
+            this.showToast(`Regenerate started for ${label}`, 'info');
         }
         this.requestMetricsRefresh(2500);
     }
@@ -1572,14 +1572,14 @@ class AudioDashboard {
             'report-added': 'New report',
             'report-synced': 'Report update',
             'audio-synced': 'Audio update',
-            'reprocess-scheduled': 'Reprocess scheduled',
-            'reprocess-requested': 'Reprocess started',
-            'reprocess-complete': 'Reprocess complete',
+            'reprocess-scheduled': 'Regenerate scheduled',
+            'reprocess-requested': 'Regenerate started',
+            'reprocess-complete': 'Regenerate complete',
             'report-sync-failed': 'Report sync failed',
             'report-sync-error': 'Report sync error',
             'audio-sync-failed': 'Audio sync failed',
             'audio-sync-error': 'Audio sync error',
-            'reprocess-error': 'Reprocess error'
+            'reprocess-error': 'Regenerate error'
         };
         return map[name] || name.replace(/[-_]/g, ' ');
     }
@@ -2938,7 +2938,7 @@ class AudioDashboard {
                             </section>
                             <section class="wall-dock__menu-section" data-wall-menu-section="actions">
                                 <p class="wall-dock__menu-label">Actions</p>
-                                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-reprocess">Reprocess…</button>
+                                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-reprocess">Regenerate…</button>
                             </section>
                         </div>
                     </div>
@@ -3840,14 +3840,14 @@ class AudioDashboard {
 
 	    openReprocessModal(reportId, card, itemOverride = null) {
 	        if (!this.reprocessModal) {
-	            this.showToast('Reprocess dialog unavailable', 'error');
+	            this.showToast('Regenerate dialog unavailable', 'error');
 	            return;
 	        }
 	        const item = itemOverride || (this.currentItems || []).find((x) => x.file_stem === reportId) || null;
 	        const title = item?.title || card?.querySelector('h3')?.textContent?.trim() || reportId;
 	        const videoId = item?.video_id || item?.videoId || item?.id || card?.dataset.videoId;
 	        if (!videoId) {
-	            this.showToast('Missing video id for reprocess', 'error');
+	            this.showToast('Missing video id for regenerate', 'error');
 	            return;
 	        }
 
@@ -3860,7 +3860,7 @@ class AudioDashboard {
 
         if (this.reprocessText) {
             const safeTitle = this.escapeHtml(title || 'this video');
-            this.reprocessText.innerHTML = `Re-run the summarizer for <strong>${safeTitle}</strong>?`;
+            this.reprocessText.innerHTML = `Generate a fresh summary for <strong>${safeTitle}</strong>?`;
         }
 
         this.updateReprocessFootnote();
@@ -4849,7 +4849,7 @@ class AudioDashboard {
         if (!this.pendingReprocess) return;
         const videoId = this.pendingReprocess.videoId;
         if (!videoId) {
-            this.showToast('Missing video id for reprocess', 'error');
+            this.showToast('Missing video id for regenerate', 'error');
             return;
         }
         const summaryTypes = this.getSelectedSummaryTypes();
@@ -4863,7 +4863,7 @@ class AudioDashboard {
         const regenerateAudio = summaryTypes.some((type) => type.startsWith('audio'));
         const token = await this.getReprocessToken();
         if (!token) {
-            this.showToast('Reprocess token required', 'warn');
+            this.showToast('Auth token required', 'warn');
             if (this.confirmReprocessBtn) {
                 this.confirmReprocessBtn.disabled = false;
             }
@@ -4896,12 +4896,12 @@ class AudioDashboard {
                 const text = await response.text();
                 throw new Error(text || `HTTP ${response.status}`);
             }
-            this.showToast(`Reprocess scheduled for ${this.describeVideo(this.pendingReprocess)}`, 'success');
+            this.showToast(`Regenerate scheduled for ${this.describeVideo(this.pendingReprocess)}`, 'success');
             this.requestMetricsRefresh(2000);
             this.closeReprocessModal();
         } catch (error) {
-            console.error('Reprocess request failed', error);
-            this.showToast(`Reprocess failed: ${error.message || error}`, 'error');
+            console.error('Regenerate request failed', error);
+            this.showToast(`Regenerate failed: ${error.message || error}`, 'error');
         } finally {
             if (this.confirmReprocessBtn) {
                 this.confirmReprocessBtn.disabled = false;
@@ -5264,7 +5264,7 @@ class AudioDashboard {
             <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
-                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Regenerate…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
             </div>
             <div class="summary-card__popover hidden" data-delete-popover>
@@ -5414,7 +5414,7 @@ class AudioDashboard {
             <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
-                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Regenerate…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
             </div>`;
         const title = this.escapeHtml(item.title);
@@ -6873,7 +6873,7 @@ class AudioDashboard {
             <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
-                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Regenerate…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
             </div>
                     <button class="wall-expander__close" aria-label="Close" data-action="wall-reader-close">
@@ -7219,7 +7219,7 @@ class AudioDashboard {
                 <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                   <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                   <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
-                  <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                  <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Regenerate…</button>
                   <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
                 </div>
               </div>
@@ -7427,7 +7427,7 @@ class AudioDashboard {
               <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
-                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Regenerate…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
               </div>`;
             cardEl.innerHTML = `
@@ -7913,7 +7913,7 @@ class AudioDashboard {
             <div class="summary-card__menu hidden" data-kebab-menu role="menu">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
-                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Regenerate…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
             </div>
                         <div class="summary-card__popover hidden" data-delete-popover>
@@ -10751,7 +10751,7 @@ class AudioDashboard {
             this.reprocessTokenSource = null;
         }
         this.updateReprocessFootnote();
-        this.showToast('Reprocess token cleared. You will be prompted next time.', 'info');
+        this.showToast('Auth token cleared. You will be prompted next time.', 'info');
     }
 
     updateReprocessFootnote() {
