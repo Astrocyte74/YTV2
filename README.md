@@ -1,51 +1,60 @@
 # YTV2 Dashboard (PostgreSQL)
 
-Web UI + API for browsing AI‑generated summaries (with audio). This service runs on Render (Docker) and reads from a PostgreSQL database.
+Web UI + API for browsing AI‑generated summaries (with audio). This service runs locally on i9 Mac (Docker) and reads from a PostgreSQL database.
+
+> **See also:** [../ARCHITECTURE.md](../ARCHITECTURE.md) for full system architecture.
 
 ## Key endpoints
 - `/` – dashboard UI
 - `/api/filters` – facet counts (sources, categories, channels, languages, etc.)
 - `/api/reports` – paginated cards with filtering, search and sorting
+- `/api/reprocess` – regenerate summaries (proxied to backend)
 - `/health` – health probe
 
 Full API reference: `docs/API.md`.
 
 ## Environment
 ```
-# Required
+# Required - PostgreSQL connection
 DATABASE_URL_POSTGRES_NEW=postgres://user:pass@host:5432/dbname
 
-# Required for NAS ingest (private endpoints)
+# Required for backend ingest (private endpoints)
 INGEST_TOKEN=shared_ingest_token
 
-# Optional (protect upload endpoints if used)
+# Required for sync with backend
 SYNC_SECRET=shared_secret
 
-# Optional (NAS metrics bridge; enables /api/metrics proxy)
-NGROK_BASE_URL=https://<your-ngrok-subdomain>.ngrok-free.app
-# Or NGROK_URL can be used equivalently
-NGROK_BASIC_USER=optional_basic_user
-NGROK_BASIC_PASS=optional_basic_pass
+# Backend connection for regenerate functionality
+# Use port 6452 (telegram_bot HTTP server), NOT 6453 (FastAPI)
+BACKEND_API_URL=http://host.docker.internal:6452
+
+# Auth token for regenerate endpoint (must match backend's REPROCESS_AUTH_TOKEN)
+DEBUG_TOKEN=your_shared_secret
 
 # Optional (UI behaviour)
 DASHBOARD_AUTOPLAY_ON_LOAD=1  # set to 0/false to keep audio idle until a user clicks
 
-# Optional locally (Render sets the port)
+# Optional locally
 PORT=10000
 ```
 
 ## Run locally
 ```
+# Docker (recommended)
+docker-compose up -d
+# open http://localhost:10000
+
+# Or native
 pip install -r requirements.txt
 python server.py
 # open http://localhost:10000
 ```
 
-## Deploy on Render
-Use Docker runtime with Start Command `python server.py` and set `DATABASE_URL_POSTGRES_NEW`.
+## Access via Tailscale
+The dashboard is accessible remotely via Tailscale:
+- URL: `http://marks-macbook-pro-2.tail9e123c.ts.net:10000`
 
-Step‑by‑step guide: `docs/DEPLOY_RENDER.md`.
-NAS integration guide: `docs/NAS_INTEGRATION.md`.
+Integration guide: `docs/NAS_INTEGRATION.md`.
 
 ## Filter model (UI summary)
 - Source, Category and Channel all participate in narrowing results.
