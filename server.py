@@ -5128,7 +5128,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         Auth: X-Reprocess-Token == DEBUG_TOKEN (or Bearer DEBUG_TOKEN).
         """
         try:
-            if not self._reprocess_auth_ok():
+            auth_ok = self._reprocess_auth_ok()
+            if not auth_ok:
                 self.send_response(401)
                 self.set_cors_headers()
                 self.send_header('Content-type', 'application/json')
@@ -5158,7 +5159,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 return
 
             # BACKEND_API_URL points to the summarizer backend (same machine or remote)
-            # - Same machine (Docker): http://host.docker.internal:6453
+            # - Same machine (Docker): http://host.docker.internal:6452
             # - Same machine (native): http://localhost:6453
             # - Remote via Tailscale: http://100.xxx.xxx.xxx:6453
             # Legacy: NGROK_BASE_URL or NGROK_URL (for backwards compatibility)
@@ -5170,7 +5171,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({
                     "error": "backend_not_configured",
-                    "message": "Regenerate requires BACKEND_API_URL. Set it to the backend API endpoint (e.g., http://host.docker.internal:6453 for same-machine Docker, or Tailscale URL for remote)."
+                    "message": "Regenerate requires BACKEND_API_URL. Set it to the backend API endpoint (e.g., http://host.docker.internal:6452 for same-machine Docker, or Tailscale URL for remote)."
                 }).encode())
                 return
 
