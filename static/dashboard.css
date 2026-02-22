@@ -2688,6 +2688,80 @@ body:not(.dark) .reader-display-popover {
     color: #dbeafe;
 }
 
+/* Dock header source badge (new) */
+.wall-dock__source-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.7rem;
+    font-weight: 500;
+    border-radius: 0.3rem;
+    border: none;
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.wall-dock__source-badge--youtube {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+}
+
+.wall-dock__source-badge--reddit {
+    background: rgba(249, 115, 22, 0.2);
+    color: #fdba74;
+}
+
+.wall-dock__source-badge--web {
+    background: rgba(59, 130, 246, 0.2);
+    color: #93c5fd;
+}
+
+.wall-dock__source-badge:hover {
+    filter: brightness(1.1);
+}
+
+.wall-dock__duration {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.68rem;
+}
+
+.wall-dock__channel {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wall-dock__channel:hover {
+    color: #e2e8f0;
+}
+
+.wall-dock__tags-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.7rem;
+    border-radius: 0.25rem;
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+    border: none;
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.wall-dock__tags-btn:hover {
+    background: rgba(148, 163, 184, 0.25);
+    color: #e2e8f0;
+}
+
 .wall-dock__top-actions {
     display: inline-flex;
     align-items: center;
@@ -3170,6 +3244,116 @@ body:not(.dark) .reader-display-popover {
     background: rgba(14, 165, 233, 0.3);
 }
 
+/* Reader header - clean single-row metadata */
+.reader-header {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    margin-bottom: 0.75rem;
+}
+
+.reader-header__source {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.reader-header__source svg {
+    flex-shrink: 0;
+}
+
+.reader-header__channel {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.reader-header__tags {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: auto;
+}
+
+/* Tags popover */
+.reader-tags-popover {
+    position: fixed;
+    z-index: 100;
+    min-width: 280px;
+    max-width: 400px;
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 1rem;
+    background: white;
+    border: 1px solid rgb(226 232 240);
+    border-radius: 0.75rem;
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+}
+
+.dark .reader-tags-popover {
+    background: rgb(30 41 59);
+    border-color: rgb(51 65 85);
+}
+
+.reader-tags-popover__section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.reader-tags-popover__label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgb(100 116 139);
+    margin-bottom: 0.25rem;
+}
+
+.dark .reader-tags-popover__label {
+    color: rgb(148 163 184);
+}
+
+.reader-tags-popover__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+}
+
+.reader-tags-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.625rem;
+    font-size: 0.75rem;
+    border-radius: 9999px;
+    border: 1px solid rgb(203 213 225);
+    background: rgb(248 250 252);
+    color: rgb(71 85 105);
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.dark .reader-tags-chip {
+    border-color: rgb(51 65 85);
+    background: rgb(30 41 59);
+    color: rgb(148 163 184);
+}
+
+.reader-tags-chip:hover {
+    border-color: rgb(59 130 246);
+    background: rgb(239 246 255);
+    color: rgb(37 99 235);
+}
+
+.dark .reader-tags-chip:hover {
+    border-color: rgb(59 130 246);
+    background: rgb(30 58 138 / 0.3);
+    color: rgb(147 197 253);
+}
+
+.reader-tags-chip--sub {
+    font-size: 0.6875rem;
+}
+
 .wall-dock__return {
     position: absolute;
     top: -2.15rem;
@@ -3308,6 +3492,83 @@ body:not(.dark) .reader-display-popover {
 
 .dark .kaleido-source {
     color: #94a3b8;
+}
+
+/* New topbar meta row */
+.kaleido-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.kaleido-source-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.7rem;
+    font-weight: 500;
+    border-radius: 0.25rem;
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+}
+
+.kaleido-source-badge--youtube {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+}
+
+.kaleido-source-badge--reddit {
+    background: rgba(249, 115, 22, 0.15);
+    color: #fdba74;
+}
+
+.kaleido-source-badge--web {
+    background: rgba(59, 130, 246, 0.15);
+    color: #93c5fd;
+}
+
+.kaleido-source-badge svg {
+    width: 0.875rem;
+    height: 0.875rem;
+}
+
+.kaleido-channel {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.kaleido-channel:hover {
+    color: #e2e8f0;
+    cursor: pointer;
+}
+
+.kaleido-tags-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.7rem;
+    border-radius: 0.25rem;
+    background: rgba(148, 163, 184, 0.1);
+    color: #94a3b8;
+    border: none;
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.kaleido-tags-btn:hover {
+    background: rgba(148, 163, 184, 0.2);
+    color: #e2e8f0;
+}
+
+.kaleido-tags-count {
+    font-weight: 500;
 }
 
 .kaleido-actions {

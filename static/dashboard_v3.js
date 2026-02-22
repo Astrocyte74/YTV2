@@ -2868,7 +2868,18 @@ class AudioDashboard {
                     <button type="button" class="wall-dock__return hidden" data-action="wall-dock-return" aria-hidden="true">↑ Back to active card</button>
                     <div class="wall-dock__chrome">
                         <div class="wall-dock__topline">
-                            <button type="button" id="wallDockSource" class="wall-dock__source wall-dock__source-btn" data-action="wall-reader-open-source">Source</button>
+                            <button type="button" id="wallDockSource" class="wall-dock__source-badge" data-action="wall-reader-open-source">
+                                <span id="wallDockSourceIcon"></span>
+                                <span id="wallDockDuration" class="wall-dock__duration"></span>
+                            </button>
+                            <button type="button" id="wallDockChannel" class="wall-dock__channel hidden"></button>
+                            <button type="button" id="wallDockTags" class="wall-dock__tags-btn hidden">
+                                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                                    <line x1="7" y1="7" x2="7.01" y2="7"/>
+                                </svg>
+                                <span id="wallDockTagsCount">0</span>
+                            </button>
                             <div class="wall-dock__top-actions">
                                 <div class="wall-dock__menu-wrap">
                                     <button type="button" class="wall-dock__btn wall-dock__btn--menu summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">•••</button>
@@ -3719,6 +3730,230 @@ class AudioDashboard {
             </div>
           </details>
         `;
+    }
+
+    renderReaderHeader(item) {
+        // Metadata (source, channel, tags) is now in the topbar, so this returns empty
+        // Keeping the method for compatibility with existing calls
+        return '';
+    }
+
+    openTagsPopover(anchorBtn, container) {
+        // Remove any existing popover
+        const existing = document.querySelector('.reader-tags-popover');
+        if (existing) existing.remove();
+
+        let tagsData;
+        try {
+            tagsData = JSON.parse(anchorBtn.getAttribute('data-tags-data') || '{}');
+        } catch (_) {
+            return;
+        }
+
+        const { categories = [], subcatPairs = [], topics = [], channel } = tagsData;
+
+        // Build popover content
+        let content = '<div class="reader-tags-popover__section">';
+
+        // Categories
+        if (categories.length) {
+            content += `
+              <div class="reader-tags-popover__label">Categories</div>
+              <div class="reader-tags-popover__chips">
+                ${categories.map(c => `
+                  <button type="button" class="reader-tags-chip" data-filter-chip="category" data-filter-value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</button>
+                `).join('')}
+              </div>
+            `;
+        }
+
+        // Subcategories (grouped by parent)
+        if (subcatPairs.length) {
+            content += `
+              <div class="reader-tags-popover__label">Subcategories</div>
+              <div class="reader-tags-popover__chips">
+                ${subcatPairs.map(([parent, sub]) => `
+                  <button type="button" class="reader-tags-chip reader-tags-chip--sub" data-filter-chip="subcategory" data-filter-value="${this.escapeHtml(sub)}" data-parent-category="${this.escapeHtml(parent)}" title="${this.escapeHtml(parent)} → ${this.escapeHtml(sub)}">
+                    <span class="opacity-60">${this.escapeHtml(parent)}</span> → ${this.escapeHtml(sub)}
+                  </button>
+                `).join('')}
+              </div>
+            `;
+        }
+
+        // Topics
+        if (topics.length) {
+            const maxTopics = 20;
+            const visibleTopics = topics.slice(0, maxTopics);
+            content += `
+              <div class="reader-tags-popover__label">Topics</div>
+              <div class="reader-tags-popover__chips">
+                ${visibleTopics.map(t => `
+                  <button type="button" class="reader-tags-chip" data-filter-chip="topic" data-filter-value="${this.escapeHtml(t)}">${this.escapeHtml(t)}</button>
+                `).join('')}
+                ${topics.length > maxTopics ? `<span class="text-xs text-slate-500">+${topics.length - maxTopics} more</span>` : ''}
+              </div>
+            `;
+        }
+
+        content += '</div>';
+
+        // Create popover
+        const popover = document.createElement('div');
+        popover.className = 'reader-tags-popover';
+        popover.innerHTML = content;
+        document.body.appendChild(popover);
+
+        // Position near anchor
+        const rect = anchorBtn.getBoundingClientRect();
+        popover.style.top = `${rect.bottom + 8}px`;
+        popover.style.right = `${window.innerWidth - rect.right}px`;
+
+        // Close on click outside
+        const closePopover = (e) => {
+            if (!popover.contains(e.target) && e.target !== anchorBtn) {
+                popover.remove();
+                document.removeEventListener('click', closePopover);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closePopover), 0);
+
+        // Handle chip clicks
+        popover.querySelectorAll('[data-filter-chip]').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const filterType = chip.getAttribute('data-filter-chip');
+                const filterValue = chip.getAttribute('data-filter-value');
+                popover.remove();
+                this.applyFilterChip(filterType, filterValue);
+            });
+        });
+    }
+
+    applyFilterChip(filterType, filterValue) {
+        // Apply filter and close reader
+        if (this.searchInput) this.searchInput.value = '';
+        if (this.searchInputTop) this.searchInputTop.value = '';
+        this.currentFilters[filterType] = [filterValue];
+        this.currentPage = 1;
+        this.updateHeroBadges();
+        this.loadContent();
+        // Close any open readers
+        this.closeWallDockReader();
+        this.closeKaleidoOverlay();
+    }
+
+    openTagsPopoverForItem(item, anchorBtn) {
+        // Remove any existing popover
+        const existing = document.querySelector('.reader-tags-popover');
+        if (existing) existing.remove();
+
+        const cat = this.extractCatsAndSubcats ? this.extractCatsAndSubcats(item) : { categories: [], subcatPairs: [] };
+        const categories = Array.isArray(cat.categories) ? cat.categories : [];
+        const subcatPairs = Array.isArray(cat.subcatPairs) ? cat.subcatPairs : [];
+        const topics = this.extractTopics(item);
+
+        // Build popover content
+        let content = '<div class="reader-tags-popover__section">';
+
+        // Categories
+        if (categories.length) {
+            content += `
+              <div class="reader-tags-popover__label">Categories</div>
+              <div class="reader-tags-popover__chips">
+                ${categories.map(c => `
+                  <button type="button" class="reader-tags-chip" data-filter-chip="category" data-filter-value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</button>
+                `).join('')}
+              </div>
+            `;
+        }
+
+        // Subcategories (grouped by parent)
+        if (subcatPairs.length) {
+            content += `
+              <div class="reader-tags-popover__label">Subcategories</div>
+              <div class="reader-tags-popover__chips">
+                ${subcatPairs.map(([parent, sub]) => `
+                  <button type="button" class="reader-tags-chip reader-tags-chip--sub" data-filter-chip="subcategory" data-filter-value="${this.escapeHtml(sub)}" data-parent-category="${this.escapeHtml(parent)}" title="${this.escapeHtml(parent)} → ${this.escapeHtml(sub)}">
+                    <span class="opacity-60">${this.escapeHtml(parent)}</span> → ${this.escapeHtml(sub)}
+                  </button>
+                `).join('')}
+              </div>
+            `;
+        }
+
+        // Topics
+        if (topics.length) {
+            const maxTopics = 20;
+            const visibleTopics = topics.slice(0, maxTopics);
+            content += `
+              <div class="reader-tags-popover__label">Topics</div>
+              <div class="reader-tags-popover__chips">
+                ${visibleTopics.map(t => `
+                  <button type="button" class="reader-tags-chip" data-filter-chip="topic" data-filter-value="${this.escapeHtml(t)}">${this.escapeHtml(t)}</button>
+                `).join('')}
+                ${topics.length > maxTopics ? `<span class="text-xs text-slate-500">+${topics.length - maxTopics} more</span>` : ''}
+              </div>
+            `;
+        }
+
+        content += '</div>';
+
+        // Create popover
+        const popover = document.createElement('div');
+        popover.className = 'reader-tags-popover';
+        popover.innerHTML = content;
+        document.body.appendChild(popover);
+
+        // Position near anchor
+        const rect = anchorBtn.getBoundingClientRect();
+        popover.style.top = `${rect.bottom + 8}px`;
+        popover.style.right = `${window.innerWidth - rect.right}px`;
+
+        // Close on click outside
+        const closePopover = (e) => {
+            if (!popover.contains(e.target) && e.target !== anchorBtn) {
+                popover.remove();
+                document.removeEventListener('click', closePopover);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closePopover), 0);
+
+        // Handle chip clicks
+        popover.querySelectorAll('[data-filter-chip]').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const filterType = chip.getAttribute('data-filter-chip');
+                const filterValue = chip.getAttribute('data-filter-value');
+                popover.remove();
+                this.applyFilterChip(filterType, filterValue);
+            });
+        });
+    }
+
+    bindReaderHeaderHandlers(container, onFn = null) {
+        if (!container) return;
+        const on = onFn || ((el, type, fn) => el?.addEventListener(type, fn));
+
+        // Tags popover button
+        const tagsBtn = container.querySelector('[data-reader-tags-btn]');
+        if (tagsBtn) {
+            on(tagsBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.openTagsPopover(tagsBtn, container);
+            });
+        }
+        // Source/channel filter chips in header
+        container.querySelectorAll('.reader-header [data-filter-chip]').forEach((chip) => {
+            on(chip, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const filterType = chip.getAttribute('data-filter-chip');
+                const filterValue = chip.getAttribute('data-filter-value');
+                this.applyFilterChip(filterType, filterValue);
+            });
+        });
     }
 
     renderWallDockVariantTabs(variantInfo, activeVariantId = '', options = {}) {
@@ -5886,6 +6121,54 @@ class AudioDashboard {
 
         titleEl.textContent = item.title || 'Summary';
 
+        // Populate dock header metadata (source + duration, channel, tags)
+        const source = (item.content_source || item.source || 'unknown').toString().toLowerCase();
+        const channel = (item.channel_name || item.channel || '').toString().trim();
+        const videoDur = Number(item?.media_metadata?.video_duration_seconds || item?.duration_seconds || 0);
+        const fmt = (sec) => { if (!sec || sec <= 0) return ''; const m = Math.floor(sec / 60); const s = Math.floor(sec % 60); return `${m}:${s.toString().padStart(2, '0')}`; };
+        const duration = videoDur > 0 ? fmt(videoDur) : '';
+
+        // Source icons
+        const sourceIcons = {
+            youtube: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>`,
+            reddit: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/></svg>`,
+            web: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`
+        };
+
+        const sourceIconEl = dock.querySelector('#wallDockSourceIcon');
+        const durationEl = dock.querySelector('#wallDockDuration');
+        const sourceBtn = dock.querySelector('#wallDockSource');
+        if (sourceIconEl) sourceIconEl.innerHTML = sourceIcons[source] || sourceIcons.web;
+        if (durationEl) durationEl.textContent = duration;
+        if (sourceBtn) sourceBtn.className = `wall-dock__source-badge wall-dock__source-badge--${source}`;
+
+        // Channel
+        const channelEl = dock.querySelector('#wallDockChannel');
+        if (channelEl) {
+            if (channel) {
+                channelEl.textContent = channel;
+                channelEl.classList.remove('hidden');
+                on(channelEl, 'click', () => this.applyFilterChip('channel', channel));
+            } else {
+                channelEl.classList.add('hidden');
+            }
+        }
+
+        // Tags button
+        const tagsEl = dock.querySelector('#wallDockTags');
+        const tagsCountEl = dock.querySelector('#wallDockTagsCount');
+        const cat = this.extractCatsAndSubcats ? this.extractCatsAndSubcats(item) : { categories: [], subcatPairs: [] };
+        const totalTags = (cat.categories?.length || 0) + (cat.subcatPairs?.length || 0) + (this.extractTopics(item)?.length || 0);
+        if (tagsEl && tagsCountEl) {
+            if (totalTags > 0) {
+                tagsCountEl.textContent = totalTags;
+                tagsEl.classList.remove('hidden');
+                on(tagsEl, 'click', () => this.openTagsPopoverForItem(item, tagsEl));
+            } else {
+                tagsEl.classList.add('hidden');
+            }
+        }
+
         const fallbackSummary = this.computeFallbackSummaryHtml(item);
         const variantInfo = this.extractVariantInfo(item, fallbackSummary);
         const defaultVariant = variantInfo?.defaultId || (variantInfo?.order && variantInfo.order[0]) || '';
@@ -5927,7 +6210,7 @@ class AudioDashboard {
             if (entry.kind === 'audio') {
                 const reportId = variantInfo.reportId || id;
                 const audioSrc = entry.audioSrc || variantInfo.audioSrc || null;
-                body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + variantTabsHtml + this.renderInlineAudioVariant(reportId, entry, audioSrc, { docked: true });
+                body.innerHTML = this.renderReaderHeader(item) + variantTabsHtml + this.renderInlineAudioVariant(reportId, entry, audioSrc, { docked: true });
                 body.querySelectorAll('[data-wall-dock-variant]').forEach((btn) => {
                     on(btn, 'click', (e) => {
                         e.preventDefault();
@@ -5936,6 +6219,7 @@ class AudioDashboard {
                     });
                 });
                 bindVariantTabActions(body);
+                this.bindReaderHeaderHandlers(body, on);
                 this.bindReaderMetaInteractions(body, on);
                 this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
                 this.bindKaleidoInlineAudioControls(body, on);
@@ -5947,7 +6231,7 @@ class AudioDashboard {
                 return;
             }
 
-            body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + variantTabsHtml + (entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>');
+            body.innerHTML = this.renderReaderHeader(item) + variantTabsHtml + (entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>');
             body.querySelectorAll('[data-wall-dock-variant]').forEach((btn) => {
                 on(btn, 'click', (e) => {
                     e.preventDefault();
@@ -5956,6 +6240,7 @@ class AudioDashboard {
                 });
             });
             bindVariantTabActions(body);
+            this.bindReaderHeaderHandlers(body, on);
             this.bindReaderMetaInteractions(body, on);
             try { this.applyReaderDisplayPrefs(dock, body); } catch (_) { }
             try { this.enhanceSummaryHtml(body); } catch (_) { }
@@ -5976,7 +6261,8 @@ class AudioDashboard {
             const initialVariant = (requestedVariant && variantInfo.map[requestedVariant]) ? requestedVariant : (defaultVariant || variantInfo.order[0]);
             setActiveVariant(initialVariant);
         } else {
-            body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + this.renderWallReaderSection(item);
+            body.innerHTML = this.renderReaderHeader(item) + this.renderWallReaderSection(item);
+            this.bindReaderHeaderHandlers(body, on);
             this.bindReaderMetaInteractions(body, on);
             try { this.applyReaderDisplayPrefs(dock, body); } catch (_) { }
             try { this.enhanceSummaryHtml(body); } catch (_) { }
@@ -5985,7 +6271,7 @@ class AudioDashboard {
 
         const openBtn = dock.querySelector('[data-action="wall-reader-open-page"]');
         const copyBtn = dock.querySelector('[data-action="wall-reader-copy-link"]');
-        const sourceBtn = dock.querySelector('[data-action="wall-reader-open-source"]');
+        // sourceBtn already declared above for header population
         const reprocessBtn = dock.querySelector('[data-action="wall-reader-reprocess"]');
         const displayInlineBtn = dock.querySelector('[data-action="reader-display-inline-toggle"]');
         const displayPanel = dock.querySelector('[data-wall-display-panel]');
@@ -6101,7 +6387,6 @@ class AudioDashboard {
             const label = slug === 'youtube'
                 ? 'YouTube'
                 : (slug === 'reddit' ? 'Reddit' : (hostLabel || 'Source'));
-            sourceBtn.textContent = label;
             sourceBtn.dataset.sourceKind = sourceKind;
             sourceBtn.title = canOpen ? `Open ${label}` : `${label} unavailable`;
             sourceBtn.disabled = !canOpen;
@@ -6353,8 +6638,52 @@ class AudioDashboard {
 
 	        // Populate content
 	        titleEl.textContent = item.title || 'Summary';
-	        const sourceLabel = (item.content_source || 'Source').toString().toUpperCase();
-	        if (sourceEl) sourceEl.textContent = sourceLabel;
+
+            // Populate topbar metadata (source + duration, channel, tags)
+            const source = (item.content_source || item.source || 'unknown').toString().toLowerCase();
+            const channel = (item.channel_name || item.channel || '').toString().trim();
+            const videoDur = Number(item?.media_metadata?.video_duration_seconds || item?.duration_seconds || 0);
+            const fmt = (sec) => { if (!sec || sec <= 0) return ''; const m = Math.floor(sec / 60); const s = Math.floor(sec % 60); return `${m}:${s.toString().padStart(2, '0')}`; };
+            const duration = videoDur > 0 ? fmt(videoDur) : '';
+
+            // Source icons
+            const sourceIcons = {
+                youtube: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>`,
+                reddit: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/></svg>`,
+                web: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`
+            };
+
+            if (sourceEl) {
+                const icon = sourceIcons[source] || sourceIcons.web;
+                sourceEl.innerHTML = `${icon}${duration ? ` <span class="font-mono">${duration}</span>` : ''}`;
+                sourceEl.className = `kaleido-source-badge kaleido-source-badge--${source}`;
+            }
+
+            // Channel
+            const channelEl = document.getElementById('wallReaderChannel');
+            if (channelEl) {
+                if (channel) {
+                    channelEl.textContent = channel;
+                    channelEl.classList.remove('hidden');
+                    channelEl.onclick = () => this.applyFilterChip('channel', channel);
+                } else {
+                    channelEl.classList.add('hidden');
+                }
+            }
+
+            // Tags button
+            const tagsEl = document.getElementById('wallReaderTags');
+            const cat = this.extractCatsAndSubcats ? this.extractCatsAndSubcats(item) : { categories: [], subcatPairs: [] };
+            const totalTags = (cat.categories?.length || 0) + (cat.subcatPairs?.length || 0) + (this.extractTopics(item)?.length || 0);
+            if (tagsEl) {
+                if (totalTags > 0) {
+                    tagsEl.classList.remove('hidden');
+                    tagsEl.querySelector('.kaleido-tags-count').textContent = totalTags;
+                    tagsEl.onclick = () => this.openTagsPopoverForItem(item, tagsEl);
+                } else {
+                    tagsEl.classList.add('hidden');
+                }
+            }
 
 	        // Variants (text/audio) inside the reader so mobile can switch + play audio while the mini player is hidden.
 	        const fallbackSummary = this.computeFallbackSummaryHtml(item);
@@ -6405,7 +6734,8 @@ class AudioDashboard {
 		            if (entry.kind === 'audio') {
 		                const reportId = variantInfo.reportId || id;
 		                const audioSrc = entry.audioSrc || variantInfo.audioSrc || null;
-		                body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + this.renderInlineAudioVariant(reportId, entry, audioSrc);
+		                body.innerHTML = this.renderInlineAudioVariant(reportId, entry, audioSrc);
+                        this.bindReaderHeaderHandlers(body, on);
                         this.bindReaderMetaInteractions(body, on);
 		                this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
 		                this.bindKaleidoInlineAudioControls(body, on);
@@ -6417,7 +6747,8 @@ class AudioDashboard {
 		                return;
 		            }
 
-			            body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + (entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>');
+			            body.innerHTML = (entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>');
+                    this.bindReaderHeaderHandlers(body, on);
                     this.bindReaderMetaInteractions(body, on);
 		            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
 		            try { this.enhanceSummaryHtml(body); } catch (_) { }
@@ -6458,8 +6789,8 @@ class AudioDashboard {
 		        } else if (variantInfo && Array.isArray(variantInfo.order) && variantInfo.order.length === 1) {
 		            setActiveVariant(variantInfo.order[0]);
 		        } else {
-		            body.innerHTML = this.renderReaderMetaBlock(item, { open: false }) + this.renderWallReaderSection(item);
-                this.bindReaderMetaInteractions(body, on);
+		            body.innerHTML = this.renderWallReaderSection(item);
+                    this.bindReaderMetaInteractions(body, on);
 		            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
 		            try { this.enhanceSummaryHtml(body); } catch (_) { }
 		        }
@@ -6997,10 +7328,11 @@ class AudioDashboard {
                     </button>
                 </div>
             </div>
-            ${this.renderReaderMetaBlock(item, { open: false })}
+            ${this.renderReaderHeader(item)}
             <div class="prose prose-sm dark:prose-invert max-w-none" data-summary-body>${this.renderWallReaderSection(item)}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
+        this.bindReaderHeaderHandlers(section);
         this.bindReaderMetaInteractions(section);
         try {
             const cur = (this.parseUrlParams && this.parseUrlParams().read) ? String(this.parseUrlParams().read) : '';
