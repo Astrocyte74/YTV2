@@ -2806,6 +2806,18 @@ class AudioDashboard {
             });
         });
 
+        // Bind wall card tags button handlers
+        this.contentGrid.querySelectorAll('.wall-card__tags-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent card click
+                e.preventDefault();
+                try {
+                    const tagsData = JSON.parse(btn.dataset.tagsData || '{}');
+                    this.openTagsPopover(btn, document.body, tagsData);
+                } catch (_) { }
+            });
+        });
+
         // Highlight currently playing
         this.updatePlayingCard();
 
@@ -3738,22 +3750,40 @@ class AudioDashboard {
         return '';
     }
 
-    openTagsPopover(anchorBtn, container) {
-        // Remove any existing popover
+    openTagsPopover(anchorBtn, container, passedTagsData = null) {
+        // Check if popover already exists for this anchor - toggle close
         const existing = document.querySelector('.reader-tags-popover');
+        if (existing && existing._anchor === anchorBtn) {
+            existing.remove();
+            return;
+        }
+        // Remove any other existing popover
         if (existing) existing.remove();
 
-        let tagsData;
-        try {
-            tagsData = JSON.parse(anchorBtn.getAttribute('data-tags-data') || '{}');
-        } catch (_) {
-            return;
+        let tagsData = passedTagsData;
+        if (!tagsData) {
+            try {
+                tagsData = JSON.parse(anchorBtn.getAttribute('data-tags-data') || '{}');
+            } catch (_) {
+                return;
+            }
         }
 
         const { categories = [], subcatPairs = [], topics = [], channel } = tagsData;
 
-        // Build popover content
-        let content = '<div class="reader-tags-popover__section">';
+        // Build popover content with header and close button
+        let content = `
+            <div class="reader-tags-popover__header">
+                <span class="reader-tags-popover__title">Tags</span>
+                <button type="button" class="reader-tags-popover__close" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="reader-tags-popover__section">
+        `;
 
         // Categories
         if (categories.length) {
@@ -3801,13 +3831,52 @@ class AudioDashboard {
         // Create popover
         const popover = document.createElement('div');
         popover.className = 'reader-tags-popover';
+        popover._anchor = anchorBtn; // Track anchor for toggle
         popover.innerHTML = content;
         document.body.appendChild(popover);
 
-        // Position near anchor
+        // Smart positioning - ensure popover stays within viewport
         const rect = anchorBtn.getBoundingClientRect();
-        popover.style.top = `${rect.bottom + 8}px`;
-        popover.style.right = `${window.innerWidth - rect.right}px`;
+        const popoverRect = popover.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom - 8;
+        const spaceAbove = rect.top - 8;
+        const spaceRight = window.innerWidth - rect.right - 8;
+        const spaceLeft = rect.left - 8;
+        const margin = 8;
+
+        // Determine max height available
+        const maxheightBelow = spaceBelow - 20;
+        const maxheightAbove = spaceAbove - 20;
+
+        // Vertical positioning
+        if (spaceBelow >= popoverRect.height || spaceBelow >= spaceAbove) {
+            // Position below
+            popover.style.top = `${rect.bottom + margin}px`;
+            popover.style.maxHeight = `${Math.max(200, maxheightBelow)}px`;
+        } else {
+            // Position above, but constrain to viewport
+            const topPosition = Math.max(margin, rect.top - popoverRect.height - margin);
+            popover.style.top = `${topPosition}px`;
+            popover.style.maxHeight = `${Math.max(200, maxheightAbove)}px`;
+        }
+
+        // Horizontal positioning - check if popover would go off left edge
+        popover.style.right = '';
+        popover.style.left = '';
+
+        if (spaceRight >= popoverRect.width || spaceRight >= spaceLeft) {
+            // Position aligned to right edge of button
+            popover.style.right = `${window.innerWidth - rect.right}px`;
+        } else {
+            // Position aligned to left edge of button
+            popover.style.left = `${rect.left}px`;
+        }
+
+        // Close button handler
+        const closeBtn = popover.querySelector('.reader-tags-popover__close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => popover.remove());
+        }
 
         // Close on click outside
         const closePopover = (e) => {
@@ -5724,7 +5793,27 @@ class AudioDashboard {
         let mediaActions = this.renderMediaActionsV5(item, buttonDurations, hasAudio, watchLinkAvailable, source);
         // Remove inline reader button in wall mode; clicking the card opens reader
         mediaActions = `<div class="stream-card__media-actions">${mediaActions || ''}</div>`;
-        const chipRail = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 3);
+
+        // Calculate metadata for new card layout
+        const channel = (item.channel_name || item.channel || '').toString().trim();
+        const videoDur = Number(item?.media_metadata?.video_duration_seconds || item?.duration_seconds || 0);
+        const fmt = (sec) => { if (!sec || sec <= 0) return ''; const m = Math.floor(sec / 60); const s = Math.floor(sec % 60); return `${m}:${s.toString().padStart(2, '0')}`; };
+        const duration = videoDur > 0 ? fmt(videoDur) : '';
+        const topics = this.extractTopics(item);
+        const totalTags = (categories?.length || 0) + (subcatPairs?.length || 0) + (topics?.length || 0);
+
+        // Source icons
+        const sourceIcons = {
+            youtube: `<svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>`,
+            reddit: `<svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/></svg>`,
+            web: `<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`
+        };
+        const sourceIcon = sourceIcons[source] || sourceIcons.web;
+
+        // Tags data for popover
+        const tagsData = { categories, subcatPairs, topics, channel };
+        const tagsDataAttr = `data-tags-data='${JSON.stringify(tagsData).replace(/'/g, "&#39;")}'`;
+
         const pendingChip = this.renderPendingImageOverrideChip(item);
         const menuMarkup = `
             <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
@@ -5761,13 +5850,36 @@ class AudioDashboard {
         } else {
             mediaImgs = `<div class="wall-card__thumb wall-card__thumb--fallback"></div>`;
         }
+
+        // Tags button (top-right corner)
+        const tagsBtn = totalTags > 0 ? `
+            <button type="button" class="wall-card__tags-btn" ${tagsDataAttr} title="${totalTags} tags">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                    <line x1="7" y1="7" x2="7.01" y2="7"/>
+                </svg>
+                <span class="wall-card__tags-count">${totalTags}</span>
+            </button>` : '';
+
+        // Meta row: source + duration, channel
+        const metaRow = `
+            <div class="wall-card__meta-row">
+                <span class="wall-card__source">
+                    ${sourceIcon}
+                    ${duration ? `<span class="wall-card__duration">${duration}</span>` : ''}
+                </span>
+                ${channel ? `<span class="wall-card__channel">${this.escapeHtml(channel)}</span>` : ''}
+                ${pendingChip || ''}
+            </div>`;
+
         return `
-            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0" class="wall-card">
+            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0" class="wall-card wall-card--${source}">
                 ${menuMarkup}
+                ${tagsBtn}
                 <div class="wall-card__media">${toggleBtn}${mediaImgs}</div>
                 <div class="wall-card__overlay">
-                    <div class="wall-card__meta">${chipRail || ''}${pendingChip ? `<div class=\"inline-block ml-2\">${pendingChip}</div>` : ''}</div>
-                    <h3 class="wall-card__title line-clamp-2">${title}</h3>
+                    ${metaRow}
+                    <h3 class="wall-card__title line-clamp-3">${title}</h3>
                 </div>
             </article>`;
     }

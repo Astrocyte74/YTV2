@@ -3283,15 +3283,79 @@ body:not(.dark) .reader-display-popover {
     max-height: 60vh;
     overflow-y: auto;
     padding: 1rem;
-    background: white;
-    border: 1px solid rgb(226 232 240);
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    border: 2px solid rgb(148 163 184);
     border-radius: 0.75rem;
-    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+    box-shadow:
+        0 25px 50px -12px rgb(0 0 0 / 0.25),
+        0 0 0 1px rgb(148 163 184 / 0.5),
+        inset 0 1px 0 rgb(255 255 255 / 0.8);
 }
 
 .dark .reader-tags-popover {
-    background: rgb(30 41 59);
-    border-color: rgb(51 65 85);
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border-color: rgb(100 116 139);
+    box-shadow:
+        0 25px 50px -12px rgb(0 0 0 / 0.5),
+        0 0 0 1px rgb(100 116 139 / 0.5),
+        0 0 30px rgb(56 189 248 / 0.1);
+}
+
+.reader-tags-popover__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid rgb(203 213 225);
+}
+
+.dark .reader-tags-popover__header {
+    border-color: rgb(71 85 105);
+}
+
+.reader-tags-popover__title {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: rgb(30 41 59);
+    letter-spacing: 0.02em;
+}
+
+.dark .reader-tags-popover__title {
+    color: rgb(241 245 249);
+}
+
+.reader-tags-popover__close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid rgb(203 213 225);
+    background: rgb(248 250 252);
+    color: rgb(71 85 105);
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 150ms ease;
+}
+
+.reader-tags-popover__close:hover {
+    background: rgb(239 246 255);
+    border-color: rgb(59 130 246);
+    color: rgb(37 99 235);
+}
+
+.dark .reader-tags-popover__close {
+    background: rgb(51 65 85);
+    border-color: rgb(71 85 105);
+    color: rgb(203 213 225);
+}
+
+.dark .reader-tags-popover__close:hover {
+    background: rgb(71 85 105);
+    border-color: rgb(56 189 248);
+    color: rgb(125 211 252);
 }
 
 .reader-tags-popover__section {
@@ -4925,24 +4989,6 @@ body.kaleido-open #mobileMiniPlayer {
         0 0 96px 30px rgba(14, 165, 233, 0.44);
 }
 
-.wall-reader-open .wall-card.wall-card--selected::after {
-    content: 'ACTIVE';
-    position: absolute;
-    top: 0.55rem;
-    right: 0.55rem;
-    z-index: 2;
-    padding: 0.32rem 0.66rem;
-    border-radius: 999px;
-    font-size: 0.7rem;
-    line-height: 1;
-    letter-spacing: 0.11em;
-    font-weight: 800;
-    color: #ecfeff;
-    border: 1px solid rgba(125, 211, 252, 1);
-    background: linear-gradient(135deg, rgba(2, 12, 34, 0.92), rgba(14, 116, 144, 0.9));
-    box-shadow: 0 12px 30px -10px rgba(14, 165, 233, 0.96), 0 0 0 1px rgba(125, 211, 252, 0.42);
-}
-
 .wall-card {
     position: relative;
     height: 100%;
@@ -5282,6 +5328,93 @@ body.wall-mode .wall-card {
     font-weight: 700;
     line-height: 1.3;
     margin: 0;
+}
+
+/* Wall card tags button (top-right) */
+.wall-card__tags-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 5;
+}
+
+.wall-card:hover .wall-card__tags-btn,
+.wall-card:focus-within .wall-card__tags-btn {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.wall-card__tags-btn:hover {
+    background: rgba(0, 0, 0, 0.75);
+}
+
+.wall-card__tags-count {
+    font-variant-numeric: tabular-nums;
+}
+
+/* Wall card meta row (source + duration, channel) */
+.wall-card__meta-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
+}
+
+.wall-card__source {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 500;
+    opacity: 0.9;
+}
+
+.wall-card--youtube .wall-card__source {
+    color: #ff4444;
+}
+
+.wall-card--reddit .wall-card__source {
+    color: #ff4500;
+}
+
+.wall-card--web .wall-card__source {
+    color: #60a5fa;
+}
+
+.wall-card__duration {
+    font-variant-numeric: tabular-nums;
+    opacity: 0.85;
+}
+
+.wall-card__channel {
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 11px;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Remove old meta styling when not needed */
+.wall-card__meta:empty {
+    display: none;
 }
 
 .wall-card__actions {
