@@ -958,7 +958,16 @@ def _get_exports_path() -> Path:
 
 class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     """HTTP request handler with modern template system"""
-    
+
+    def log_message(self, format, *args):
+        """Override to suppress logging for static asset requests."""
+        # Skip logging for static exports (images, audio) to reduce noise
+        if args and len(args) >= 1:
+            path = str(args[0]) if args[0] else ""
+            if path.startswith("GET /exports/") or path.startswith("HEAD /exports/"):
+                return
+        super().log_message(format, *args)
+
     def _debug_auth_ok(self) -> bool:
         """Verify debug token for admin-only endpoints.
 
@@ -1897,6 +1906,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 template_content = load_template('dashboard_template.html')
             
             if template_content:
+                # Note: SSE is now proxied through dashboard, so base_url not needed for SSE
+                # Keep for backwards compatibility with other NAS bridge features
                 nas_config = {
                     "base_url": os.getenv('NGROK_BASE_URL') or os.getenv('NGROK_URL') or '',
                     "basic_user": os.getenv('NGROK_BASIC_USER', ''),
@@ -1910,9 +1921,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 dashboard_html = template_content.replace(
                     '{reports_data}', json.dumps(reports_data, ensure_ascii=False)
                 ).replace(
-                    '{nas_config}', json.dumps(nas_config)
+                    '{ nas_config }', json.dumps(nas_config)
                 ).replace(
-                    '{dashboard_config}', json.dumps(dashboard_config)
+                    '{ dashboard_config }', json.dumps(dashboard_config)
                 )
                 
                 self.send_response(200)
@@ -2933,6 +2944,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_report_events()
             elif path == '/api/metrics':
                 self.serve_api_metrics()
+            elif path == '/api/llm-models':
+                self.serve_api_llm_models()
             elif path == '/api/version':
                 self.serve_api_version()
             elif path.startswith('/api/backup/'):
@@ -2954,7 +2967,51 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(500, "API error")
 
     def serve_api_report_events(self):
-        """Stream report ingest events to the frontend via Server-Sent Events."""
+        """Stream report ingest events to the frontend via Server-Sent Events.
+
+        If BACKEND_API_URL is configured, proxy SSE from the backend to avoid
+        browser CORS issues with direct localhost connections.
+        """
+        import urllib.request
+        import urllib.error
+
+        backend_url = os.getenv('BACKEND_API_URL', '').rstrip('/')
+        if backend_url:
+            # Proxy SSE from backend to avoid browser CORS issues
+            try:
+                sse_url = f"{backend_url}/api/report-events"
+                req = urllib.request.Request(sse_url)
+                req.add_header('Accept', 'text/event-stream')
+
+                with urllib.request.urlopen(req, timeout=30) as response:
+                    # Send headers to client
+                    self.send_response(200)
+                    self.send_header('Content-type', 'text/event-stream')
+                    self.send_header('Cache-Control', 'no-cache')
+                    self.send_header('Connection', 'keep-alive')
+                    self.send_header('X-Accel-Buffering', 'no')
+                    self.end_headers()
+                    self.close_connection = False
+
+                    # Stream SSE from backend to client
+                    while True:
+                        try:
+                            chunk = response.read(1024)
+                            if not chunk:
+                                break
+                            self.wfile.write(chunk)
+                            self.wfile.flush()
+                        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                            break
+            except Exception as e:
+                logger.error(f"SSE proxy error: {e}")
+                self.send_response(502)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "SSE proxy failed"}).encode())
+            return
+
+        # Fallback: local SSE (won't receive backend events)
         self.send_response(200)
         self.send_header('Content-type', 'text/event-stream')
         self.send_header('Cache-Control', 'no-cache')
@@ -2992,6 +3049,38 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         finally:
             report_event_stream.unregister(client)
             self.close_connection = True
+
+    def serve_api_llm_models(self):
+        """Proxy LLM models list from backend to avoid browser CORS issues."""
+        import urllib.request
+        import urllib.error
+
+        backend_url = os.getenv('BACKEND_API_URL', '').rstrip('/')
+        if not backend_url:
+            self.send_response(404)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "backend not configured"}).encode())
+            return
+
+        try:
+            target = f"{backend_url}/api/llm-models"
+            req = urllib.request.Request(target)
+            req.add_header('Accept', 'application/json')
+
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = response.read()
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Cache-Control', 'max-age=60')
+                self.end_headers()
+                self.wfile.write(data)
+        except Exception as e:
+            logger.error(f"LLM models proxy error: {e}")
+            self.send_response(502)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "proxy failed"}).encode())
 
     def serve_api_metrics(self):
         """Proxy NAS metrics to avoid browser CORS issues."""

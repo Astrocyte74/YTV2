@@ -3138,6 +3138,38 @@ body:not(.dark) .reader-display-popover {
     box-shadow: 0 8px 18px -14px rgba(56, 189, 248, 0.9);
 }
 
+/* Variant tab action buttons (regenerate, display) */
+.wall-dock__actions {
+    padding-left: 0.5rem;
+    border-left: 1px solid rgba(56, 189, 248, 0.2);
+    margin-left: 0.5rem;
+}
+
+.wall-dock__action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: #a7b8cf;
+    transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+    cursor: pointer;
+}
+
+.wall-dock__action-btn:hover,
+.wall-dock__action-btn:focus-visible {
+    border-color: rgba(56, 189, 248, 0.56);
+    background: rgba(8, 47, 73, 0.42);
+    color: #e2e8f0;
+}
+
+.wall-dock__action-btn:active {
+    background: rgba(14, 165, 233, 0.3);
+}
+
 .wall-dock__return {
     position: absolute;
     top: -2.15rem;

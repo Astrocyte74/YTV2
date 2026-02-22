@@ -213,6 +213,7 @@ class AudioDashboard {
         this.showNowPlayingPlaceholder();
         this.bindEvents();
         this.initRealtimeUpdates();
+        this.fetchLlmModels(); // Load available LLM models for regenerate
         // Only poll metrics when a NAS bridge is configured or flag enabled
         if (this.hasNasBridge || (this.flags && this.flags.metricsEnabled)) {
             this.startMetricsPolling();
@@ -353,8 +354,11 @@ class AudioDashboard {
         this.reprocessLanguageLevel = document.getElementById('reprocessLanguageLevel');
         this.reprocessFootnote = document.getElementById('reprocessFootnote');
         this.reprocessTokenReset = document.getElementById('reprocessTokenReset');
+        this.reprocessModelSelect = document.getElementById('reprocessModelSelect');
         this.confirmReprocessBtn = document.getElementById('confirmReprocessBtn');
         this.cancelReprocessBtn = document.getElementById('cancelReprocessBtn');
+        this.llmModels = [];
+        this.llmModelsDefault = '';
 
         // Image controls in header
         this.imgModeThumbBtn = document.getElementById('imgModeThumbBtn');
@@ -1538,6 +1542,43 @@ class AudioDashboard {
             window.clearTimeout(this.metricsRefreshTimer);
         }
         this.metricsRefreshTimer = window.setTimeout(() => this.fetchMetrics(), delay);
+    }
+
+    async fetchLlmModels() {
+        try {
+            const response = await fetch('/api/llm-models');
+            if (!response.ok) {
+                console.warn('Failed to fetch LLM models:', response.status);
+                return;
+            }
+            const data = await response.json();
+            this.llmModels = data.models || [];
+            this.llmModelsDefault = data.default || '';
+            this.populateModelSelect();
+        } catch (error) {
+            console.warn('Error fetching LLM models:', error);
+        }
+    }
+
+    populateModelSelect() {
+        if (!this.reprocessModelSelect) return;
+
+        // Clear existing options
+        this.reprocessModelSelect.innerHTML = '';
+
+        // Add default option
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = `Default (${this.llmModelsDefault.split('/').pop() || 'system'})`;
+        this.reprocessModelSelect.appendChild(defaultOption);
+
+        // Add model options
+        for (const model of this.llmModels) {
+            const option = document.createElement('option');
+            option.value = model.id;
+            option.textContent = model.label || model.model;
+            this.reprocessModelSelect.appendChild(option);
+        }
     }
 
     handleReprocessLifecycle(eventName, payload = {}) {
@@ -3680,9 +3721,10 @@ class AudioDashboard {
         `;
     }
 
-    renderWallDockVariantTabs(variantInfo, activeVariantId = '') {
+    renderWallDockVariantTabs(variantInfo, activeVariantId = '', options = {}) {
         if (!variantInfo || !Array.isArray(variantInfo.order) || variantInfo.order.length <= 1) return '';
         const active = String(activeVariantId || '').toLowerCase();
+        const { videoId, canRegenerate = false, reportId = '' } = options;
         const tabs = variantInfo.order.map((variantId) => {
             const id = String(variantId || '').toLowerCase();
             const meta = variantInfo.map[id] || {};
@@ -3698,10 +3740,42 @@ class AudioDashboard {
                 </button>
             `;
         }).join('');
+
+        // Action buttons (regenerate, display options)
+        const actionButtons = `
+            <div class="wall-dock__actions ml-auto flex items-center gap-2">
+                ${canRegenerate ? `
+                    <button type="button"
+                            class="wall-dock__action-btn"
+                            data-wall-action="regenerate"
+                            data-video-id="${this.escapeHtml(videoId || '')}"
+                            data-report-id="${this.escapeHtml(reportId || '')}"
+                            title="Regenerate summary">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        <span class="sr-only">Regenerate</span>
+                    </button>
+                ` : ''}
+                <button type="button"
+                        class="wall-dock__action-btn"
+                        data-wall-action="display"
+                        title="Display options">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                    </svg>
+                    <span class="sr-only">Display options</span>
+                </button>
+            </div>
+        `;
+
         return `
             <section class="wall-dock__variant-tabs not-prose" aria-label="Summary variant">
-                <div class="wall-dock__variant-track" role="tablist">
-                    ${tabs}
+                <div class="wall-dock__variant-track flex items-center" role="tablist">
+                    <div class="flex gap-1">
+                        ${tabs}
+                    </div>
+                    ${actionButtons}
                 </div>
             </section>
         `;
@@ -4882,6 +4956,10 @@ class AudioDashboard {
             if (summaryTypes.length) {
                 payload.summary_types = summaryTypes;
             }
+            // Include selected LLM model if not default
+            if (this.reprocessModelSelect && this.reprocessModelSelect.value) {
+                payload.llm_model = this.reprocessModelSelect.value;
+            }
             // Reprocess is served by the dashboard (and may proxy to NAS via NGROK_BASE_URL),
             // so always call the local endpoint to avoid CORS / base_url ambiguity.
             const response = await fetch('/api/reprocess', {
@@ -4894,7 +4972,17 @@ class AudioDashboard {
             });
             if (!response.ok) {
                 const text = await response.text();
-                throw new Error(text || `HTTP ${response.status}`);
+                let errorMsg = text || `HTTP ${response.status}`;
+                // Parse JSON error if present
+                try {
+                    const jsonErr = JSON.parse(text);
+                    if (jsonErr.error === 'forbidden') {
+                        errorMsg = 'Invalid admin token. Please check your token in Settings.';
+                    } else if (jsonErr.error) {
+                        errorMsg = jsonErr.error;
+                    }
+                } catch (_) { }
+                throw new Error(errorMsg);
             }
             this.showToast(`Regenerate scheduled for ${this.describeVideo(this.pendingReprocess)}`, 'success');
             this.requestMetricsRefresh(2000);
@@ -5802,11 +5890,37 @@ class AudioDashboard {
         const variantInfo = this.extractVariantInfo(item, fallbackSummary);
         const defaultVariant = variantInfo?.defaultId || (variantInfo?.order && variantInfo.order[0]) || '';
 
+        // Helper to bind action button handlers after rendering variant tabs
+        const bindVariantTabActions = (container) => {
+            const regenerateBtn = container.querySelector('[data-wall-action="regenerate"]');
+            if (regenerateBtn) {
+                on(regenerateBtn, 'click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.openReprocessModal(id, card || dock, item);
+                });
+            }
+            const displayBtn = container.querySelector('[data-wall-action="display"]');
+            if (displayBtn) {
+                on(displayBtn, 'click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.openReaderDisplayPopover(dock, body, displayBtn);
+                });
+            }
+        };
+
+        const canRegenerate = item && (item.content_source === 'youtube' || item.video_id);
+
         const setActiveVariant = (variantId) => {
             const normalized = String(variantId || '').toLowerCase();
             if (!normalized || !variantInfo || !variantInfo.map[normalized]) return;
             const entry = variantInfo.map[normalized];
-            const variantTabsHtml = this.renderWallDockVariantTabs(variantInfo, normalized);
+            const variantTabsHtml = this.renderWallDockVariantTabs(variantInfo, normalized, {
+                videoId: item?.video_id || '',
+                canRegenerate,
+                reportId: id
+            });
             try { this.setReadDeepLink(id, normalized, { replace: true, videoId: item?.video_id || '' }); } catch (_) { }
             dock.dataset.currentVariant = normalized;
 
@@ -5821,6 +5935,7 @@ class AudioDashboard {
                         setActiveVariant(btn.getAttribute('data-wall-dock-variant'));
                     });
                 });
+                bindVariantTabActions(body);
                 this.bindReaderMetaInteractions(body, on);
                 this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
                 this.bindKaleidoInlineAudioControls(body, on);
@@ -5840,6 +5955,7 @@ class AudioDashboard {
                     setActiveVariant(btn.getAttribute('data-wall-dock-variant'));
                 });
             });
+            bindVariantTabActions(body);
             this.bindReaderMetaInteractions(body, on);
             try { this.applyReaderDisplayPrefs(dock, body); } catch (_) { }
             try { this.enhanceSummaryHtml(body); } catch (_) { }
@@ -10699,7 +10815,7 @@ class AudioDashboard {
 
             const panel = document.createElement('div');
             panel.className = 'w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl';
-            const hint = `Paste your admin token (DEBUG_TOKEN). Find it in Render → Environment → DEBUG_TOKEN. This is saved locally in this browser.`;
+            const hint = `Enter your admin token. This is saved locally in your browser.`;
             const detected = (typeof window !== 'undefined' && window.REPROCESS_TOKEN) ? '<span class="text-xs text-emerald-600 dark:text-emerald-400">A server-provided token is available.</span>' : '';
             panel.innerHTML = `
               <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
@@ -10710,7 +10826,8 @@ class AudioDashboard {
                 <p class="text-sm text-slate-600 dark:text-slate-300">${hint}</p>
                 ${detected}
                 <label class="block text-sm text-slate-600 dark:text-slate-300 mb-1" for="adminTokenInput">Admin token</label>
-                <input id="adminTokenInput" type="text" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-audio-500" placeholder="Paste DEBUG_TOKEN here" />
+                <input id="adminTokenInput" type="text" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-audio-500" placeholder="Enter admin token" />
+                <p id="tokenError" class="text-xs text-red-500 dark:text-red-400 hidden">Invalid token. Please try again.</p>
                 <p class="text-xs text-slate-500 dark:text-slate-400">Tip: You can change or clear this later in Settings → Admin.</p>
               </div>
               <div class="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-end gap-2">
@@ -10724,6 +10841,7 @@ class AudioDashboard {
             const save = panel.querySelector('[data-save]');
             const cancel = panel.querySelector('[data-cancel]');
             const close = panel.querySelector('[data-close]');
+            const errorEl = panel.querySelector('#tokenError');
             try {
                 const existing = this.reprocessToken || localStorage.getItem('ytv2.reprocessToken') || '';
                 if (input && existing) input.value = String(existing);
@@ -10733,11 +10851,56 @@ class AudioDashboard {
             const cleanup = () => { try { document.body.removeChild(overlay); } catch (_) { } };
             const finish = (val) => { cleanup(); resolve(val); };
 
-            save.addEventListener('click', () => finish(input.value.trim()));
+            // Validate token by making a test API call
+            const validateToken = async (token) => {
+                if (!token) return false;
+                try {
+                    // Try a lightweight API call to validate the token
+                    const response = await fetch('/api/reprocess', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Reprocess-Token': token
+                        },
+                        body: JSON.stringify({ video_id: 'test-validation', summary_types: [] })
+                    });
+                    // 202 = valid, 401/403 = invalid token, other = server error (still accept token)
+                    return response.status !== 401 && response.status !== 403;
+                } catch (e) {
+                    // Network error - accept token anyway
+                    return true;
+                }
+            };
+
+            save.addEventListener('click', async () => {
+                const token = input.value.trim();
+                if (!token) {
+                    errorEl.classList.remove('hidden');
+                    errorEl.textContent = 'Please enter a token.';
+                    return;
+                }
+                save.disabled = true;
+                save.textContent = 'Validating...';
+                const isValid = await validateToken(token);
+                if (isValid) {
+                    finish(token);
+                } else {
+                    errorEl.classList.remove('hidden');
+                    errorEl.textContent = 'Invalid token. Please check and try again.';
+                    save.disabled = false;
+                    save.textContent = 'Save';
+                    input.focus();
+                    input.select();
+                }
+            });
             cancel.addEventListener('click', () => finish(null));
             close.addEventListener('click', () => finish(null));
             overlay.addEventListener('click', (e) => { if (e.target === overlay) finish(null); });
-            panel.addEventListener('keydown', (e) => { if (e.key === 'Escape') finish(null); if (e.key === 'Enter') finish(input.value.trim()); });
+            panel.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') finish(null);
+                if (e.key === 'Enter') save.click();
+            });
+            input.addEventListener('input', () => { errorEl.classList.add('hidden'); });
         });
     }
 
@@ -11879,16 +12042,17 @@ class AudioDashboard {
             warn: 'bg-amber-600',
             info: 'bg-slate-800'
         };
-        el.className = `fixed top-4 left-1/2 -translate-x-1/2 z-50 px-3 py-2 rounded-lg text-white shadow ${colors[type] || colors.info}`;
+        const duration = type === 'error' ? 4000 : 2500; // Longer for errors
+        el.className = `fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-white text-sm font-medium shadow-lg max-w-md text-center ${colors[type] || colors.info}`;
         el.textContent = message;
         document.body.appendChild(el);
         // SR live update
         const sr = document.getElementById('srLive');
         if (sr) sr.textContent = message;
         setTimeout(() => {
-            el.classList.add('opacity-0', 'transition', 'duration-200');
-            setTimeout(() => el.remove(), 220);
-        }, 1600);
+            el.classList.add('opacity-0', 'transition', 'duration-300');
+            setTimeout(() => el.remove(), 320);
+        }, duration);
     }
 
     // Queue rendering/persistence (Phase 3)
