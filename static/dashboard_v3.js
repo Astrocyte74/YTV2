@@ -156,7 +156,7 @@ class AudioDashboard {
         this.currentPage = 1;
         this.currentSort = 'added_desc';
         this.searchQuery = '';
-        this.viewMode = (localStorage.getItem('ytv2.viewMode') || 'list');
+        this.viewMode = (localStorage.getItem('ytv2.viewMode') || 'wall');
         // Inline expand state
         this.currentExpandedId = null;
         // Active reader state (for URL popstate sync)
@@ -291,8 +291,8 @@ class AudioDashboard {
         this.languageFilters = document.getElementById('languageFilters');
         this.summaryTypeFilters = document.getElementById('summaryTypeFilters');
 
-        // Semantic search
-        this.semanticSearchEnabled = false;
+        // Semantic search (on by default - hybrid search combines semantic + keyword)
+        this.semanticSearchEnabled = true;
         this.semanticSearchToggle = document.getElementById('semanticSearchToggle');
 
         // Content area
