@@ -10827,7 +10827,8 @@ class AudioDashboard {
         }
 
         try {
-            const response = await fetch(`/api/semantic-search?q=${encodeURIComponent(this.searchQuery)}&topk=50`);
+            // Use hybrid search (combines semantic + keyword via RRF)
+            const response = await fetch(`/api/semantic-search?q=${encodeURIComponent(this.searchQuery)}&topk=50&mode=hybrid`);
             const data = await response.json();
 
             if (!data.available) {
@@ -10869,15 +10870,16 @@ class AudioDashboard {
             this.renderPagination({ page: 1, size: mergedItems.length, total_count: mergedItems.length, total_pages: 1, has_next: false, has_prev: false });
             this.updateResultsInfo({ page: 1, size: mergedItems.length, total_count: mergedItems.length, total_pages: 1 });
 
-            // Show semantic search indicator
+            // Show search indicator with type
             if (this.contentGrid) {
+                const searchType = data.search_type || 'hybrid';
                 const indicator = document.createElement('div');
                 indicator.className = 'col-span-full flex items-center gap-2 text-sm text-slate-500 mb-2';
                 indicator.innerHTML = `
                     <svg class="w-4 h-4 text-audio-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M12 2a4 4 0 0 1 4 4c0 1.5-.8 2.8-2 3.5v1.5h3a3 3 0 0 1 3 3v1a2 2 0 0 1-2 2h-1v3a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2v-3h-1a2 2 0 0 1-2-2v-1a3 3 0 0 1 3-3h3v-1.5c-1.2-.7-2-2-2-3.5a4 4 0 0 1 4-4z"/>
                     </svg>
-                    <span>AI semantic search: ${mergedItems.length} results for "${this.escapeHtml(this.searchQuery)}"</span>
+                    <span>AI ${searchType} search: ${mergedItems.length} results for "${this.escapeHtml(this.searchQuery)}"</span>
                 `;
                 this.contentGrid.prepend(indicator);
             }

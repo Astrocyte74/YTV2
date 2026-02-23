@@ -3085,26 +3085,24 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": "proxy failed"}).encode())
 
     def serve_api_semantic_search(self, query_params):
-        """Semantic search using ChromaDB vector embeddings."""
+        """
+        AI-powered search using ChromaDB vector embeddings.
+
+        Supports three modes:
+        - semantic: Pure vector similarity search
+        - keyword: PostgreSQL ILIKE pattern matching
+        - hybrid: RRF fusion of semantic + keyword (default)
+        """
         try:
-            from modules.semantic_search import search, is_available, get_indexed_count
+            from modules.semantic_search import (
+                search, keyword_search, hybrid_search,
+                is_available, get_indexed_count
+            )
 
-            # Check if semantic search is available
-            if not is_available():
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({
-                    "results": [],
-                    "indexed_count": 0,
-                    "available": False,
-                    "error": "ChromaDB not initialized"
-                }).encode())
-                return
-
-            # Get query from params
+            # Get query params
             query = query_params.get('q', [''])[0] or query_params.get('query', [''])[0]
             topk = int(query_params.get('topk', ['20'])[0])
+            mode = query_params.get('mode', ['hybrid'])[0].lower()
 
             if not query:
                 self.send_response(400)
@@ -3113,17 +3111,46 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "Missing query parameter 'q'"}).encode())
                 return
 
-            # Perform search
-            results = search(query, topk=topk)
+            # Check availability for semantic modes
+            semantic_available = is_available()
+
+            # Choose search method based on mode
+            if mode == 'keyword':
+                results = keyword_search(query, topk=topk)
+                search_type = 'keyword'
+            elif mode == 'semantic':
+                if not semantic_available:
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "results": [],
+                        "indexed_count": 0,
+                        "available": False,
+                        "error": "ChromaDB not initialized"
+                    }).encode())
+                    return
+                results = search(query, topk=topk)
+                search_type = 'semantic'
+            else:  # hybrid (default)
+                if not semantic_available:
+                    # Fall back to keyword if ChromaDB not available
+                    results = keyword_search(query, topk=topk)
+                    search_type = 'keyword (fallback)'
+                else:
+                    results = hybrid_search(query, topk=topk)
+                    search_type = 'hybrid'
 
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({
                 "query": query,
+                "mode": mode,
+                "search_type": search_type,
                 "results": results,
-                "indexed_count": get_indexed_count(),
-                "available": True
+                "indexed_count": get_indexed_count() if semantic_available else 0,
+                "available": semantic_available or mode == 'keyword'
             }).encode())
 
         except ImportError as e:

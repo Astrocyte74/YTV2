@@ -310,6 +310,211 @@ def delete_document(video_id: str) -> bool:
         return False
 
 
+# =============================================================================
+# HYBRID SEARCH - Combines Semantic + Keyword using Reciprocal Rank Fusion
+# =============================================================================
+
+def keyword_search(
+    query: str,
+    topk: int = 20,
+    filters: Optional[Dict[str, Any]] = None
+) -> List[Dict[str, Any]]:
+    """
+    Perform keyword search using PostgreSQL ILIKE pattern matching.
+
+    Finds exact word matches in titles and summaries.
+
+    Args:
+        query: The search query text
+        topk: Maximum number of results to return
+        filters: Optional filters (source, channel)
+
+    Returns:
+        List of search results with id, score, title, source, channel
+    """
+    if not query or not query.strip():
+        return []
+
+    try:
+        import psycopg2
+        import psycopg2.extras
+    except ImportError:
+        logger.error("psycopg2 not available for keyword search")
+        return []
+
+    postgres_url = os.getenv('DATABASE_URL_POSTGRES_NEW')
+    if not postgres_url:
+        logger.error("DATABASE_URL_POSTGRES_NEW not set for keyword search")
+        return []
+
+    try:
+        conn = psycopg2.connect(postgres_url)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        search_term = f"%{query.strip()}%"
+
+        sql = """
+            SELECT DISTINCT c.video_id, c.title, c.channel_name, c.indexed_at,
+                   ls.text as summary_text
+            FROM content c
+            LEFT JOIN LATERAL (
+                SELECT s.text
+                FROM v_latest_summaries s
+                WHERE s.video_id = c.video_id
+                  AND s.variant IN ('key-insights', 'comprehensive', 'bullet-points')
+                ORDER BY array_position(
+                    ARRAY['key-insights', 'comprehensive', 'bullet-points']::text[],
+                    s.variant
+                )
+                LIMIT 1
+            ) ls ON true
+            WHERE (c.title ILIKE %s OR ls.text ILIKE %s)
+        """
+
+        params = [search_term, search_term]
+
+        # Add filter conditions
+        if filters:
+            if filters.get('source'):
+                cur.execute("""
+                    SELECT LOWER(TRIM(COALESCE(canonical_url::text, '')))
+                    FROM content LIMIT 1
+                """)
+                # Simplified source filtering
+                if filters['source'] == 'youtube':
+                    sql += " AND (c.canonical_url ILIKE '%youtube%' OR c.canonical_url ILIKE '%youtu.be%')"
+                elif filters['source'] == 'reddit':
+                    sql += " AND c.canonical_url ILIKE '%reddit%'"
+
+            if filters.get('channel'):
+                sql += " AND c.channel_name = %s"
+                params.append(filters['channel'])
+
+        sql += " ORDER BY c.indexed_at DESC LIMIT %s"
+        params.append(topk)
+
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+
+        results = []
+        for rank, row in enumerate(rows, 1):
+            # Score based on rank (higher rank = lower score)
+            score = 1.0 / (rank + 1)
+            results.append({
+                "id": row['video_id'],
+                "score": round(score, 4),
+                "title": row['title'] or "",
+                "source": "youtube",  # Simplified
+                "channel": row['channel_name'] or "",
+                "snippet": (row['summary_text'] or "")[:300] + "..." if row['summary_text'] else "",
+            })
+
+        conn.close()
+        logger.info(f"Keyword search for '{query}' returned {len(results)} results")
+        return results
+
+    except Exception as e:
+        logger.exception(f"Keyword search error: {e}")
+        return []
+
+
+def reciprocal_rank_fusion(
+    semantic_results: List[Dict[str, Any]],
+    keyword_results: List[Dict[str, Any]],
+    k: int = 60,
+    semantic_weight: float = 0.6,
+    keyword_weight: float = 0.4
+) -> List[Dict[str, Any]]:
+    """
+    Combine semantic and keyword results using Reciprocal Rank Fusion (RRF).
+
+    RRF formula: score = weight / (k + rank)
+
+    Args:
+        semantic_results: Results from semantic search
+        keyword_results: Results from keyword search
+        k: RRF constant (default 60, common in literature)
+        semantic_weight: Weight for semantic results (default 0.6)
+        keyword_weight: Weight for keyword results (default 0.4)
+
+    Returns:
+        Merged and ranked results
+    """
+    # Accumulate RRF scores per document
+    rrf_scores: Dict[str, float] = {}
+    doc_data: Dict[str, Dict[str, Any]] = {}  # Store full doc data
+
+    # Process semantic results
+    for rank, result in enumerate(semantic_results, 1):
+        doc_id = result['id']
+        rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) + (semantic_weight / (k + rank))
+        if doc_id not in doc_data:
+            doc_data[doc_id] = result
+
+    # Process keyword results
+    for rank, result in enumerate(keyword_results, 1):
+        doc_id = result['id']
+        rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) + (keyword_weight / (k + rank))
+        if doc_id not in doc_data:
+            doc_data[doc_id] = result
+
+    # Sort by RRF score
+    sorted_ids = sorted(rrf_scores.keys(), key=lambda x: rrf_scores[x], reverse=True)
+
+    # Build final results with combined scores
+    merged = []
+    for doc_id in sorted_ids:
+        doc = doc_data[doc_id].copy()
+        doc['rrf_score'] = round(rrf_scores[doc_id], 4)
+        doc['search_type'] = 'hybrid'
+        merged.append(doc)
+
+    logger.info(f"RRF merged {len(semantic_results)} semantic + {len(keyword_results)} keyword = {len(merged)} unique results")
+    return merged
+
+
+def hybrid_search(
+    query: str,
+    topk: int = 20,
+    filters: Optional[Dict[str, Any]] = None,
+    semantic_weight: float = 0.6,
+    keyword_weight: float = 0.4
+) -> List[Dict[str, Any]]:
+    """
+    Perform hybrid search combining semantic and keyword search using RRF.
+
+    This gives the best of both worlds:
+    - Semantic: finds conceptually similar content
+    - Keyword: finds exact word matches
+
+    Args:
+        query: The search query text
+        topk: Maximum number of results to return
+        filters: Optional metadata filters
+        semantic_weight: Weight for semantic results (default 0.6)
+        keyword_weight: Weight for keyword results (default 0.4)
+
+    Returns:
+        List of search results ranked by RRF score
+    """
+    # Get results from both methods (get more than topk for better fusion)
+    fetch_count = min(topk * 2, 100)
+
+    semantic_results = search(query, topk=fetch_count, filters=filters)
+    keyword_results = keyword_search(query, topk=fetch_count, filters=filters)
+
+    # Merge using RRF
+    merged = reciprocal_rank_fusion(
+        semantic_results,
+        keyword_results,
+        semantic_weight=semantic_weight,
+        keyword_weight=keyword_weight
+    )
+
+    # Return top k
+    return merged[:topk]
+
+
 # For testing
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
