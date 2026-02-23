@@ -38,6 +38,7 @@ services:
       # Template and server for live development
       - ./dashboard_v3_template.html:/app/dashboard_v3_template.html
       - ./server.py:/app/server.py
+      - ./modules:/app/modules
       # Optional: Mount cache directory for performance
       - dashboard-cache:/app/cache
 

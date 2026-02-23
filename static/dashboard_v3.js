@@ -291,6 +291,10 @@ class AudioDashboard {
         this.languageFilters = document.getElementById('languageFilters');
         this.summaryTypeFilters = document.getElementById('summaryTypeFilters');
 
+        // Semantic search
+        this.semanticSearchEnabled = false;
+        this.semanticSearchToggle = document.getElementById('semanticSearchToggle');
+
         // Content area
         this.contentGrid = document.getElementById('contentGrid');
         this.resultsTitle = document.getElementById('resultsTitle');
@@ -559,6 +563,22 @@ class AudioDashboard {
         if (this.sortSelect) {
             this.sortSelect.value = this.currentSort;
             this.sortSelect.addEventListener('change', () => this.setSortMode(this.sortSelect.value));
+        }
+
+        // Semantic search toggle
+        if (this.semanticSearchToggle) {
+            this.semanticSearchToggle.addEventListener('click', () => {
+                this.semanticSearchEnabled = !this.semanticSearchEnabled;
+                this.semanticSearchToggle.dataset.semantic = this.semanticSearchEnabled;
+                this.semanticSearchToggle.classList.toggle('bg-audio-500', this.semanticSearchEnabled);
+                this.semanticSearchToggle.classList.toggle('text-white', this.semanticSearchEnabled);
+                this.semanticSearchToggle.classList.toggle('border-audio-500', this.semanticSearchEnabled);
+                this.semanticSearchToggle.classList.toggle('dark:bg-audio-600', this.semanticSearchEnabled);
+                this.semanticSearchToggle.classList.toggle('bg-white/80', !this.semanticSearchEnabled);
+                this.semanticSearchToggle.classList.toggle('dark:bg-slate-700/80', !this.semanticSearchEnabled);
+                // Re-run search if there's a query
+                if (this.searchQuery) this.handleSearch();
+            });
         }
 
         // Radio button sort controls in sidebar - use delegation for dynamic content
@@ -10786,7 +10806,90 @@ class AudioDashboard {
         if (this.searchInputHeader && this.searchInputHeader.value !== v) this.searchInputHeader.value = v;
         this.currentPage = 1;
         this.updateHeroBadges();
-        this.loadContent();
+
+        // Use semantic search if enabled and there's a query
+        if (this.semanticSearchEnabled && this.searchQuery) {
+            this.performSemanticSearch();
+        } else {
+            this.loadContent();
+        }
+    }
+
+    async performSemanticSearch() {
+        if (!this.searchQuery) return;
+
+        // Show loading state
+        if (this.contentGrid) {
+            this.contentGrid.innerHTML = `
+                <div class="col-span-full text-center py-8 text-slate-500">
+                    <div class="animate-pulse">Searching with AI...</div>
+                </div>`;
+        }
+
+        try {
+            const response = await fetch(`/api/semantic-search?q=${encodeURIComponent(this.searchQuery)}&topk=50`);
+            const data = await response.json();
+
+            if (!data.available) {
+                this.contentGrid.innerHTML = `
+                    <div class="col-span-full text-center py-8 text-slate-500">
+                        <div class="text-lg mb-2">Semantic search unavailable</div>
+                        <div class="text-sm">${data.error || 'ChromaDB not initialized'}</div>
+                    </div>`;
+                return;
+            }
+
+            if (data.results.length === 0) {
+                this.contentGrid.innerHTML = `
+                    <div class="col-span-full text-center py-8 text-slate-500">
+                        <div class="text-lg mb-2">No results found</div>
+                        <div class="text-sm">Try a different search term</div>
+                    </div>`;
+                this.updateResultsInfo({ page: 1, size: 0, total_count: 0, total_pages: 0 });
+                return;
+            }
+
+            // Get full item data from backend for the matched IDs
+            const ids = data.results.map(r => r.id);
+            const itemsResponse = await fetch(`/api/reports?ids=${ids.join(',')}`);
+            const itemsData = await itemsResponse.json();
+            const itemsMap = new Map((itemsData.items || []).map(item => [item.file_stem || item.id, item]));
+
+            // Merge semantic scores with items
+            const mergedItems = data.results.map(result => {
+                const item = itemsMap.get(result.id);
+                if (item) {
+                    item._semanticScore = result.score;
+                }
+                return item;
+            }).filter(Boolean);
+
+            this.currentItems = mergedItems;
+            this.renderContent(mergedItems);
+            this.renderPagination({ page: 1, size: mergedItems.length, total_count: mergedItems.length, total_pages: 1, has_next: false, has_prev: false });
+            this.updateResultsInfo({ page: 1, size: mergedItems.length, total_count: mergedItems.length, total_pages: 1 });
+
+            // Show semantic search indicator
+            if (this.contentGrid) {
+                const indicator = document.createElement('div');
+                indicator.className = 'col-span-full flex items-center gap-2 text-sm text-slate-500 mb-2';
+                indicator.innerHTML = `
+                    <svg class="w-4 h-4 text-audio-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2a4 4 0 0 1 4 4c0 1.5-.8 2.8-2 3.5v1.5h3a3 3 0 0 1 3 3v1a2 2 0 0 1-2 2h-1v3a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2v-3h-1a2 2 0 0 1-2-2v-1a3 3 0 0 1 3-3h3v-1.5c-1.2-.7-2-2-2-3.5a4 4 0 0 1 4-4z"/>
+                    </svg>
+                    <span>AI semantic search: ${mergedItems.length} results for "${this.escapeHtml(this.searchQuery)}"</span>
+                `;
+                this.contentGrid.prepend(indicator);
+            }
+
+        } catch (error) {
+            console.error('Semantic search error:', error);
+            this.contentGrid.innerHTML = `
+                <div class="col-span-full text-center py-8 text-red-500">
+                    <div class="text-lg mb-2">Search error</div>
+                    <div class="text-sm">${error.message}</div>
+                </div>`;
+        }
     }
 
     setSortMode(mode) {

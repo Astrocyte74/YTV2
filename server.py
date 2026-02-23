@@ -3324,7 +3324,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     filters['has_audio'] = True
                 elif has_audio_str in ['false', '0', 'no']:
                     filters['has_audio'] = False
-            
+
+            # Fetch by IDs (for semantic search results)
+            if 'ids' in query_params:
+                ids_param = query_params['ids'][0]
+                filters['ids'] = [id.strip()[:100] for id in ids_param.split(',')[:100] if id.strip()]
+
             # Date range filters
             if 'date_from' in query_params:
                 filters['date_from'] = query_params['date_from'][0]
