@@ -31,6 +31,8 @@ services:
       # Application data directories
       - ./data:/app/data
       - ./exports:/app/exports
+      # Backend data (for ChromaDB semantic search)
+      - ../backend/data:/app/backend-data
       # Static files (CSS/JS) for live development
       - ./static:/app/static
       # Template and server for live development

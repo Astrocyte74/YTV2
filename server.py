@@ -2946,6 +2946,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_metrics()
             elif path == '/api/llm-models':
                 self.serve_api_llm_models()
+            elif path == '/api/semantic-search':
+                self.serve_api_semantic_search(query_params)
             elif path == '/api/version':
                 self.serve_api_version()
             elif path.startswith('/api/backup/'):
@@ -3081,6 +3083,66 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"error": "proxy failed"}).encode())
+
+    def serve_api_semantic_search(self, query_params):
+        """Semantic search using ChromaDB vector embeddings."""
+        try:
+            from modules.semantic_search import search, is_available, get_indexed_count
+
+            # Check if semantic search is available
+            if not is_available():
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "results": [],
+                    "indexed_count": 0,
+                    "available": False,
+                    "error": "ChromaDB not initialized"
+                }).encode())
+                return
+
+            # Get query from params
+            query = query_params.get('q', [''])[0] or query_params.get('query', [''])[0]
+            topk = int(query_params.get('topk', ['20'])[0])
+
+            if not query:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Missing query parameter 'q'"}).encode())
+                return
+
+            # Perform search
+            results = search(query, topk=topk)
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "query": query,
+                "results": results,
+                "indexed_count": get_indexed_count(),
+                "available": True
+            }).encode())
+
+        except ImportError as e:
+            logger.error(f"Semantic search import error: {e}")
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "results": [],
+                "indexed_count": 0,
+                "available": False,
+                "error": "chromadb not installed"
+            }).encode())
+        except Exception as e:
+            logger.error(f"Semantic search error: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
 
     def serve_api_metrics(self):
         """Proxy NAS metrics to avoid browser CORS issues."""
