@@ -6182,14 +6182,29 @@ class AudioDashboard {
         }
         this._wallDockTeardown = [];
 
-        if (dock) {
-            dock.classList.add('hidden');
-            dock.setAttribute('aria-hidden', 'true');
-        }
-        if (workspace) {
-            workspace.classList.remove('wall-dock-open');
-            workspace.style.removeProperty('--wall-dock-w');
-            workspace.style.removeProperty('--wall-dock-scroll-shift');
+        // Trigger exit animation before hiding
+        if (dock && workspace && workspace.classList.contains('wall-dock-open')) {
+            workspace.classList.add('wall-dock-closing');
+            // Wait for animation to complete, then finish cleanup
+            setTimeout(() => {
+                dock.classList.add('hidden');
+                dock.setAttribute('aria-hidden', 'true');
+                workspace.classList.remove('wall-dock-open');
+                workspace.classList.remove('wall-dock-closing');
+                workspace.style.removeProperty('--wall-dock-w');
+                workspace.style.removeProperty('--wall-dock-scroll-shift');
+            }, 280); // Match dockSlideOut duration
+        } else {
+            if (dock) {
+                dock.classList.add('hidden');
+                dock.setAttribute('aria-hidden', 'true');
+            }
+            if (workspace) {
+                workspace.classList.remove('wall-dock-open');
+                workspace.classList.remove('wall-dock-closing');
+                workspace.style.removeProperty('--wall-dock-w');
+                workspace.style.removeProperty('--wall-dock-scroll-shift');
+            }
         }
         if (grid) {
             grid.querySelectorAll('.wall-card').forEach((card) => {
@@ -6245,11 +6260,28 @@ class AudioDashboard {
         if (card) card.classList.add('wall-card--selected');
         this._wallDockSelectedId = id;
 
+        // Check if dock is already open (content switch vs first open)
+        const isContentSwitch = workspace.classList.contains('wall-dock-open');
+
         this.setWallDockWidth(workspace, grid);
         dock.classList.remove('hidden');
         dock.setAttribute('aria-hidden', 'false');
         workspace.classList.add('wall-dock-open');
         document.body.classList.add('wall-reader-open');
+
+        // Animate content change when switching between cards
+        if (isContentSwitch) {
+            if (body) {
+                body.style.animation = 'dockContentSwitch 360ms cubic-bezier(0.34, 1.3, 0.64, 1) both';
+                setTimeout(() => { body.style.animation = ''; }, 360);
+            }
+            // Also animate the chrome (title area) with a subtle pulse
+            const chrome = dock.querySelector('.wall-dock__chrome');
+            if (chrome) {
+                chrome.style.animation = 'dockChromePulse 280ms ease-out';
+                setTimeout(() => { chrome.style.animation = ''; }, 280);
+            }
+        }
 
         titleEl.textContent = item.title || 'Summary';
 
@@ -8289,7 +8321,7 @@ class AudioDashboard {
         const transitions = [];
         const baseMs = 900; // lengthen for clearer motion; can be overridden with ?flipms
         const durMs = this.flipDebugMs || baseMs;
-        const scaleStart = 1.04; // slight shrink while moving into place
+        const scaleStart = 1.10; // more dramatic scale effect while moving into place
 
         const movers = [];
         cards.forEach(el => {
@@ -8318,9 +8350,9 @@ class AudioDashboard {
         const others = movers.filter(m => !m.overlapped).sort((a, b) => a.dist - b.dist);
 
         const schedule = [];
-        primary.forEach((m, i) => schedule.push({ ...m, delay: i * 70 }));
-        const baseDelay = primary.length ? (primary.length - 1) * 70 + 120 : 0;
-        others.forEach((m, i) => schedule.push({ ...m, delay: baseDelay + Math.min(300, i * 30) }));
+        primary.forEach((m, i) => schedule.push({ ...m, delay: i * 100 }));
+        const baseDelay = primary.length ? (primary.length - 1) * 100 + 160 : 0;
+        others.forEach((m, i) => schedule.push({ ...m, delay: baseDelay + Math.min(450, i * 45) }));
 
         let maxEnd = 0;
         schedule.forEach(item => {
@@ -8334,7 +8366,7 @@ class AudioDashboard {
                 el.style.setProperty('z-index', '40', 'important');
                 // Opacity fade for overlapped (the three directly under the mega area)
                 if (overlapped) {
-                    el.style.setProperty('opacity', '0.55', 'important');
+                    el.style.setProperty('opacity', '0.40', 'important');
                 }
                 // Force reflow, then animate to identity (0 translate, scale 1)
                 void el.offsetWidth;
