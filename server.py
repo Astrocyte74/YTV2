@@ -4778,6 +4778,52 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 if summaries and hasattr(content_index, 'upsert_summaries'):
                     summaries_upserted = content_index.upsert_summaries(video_id, summaries)
 
+                # Update ChromaDB index for semantic search (incremental update)
+                chroma_updated = False
+                try:
+                    from modules.semantic_search import upsert_document as chroma_upsert
+
+                    # Extract summary text - try multiple sources
+                    summary_text = ""
+                    analysis_json = payload.get("analysis_json") or {}
+
+                    # First try summary_variants (preferred - has actual text)
+                    if summaries:
+                        for s in summaries:
+                            if isinstance(s, dict) and s.get('text'):
+                                summary_text = s.get('text', '')
+                                break
+
+                    # Fallback to analysis_json.summary
+                    if not summary_text and isinstance(analysis_json, dict):
+                        summary_text = analysis_json.get('summary', '')
+
+                    if summary_text:
+                        # Determine source from payload
+                        canonical_url = payload.get("canonical_url", "") or ""
+                        vid = video_id or ""
+                        if "youtube.com" in canonical_url or "youtu.be" in canonical_url:
+                            content_source = "youtube"
+                        elif "reddit.com" in canonical_url or vid.startswith("reddit:"):
+                            content_source = "reddit"
+                        elif "wikipedia.org" in canonical_url:
+                            content_source = "wikipedia"
+                        else:
+                            content_source = payload.get("content_source") or "web"
+
+                        chroma_updated = chroma_upsert(
+                            video_id=video_id,
+                            title=payload.get("title", ""),
+                            summary=summary_text,
+                            channel=payload.get("channel_name", ""),
+                            source=content_source
+                        )
+                        if chroma_updated:
+                            logger.info(f"Updated ChromaDB index for {video_id}")
+                except Exception as chroma_err:
+                    # Don't fail the ingest if ChromaDB update fails
+                    logger.warning(f"ChromaDB update failed for {video_id}: {chroma_err}")
+
                 # Prepare realtime event broadcast before responding
                 summary_types: List[str] = []
                 for summary in summaries or []:
@@ -4811,6 +4857,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 response = {
                     "upserted": int(bool(upserted)),
                     "summaries_upserted": summaries_upserted,
+                    "chroma_updated": chroma_updated,
                     "verify_row": verify_row  # TEMP: remove once stable
                 }
                 self.wfile.write(json.dumps(response).encode())

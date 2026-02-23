@@ -138,6 +138,7 @@ exports/
 logs/
 back_Fill_logs*.md
 data/*.sql
+data/chromadb/
 cache/
 .cache/
 temp/

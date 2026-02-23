@@ -10853,7 +10853,7 @@ class AudioDashboard {
             const ids = data.results.map(r => r.id);
             const itemsResponse = await fetch(`/api/reports?ids=${ids.join(',')}`);
             const itemsData = await itemsResponse.json();
-            const itemsMap = new Map((itemsData.items || []).map(item => [item.file_stem || item.id, item]));
+            const itemsMap = new Map((itemsData.reports || []).map(item => [item.video_id || item.file_stem || item.id, item]));
 
             // Merge semantic scores with items
             const mergedItems = data.results.map(result => {

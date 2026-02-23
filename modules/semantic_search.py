@@ -14,12 +14,13 @@ from typing import Optional, List, Dict, Any
 logger = logging.getLogger(__name__)
 
 # ChromaDB configuration
-# In Docker container: backend data mounted at /app/backend-data
-# In local dev: backend/data/chromadb (relative to dashboard)
-CHROMA_DIR = Path(__file__).parent.parent.parent / "backend" / "data" / "chromadb"
+# Store index in dashboard16/data/chromadb/ - same data source as dashboard UI
+# In Docker container: /app/data/chromadb (volume mounted from dashboard16/data/)
+# In local dev: dashboard16/data/chromadb (relative to this module)
+CHROMA_DIR = Path(__file__).parent.parent / "data" / "chromadb"
 if not CHROMA_DIR.exists():
-    # Fallback for Docker container where backend data is mounted at /app/backend-data
-    CHROMA_DIR = Path("/app/backend-data/chromadb")
+    # Fallback for Docker container where data is mounted at /app/data
+    CHROMA_DIR = Path("/app/data/chromadb")
 COLLECTION_NAME = "ytv2_summaries"
 
 # Lazy-loaded client and collection
@@ -217,6 +218,96 @@ def find_similar(content_id: str, topk: int = 5) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.exception(f"Find similar error: {e}")
         return []
+
+
+def upsert_document(
+    video_id: str,
+    title: str,
+    summary: str,
+    channel: str = "",
+    source: str = "unknown",
+    variant: str = ""
+) -> bool:
+    """
+    Add or update a single document in ChromaDB.
+
+    Called incrementally when new content is ingested via /api/ingest,
+    ensuring semantic search stays in sync with PostgreSQL.
+
+    Args:
+        video_id: Unique identifier for the content
+        title: Content title
+        summary: Summary text to be embedded (used for semantic search)
+        channel: Channel or author name
+        source: Content source (youtube, reddit, web, etc.)
+        variant: Summary variant type (key-insights, bullet-points, etc.)
+
+    Returns:
+        True if successful, False otherwise
+    """
+    if not video_id or not summary:
+        logger.warning("upsert_document called with missing video_id or summary")
+        return False
+
+    # Need to get or create collection (not just get, in case index doesn't exist)
+    client = _get_chroma_client()
+    if client is None:
+        logger.warning("ChromaDB not available for upsert")
+        return False
+
+    try:
+        # Get or create collection (creates if doesn't exist)
+        collection = client.get_or_create_collection(
+            name=COLLECTION_NAME,
+            metadata={"hnsw:space": "l2"}
+        )
+
+        # Create document text for embedding (title + summary)
+        doc_text = f"{title}\n\n{summary}" if title else summary
+
+        # Upsert into collection
+        collection.upsert(
+            ids=[video_id],
+            documents=[doc_text],
+            metadatas=[{
+                'title': (title or "")[:500],  # Truncate for metadata limits
+                'channel': channel or "",
+                'source': source or "unknown",
+                'variant': variant or ""
+            }]
+        )
+
+        logger.info(f"Upserted document {video_id} into ChromaDB")
+        return True
+
+    except Exception as e:
+        logger.exception(f"Failed to upsert document {video_id}: {e}")
+        return False
+
+
+def delete_document(video_id: str) -> bool:
+    """
+    Remove a document from ChromaDB.
+
+    Should be called when content is deleted from PostgreSQL.
+
+    Args:
+        video_id: Unique identifier for the content to remove
+
+    Returns:
+        True if successful, False otherwise
+    """
+    collection = _get_collection()
+    if collection is None:
+        return False
+
+    try:
+        collection.delete(ids=[video_id])
+        logger.info(f"Deleted document {video_id} from ChromaDB")
+        return True
+    except Exception as e:
+        logger.exception(f"Failed to delete document {video_id}: {e}")
+        return False
 
 
 # For testing
