@@ -147,10 +147,10 @@ class AudioDashboard {
         this.initialFilterPayload = this.parseInitialFilterPayloadFromUrl();
         this._appliedInitialFilterPayload = false;
         const autoPlayConfig = this.config && this.config.autoPlayOnLoad;
-        this.autoPlayOnLoad = autoPlayConfig === undefined;
+        this.autoPlayOnLoad = false;  // Default: don't auto-play on load
         if (autoPlayConfig !== undefined) {
             const normalized = String(autoPlayConfig).toLowerCase();
-            this.autoPlayOnLoad = !['false', '0', 'no', 'off'].includes(normalized);
+            this.autoPlayOnLoad = ['true', '1', 'yes', 'on'].includes(normalized);
         }
         this.currentFilters = {};
         this.currentPage = 1;
