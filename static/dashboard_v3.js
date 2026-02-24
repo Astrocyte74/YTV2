@@ -156,7 +156,7 @@ class AudioDashboard {
         this.currentPage = 1;
         this.currentSort = 'added_desc';
         this.searchQuery = '';
-        this.viewMode = (localStorage.getItem('ytv2.viewMode') || 'wall');
+        this.viewMode = 'wall'; // Wall mode only - list/grid retired
         // Inline expand state
         this.currentExpandedId = null;
         // Active reader state (for URL popstate sync)
@@ -302,12 +302,6 @@ class AudioDashboard {
         this.resultsCount = document.getElementById('resultsCount');
         this.heroBadges = document.getElementById('heroBadges');
         this.pagination = document.getElementById('pagination');
-        this.listViewBtn = document.getElementById('listViewBtn');
-        this.gridViewBtn = document.getElementById('gridViewBtn');
-        this.wallViewBtn = document.getElementById('wallViewBtn');
-        this.listViewBtnMobile = document.getElementById('listViewBtnMobile');
-        this.gridViewBtnMobile = document.getElementById('gridViewBtnMobile');
-        this.wallViewBtnMobile = document.getElementById('wallViewBtnMobile');
         this.sidebarCollapseToggle = document.getElementById('sidebarCollapseToggle');
         this.sidebarExpandToggle = document.getElementById('sidebarExpandToggle');
         this.sidebarElement = document.getElementById('sidebar');
@@ -375,9 +369,6 @@ class AudioDashboard {
         this.imgModeAiBtnMobile = document.getElementById('imgModeAiBtnMobile');
         this.imgModeRotateBtnMobile = document.getElementById('imgModeRotateBtnMobile');
         // Settings menu controls
-        this.viewListSettingBtn = document.getElementById('viewListSettingBtn');
-        this.viewGridSettingBtn = document.getElementById('viewGridSettingBtn');
-        this.viewWallSettingBtn = document.getElementById('viewWallSettingBtn');
         this.wallArrangeHybridSettingBtn = document.getElementById('wallArrangeHybridSettingBtn');
         this.wallArrangeCategorySettingBtn = document.getElementById('wallArrangeCategorySettingBtn');
         this.wallArrangeKeywordsSettingBtn = document.getElementById('wallArrangeKeywordsSettingBtn');
@@ -471,10 +462,7 @@ class AudioDashboard {
         if (this.imgModeThumbBtnMobile) this.imgModeThumbBtnMobile.addEventListener('click', () => this.setImageMode('thumbnail'));
         if (this.imgModeAiBtnMobile) this.imgModeAiBtnMobile.addEventListener('click', () => this.setImageMode('ai'));
         if (this.imgModeRotateBtnMobile) this.imgModeRotateBtnMobile.addEventListener('click', () => this.setImageMode('rotate'));
-        // Settings menu bindings (view + images)
-        if (this.viewListSettingBtn) this.viewListSettingBtn.addEventListener('click', () => this.setViewMode('list'));
-        if (this.viewGridSettingBtn) this.viewGridSettingBtn.addEventListener('click', () => this.setViewMode('grid'));
-        if (this.viewWallSettingBtn) this.viewWallSettingBtn.addEventListener('click', () => this.setViewMode('wall'));
+        // Settings menu bindings (images + arrangement)
         if (this.wallArrangeHybridSettingBtn) this.wallArrangeHybridSettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('hybrid'));
         if (this.wallArrangeCategorySettingBtn) this.wallArrangeCategorySettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('category'));
         if (this.wallArrangeKeywordsSettingBtn) this.wallArrangeKeywordsSettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('keywords'));
@@ -858,18 +846,7 @@ class AudioDashboard {
             this.desktopMediaQuery.addListener(() => this.applySidebarCollapsedState());
         }
 
-        const viewBindings = [
-            { btn: this.listViewBtn, mode: 'list' },
-            { btn: this.gridViewBtn, mode: 'grid' },
-            { btn: this.wallViewBtn, mode: 'wall' },
-            { btn: this.listViewBtnMobile, mode: 'list' },
-            { btn: this.gridViewBtnMobile, mode: 'grid' },
-            { btn: this.wallViewBtnMobile, mode: 'wall' }
-        ];
-        viewBindings.forEach(({ btn, mode }) => {
-            if (!btn) return;
-            btn.addEventListener('click', () => this.setViewMode(mode));
-        });
+        // Sidebar toggles
         if (this.sidebarCollapseToggle) {
             this.sidebarCollapseToggle.addEventListener('click', () => {
                 this.sidebarCollapsed = true;
@@ -1904,9 +1881,18 @@ class AudioDashboard {
 
     initSettingsTabs() {
         if (!this.settingsTabs || !this.settingsTabs.length) return;
-        // Restore last active tab
-        let activeTab = 'theme';
-        try { activeTab = localStorage.getItem('ytv2.settingsTab') || 'theme'; } catch (_) { }
+        // Restore last active tab (migrate old tab names to 'display')
+        let activeTab = 'display';
+        try {
+            const stored = localStorage.getItem('ytv2.settingsTab');
+            // Migrate old tab names
+            if (stored === 'theme' || stored === 'view') {
+                activeTab = 'display';
+                localStorage.setItem('ytv2.settingsTab', 'display');
+            } else if (stored) {
+                activeTab = stored;
+            }
+        } catch (_) { }
         this.switchSettingsTab(activeTab);
         // Bind tab clicks
         this.settingsTabs.forEach(tab => {
@@ -9147,37 +9133,18 @@ class AudioDashboard {
     }
 
     setViewMode(mode) {
-        const previousMode = this.viewMode;
-        this.viewMode = mode;
-        localStorage.setItem('ytv2.viewMode', mode);
+        // Wall mode only - list/grid retired
+        this.viewMode = 'wall';
         const np = document.getElementById('nowPlayingPreview');
         const mini = document.getElementById('mobileMiniPlayer');
-        const hideAudio = mode === 'wall';
-        if (np) np.classList.toggle('hidden', hideAudio);
-        if (mini) mini.classList.toggle('hidden', hideAudio);
-        if (mode === 'wall') {
-            this._previousSidebarCollapsed = this.sidebarCollapsed;
-            this._previousPageBeforeWall = this.currentPage;
-            this.currentPage = 1;
-            if (!this.sidebarCollapsed && this.desktopMediaQuery?.matches) {
-                this.sidebarCollapsed = true;
-                localStorage.setItem('ytv2.sidebarCollapsed', '1');
-                this.applySidebarCollapsedState();
-            }
-        } else {
-            if (previousMode === 'wall' && typeof this._previousPageBeforeWall === 'number') {
-                this.currentPage = this._previousPageBeforeWall;
-                this._previousPageBeforeWall = undefined;
-            }
-            if (typeof this._previousSidebarCollapsed === 'boolean') {
-                const shouldRestore = this._previousSidebarCollapsed;
-                this._previousSidebarCollapsed = undefined;
-                this.sidebarCollapsed = shouldRestore;
-                localStorage.setItem('ytv2.sidebarCollapsed', shouldRestore ? '1' : '0');
-                this.applySidebarCollapsedState();
-            }
+        if (np) np.classList.add('hidden');
+        if (mini) mini.classList.add('hidden');
+        this.currentPage = 1;
+        if (!this.sidebarCollapsed && this.desktopMediaQuery?.matches) {
+            this.sidebarCollapsed = true;
+            localStorage.setItem('ytv2.sidebarCollapsed', '1');
+            this.applySidebarCollapsedState();
         }
-        // Re-render current items
         this.updateViewToggle();
         if (this.currentItems && this.currentItems.length) {
             this.renderContent(this.currentItems);
@@ -9186,61 +9153,11 @@ class AudioDashboard {
     }
 
     updateViewToggle() {
-        const buttons = [
-            this.listViewBtn,
-            this.gridViewBtn,
-            this.wallViewBtn,
-            this.listViewBtnMobile,
-            this.gridViewBtnMobile,
-            this.wallViewBtnMobile
-        ].filter(Boolean);
-        const settingsButtons = {
-            list: this.viewListSettingBtn,
-            grid: this.viewGridSettingBtn,
-            wall: this.viewWallSettingBtn
-        };
-
-        const activeClasses = ['bg-audio-600', 'text-white', 'shadow-lg'];
-        const inactiveClasses = ['bg-white/80', 'dark:bg-slate-900/70', 'text-slate-600', 'dark:text-slate-200', 'border', 'border-white/60', 'dark:border-slate-700/70', 'shadow-sm'];
-
-        if (buttons.length) {
-            buttons.forEach(btn => {
-                btn.classList.remove(...activeClasses, ...inactiveClasses);
-                btn.classList.add(...inactiveClasses);
-            });
-
-            const map = {
-                list: [this.listViewBtn, this.listViewBtnMobile],
-                grid: [this.gridViewBtn, this.gridViewBtnMobile],
-                wall: [this.wallViewBtn, this.wallViewBtnMobile]
-            };
-            const desired = (map[this.viewMode] || []).filter(Boolean);
-            const fallback = (map.list || []).filter(Boolean);
-            const targets = desired.length ? desired : (fallback.length ? fallback : [buttons[0]]);
-            targets.forEach(btn => {
-                btn.classList.remove(...inactiveClasses);
-                btn.classList.add(...activeClasses);
-            });
-        }
-
-        // Sync the settings menu view buttons too.
-        try {
-            const setBtnActive = (btn, active) => {
-                if (!btn) return;
-                btn.classList.toggle('is-active', !!active);
-            };
-            Object.values(settingsButtons).forEach(b => setBtnActive(b, false));
-            setBtnActive(settingsButtons[this.viewMode] || settingsButtons.list, true);
-        } catch (_) { }
-
-        document.body.classList.toggle('wall-mode', this.viewMode === 'wall');
-        if (this.viewMode !== 'wall') {
-            try { this.closeWallDockReader({ clearDeepLink: false, skipTelemetry: true }); } catch (_) { }
-        }
+        // Wall mode only - ensure body class is set
+        document.body.classList.add('wall-mode');
         if (this.resultsHero) {
             this.resultsHero.classList.add('hidden');
         }
-
         this.updateHeroBadges();
     }
 
