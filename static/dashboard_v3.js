@@ -492,6 +492,9 @@ class AudioDashboard {
         this.updateImageModeUI();
         this.updateWallArrangeSettingUI();
 
+        // Filter chips initialization
+        this.initFilterChips();
+
         // Search and filters
         this.searchInput.addEventListener('input', this.debounce(() => this.handleSearch(), 500));
         // Optional top search (mobile + desktop collapsed)
@@ -2006,6 +2009,17 @@ class AudioDashboard {
             this.renderFilterSection(filters.complexity_level, this.complexityFilters, 'complexity');
             this.renderLanguageFilters(filters.languages || []);
             this.renderFilterSection(filters.summary_type, this.summaryTypeFilters, 'summary_type');
+
+            // Also populate _filterOptions for the filter chips UI
+            this._filterOptions = {
+                source: sourceItems,
+                category: filters.categories || [],
+                channel: filters.channels || [],
+                contentType: filters.content_type || [],
+                complexity: filters.complexity_level || [],
+                language: filters.languages || [],
+                summaryType: filters.summary_type || []
+            };
 
             // Bind show more toggles after content is loaded
             this.bindShowMoreToggles();
@@ -12786,6 +12800,413 @@ class AudioDashboard {
         // Initial position
         const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : 0);
         onMove(clientX);
+    }
+
+    // ========================================
+    // FILTER CHIPS
+    // ========================================
+
+    initFilterChips() {
+        // Sort button elements
+        this.sortBtn = document.getElementById('sortBtn');
+        this.sortDropdown = document.getElementById('sortDropdown');
+        this.sortDropdownOptions = document.getElementById('sortDropdownOptions');
+
+        // Filter button elements
+        this.addFilterBtn = document.getElementById('addFilterBtn');
+        this.filterDropdown = document.getElementById('filterDropdown');
+        this.filterSubmenu = document.getElementById('filterSubmenu');
+        this.filterSubmenuTitle = document.getElementById('filterSubmenuTitle');
+        this.filterSubmenuOptions = document.getElementById('filterSubmenuOptions');
+        this.filterSubmenuBack = document.getElementById('filterSubmenuBack');
+        this.filterSubmenuApply = document.getElementById('filterSubmenuApply');
+        this.filterSubmenuCancel = document.getElementById('filterSubmenuCancel');
+        this.activeFilterChips = document.getElementById('activeFilterChips');
+
+        // Initialize _filterOptions early to prevent undefined errors
+        this._filterOptions = this._filterOptions || {
+            source: [],
+            category: [],
+            channel: [],
+            contentType: [],
+            complexity: [],
+            language: [],
+            summaryType: []
+        };
+
+        this._filterChipsState = {
+            currentType: null,
+            selectedValues: []
+        };
+
+        // Filter type labels
+        this._filterTypeLabels = {
+            sort: 'Sort',
+            source: 'Source',
+            category: 'Category',
+            channel: 'Channel',
+            contentType: 'Content Type',
+            complexity: 'Complexity',
+            language: 'Language',
+            summaryType: 'Summary Type'
+        };
+
+        // Sort options (static)
+        this._sortOptions = [
+            { value: 'added_desc', label: 'Recently Added' },
+            { value: 'video_newest', label: 'Video Newest' },
+            { value: 'video_oldest', label: 'Video Oldest' },
+            { value: 'title_az', label: 'Title A→Z' },
+            { value: 'title_za', label: 'Title Z→A' },
+            { value: 'duration_desc', label: 'Longest First' },
+            { value: 'duration_asc', label: 'Shortest First' }
+        ];
+
+        // Bind Sort button events
+        if (this.sortBtn) {
+            this.sortBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleSortDropdown();
+            });
+            this.renderSortOptions();
+        }
+
+        if (!this.addFilterBtn) return;
+
+        // Toggle filter dropdown
+        this.addFilterBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleFilterDropdown();
+        });
+
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#filterDropdown') && !e.target.closest('#filterSubmenu') && !e.target.closest('#addFilterBtn') && !e.target.closest('#sortDropdown') && !e.target.closest('#sortBtn')) {
+                this.closeFilterDropdowns();
+            }
+        });
+
+        // Filter type buttons
+        document.querySelectorAll('[data-filter-type]').forEach(btn => {
+            btn.addEventListener('click', () => this.showFilterSubmenu(btn.dataset.filterType));
+        });
+
+        // Submenu navigation
+        if (this.filterSubmenuBack) {
+            this.filterSubmenuBack.addEventListener('click', () => this.showFilterDropdown());
+        }
+        if (this.filterSubmenuCancel) {
+            this.filterSubmenuCancel.addEventListener('click', () => this.closeFilterDropdowns());
+        }
+        if (this.filterSubmenuApply) {
+            this.filterSubmenuApply.addEventListener('click', () => this.applyFilterSelection());
+        }
+
+        // Initial render of active chips
+        this.renderActiveFilterChips();
+    }
+
+    // --- Sort Button Methods ---
+    toggleSortDropdown() {
+        const isHidden = this.sortDropdown && this.sortDropdown.classList.contains('hidden');
+        this.closeFilterDropdowns();
+        if (isHidden && this.sortDropdown) {
+            this.sortDropdown.classList.remove('hidden');
+        }
+    }
+
+    renderSortOptions() {
+        if (!this.sortDropdownOptions) return;
+
+        const currentSort = this.sortMode || localStorage.getItem('ytv2.sortMode') || 'added_desc';
+        this._filterChipsState.selectedValues = [currentSort];
+
+        const html = this._sortOptions.map(opt => {
+            const isSelected = opt.value === currentSort;
+            return `
+                <div class="sort-option ${isSelected ? 'is-selected bg-audio-50 dark:bg-audio-900/30' : ''}" data-value="${opt.value}">
+                    <div class="sort-option__check">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                        </svg>
+                    </div>
+                    <span class="sort-option__text">${opt.label}</span>
+                </div>
+            `;
+        }).join('');
+
+        this.sortDropdownOptions.innerHTML = html;
+
+        // Bind click handlers
+        this.sortDropdownOptions.querySelectorAll('.sort-option').forEach(el => {
+            el.addEventListener('click', () => {
+                const value = el.dataset.value;
+                this.applySortSelection(value);
+            });
+        });
+    }
+
+    applySortSelection(value) {
+        this.sortMode = value;
+        localStorage.setItem('ytv2.sortMode', value);
+        this.closeFilterDropdowns();
+        this.loadContent();
+        // Update sort button label
+        const opt = this._sortOptions.find(o => o.value === value);
+        const sortBtnLabel = document.getElementById('sortBtnLabel');
+        if (opt && sortBtnLabel) {
+            sortBtnLabel.textContent = opt.label;
+        }
+    }
+
+    toggleFilterDropdown() {
+        const isHidden = this.filterDropdown.classList.contains('hidden');
+        this.closeFilterDropdowns();
+        if (isHidden) {
+            this.filterDropdown.classList.remove('hidden');
+        }
+    }
+
+    showFilterDropdown() {
+        this.filterSubmenu.classList.add('hidden');
+        this.filterDropdown.classList.remove('hidden');
+    }
+
+    closeFilterDropdowns() {
+        if (this.filterDropdown) this.filterDropdown.classList.add('hidden');
+        if (this.filterSubmenu) this.filterSubmenu.classList.add('hidden');
+        if (this.sortDropdown) this.sortDropdown.classList.add('hidden');
+        this._filterChipsState.currentType = null;
+        this._filterChipsState.selectedValues = [];
+    }
+
+    showFilterSubmenu(type) {
+        this._filterChipsState.currentType = type;
+        this._filterChipsState.selectedValues = [];
+
+        // Set title with fallback
+        if (this.filterSubmenuTitle) {
+            const labels = this._filterTypeLabels || {};
+            this.filterSubmenuTitle.textContent = labels[type] || type;
+        }
+
+        // Get options based on type
+        const options = this.getFilterOptions(type);
+
+        // Render options
+        this.renderFilterSubmenuOptions(options, type);
+
+        // Show submenu
+        if (this.filterDropdown) this.filterDropdown.classList.add('hidden');
+        if (this.filterSubmenu) this.filterSubmenu.classList.remove('hidden');
+    }
+
+    getFilterOptions(type) {
+        switch (type) {
+            case 'source':
+                return this._filterOptions?.source || [];
+            case 'category':
+                return this._filterOptions?.category || [];
+            case 'channel':
+                return this._filterOptions?.channel || [];
+            case 'contentType':
+                return this._filterOptions?.contentType || [];
+            case 'complexity':
+                return this._filterOptions?.complexity || [];
+            case 'language':
+                return this._filterOptions?.language || [];
+            case 'summaryType':
+                return this._filterOptions?.summaryType || [];
+        }
+        return [];
+    }
+
+    renderFilterSubmenuOptions(options, type) {
+        if (!this.filterSubmenuOptions) return;
+
+        // Get current values for this type (sort is handled separately now)
+        const currentValues = (this.activeFilters && this.activeFilters[type]) || [];
+
+        this._filterChipsState.selectedValues = [...currentValues];
+
+        // Handle empty options (loading state)
+        if (!options || options.length === 0) {
+            this.filterSubmenuOptions.innerHTML = `
+                <div class="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 text-center">
+                    Loading options...
+                </div>
+            `;
+            return;
+        }
+
+        const html = options.map(opt => {
+            const isSelected = currentValues.includes(opt.value);
+            return `
+                <div class="filter-submenu-option ${isSelected ? 'is-selected' : ''}" data-value="${opt.value}">
+                    <div class="filter-submenu-option__check">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+                        </svg>
+                    </div>
+                    <span class="filter-submenu-option__text">${opt.label}</span>
+                    ${opt.count !== undefined ? `<span class="filter-submenu-option__count">${opt.count}</span>` : ''}
+                </div>
+            `;
+        }).join('');
+
+        this.filterSubmenuOptions.innerHTML = html;
+
+        // Bind click handlers
+        this.filterSubmenuOptions.querySelectorAll('.filter-submenu-option').forEach(el => {
+            el.addEventListener('click', () => {
+                const value = el.dataset.value;
+                this.toggleFilterOption(value, false); // Always multi-select for filters
+                el.classList.toggle('is-selected');
+            });
+        });
+    }
+
+    toggleFilterOption(value, isSingle) {
+        if (isSingle) {
+            this._filterChipsState.selectedValues = [value];
+        } else {
+            const idx = this._filterChipsState.selectedValues.indexOf(value);
+            if (idx === -1) {
+                this._filterChipsState.selectedValues.push(value);
+            } else {
+                this._filterChipsState.selectedValues.splice(idx, 1);
+            }
+        }
+    }
+
+    applyFilterSelection() {
+        const type = this._filterChipsState.currentType;
+        const values = this._filterChipsState.selectedValues;
+
+        if (!type) return;
+
+        // Sort is handled separately by the Sort button
+        if (type === 'sort') {
+            this.closeFilterDropdowns();
+            return;
+        }
+
+        // Ensure activeFilters exists
+        if (!this.activeFilters) {
+            this.activeFilters = {};
+        }
+        this.activeFilters[type] = values;
+        this.saveFilters();
+        this.loadContent();
+
+        this.closeFilterDropdowns();
+        this.renderActiveFilterChips();
+    }
+
+    renderActiveFilterChips() {
+        if (!this.activeFilterChips) return;
+
+        const chips = [];
+        const sortLabels = {
+            'added_desc': 'Recently Added',
+            'video_newest': 'Video Newest',
+            'video_oldest': 'Video Oldest',
+            'title_az': 'Title A→Z',
+            'title_za': 'Title Z→A',
+            'duration_desc': 'Longest First',
+            'duration_asc': 'Shortest First'
+        };
+        const currentSort = this.sortMode || 'added_desc';
+        if (currentSort !== 'added_desc') {
+            chips.push({ type: 'sort', label: 'Sort', value: sortLabels[currentSort] || currentSort });
+        }
+
+        // Get filter labels with fallback
+        const filterLabels = this._filterTypeLabels || {
+            source: 'Source',
+            category: 'Category',
+            channel: 'Channel',
+            contentType: 'Content Type',
+            complexity: 'Complexity',
+            language: 'Language',
+            summaryType: 'Summary Type'
+        };
+
+        const filterTypes = ['source', 'category', 'channel', 'contentType', 'complexity', 'language', 'summaryType'];
+        filterTypes.forEach(type => {
+            const values = (this.activeFilters && this.activeFilters[type]) || [];
+            values.forEach(val => {
+                const options = (this._filterOptions && this._filterOptions[type]) || [];
+                const opt = options.find(o => o.value === val);
+                chips.push({
+                    type,
+                    label: filterLabels[type] || type,
+                    value: opt?.label || val
+                });
+            });
+        });
+
+        if (chips.length === 0) {
+            this.activeFilterChips.innerHTML = '';
+            return;
+        }
+
+        this.activeFilterChips.innerHTML = chips.map((chip, idx) => `
+            <div class="filter-chip" data-chip-index="${idx}" data-chip-type="${chip.type}">
+                <span class="filter-chip__label">${chip.label}:</span>
+                <span class="filter-chip__value">${chip.value}</span>
+                <button type="button" class="filter-chip__remove" aria-label="Remove filter">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+        `).join('');
+
+        this.activeFilterChips.querySelectorAll('.filter-chip__remove').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const chip = e.target.closest('.filter-chip');
+                const idx = parseInt(chip.dataset.chipIndex, 10);
+                this.removeFilterChip(idx);
+            });
+        });
+    }
+
+    removeFilterChip(index) {
+        const chips = [];
+        const sortLabels = { 'added_desc': 'Recently Added', 'video_newest': 'Video Newest', 'video_oldest': 'Video Oldest', 'title_az': 'Title A→Z', 'title_za': 'Title Z→A', 'duration_desc': 'Longest First', 'duration_asc': 'Shortest First' };
+        const currentSort = this.sortMode || 'added_desc';
+        if (currentSort !== 'added_desc') {
+            chips.push({ type: 'sort', value: currentSort });
+        }
+
+        const filterTypes = ['source', 'category', 'channel', 'contentType', 'complexity', 'language', 'summaryType'];
+        filterTypes.forEach(type => {
+            const values = (this.activeFilters && this.activeFilters[type]) || [];
+            values.forEach(val => {
+                chips.push({ type, value: val });
+            });
+        });
+
+        const removed = chips[index];
+        if (!removed) return;
+
+        if (removed.type === 'sort') {
+            this.sortMode = 'added_desc';
+            localStorage.setItem('ytv2.sortMode', 'added_desc');
+        } else {
+            if (!this.activeFilters) this.activeFilters = {};
+            const values = this.activeFilters[removed.type] || [];
+            const idx = values.indexOf(removed.value);
+            if (idx !== -1) {
+                values.splice(idx, 1);
+                this.activeFilters[removed.type] = values;
+            }
+            this.saveFilters();
+        }
+
+        this.loadContent();
+        this.renderActiveFilterChips();
     }
 }
 

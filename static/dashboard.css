@@ -2832,6 +2832,207 @@ body:not(.dark) .reader-display-popover {
     }
 }
 
+/* ================================================
+   FILTER CHIPS
+   ================================================ */
+
+.filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(59, 130, 246, 0.1));
+    border: 1px solid rgba(34, 211, 238, 0.3);
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #22d3ee;
+    transition: all 150ms ease;
+    animation: filterChipIn 200ms ease-out;
+}
+
+@keyframes filterChipIn {
+    0% {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.filter-chip:hover {
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.25), rgba(59, 130, 246, 0.15));
+    border-color: rgba(34, 211, 238, 0.5);
+}
+
+.filter-chip__label {
+    color: #94a3b8;
+    font-weight: 400;
+}
+
+.filter-chip__value {
+    color: #22d3ee;
+}
+
+.filter-chip__remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    color: inherit;
+    cursor: pointer;
+    transition: all 150ms ease;
+    margin-left: 0.25rem;
+}
+
+.filter-chip__remove:hover {
+    background: rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+}
+
+.filter-dropdown-item.is-active {
+    background: rgba(6, 182, 212, 0.1);
+    color: #22d3ee;
+}
+
+.filter-submenu-option {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 1rem;
+    cursor: pointer;
+    transition: background 150ms ease;
+}
+
+.filter-submenu-option:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.dark .filter-submenu-option:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.filter-submenu-option.is-selected {
+    background: rgba(6, 182, 212, 0.1);
+}
+
+.filter-submenu-option__check {
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 2px solid #cbd5e1;
+    border-radius: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 150ms ease;
+    flex-shrink: 0;
+}
+
+.dark .filter-submenu-option__check {
+    border-color: #475569;
+}
+
+.filter-submenu-option.is-selected .filter-submenu-option__check {
+    background: #22d3ee;
+    border-color: #22d3ee;
+}
+
+.filter-submenu-option__check svg {
+    width: 0.875rem;
+    height: 0.875rem;
+    color: white;
+    opacity: 0;
+    transition: opacity 150ms ease;
+}
+
+.filter-submenu-option.is-selected .filter-submenu-option__check svg {
+    opacity: 1;
+}
+
+.filter-submenu-option__text {
+    font-size: 0.875rem;
+    color: #334155;
+}
+
+.dark .filter-submenu-option__text {
+    color: #e2e8f0;
+}
+
+.filter-submenu-option__count {
+    margin-left: auto;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+/* Sort option styles (similar to filter-submenu-option) */
+.sort-option {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 1rem;
+    cursor: pointer;
+    transition: background 150ms ease;
+}
+
+.sort-option:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.dark .sort-option:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.sort-option.is-selected {
+    background: rgba(6, 182, 212, 0.1);
+}
+
+.sort-option__check {
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 2px solid #cbd5e1;
+    border-radius: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 150ms ease;
+    flex-shrink: 0;
+}
+
+.dark .sort-option__check {
+    border-color: #475569;
+}
+
+.sort-option.is-selected .sort-option__check {
+    background: #22d3ee;
+    border-color: #22d3ee;
+}
+
+.sort-option__check svg {
+    width: 0.875rem;
+    height: 0.875rem;
+    color: white;
+    opacity: 0;
+    transition: opacity 150ms ease;
+}
+
+.sort-option.is-selected .sort-option__check svg {
+    opacity: 1;
+}
+
+.sort-option__text {
+    font-size: 0.875rem;
+    color: #334155;
+}
+
+.dark .sort-option__text {
+    color: #e2e8f0;
+}
+
 @media (max-width: 1099px) {
     .wall-dock {
         display: none !important;
