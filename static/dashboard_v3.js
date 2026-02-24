@@ -334,7 +334,9 @@ class AudioDashboard {
         this.settingsToggle = document.getElementById('settingsToggle');
         this.settingsMenu = document.getElementById('settingsMenu');
         this.themeButtons = this.settingsMenu ? this.settingsMenu.querySelectorAll('[data-theme]') : [];
-        this.settingsAccordions = this.settingsMenu ? this.settingsMenu.querySelectorAll('details.settings-accordion') : [];
+        this.settingsTabs = this.settingsMenu ? this.settingsMenu.querySelectorAll('[data-settings-tab]') : [];
+        this.settingsPanels = this.settingsMenu ? this.settingsMenu.querySelectorAll('[data-settings-panel]') : [];
+        this.settingsAccordions = []; // Kept for backwards compatibility
         this.themeMode = localStorage.getItem('ytv2.theme') || 'system';
         this.sidebarCollapsed = localStorage.getItem('ytv2.sidebarCollapsed') === '1';
         this._collapsedForMobile = null;
@@ -453,11 +455,11 @@ class AudioDashboard {
         if (refreshBtn) refreshBtn.addEventListener('click', (e) => { e.preventDefault(); try { location.reload(); } catch (_) { window.location.href = window.location.href; } });
         if (this.settingsMenu) document.addEventListener('click', (e) => { if (!e.target.closest('#settingsMenu') && !e.target.closest('#settingsToggle')) this.closeSettings(); });
         if (this.themeButtons) this.themeButtons.forEach(btn => btn.addEventListener('click', () => this.setTheme(btn.dataset.theme)));
-        // Settings accordion: restore open state and persist on toggle
+        // Settings close button
+        const settingsCloseBtn = document.getElementById('settingsCloseBtn');
+        if (settingsCloseBtn) settingsCloseBtn.addEventListener('click', () => this.closeSettings());
+        // Settings accordion (legacy - no longer used but kept for compatibility)
         this.restoreSettingsAccordion();
-        if (this.settingsAccordions && this.settingsAccordions.length) {
-            this.settingsAccordions.forEach(sec => sec.addEventListener('toggle', () => this.persistSettingsAccordion()));
-        }
         if (this.cancelDeleteBtn) this.cancelDeleteBtn.addEventListener('click', () => this.closeConfirm());
         if (this.confirmDeleteBtn) this.confirmDeleteBtn.addEventListener('click', () => this.confirmDelete());
 
@@ -514,6 +516,7 @@ class AudioDashboard {
         }
         // Header search (desktop)
         this.searchInputHeader = document.getElementById('searchInputHeader');
+        this.searchClearHeader = document.getElementById('searchClearHeader');
         if (this.searchInputHeader) {
             const toggleClear = () => {
                 try {
@@ -1894,9 +1897,43 @@ class AudioDashboard {
         this.settingsMenu.classList.toggle('hidden');
         if (!this.settingsMenu.classList.contains('hidden')) {
             this.updateAdminTokenSourceLabel();
+            this.initSettingsTabs();
         }
     }
     closeSettings() { if (!this.settingsMenu) return; this.settingsMenu.classList.add('hidden'); }
+
+    initSettingsTabs() {
+        if (!this.settingsTabs || !this.settingsTabs.length) return;
+        // Restore last active tab
+        let activeTab = 'theme';
+        try { activeTab = localStorage.getItem('ytv2.settingsTab') || 'theme'; } catch (_) { }
+        this.switchSettingsTab(activeTab);
+        // Bind tab clicks
+        this.settingsTabs.forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                e.preventDefault();
+                const tabId = tab.getAttribute('data-settings-tab');
+                if (tabId) this.switchSettingsTab(tabId);
+            });
+        });
+    }
+
+    switchSettingsTab(tabId) {
+        if (!this.settingsTabs || !this.settingsPanels) return;
+        // Update tabs
+        this.settingsTabs.forEach(tab => {
+            const isActive = tab.getAttribute('data-settings-tab') === tabId;
+            tab.classList.toggle('settings-tab--active', isActive);
+            tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        // Update panels
+        this.settingsPanels.forEach(panel => {
+            const isActive = panel.getAttribute('data-settings-panel') === tabId;
+            panel.classList.toggle('hidden', !isActive);
+        });
+        // Persist
+        try { localStorage.setItem('ytv2.settingsTab', tabId); } catch (_) { }
+    }
 
     restoreSettingsAccordion() {
         if (!this.settingsAccordions) return;
@@ -2921,15 +2958,6 @@ class AudioDashboard {
                         </div>
                         <h3 id="wallDockTitle" class="wall-dock__title">Summary</h3>
                         <div class="summary-card__menu wall-dock__menu hidden" data-kebab-menu role="menu">
-                            <section class="wall-dock__menu-section" data-wall-menu-section="arrange">
-                                <p class="wall-dock__menu-label">Arrange Cards</p>
-                                <div class="wall-dock__arrange-grid" role="group" aria-label="Arrange cards">
-                                    <button type="button" class="summary-card__menu-item wall-dock__arrange-btn" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="hybrid" aria-checked="${mode === 'hybrid' ? 'true' : 'false'}">Related</button>
-                                    <button type="button" class="summary-card__menu-item wall-dock__arrange-btn" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="category" aria-checked="${mode === 'category' ? 'true' : 'false'}">Category</button>
-                                    <button type="button" class="summary-card__menu-item wall-dock__arrange-btn" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="keywords" aria-checked="${mode === 'keywords' ? 'true' : 'false'}">Keywords</button>
-                                    <button type="button" class="summary-card__menu-item wall-dock__arrange-btn" role="menuitemradio" data-action="wall-arrange-set" data-wall-arrange-mode="newest" aria-checked="${mode === 'newest' ? 'true' : 'false'}">Newest</button>
-                                </div>
-                            </section>
                             <section class="wall-dock__menu-section" data-wall-menu-section="reader">
                                 <p class="wall-dock__menu-label">Reader</p>
                                 <button type="button" class="summary-card__menu-item wall-dock__display-toggle" role="menuitem" data-action="reader-display-inline-toggle" aria-expanded="false" aria-controls="wallDockDisplayPanel">
@@ -5934,13 +5962,7 @@ class AudioDashboard {
         const activeMode = this.normalizeWallDockArrangeMode(this.wallDockArrangeMode || this.flags?.wallDockArrangeModeDefault || 'hybrid');
         const setBtnActive = (btn, active) => {
             if (!btn) return;
-            btn.classList.toggle('bg-audio-600', !!active);
-            btn.classList.toggle('text-white', !!active);
-            btn.classList.toggle('border-transparent', !!active);
-            btn.classList.toggle('bg-white/80', !active);
-            btn.classList.toggle('dark:bg-slate-900/70', !active);
-            btn.classList.toggle('text-slate-600', !active);
-            btn.classList.toggle('dark:text-slate-200', !active);
+            btn.classList.toggle('is-active', !!active);
             btn.setAttribute('aria-pressed', active ? 'true' : 'false');
         };
         Object.entries(buttons).forEach(([mode, btn]) => setBtnActive(btn, mode === activeMode));
@@ -9205,11 +9227,7 @@ class AudioDashboard {
         try {
             const setBtnActive = (btn, active) => {
                 if (!btn) return;
-                btn.classList.toggle('bg-audio-600', !!active);
-                btn.classList.toggle('text-white', !!active);
-                btn.classList.toggle('border-transparent', !!active);
-                btn.classList.toggle('bg-white/80', !active);
-                btn.classList.toggle('dark:bg-slate-900/70', !active);
+                btn.classList.toggle('is-active', !!active);
             };
             Object.values(settingsButtons).forEach(b => setBtnActive(b, false));
             setBtnActive(settingsButtons[this.viewMode] || settingsButtons.list, true);
@@ -10378,11 +10396,20 @@ class AudioDashboard {
                 rotate: this.imgModeRotateSettingBtn
             }
         ];
-        sets.forEach(s => {
+        sets.forEach((s, idx) => {
             if (!s) return;
-            [s.thumb, s.ai, s.ai2, s.rotate].forEach(btn => { if (btn) btn.classList.remove('bg-slate-200', 'dark:bg-slate-700'); });
-            const active = this.imageMode === 'thumbnail' ? s.thumb : this.imageMode === 'ai' ? s.ai : this.imageMode === 'ai2' ? s.ai2 : s.rotate;
-            if (active) active.classList.add('bg-slate-200', 'dark:bg-slate-700');
+            const isSettingsPanel = idx === 2;
+            if (isSettingsPanel) {
+                // Use is-active class for settings panel
+                [s.thumb, s.ai, s.ai2, s.rotate].forEach(btn => { if (btn) btn.classList.remove('is-active'); });
+                const active = this.imageMode === 'thumbnail' ? s.thumb : this.imageMode === 'ai' ? s.ai : this.imageMode === 'ai2' ? s.ai2 : s.rotate;
+                if (active) active.classList.add('is-active');
+            } else {
+                // Legacy style for header buttons
+                [s.thumb, s.ai, s.ai2, s.rotate].forEach(btn => { if (btn) btn.classList.remove('bg-slate-200', 'dark:bg-slate-700'); });
+                const active = this.imageMode === 'thumbnail' ? s.thumb : this.imageMode === 'ai' ? s.ai : this.imageMode === 'ai2' ? s.ai2 : s.rotate;
+                if (active) active.classList.add('bg-slate-200', 'dark:bg-slate-700');
+            }
         });
     }
 
@@ -12857,5 +12884,3 @@ document.addEventListener('DOMContentLoaded', () => {
     })();
     */
 });
-// Header search clear
-this.searchClearHeader = document.getElementById('searchClearHeader');
