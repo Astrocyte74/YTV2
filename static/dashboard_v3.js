@@ -406,15 +406,17 @@ class AudioDashboard {
             this._cleanupScrubState();
         });
 
-        // Player controls
-        this.playPauseBtn.addEventListener('click', () => this.togglePlayPause());
-        this.prevBtn.addEventListener('click', () => this.playPrevious());
-        this.nextBtn.addEventListener('click', () => this.playNext());
-        this.progressContainer.addEventListener('click', (e) => this.seekTo(e));
+        // Player controls (sidebar - may be null in wall-only mode)
+        if (this.playPauseBtn) this.playPauseBtn.addEventListener('click', () => this.togglePlayPause());
+        if (this.prevBtn) this.prevBtn.addEventListener('click', () => this.playPrevious());
+        if (this.nextBtn) this.nextBtn.addEventListener('click', () => this.playNext());
+        if (this.progressContainer) {
+            this.progressContainer.addEventListener('click', (e) => this.seekTo(e));
+            this.progressContainer.addEventListener('mousedown', (e) => this.beginProgressDrag(e, false));
+        }
         if (this.topProgressContainer) {
             this.topProgressContainer.addEventListener('click', (e) => this.seekToIn(this.topProgressContainer, e));
         }
-        this.progressContainer.addEventListener('mousedown', (e) => this.beginProgressDrag(e, false));
         if (this.volumeBtn) this.volumeBtn.addEventListener('click', () => this.toggleMute());
         if (this.playbackRateBtn) this.playbackRateBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.cyclePlaybackRate(); });
         if (this.miniPlayerCloseBtn) this.miniPlayerCloseBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.showNowPlayingPlaceholder(); });
@@ -9062,12 +9064,14 @@ class AudioDashboard {
             this.nextBtn.classList.toggle('cursor-not-allowed', !enableNext);
         }
 
-        if (this.isPlaying) {
-            this.playIcon.classList.add('hidden');
-            this.pauseIcon.classList.remove('hidden');
-        } else {
-            this.playIcon.classList.remove('hidden');
-            this.pauseIcon.classList.add('hidden');
+        if (this.playIcon && this.pauseIcon) {
+            if (this.isPlaying) {
+                this.playIcon.classList.add('hidden');
+                this.pauseIcon.classList.remove('hidden');
+            } else {
+                this.playIcon.classList.remove('hidden');
+                this.pauseIcon.classList.add('hidden');
+            }
         }
 
         // Update mobile play button
@@ -9290,8 +9294,8 @@ class AudioDashboard {
 
         if (duration && !isNaN(duration) && !isNaN(currentTime)) {
             const progress = (currentTime / duration) * 100;
-            this.progressBar.style.width = `${progress}%`;
-            this.currentTimeEl.textContent = this.formatDuration(currentTime);
+            if (this.progressBar) this.progressBar.style.width = `${progress}%`;
+            if (this.currentTimeEl) this.currentTimeEl.textContent = this.formatDuration(currentTime);
             if (this.topProgressBar) {
                 this.topProgressBar.style.width = `${progress}%`;
             }
@@ -12747,6 +12751,8 @@ class AudioDashboard {
         event.preventDefault();
         const container = isMobile ? this.mobileProgressContainer : this.progressContainer;
         const progressBar = isMobile ? this.mobileProgressBar : this.progressBar;
+
+        if (!container) return;
 
         const onMove = (clientX) => {
             const rect = container.getBoundingClientRect();
