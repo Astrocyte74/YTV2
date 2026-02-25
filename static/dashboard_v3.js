@@ -12815,12 +12815,7 @@ class AudioDashboard {
         // Filter button elements
         this.addFilterBtn = document.getElementById('addFilterBtn');
         this.filterDropdown = document.getElementById('filterDropdown');
-        this.filterSubmenu = document.getElementById('filterSubmenu');
-        this.filterSubmenuTitle = document.getElementById('filterSubmenuTitle');
-        this.filterSubmenuOptions = document.getElementById('filterSubmenuOptions');
-        this.filterSubmenuBack = document.getElementById('filterSubmenuBack');
-        this.filterSubmenuApply = document.getElementById('filterSubmenuApply');
-        this.filterSubmenuCancel = document.getElementById('filterSubmenuCancel');
+        this.filterAccordionContainer = document.getElementById('filterAccordionContainer');
         this.activeFilterChips = document.getElementById('activeFilterChips');
 
         // Initialize _filterOptions early to prevent undefined errors
@@ -12832,11 +12827,6 @@ class AudioDashboard {
             complexity: [],
             language: [],
             summaryType: []
-        };
-
-        this._filterChipsState = {
-            currentType: null,
-            selectedValues: []
         };
 
         // Filter type labels
@@ -12881,29 +12871,128 @@ class AudioDashboard {
 
         // Close dropdowns when clicking outside
         document.addEventListener('click', (e) => {
-            if (!e.target.closest('#filterDropdown') && !e.target.closest('#filterSubmenu') && !e.target.closest('#addFilterBtn') && !e.target.closest('#sortDropdown') && !e.target.closest('#sortBtn')) {
+            if (!e.target.closest('#filterDropdown') && !e.target.closest('#addFilterBtn') && !e.target.closest('#sortDropdown') && !e.target.closest('#sortBtn')) {
                 this.closeFilterDropdowns();
             }
         });
 
-        // Filter type buttons
-        document.querySelectorAll('[data-filter-type]').forEach(btn => {
-            btn.addEventListener('click', () => this.showFilterSubmenu(btn.dataset.filterType));
-        });
-
-        // Submenu navigation
-        if (this.filterSubmenuBack) {
-            this.filterSubmenuBack.addEventListener('click', () => this.showFilterDropdown());
-        }
-        if (this.filterSubmenuCancel) {
-            this.filterSubmenuCancel.addEventListener('click', () => this.closeFilterDropdowns());
-        }
-        if (this.filterSubmenuApply) {
-            this.filterSubmenuApply.addEventListener('click', () => this.applyFilterSelection());
-        }
+        // Bind accordion header clicks
+        this.bindAccordionHeaders();
 
         // Initial render of active chips
         this.renderActiveFilterChips();
+    }
+
+    // Bind accordion header click handlers
+    bindAccordionHeaders() {
+        document.querySelectorAll('.filter-accordion-header').forEach(header => {
+            header.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const accordion = header.closest('.filter-accordion');
+                this.toggleAccordion(accordion);
+            });
+        });
+    }
+
+    // Toggle accordion open/close
+    toggleAccordion(accordion) {
+        if (!accordion) return;
+        const content = accordion.querySelector('.filter-accordion-content');
+        const chevron = accordion.querySelector('.filter-accordion-chevron');
+        const isOpen = !content.classList.contains('hidden');
+
+        if (isOpen) {
+            content.classList.add('hidden');
+            chevron.style.transform = 'rotate(0deg)';
+        } else {
+            // Populate content if empty
+            const type = accordion.dataset.filterType;
+            this.populateAccordionContent(accordion, type);
+            content.classList.remove('hidden');
+            chevron.style.transform = 'rotate(180deg)';
+        }
+    }
+
+    // Populate accordion content with filter options
+    populateAccordionContent(accordion, type) {
+        const content = accordion.querySelector('.filter-accordion-content');
+        if (!content) return;
+
+        const options = this.getFilterOptions(type);
+        const selectedValues = (this.activeFilters && this.activeFilters[type]) || [];
+
+        if (options.length === 0) {
+            content.innerHTML = `<div class="px-4 py-3 text-sm text-slate-400 text-center">No options available</div>`;
+            return;
+        }
+
+        const html = options.map(opt => {
+            const isSelected = selectedValues.includes(opt.value);
+            return `
+                <label class="filter-accordion-option flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-white/50 dark:hover:bg-slate-800/50 transition-colors">
+                    <input type="checkbox" class="filter-accordion-checkbox rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500" data-filter-type="${type}" data-value="${opt.value}" ${isSelected ? 'checked' : ''}>
+                    <span class="flex-1 text-sm text-slate-700 dark:text-slate-200 truncate">${opt.label}</span>
+                    ${opt.count !== undefined ? `<span class="text-xs text-slate-400">${opt.count}</span>` : ''}
+                </label>
+            `;
+        }).join('');
+
+        content.innerHTML = html;
+
+        // Bind checkbox change handlers
+        content.querySelectorAll('.filter-accordion-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                this.handleAccordionFilterChange(type, e.target.dataset.value, e.target.checked);
+            });
+        });
+    }
+
+    // Handle filter checkbox change (immediate apply)
+    handleAccordionFilterChange(type, value, isChecked) {
+        // Ensure activeFilters exists
+        if (!this.activeFilters) {
+            this.activeFilters = {};
+        }
+        if (!this.activeFilters[type]) {
+            this.activeFilters[type] = [];
+        }
+
+        if (isChecked) {
+            if (!this.activeFilters[type].includes(value)) {
+                this.activeFilters[type].push(value);
+            }
+        } else {
+            const idx = this.activeFilters[type].indexOf(value);
+            if (idx > -1) {
+                this.activeFilters[type].splice(idx, 1);
+            }
+        }
+
+        // Update accordion header count
+        this.updateAccordionCount(type);
+
+        // Apply filters immediately
+        this.saveFilters();
+        this.loadContent();
+        this.renderActiveFilterChips();
+    }
+
+    // Update selected count on accordion header
+    updateAccordionCount(type) {
+        const accordion = document.querySelector(`.filter-accordion[data-filter-type="${type}"]`);
+        if (!accordion) return;
+        const countEl = accordion.querySelector('.filter-accordion-count');
+        if (!countEl) return;
+
+        const count = (this.activeFilters && this.activeFilters[type] && this.activeFilters[type].length) || 0;
+        countEl.textContent = count > 0 ? `${count} selected` : '';
+    }
+
+    // Populate all accordion counts after filters load
+    updateAllAccordionCounts() {
+        ['source', 'category', 'channel', 'contentType', 'complexity', 'language', 'summaryType'].forEach(type => {
+            this.updateAccordionCount(type);
+        });
     }
 
     // --- Sort Button Methods ---
@@ -12919,7 +13008,6 @@ class AudioDashboard {
         if (!this.sortDropdownOptions) return;
 
         const currentSort = this.sortMode || localStorage.getItem('ytv2.sortMode') || 'added_desc';
-        this._filterChipsState.selectedValues = [currentSort];
 
         const html = this._sortOptions.map(opt => {
             const isSelected = opt.value === currentSort;
@@ -12960,149 +13048,42 @@ class AudioDashboard {
     }
 
     toggleFilterDropdown() {
-        const isHidden = this.filterDropdown.classList.contains('hidden');
+        const isHidden = this.filterDropdown && this.filterDropdown.classList.contains('hidden');
         this.closeFilterDropdowns();
-        if (isHidden) {
+        if (isHidden && this.filterDropdown) {
             this.filterDropdown.classList.remove('hidden');
+            // Update counts when opening
+            this.updateAllAccordionCounts();
         }
-    }
-
-    showFilterDropdown() {
-        this.filterSubmenu.classList.add('hidden');
-        this.filterDropdown.classList.remove('hidden');
     }
 
     closeFilterDropdowns() {
         if (this.filterDropdown) this.filterDropdown.classList.add('hidden');
-        if (this.filterSubmenu) this.filterSubmenu.classList.add('hidden');
         if (this.sortDropdown) this.sortDropdown.classList.add('hidden');
-        this._filterChipsState.currentType = null;
-        this._filterChipsState.selectedValues = [];
-    }
-
-    showFilterSubmenu(type) {
-        this._filterChipsState.currentType = type;
-        this._filterChipsState.selectedValues = [];
-
-        // Set title with fallback
-        if (this.filterSubmenuTitle) {
-            const labels = this._filterTypeLabels || {};
-            this.filterSubmenuTitle.textContent = labels[type] || type;
-        }
-
-        // Get options based on type
-        const options = this.getFilterOptions(type);
-
-        // Render options
-        this.renderFilterSubmenuOptions(options, type);
-
-        // Show submenu
-        if (this.filterDropdown) this.filterDropdown.classList.add('hidden');
-        if (this.filterSubmenu) this.filterSubmenu.classList.remove('hidden');
     }
 
     getFilterOptions(type) {
+        const opts = this._filterOptions || {};
         switch (type) {
             case 'source':
-                return this._filterOptions?.source || [];
+                return opts.source || [];
             case 'category':
-                return this._filterOptions?.category || [];
+                return opts.category || [];
             case 'channel':
-                return this._filterOptions?.channel || [];
+                return opts.channel || [];
             case 'contentType':
-                return this._filterOptions?.contentType || [];
+                return opts.contentType || [];
             case 'complexity':
-                return this._filterOptions?.complexity || [];
+                return opts.complexity || [];
             case 'language':
-                return this._filterOptions?.language || [];
+                return opts.language || [];
             case 'summaryType':
-                return this._filterOptions?.summaryType || [];
+                return opts.summaryType || [];
         }
         return [];
     }
 
-    renderFilterSubmenuOptions(options, type) {
-        if (!this.filterSubmenuOptions) return;
-
-        // Get current values for this type (sort is handled separately now)
-        const currentValues = (this.activeFilters && this.activeFilters[type]) || [];
-
-        this._filterChipsState.selectedValues = [...currentValues];
-
-        // Handle empty options (loading state)
-        if (!options || options.length === 0) {
-            this.filterSubmenuOptions.innerHTML = `
-                <div class="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 text-center">
-                    Loading options...
-                </div>
-            `;
-            return;
-        }
-
-        const html = options.map(opt => {
-            const isSelected = currentValues.includes(opt.value);
-            return `
-                <div class="filter-submenu-option ${isSelected ? 'is-selected' : ''}" data-value="${opt.value}">
-                    <div class="filter-submenu-option__check">
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-                        </svg>
-                    </div>
-                    <span class="filter-submenu-option__text">${opt.label}</span>
-                    ${opt.count !== undefined ? `<span class="filter-submenu-option__count">${opt.count}</span>` : ''}
-                </div>
-            `;
-        }).join('');
-
-        this.filterSubmenuOptions.innerHTML = html;
-
-        // Bind click handlers
-        this.filterSubmenuOptions.querySelectorAll('.filter-submenu-option').forEach(el => {
-            el.addEventListener('click', () => {
-                const value = el.dataset.value;
-                this.toggleFilterOption(value, false); // Always multi-select for filters
-                el.classList.toggle('is-selected');
-            });
-        });
-    }
-
-    toggleFilterOption(value, isSingle) {
-        if (isSingle) {
-            this._filterChipsState.selectedValues = [value];
-        } else {
-            const idx = this._filterChipsState.selectedValues.indexOf(value);
-            if (idx === -1) {
-                this._filterChipsState.selectedValues.push(value);
-            } else {
-                this._filterChipsState.selectedValues.splice(idx, 1);
-            }
-        }
-    }
-
-    applyFilterSelection() {
-        const type = this._filterChipsState.currentType;
-        const values = this._filterChipsState.selectedValues;
-
-        if (!type) return;
-
-        // Sort is handled separately by the Sort button
-        if (type === 'sort') {
-            this.closeFilterDropdowns();
-            return;
-        }
-
-        // Ensure activeFilters exists
-        if (!this.activeFilters) {
-            this.activeFilters = {};
-        }
-        this.activeFilters[type] = values;
-        this.saveFilters();
-        this.loadContent();
-
-        this.closeFilterDropdowns();
-        this.renderActiveFilterChips();
-    }
-
+    // Render active filter chips
     renderActiveFilterChips() {
         if (!this.activeFilterChips) return;
 
@@ -13116,7 +13097,7 @@ class AudioDashboard {
             'duration_desc': 'Longest First',
             'duration_asc': 'Shortest First'
         };
-        const currentSort = this.sortMode || 'added_desc';
+        const currentSort = this.sortMode || localStorage.getItem('ytv2.sortMode') || 'added_desc';
         if (currentSort !== 'added_desc') {
             chips.push({ type: 'sort', label: 'Sort', value: sortLabels[currentSort] || currentSort });
         }
