@@ -12811,35 +12811,7 @@ class AudioDashboard {
         this.sortBtn = document.getElementById('sortBtn');
         this.sortDropdown = document.getElementById('sortDropdown');
         this.sortDropdownOptions = document.getElementById('sortDropdownOptions');
-
-        // Filter button elements
-        this.addFilterBtn = document.getElementById('addFilterBtn');
-        this.filterDropdown = document.getElementById('filterDropdown');
-        this.filterAccordionContainer = document.getElementById('filterAccordionContainer');
         this.activeFilterChips = document.getElementById('activeFilterChips');
-
-        // Initialize _filterOptions early to prevent undefined errors
-        this._filterOptions = this._filterOptions || {
-            source: [],
-            category: [],
-            channel: [],
-            contentType: [],
-            complexity: [],
-            language: [],
-            summaryType: []
-        };
-
-        // Filter type labels
-        this._filterTypeLabels = {
-            sort: 'Sort',
-            source: 'Source',
-            category: 'Category',
-            channel: 'Channel',
-            contentType: 'Content Type',
-            complexity: 'Complexity',
-            language: 'Language',
-            summaryType: 'Summary Type'
-        };
 
         // Sort options (static)
         this._sortOptions = [
@@ -12861,146 +12833,26 @@ class AudioDashboard {
             this.renderSortOptions();
         }
 
-        if (!this.addFilterBtn) return;
-
-        // Toggle filter dropdown
-        this.addFilterBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.toggleFilterDropdown();
-        });
-
-        // Close dropdowns when clicking outside
+        // Close dropdown when clicking outside
         document.addEventListener('click', (e) => {
-            if (!e.target.closest('#filterDropdown') && !e.target.closest('#addFilterBtn') && !e.target.closest('#sortDropdown') && !e.target.closest('#sortBtn')) {
-                this.closeFilterDropdowns();
+            if (!e.target.closest('#sortDropdown') && !e.target.closest('#sortBtn')) {
+                if (this.sortDropdown) this.sortDropdown.classList.add('hidden');
             }
         });
-
-        // Bind accordion header clicks
-        this.bindAccordionHeaders();
 
         // Initial render of active chips
         this.renderActiveFilterChips();
     }
 
-    // Bind accordion header click handlers
-    bindAccordionHeaders() {
-        document.querySelectorAll('.filter-accordion-header').forEach(header => {
-            header.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const accordion = header.closest('.filter-accordion');
-                this.toggleAccordion(accordion);
-            });
-        });
-    }
-
-    // Toggle accordion open/close
-    toggleAccordion(accordion) {
-        if (!accordion) return;
-        const content = accordion.querySelector('.filter-accordion-content');
-        const chevron = accordion.querySelector('.filter-accordion-chevron');
-        const isOpen = !content.classList.contains('hidden');
-
-        if (isOpen) {
-            content.classList.add('hidden');
-            chevron.style.transform = 'rotate(0deg)';
-        } else {
-            // Populate content if empty
-            const type = accordion.dataset.filterType;
-            this.populateAccordionContent(accordion, type);
-            content.classList.remove('hidden');
-            chevron.style.transform = 'rotate(180deg)';
-        }
-    }
-
-    // Populate accordion content with filter options
-    populateAccordionContent(accordion, type) {
-        const content = accordion.querySelector('.filter-accordion-content');
-        if (!content) return;
-
-        const options = this.getFilterOptions(type);
-        const selectedValues = (this.activeFilters && this.activeFilters[type]) || [];
-
-        if (options.length === 0) {
-            content.innerHTML = `<div class="px-4 py-3 text-sm text-slate-400 text-center">No options available</div>`;
-            return;
-        }
-
-        const html = options.map(opt => {
-            const isSelected = selectedValues.includes(opt.value);
-            return `
-                <label class="filter-accordion-option flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-white/50 dark:hover:bg-slate-800/50 transition-colors">
-                    <input type="checkbox" class="filter-accordion-checkbox rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500" data-filter-type="${type}" data-value="${opt.value}" ${isSelected ? 'checked' : ''}>
-                    <span class="flex-1 text-sm text-slate-700 dark:text-slate-200 truncate">${opt.label}</span>
-                    ${opt.count !== undefined ? `<span class="text-xs text-slate-400">${opt.count}</span>` : ''}
-                </label>
-            `;
-        }).join('');
-
-        content.innerHTML = html;
-
-        // Bind checkbox change handlers
-        content.querySelectorAll('.filter-accordion-checkbox').forEach(checkbox => {
-            checkbox.addEventListener('change', (e) => {
-                this.handleAccordionFilterChange(type, e.target.dataset.value, e.target.checked);
-            });
-        });
-    }
-
-    // Handle filter checkbox change (immediate apply)
-    handleAccordionFilterChange(type, value, isChecked) {
-        // Ensure activeFilters exists
-        if (!this.activeFilters) {
-            this.activeFilters = {};
-        }
-        if (!this.activeFilters[type]) {
-            this.activeFilters[type] = [];
-        }
-
-        if (isChecked) {
-            if (!this.activeFilters[type].includes(value)) {
-                this.activeFilters[type].push(value);
-            }
-        } else {
-            const idx = this.activeFilters[type].indexOf(value);
-            if (idx > -1) {
-                this.activeFilters[type].splice(idx, 1);
-            }
-        }
-
-        // Update accordion header count
-        this.updateAccordionCount(type);
-
-        // Apply filters immediately
-        this.saveFilters();
-        this.loadContent();
-        this.renderActiveFilterChips();
-    }
-
-    // Update selected count on accordion header
-    updateAccordionCount(type) {
-        const accordion = document.querySelector(`.filter-accordion[data-filter-type="${type}"]`);
-        if (!accordion) return;
-        const countEl = accordion.querySelector('.filter-accordion-count');
-        if (!countEl) return;
-
-        const count = (this.activeFilters && this.activeFilters[type] && this.activeFilters[type].length) || 0;
-        countEl.textContent = count > 0 ? `${count} selected` : '';
-    }
-
-    // Populate all accordion counts after filters load
-    updateAllAccordionCounts() {
-        ['source', 'category', 'channel', 'contentType', 'complexity', 'language', 'summaryType'].forEach(type => {
-            this.updateAccordionCount(type);
-        });
-    }
-
     // --- Sort Button Methods ---
     toggleSortDropdown() {
         const isHidden = this.sortDropdown && this.sortDropdown.classList.contains('hidden');
-        this.closeFilterDropdowns();
-        if (isHidden && this.sortDropdown) {
-            this.sortDropdown.classList.remove('hidden');
+        if (this.sortDropdown) {
+            if (isHidden) {
+                this.sortDropdown.classList.remove('hidden');
+            } else {
+                this.sortDropdown.classList.add('hidden');
+            }
         }
     }
 
@@ -13037,7 +12889,7 @@ class AudioDashboard {
     applySortSelection(value) {
         this.sortMode = value;
         localStorage.setItem('ytv2.sortMode', value);
-        this.closeFilterDropdowns();
+        if (this.sortDropdown) this.sortDropdown.classList.add('hidden');
         this.loadContent();
         // Update sort button label
         const opt = this._sortOptions.find(o => o.value === value);
@@ -13045,42 +12897,6 @@ class AudioDashboard {
         if (opt && sortBtnLabel) {
             sortBtnLabel.textContent = opt.label;
         }
-    }
-
-    toggleFilterDropdown() {
-        const isHidden = this.filterDropdown && this.filterDropdown.classList.contains('hidden');
-        this.closeFilterDropdowns();
-        if (isHidden && this.filterDropdown) {
-            this.filterDropdown.classList.remove('hidden');
-            // Update counts when opening
-            this.updateAllAccordionCounts();
-        }
-    }
-
-    closeFilterDropdowns() {
-        if (this.filterDropdown) this.filterDropdown.classList.add('hidden');
-        if (this.sortDropdown) this.sortDropdown.classList.add('hidden');
-    }
-
-    getFilterOptions(type) {
-        const opts = this._filterOptions || {};
-        switch (type) {
-            case 'source':
-                return opts.source || [];
-            case 'category':
-                return opts.category || [];
-            case 'channel':
-                return opts.channel || [];
-            case 'contentType':
-                return opts.contentType || [];
-            case 'complexity':
-                return opts.complexity || [];
-            case 'language':
-                return opts.language || [];
-            case 'summaryType':
-                return opts.summaryType || [];
-        }
-        return [];
     }
 
     // Render active filter chips
@@ -13102,91 +12918,58 @@ class AudioDashboard {
             chips.push({ type: 'sort', label: 'Sort', value: sortLabels[currentSort] || currentSort });
         }
 
-        // Get filter labels with fallback
-        const filterLabels = this._filterTypeLabels || {
-            source: 'Source',
-            category: 'Category',
-            channel: 'Channel',
-            contentType: 'Content Type',
-            complexity: 'Complexity',
-            language: 'Language',
-            summaryType: 'Summary Type'
-        };
-
-        const filterTypes = ['source', 'category', 'channel', 'contentType', 'complexity', 'language', 'summaryType'];
-        filterTypes.forEach(type => {
-            const values = (this.activeFilters && this.activeFilters[type]) || [];
-            values.forEach(val => {
-                const options = (this._filterOptions && this._filterOptions[type]) || [];
-                const opt = options.find(o => o.value === val);
-                chips.push({
-                    type,
-                    label: filterLabels[type] || type,
-                    value: opt?.label || val
-                });
-            });
-        });
-
         if (chips.length === 0) {
             this.activeFilterChips.innerHTML = '';
             return;
         }
 
-        this.activeFilterChips.innerHTML = chips.map((chip, idx) => `
-            <div class="filter-chip" data-chip-index="${idx}" data-chip-type="${chip.type}">
+        const html = chips.map((chip, idx) => `
+            <span class="filter-chip">
                 <span class="filter-chip__label">${chip.label}:</span>
                 <span class="filter-chip__value">${chip.value}</span>
-                <button type="button" class="filter-chip__remove" aria-label="Remove filter">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <button type="button" class="filter-chip__remove" data-index="${idx}" data-type="${chip.type}" aria-label="Remove filter">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
-            </div>
+            </span>
         `).join('');
 
+        this.activeFilterChips.innerHTML = html;
+
+        // Bind remove handlers
         this.activeFilterChips.querySelectorAll('.filter-chip__remove').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const chip = e.target.closest('.filter-chip');
-                const idx = parseInt(chip.dataset.chipIndex, 10);
-                this.removeFilterChip(idx);
+            btn.addEventListener('click', () => {
+                const type = btn.dataset.type;
+                if (type === 'sort') {
+                    this.sortMode = 'added_desc';
+                    localStorage.setItem('ytv2.sortMode', 'added_desc');
+                    this.loadContent();
+                    this.renderSortOptions();
+                    const sortBtnLabel = document.getElementById('sortBtnLabel');
+                    if (sortBtnLabel) sortBtnLabel.textContent = 'Sort';
+                }
+                this.renderActiveFilterChips();
             });
         });
     }
 
+    // Placeholder methods for compatibility
+    toggleFilterDropdown() {}
+    closeFilterDropdowns() {
+        if (this.sortDropdown) this.sortDropdown.classList.add('hidden');
+    }
+    getFilterOptions(type) { return []; }
+    updateAllAccordionCounts() {}
+
+    // Compatibility: removeFilterChip (simplified)
     removeFilterChip(index) {
-        const chips = [];
-        const sortLabels = { 'added_desc': 'Recently Added', 'video_newest': 'Video Newest', 'video_oldest': 'Video Oldest', 'title_az': 'Title A→Z', 'title_za': 'Title Z→A', 'duration_desc': 'Longest First', 'duration_asc': 'Shortest First' };
-        const currentSort = this.sortMode || 'added_desc';
-        if (currentSort !== 'added_desc') {
-            chips.push({ type: 'sort', value: currentSort });
-        }
-
-        const filterTypes = ['source', 'category', 'channel', 'contentType', 'complexity', 'language', 'summaryType'];
-        filterTypes.forEach(type => {
-            const values = (this.activeFilters && this.activeFilters[type]) || [];
-            values.forEach(val => {
-                chips.push({ type, value: val });
-            });
-        });
-
-        const removed = chips[index];
-        if (!removed) return;
-
-        if (removed.type === 'sort') {
-            this.sortMode = 'added_desc';
-            localStorage.setItem('ytv2.sortMode', 'added_desc');
-        } else {
-            if (!this.activeFilters) this.activeFilters = {};
-            const values = this.activeFilters[removed.type] || [];
-            const idx = values.indexOf(removed.value);
-            if (idx !== -1) {
-                values.splice(idx, 1);
-                this.activeFilters[removed.type] = values;
-            }
-            this.saveFilters();
-        }
-
+        this.sortMode = 'added_desc';
+        localStorage.setItem('ytv2.sortMode', 'added_desc');
         this.loadContent();
+        this.renderSortOptions();
+        const sortBtnLabel = document.getElementById('sortBtnLabel');
+        if (sortBtnLabel) sortBtnLabel.textContent = 'Sort';
         this.renderActiveFilterChips();
     }
 }

@@ -652,10 +652,10 @@
                         <!-- Chips will be dynamically inserted here -->
                     </div>
 
-                    <!-- Sort + Filter Buttons -->
-                    <div class="flex gap-2 mb-4">
+                    <!-- Sort Button -->
+                    <div class="mb-4">
                         <!-- Sort Button + Dropdown -->
-                        <div class="relative flex-1">
+                        <div class="relative">
                             <button id="sortBtn" type="button"
                                 class="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 hover:from-slate-100 hover:to-slate-200 dark:hover:from-slate-700 dark:hover:to-slate-800 border border-slate-200/70 dark:border-slate-700/70 text-sm font-medium text-slate-700 dark:text-slate-200 transition-all shadow-sm hover:shadow">
                                 <svg class="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -670,144 +670,6 @@
                             <div id="sortDropdown" class="hidden absolute inset-x-0 top-full mt-2 z-50 rounded-xl bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 shadow-2xl overflow-hidden animate-dropdown-in">
                                 <div class="py-1 max-h-64 overflow-y-auto" id="sortDropdownOptions">
                                     <!-- Sort options will be inserted here -->
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Filter Button + Accordion Dropdown -->
-                        <div class="relative flex-1">
-                            <button id="addFilterBtn" type="button"
-                                class="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 hover:from-slate-100 hover:to-slate-200 dark:hover:from-slate-700 dark:hover:to-slate-800 border border-slate-200/70 dark:border-slate-700/70 text-sm font-medium text-slate-700 dark:text-slate-200 transition-all shadow-sm hover:shadow">
-                                <svg class="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                                </svg>
-                                Filter
-                                <svg class="w-3.5 h-3.5 ml-auto text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                                </svg>
-                            </button>
-
-                            <!-- Filter Accordion Dropdown (fits sidebar width) -->
-                            <div id="filterDropdown" class="hidden absolute inset-x-0 top-full mt-2 z-50 rounded-xl bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 shadow-2xl overflow-hidden animate-dropdown-in">
-                                <div class="max-h-80 overflow-y-auto" id="filterAccordionContainer">
-                                    <!-- Source Accordion -->
-                                    <div class="filter-accordion" data-filter-type="source">
-                                        <button type="button" class="filter-accordion-header w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                                            </svg>
-                                            <span class="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">Source</span>
-                                            <span class="filter-accordion-count text-xs text-slate-400"></span>
-                                            <svg class="w-4 h-4 text-slate-400 filter-accordion-chevron transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                                            </svg>
-                                        </button>
-                                        <div class="filter-accordion-content hidden border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/30">
-                                            <!-- Options inserted by JS -->
-                                        </div>
-                                    </div>
-
-                                    <!-- Category Accordion -->
-                                    <div class="filter-accordion" data-filter-type="category">
-                                        <button type="button" class="filter-accordion-header w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                                            </svg>
-                                            <span class="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">Category</span>
-                                            <span class="filter-accordion-count text-xs text-slate-400"></span>
-                                            <svg class="w-4 h-4 text-slate-400 filter-accordion-chevron transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                                            </svg>
-                                        </button>
-                                        <div class="filter-accordion-content hidden border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/30">
-                                            <!-- Options inserted by JS -->
-                                        </div>
-                                    </div>
-
-                                    <!-- Channel Accordion -->
-                                    <div class="filter-accordion" data-filter-type="channel">
-                                        <button type="button" class="filter-accordion-header w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                            </svg>
-                                            <span class="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">Channel</span>
-                                            <span class="filter-accordion-count text-xs text-slate-400"></span>
-                                            <svg class="w-4 h-4 text-slate-400 filter-accordion-chevron transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                                            </svg>
-                                        </button>
-                                        <div class="filter-accordion-content hidden border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/30">
-                                            <!-- Options inserted by JS -->
-                                        </div>
-                                    </div>
-
-                                    <!-- Content Type Accordion -->
-                                    <div class="filter-accordion" data-filter-type="contentType">
-                                        <button type="button" class="filter-accordion-header w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                                            </svg>
-                                            <span class="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">Content Type</span>
-                                            <span class="filter-accordion-count text-xs text-slate-400"></span>
-                                            <svg class="w-4 h-4 text-slate-400 filter-accordion-chevron transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                                            </svg>
-                                        </button>
-                                        <div class="filter-accordion-content hidden border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/30">
-                                            <!-- Options inserted by JS -->
-                                        </div>
-                                    </div>
-
-                                    <!-- Complexity Accordion -->
-                                    <div class="filter-accordion" data-filter-type="complexity">
-                                        <button type="button" class="filter-accordion-header w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                            </svg>
-                                            <span class="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">Complexity</span>
-                                            <span class="filter-accordion-count text-xs text-slate-400"></span>
-                                            <svg class="w-4 h-4 text-slate-400 filter-accordion-chevron transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                                            </svg>
-                                        </button>
-                                        <div class="filter-accordion-content hidden border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/30">
-                                            <!-- Options inserted by JS -->
-                                        </div>
-                                    </div>
-
-                                    <!-- Language Accordion -->
-                                    <div class="filter-accordion" data-filter-type="language">
-                                        <button type="button" class="filter-accordion-header w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
-                                            </svg>
-                                            <span class="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">Language</span>
-                                            <span class="filter-accordion-count text-xs text-slate-400"></span>
-                                            <svg class="w-4 h-4 text-slate-400 filter-accordion-chevron transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                                            </svg>
-                                        </button>
-                                        <div class="filter-accordion-content hidden border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/30">
-                                            <!-- Options inserted by JS -->
-                                        </div>
-                                    </div>
-
-                                    <!-- Summary Type Accordion -->
-                                    <div class="filter-accordion" data-filter-type="summaryType">
-                                        <button type="button" class="filter-accordion-header w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                                            <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                            </svg>
-                                            <span class="flex-1 text-sm font-medium text-slate-700 dark:text-slate-200">Summary Type</span>
-                                            <span class="filter-accordion-count text-xs text-slate-400"></span>
-                                            <svg class="w-4 h-4 text-slate-400 filter-accordion-chevron transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                                            </svg>
-                                        </button>
-                                        <div class="filter-accordion-content hidden border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/30">
-                                            <!-- Options inserted by JS -->
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1158,7 +1020,7 @@
     <!-- Load feature flags before main dashboard script -->
     <div id="srLive" class="sr-only" aria-live="polite"></div>
     <script src="ui_flags.js?v=10"></script>
-    <script src="dashboard_v3.js?v=fix32-accordion-20260224"></script>
+    <script src="dashboard_v3.js?v=fix33-sort-only-20260224"></script>
 
 </body>
 
