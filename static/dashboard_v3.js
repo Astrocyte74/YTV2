@@ -492,9 +492,6 @@ class AudioDashboard {
         this.updateImageModeUI();
         this.updateWallArrangeSettingUI();
 
-        // Filter chips initialization
-        this.initFilterChips();
-
         // Search and filters
         this.searchInput.addEventListener('input', this.debounce(() => this.handleSearch(), 500));
         // Optional top search (mobile + desktop collapsed)
@@ -2009,17 +2006,6 @@ class AudioDashboard {
             this.renderFilterSection(filters.complexity_level, this.complexityFilters, 'complexity');
             this.renderLanguageFilters(filters.languages || []);
             this.renderFilterSection(filters.summary_type, this.summaryTypeFilters, 'summary_type');
-
-            // Also populate _filterOptions for the filter chips UI
-            this._filterOptions = {
-                source: sourceItems,
-                category: filters.categories || [],
-                channel: filters.channels || [],
-                contentType: filters.content_type || [],
-                complexity: filters.complexity_level || [],
-                language: filters.languages || [],
-                summaryType: filters.summary_type || []
-            };
 
             // Bind show more toggles after content is loaded
             this.bindShowMoreToggles();
@@ -12800,177 +12786,6 @@ class AudioDashboard {
         // Initial position
         const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : 0);
         onMove(clientX);
-    }
-
-    // ========================================
-    // FILTER CHIPS
-    // ========================================
-
-    initFilterChips() {
-        // Sort button elements
-        this.sortBtn = document.getElementById('sortBtn');
-        this.sortDropdown = document.getElementById('sortDropdown');
-        this.sortDropdownOptions = document.getElementById('sortDropdownOptions');
-        this.activeFilterChips = document.getElementById('activeFilterChips');
-
-        // Sort options (static)
-        this._sortOptions = [
-            { value: 'added_desc', label: 'Recently Added' },
-            { value: 'video_newest', label: 'Video Newest' },
-            { value: 'video_oldest', label: 'Video Oldest' },
-            { value: 'title_az', label: 'Title A→Z' },
-            { value: 'title_za', label: 'Title Z→A' },
-            { value: 'duration_desc', label: 'Longest First' },
-            { value: 'duration_asc', label: 'Shortest First' }
-        ];
-
-        // Bind Sort button events
-        if (this.sortBtn) {
-            this.sortBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.toggleSortDropdown();
-            });
-            this.renderSortOptions();
-        }
-
-        // Close dropdown when clicking outside
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('#sortDropdown') && !e.target.closest('#sortBtn')) {
-                if (this.sortDropdown) this.sortDropdown.classList.add('hidden');
-            }
-        });
-
-        // Initial render of active chips
-        this.renderActiveFilterChips();
-    }
-
-    // --- Sort Button Methods ---
-    toggleSortDropdown() {
-        const isHidden = this.sortDropdown && this.sortDropdown.classList.contains('hidden');
-        if (this.sortDropdown) {
-            if (isHidden) {
-                this.sortDropdown.classList.remove('hidden');
-            } else {
-                this.sortDropdown.classList.add('hidden');
-            }
-        }
-    }
-
-    renderSortOptions() {
-        if (!this.sortDropdownOptions) return;
-
-        const currentSort = this.sortMode || localStorage.getItem('ytv2.sortMode') || 'added_desc';
-
-        const html = this._sortOptions.map(opt => {
-            const isSelected = opt.value === currentSort;
-            return `
-                <div class="sort-option ${isSelected ? 'is-selected bg-audio-50 dark:bg-audio-900/30' : ''}" data-value="${opt.value}">
-                    <div class="sort-option__check">
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-                        </svg>
-                    </div>
-                    <span class="sort-option__text">${opt.label}</span>
-                </div>
-            `;
-        }).join('');
-
-        this.sortDropdownOptions.innerHTML = html;
-
-        // Bind click handlers
-        this.sortDropdownOptions.querySelectorAll('.sort-option').forEach(el => {
-            el.addEventListener('click', () => {
-                const value = el.dataset.value;
-                this.applySortSelection(value);
-            });
-        });
-    }
-
-    applySortSelection(value) {
-        this.sortMode = value;
-        localStorage.setItem('ytv2.sortMode', value);
-        if (this.sortDropdown) this.sortDropdown.classList.add('hidden');
-        this.loadContent();
-        // Update sort button label
-        const opt = this._sortOptions.find(o => o.value === value);
-        const sortBtnLabel = document.getElementById('sortBtnLabel');
-        if (opt && sortBtnLabel) {
-            sortBtnLabel.textContent = opt.label;
-        }
-    }
-
-    // Render active filter chips
-    renderActiveFilterChips() {
-        if (!this.activeFilterChips) return;
-
-        const chips = [];
-        const sortLabels = {
-            'added_desc': 'Recently Added',
-            'video_newest': 'Video Newest',
-            'video_oldest': 'Video Oldest',
-            'title_az': 'Title A→Z',
-            'title_za': 'Title Z→A',
-            'duration_desc': 'Longest First',
-            'duration_asc': 'Shortest First'
-        };
-        const currentSort = this.sortMode || localStorage.getItem('ytv2.sortMode') || 'added_desc';
-        if (currentSort !== 'added_desc') {
-            chips.push({ type: 'sort', label: 'Sort', value: sortLabels[currentSort] || currentSort });
-        }
-
-        if (chips.length === 0) {
-            this.activeFilterChips.innerHTML = '';
-            return;
-        }
-
-        const html = chips.map((chip, idx) => `
-            <span class="filter-chip">
-                <span class="filter-chip__label">${chip.label}:</span>
-                <span class="filter-chip__value">${chip.value}</span>
-                <button type="button" class="filter-chip__remove" data-index="${idx}" data-type="${chip.type}" aria-label="Remove filter">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
-            </span>
-        `).join('');
-
-        this.activeFilterChips.innerHTML = html;
-
-        // Bind remove handlers
-        this.activeFilterChips.querySelectorAll('.filter-chip__remove').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const type = btn.dataset.type;
-                if (type === 'sort') {
-                    this.sortMode = 'added_desc';
-                    localStorage.setItem('ytv2.sortMode', 'added_desc');
-                    this.loadContent();
-                    this.renderSortOptions();
-                    const sortBtnLabel = document.getElementById('sortBtnLabel');
-                    if (sortBtnLabel) sortBtnLabel.textContent = 'Sort';
-                }
-                this.renderActiveFilterChips();
-            });
-        });
-    }
-
-    // Placeholder methods for compatibility
-    toggleFilterDropdown() {}
-    closeFilterDropdowns() {
-        if (this.sortDropdown) this.sortDropdown.classList.add('hidden');
-    }
-    getFilterOptions(type) { return []; }
-    updateAllAccordionCounts() {}
-
-    // Compatibility: removeFilterChip (simplified)
-    removeFilterChip(index) {
-        this.sortMode = 'added_desc';
-        localStorage.setItem('ytv2.sortMode', 'added_desc');
-        this.loadContent();
-        this.renderSortOptions();
-        const sortBtnLabel = document.getElementById('sortBtnLabel');
-        if (sortBtnLabel) sortBtnLabel.textContent = 'Sort';
-        this.renderActiveFilterChips();
     }
 }
 
