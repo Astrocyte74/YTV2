@@ -1,49 +1,51 @@
 /**
  * YTV2 Dashboard V3 - Audio-Centric Interface
  * Phase 3 implementation with integrated audio player and modern UX
+ * @version 2026-02-16-FIX4
  */
+console.log('[YTV2] Dashboard JS loaded - version 2026-02-16-FIX4');
 
 // Subcategory to parent category mapping (authoritative source from youtube_summarizer.py)
 const SUBCATEGORY_PARENTS = {
     // Education subcategories
     "Academic Subjects": "Education",
-    "Online Learning": "Education", 
+    "Online Learning": "Education",
     "Tutorials & Courses": "Education",
     "Teaching Methods": "Education",
     "Educational Technology": "Education",
     "Student Life": "Education",
-    
+
     // Technology subcategories  
     "Programming & Software Development": "Technology",
     "Web Development": "Technology",
-    "Mobile Development": "Technology", 
+    "Mobile Development": "Technology",
     "DevOps & Infrastructure": "Technology",
     "Databases & Data Science": "Technology",
     "Cybersecurity": "Technology",
     "Tech Reviews & Comparisons": "Technology",
     "Software Tutorials": "Technology",
     "Tech News & Trends": "Technology",
-    
+
     // AI Software Development subcategories
     "Model Selection & Evaluation": "AI Software Development",
     "Prompt Engineering & RAG": "AI Software Development",
-    "Training & Fine-Tuning": "AI Software Development", 
+    "Training & Fine-Tuning": "AI Software Development",
     "Deployment & Serving": "AI Software Development",
     "Agents & MCP/Orchestration": "AI Software Development",
     "APIs & SDKs": "AI Software Development",
     "Data Engineering & ETL": "AI Software Development",
-    "Testing & Observability": "AI Software Development", 
+    "Testing & Observability": "AI Software Development",
     "Security & Safety": "AI Software Development",
     "Cost Optimisation": "AI Software Development",
-    
+
     // History subcategories
     "Ancient Civilizations": "History",
     "Medieval History": "History",
     "Modern History": "History",
-    "Cultural Heritage": "History", 
+    "Cultural Heritage": "History",
     "Historical Analysis": "History",
     "Biographies": "History",
-    
+
     // WWII subcategories  
     "Causes & Prelude": "World War II (WWII)",
     "European Theatre": "World War II (WWII)",
@@ -55,11 +57,11 @@ const SUBCATEGORY_PARENTS = {
     "Diplomacy & Conferences (Yalta, Potsdam)": "World War II (WWII)",
     "Biographies & Commanders": "World War II (WWII)",
     "Aftermath & Reconstruction": "World War II (WWII)",
-    
+
     // Business subcategories
     "Industry Analysis": "Business",
     "Career Development": "Business",
-    
+
     // General subcategories
     "Miscellaneous": "General",
     "Other": "General"
@@ -94,9 +96,9 @@ const READER_FAMILY_MAP = {
     sans: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif",
     serif: "ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif"
 };
-const READER_THEMES = ['light','sepia','dark'];
-const READER_PARA_STYLES = ['spaced','indented'];
-const READER_JUSTIFY = ['left','justify'];
+const READER_THEMES = ['light', 'sepia', 'dark'];
+const READER_PARA_STYLES = ['spaced', 'indented'];
+const READER_JUSTIFY = ['left', 'justify'];
 // Measure mapping: tuned per feedback
 // - Previous 'medium'(70ch) becomes 'narrow'
 // - Previous 'wide'(80ch) becomes 'medium'
@@ -122,6 +124,9 @@ class AudioDashboard {
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallSimilarityMode')) this.flags.wallSimilarityMode = 'halo';
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallFlipEnabled')) this.flags.wallFlipEnabled = true;
         if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallMegaSpanEnabled')) this.flags.wallMegaSpanEnabled = true;
+        if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallKaleidoPreferred')) this.flags.wallKaleidoPreferred = false;
+        if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallDockedReaderEnabled')) this.flags.wallDockedReaderEnabled = true;
+        if (!Object.prototype.hasOwnProperty.call(this.flags, 'wallDockAutoOpenFirst')) this.flags.wallDockAutoOpenFirst = true;
         this.config = (typeof window !== 'undefined' && window.DASHBOARD_CONFIG) ? window.DASHBOARD_CONFIG : {};
         // Debug: allow slowing FLIP with URL ?flip=slow|slower|off or ?flipms=NNN
         this.flipDebugMs = 0;
@@ -138,20 +143,36 @@ class AudioDashboard {
                 const n = Math.max(0, parseInt(fm, 10) || 0);
                 if (Number.isFinite(n)) this.flipDebugMs = n;
             }
-        } catch(_) {}
+        } catch (_) { }
+        this.initialFilterPayload = this.parseInitialFilterPayloadFromUrl();
+        this._appliedInitialFilterPayload = false;
         const autoPlayConfig = this.config && this.config.autoPlayOnLoad;
-        this.autoPlayOnLoad = autoPlayConfig === undefined;
+        this.autoPlayOnLoad = false;  // Default: don't auto-play on load
         if (autoPlayConfig !== undefined) {
             const normalized = String(autoPlayConfig).toLowerCase();
-            this.autoPlayOnLoad = !['false','0','no','off'].includes(normalized);
+            this.autoPlayOnLoad = ['true', '1', 'yes', 'on'].includes(normalized);
         }
         this.currentFilters = {};
         this.currentPage = 1;
         this.currentSort = 'added_desc';
         this.searchQuery = '';
-        this.viewMode = (localStorage.getItem('ytv2.viewMode') || 'list');
+        this.viewMode = 'wall'; // Wall mode only - list/grid retired
         // Inline expand state
         this.currentExpandedId = null;
+        // Active reader state (for URL popstate sync)
+        this._activeReader = null; // { id, mode, close }
+        this._kaleidoSetVariant = null;
+        this._wallDockTeardown = [];
+        this._wallDockSelectedId = '';
+        this.wallDockArrangeModeKey = 'ytv2.wallDockArrangeMode';
+        this.wallDockArrangeMode = 'hybrid';
+        this._wallDockAutoOpenedOnce = false;
+        try {
+            const modeRaw = localStorage.getItem(this.wallDockArrangeModeKey);
+            this.wallDockArrangeMode = this.normalizeWallDockArrangeMode(modeRaw || this.flags.wallDockArrangeModeDefault || 'hybrid');
+        } catch (_) {
+            this.wallDockArrangeMode = this.normalizeWallDockArrangeMode(this.flags.wallDockArrangeModeDefault || 'hybrid');
+        }
         // Queue persistence key (Phase 3)
         this.queueKey = 'ytv2.queue';
         // Telemetry buffer
@@ -180,6 +201,8 @@ class AudioDashboard {
         this.reprocessToken = null;
         this.reprocessTokenSource = null;
         this.pendingReprocess = null;
+        this.playbackRateKey = 'ytv2.playbackRate';
+        this.playbackRates = [1, 1.25, 1.5, 1.75, 2];
 
         // Filter state helpers
         this.initialSourceFilters = null;
@@ -190,6 +213,7 @@ class AudioDashboard {
         this.showNowPlayingPlaceholder();
         this.bindEvents();
         this.initRealtimeUpdates();
+        this.fetchLlmModels(); // Load available LLM models for regenerate
         // Only poll metrics when a NAS bridge is configured or flag enabled
         if (this.hasNasBridge || (this.flags && this.flags.metricsEnabled)) {
             this.startMetricsPolling();
@@ -204,7 +228,9 @@ class AudioDashboard {
         this.audioElement = document.getElementById('audioElement');
         // Bottom container removed; mini player is always visible in sidebar
         this.audioPlayerContainer = null;
-        
+        this.applyStoredPlaybackRate();
+        this.updatePlaybackRateUi();
+
         // Player controls
         this.playPauseBtn = document.getElementById('playPauseBtn');
         this.playIcon = document.getElementById('playIcon');
@@ -215,7 +241,9 @@ class AudioDashboard {
         this.progressBar = document.getElementById('progressBar');
         this.currentTimeEl = document.getElementById('currentTime');
         this.totalTimeEl = document.getElementById('totalTime');
-        
+        this.playbackRateBtn = document.getElementById('playbackRateBtn');
+        this.miniPlayerCloseBtn = document.getElementById('miniPlayerCloseBtn');
+
         // Mobile mini-player elements
         this.mobileMiniPlayer = document.getElementById('mobileMiniPlayer');
         this.mobilePlayPauseBtn = document.getElementById('mobilePlayPauseBtn');
@@ -228,6 +256,8 @@ class AudioDashboard {
         this.mobileCurrentTimeEl = document.getElementById('mobileCurrentTime');
         this.mobileNowPlayingTitle = document.getElementById('mobileNowPlayingTitle');
         this.mobileNowPlayingThumb = document.getElementById('mobileNowPlayingThumb');
+        this.mobilePlaybackRateBtn = document.getElementById('mobilePlaybackRateBtn');
+        this.mobileMiniPlayerCloseBtn = document.getElementById('mobileMiniPlayerCloseBtn');
 
         // Top mini-player (desktop collapsed) elements
         this.topMiniPlayer = document.getElementById('topMiniPlayer');
@@ -243,12 +273,12 @@ class AudioDashboard {
         this.volumeBtn = document.getElementById('volumeBtn');
         this.volumeOnIcon = document.getElementById('volumeOnIcon');
         this.volumeOffIcon = document.getElementById('volumeOffIcon');
-        
+
         // Player info
         // Legacy bottom-player ids not present anymore; keep null-safe
         this.playerTitle = document.getElementById('playerTitle');
         this.playerMeta = document.getElementById('playerMeta');
-        
+
         // Search and filters
         this.searchInput = document.getElementById('searchInput');
         this.sortToolbar = document.getElementById('sortToolbar');
@@ -260,7 +290,11 @@ class AudioDashboard {
         this.complexityFilters = document.getElementById('complexityFilters');
         this.languageFilters = document.getElementById('languageFilters');
         this.summaryTypeFilters = document.getElementById('summaryTypeFilters');
-        
+
+        // Semantic search (on by default - hybrid search combines semantic + keyword)
+        this.semanticSearchEnabled = true;
+        this.semanticSearchToggle = document.getElementById('semanticSearchToggle');
+
         // Content area
         this.contentGrid = document.getElementById('contentGrid');
         this.resultsTitle = document.getElementById('resultsTitle');
@@ -268,17 +302,11 @@ class AudioDashboard {
         this.resultsCount = document.getElementById('resultsCount');
         this.heroBadges = document.getElementById('heroBadges');
         this.pagination = document.getElementById('pagination');
-        this.listViewBtn = document.getElementById('listViewBtn');
-        this.gridViewBtn = document.getElementById('gridViewBtn');
-        this.wallViewBtn = document.getElementById('wallViewBtn');
-        this.listViewBtnMobile = document.getElementById('listViewBtnMobile');
-        this.gridViewBtnMobile = document.getElementById('gridViewBtnMobile');
-        this.wallViewBtnMobile = document.getElementById('wallViewBtnMobile');
         this.sidebarCollapseToggle = document.getElementById('sidebarCollapseToggle');
         this.sidebarExpandToggle = document.getElementById('sidebarExpandToggle');
         this.sidebarElement = document.getElementById('sidebar');
         this.resultsHero = document.getElementById('resultsHero');
-        
+
         // Queue
         this.queueSidebar = document.getElementById('queueSidebar');
         this.queueToggle = document.getElementById('queueToggle');
@@ -300,16 +328,18 @@ class AudioDashboard {
         this.settingsToggle = document.getElementById('settingsToggle');
         this.settingsMenu = document.getElementById('settingsMenu');
         this.themeButtons = this.settingsMenu ? this.settingsMenu.querySelectorAll('[data-theme]') : [];
-        this.settingsAccordions = this.settingsMenu ? this.settingsMenu.querySelectorAll('details.settings-accordion') : [];
+        this.settingsTabs = this.settingsMenu ? this.settingsMenu.querySelectorAll('[data-settings-tab]') : [];
+        this.settingsPanels = this.settingsMenu ? this.settingsMenu.querySelectorAll('[data-settings-panel]') : [];
+        this.settingsAccordions = []; // Kept for backwards compatibility
         this.themeMode = localStorage.getItem('ytv2.theme') || 'system';
         this.sidebarCollapsed = localStorage.getItem('ytv2.sidebarCollapsed') === '1';
         this._collapsedForMobile = null;
 
         // Realtime banner
         this.realtimeBanner = document.getElementById('realtimeBanner');
-       this.realtimeBannerText = document.getElementById('realtimeBannerText');
-       this.realtimeRefreshBtn = document.getElementById('realtimeRefreshBtn');
-       this.realtimeDismissBtn = document.getElementById('realtimeDismissBtn');
+        this.realtimeBannerText = document.getElementById('realtimeBannerText');
+        this.realtimeRefreshBtn = document.getElementById('realtimeRefreshBtn');
+        this.realtimeDismissBtn = document.getElementById('realtimeDismissBtn');
 
         // Metrics panel
         this.metricsPanel = document.getElementById('metricsPanel');
@@ -324,8 +354,11 @@ class AudioDashboard {
         this.reprocessLanguageLevel = document.getElementById('reprocessLanguageLevel');
         this.reprocessFootnote = document.getElementById('reprocessFootnote');
         this.reprocessTokenReset = document.getElementById('reprocessTokenReset');
+        this.reprocessModelSelect = document.getElementById('reprocessModelSelect');
         this.confirmReprocessBtn = document.getElementById('confirmReprocessBtn');
         this.cancelReprocessBtn = document.getElementById('cancelReprocessBtn');
+        this.llmModels = [];
+        this.llmModelsDefault = '';
 
         // Image controls in header
         this.imgModeThumbBtn = document.getElementById('imgModeThumbBtn');
@@ -336,9 +369,10 @@ class AudioDashboard {
         this.imgModeAiBtnMobile = document.getElementById('imgModeAiBtnMobile');
         this.imgModeRotateBtnMobile = document.getElementById('imgModeRotateBtnMobile');
         // Settings menu controls
-        this.viewListSettingBtn = document.getElementById('viewListSettingBtn');
-        this.viewGridSettingBtn = document.getElementById('viewGridSettingBtn');
-        this.viewWallSettingBtn = document.getElementById('viewWallSettingBtn');
+        this.wallArrangeHybridSettingBtn = document.getElementById('wallArrangeHybridSettingBtn');
+        this.wallArrangeCategorySettingBtn = document.getElementById('wallArrangeCategorySettingBtn');
+        this.wallArrangeKeywordsSettingBtn = document.getElementById('wallArrangeKeywordsSettingBtn');
+        this.wallArrangeNewestSettingBtn = document.getElementById('wallArrangeNewestSettingBtn');
         this.imgModeThumbSettingBtn = document.getElementById('imgModeThumbSettingBtn');
         this.imgModeAiSettingBtn = document.getElementById('imgModeAiSettingBtn');
         this.imgModeAi2SettingBtn = document.getElementById('imgModeAi2SettingBtn');
@@ -347,6 +381,33 @@ class AudioDashboard {
         // Admin token controls (Settings)
         this.adminTokenSetBtn = document.getElementById('adminTokenSetBtn');
         this.adminTokenClearBtn = document.getElementById('adminTokenClearBtn');
+
+        // Filter bar elements
+        this.filterBar = document.getElementById('filterBar');
+        this.sortDropdownBtn = document.getElementById('sortDropdownBtn');
+        this.sortDropdownMenu = document.getElementById('sortDropdownMenu');
+        this.sortDropdownLabel = document.getElementById('sortDropdownLabel');
+        this.sourceDropdownBtn = document.getElementById('sourceDropdownBtn');
+        this.sourceDropdownMenu = document.getElementById('sourceDropdownMenu');
+        this.sourceDropdownLabel = document.getElementById('sourceDropdownLabel');
+        this.categoryDropdownBtn = document.getElementById('categoryDropdownBtn');
+        this.categoryDropdownMenu = document.getElementById('categoryDropdownMenu');
+        this.categoryDropdownLabel = document.getElementById('categoryDropdownLabel');
+        this.channelDropdownBtn = document.getElementById('channelDropdownBtn');
+        this.channelDropdownMenu = document.getElementById('channelDropdownMenu');
+        this.channelDropdownLabel = document.getElementById('channelDropdownLabel');
+        this.languageDropdownBtn = document.getElementById('languageDropdownBtn');
+        this.languageDropdownMenu = document.getElementById('languageDropdownMenu');
+        this.languageDropdownLabel = document.getElementById('languageDropdownLabel');
+        this.filterPopoverBtn = document.getElementById('filterPopoverBtn');
+        this.filterPopover = document.getElementById('filterPopover');
+        this.filterPopoverClose = document.getElementById('filterPopoverClose');
+        this.activeFilterChips = document.getElementById('activeFilterChips');
+        this.filterCountBadge = document.getElementById('filterCountBadge');
+        this.filterBarClearAll = document.getElementById('filterBarClearAll');
+        this.filterBarApply = document.getElementById('filterBarApply');
+        this.filterBarContentTypes = document.getElementById('filterBarContentTypes');
+        this.filterBarSummaryTypes = document.getElementById('filterBarSummaryTypes');
 
         // Image mode and hover-switch state
         this.imageMode = localStorage.getItem('ytv2.imageMode') || 'thumbnail';
@@ -364,25 +425,29 @@ class AudioDashboard {
         this.audioElement.addEventListener('error', () => this.handleAudioError());
         // Reflect play/pause immediately in card buttons and controls
         this.audioElement.addEventListener('play', () => { this.isPlaying = true; this.updatePlayButton(); this.updatePlayingCard(); });
-        this.audioElement.addEventListener('pause', () => { 
-            this.isPlaying = false; 
-            this.updatePlayButton(); 
+        this.audioElement.addEventListener('pause', () => {
+            this.isPlaying = false;
+            this.updatePlayButton();
             this.updatePlayingCard();
             // Clean up scrub state when pausing to prevent conflicts
             this._cleanupScrubState();
         });
-        
-        // Player controls
-        this.playPauseBtn.addEventListener('click', () => this.togglePlayPause());
-        this.prevBtn.addEventListener('click', () => this.playPrevious());
-        this.nextBtn.addEventListener('click', () => this.playNext());
-        this.progressContainer.addEventListener('click', (e) => this.seekTo(e));
+
+        // Player controls (sidebar - may be null in wall-only mode)
+        if (this.playPauseBtn) this.playPauseBtn.addEventListener('click', () => this.togglePlayPause());
+        if (this.prevBtn) this.prevBtn.addEventListener('click', () => this.playPrevious());
+        if (this.nextBtn) this.nextBtn.addEventListener('click', () => this.playNext());
+        if (this.progressContainer) {
+            this.progressContainer.addEventListener('click', (e) => this.seekTo(e));
+            this.progressContainer.addEventListener('mousedown', (e) => this.beginProgressDrag(e, false));
+        }
         if (this.topProgressContainer) {
             this.topProgressContainer.addEventListener('click', (e) => this.seekToIn(this.topProgressContainer, e));
         }
-        this.progressContainer.addEventListener('mousedown', (e) => this.beginProgressDrag(e, false));
         if (this.volumeBtn) this.volumeBtn.addEventListener('click', () => this.toggleMute());
-        
+        if (this.playbackRateBtn) this.playbackRateBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.cyclePlaybackRate(); });
+        if (this.miniPlayerCloseBtn) this.miniPlayerCloseBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.showNowPlayingPlaceholder(); });
+
         // Mobile mini-player controls
         if (this.mobilePlayPauseBtn) this.mobilePlayPauseBtn.addEventListener('click', () => this.togglePlayPause());
         if (this.mobilePrevBtn) this.mobilePrevBtn.addEventListener('click', () => this.playPrevious());
@@ -396,23 +461,25 @@ class AudioDashboard {
             localStorage.setItem('ytv2.sidebarCollapsed', '0');
             this.applySidebarCollapsedState();
             // focus the search field in sidebar if present
-            setTimeout(() => { try { this.searchInput?.focus(); } catch(_){} }, 50);
+            setTimeout(() => { try { this.searchInput?.focus(); } catch (_) { } }, 50);
         });
         if (this.mobileProgressContainer) {
             this.mobileProgressContainer.addEventListener('click', (e) => this.seekToMobile(e));
             this.mobileProgressContainer.addEventListener('mousedown', (e) => this.beginProgressDrag(e, true));
             this.mobileProgressContainer.addEventListener('touchstart', (e) => this.beginProgressDrag(e, true), { passive: true });
         }
+        if (this.mobilePlaybackRateBtn) this.mobilePlaybackRateBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.cyclePlaybackRate(); });
+        if (this.mobileMiniPlayerCloseBtn) this.mobileMiniPlayerCloseBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.showNowPlayingPlaceholder(); });
         if (this.settingsToggle) this.settingsToggle.addEventListener('click', (e) => { e.stopPropagation(); this.toggleSettings(); });
         const refreshBtn = document.getElementById('refreshBtn');
-        if (refreshBtn) refreshBtn.addEventListener('click', (e) => { e.preventDefault(); try { location.reload(); } catch(_) { window.location.href = window.location.href; } });
+        if (refreshBtn) refreshBtn.addEventListener('click', (e) => { e.preventDefault(); try { location.reload(); } catch (_) { window.location.href = window.location.href; } });
         if (this.settingsMenu) document.addEventListener('click', (e) => { if (!e.target.closest('#settingsMenu') && !e.target.closest('#settingsToggle')) this.closeSettings(); });
         if (this.themeButtons) this.themeButtons.forEach(btn => btn.addEventListener('click', () => this.setTheme(btn.dataset.theme)));
-        // Settings accordion: restore open state and persist on toggle
+        // Settings close button
+        const settingsCloseBtn = document.getElementById('settingsCloseBtn');
+        if (settingsCloseBtn) settingsCloseBtn.addEventListener('click', () => this.closeSettings());
+        // Settings accordion (legacy - no longer used but kept for compatibility)
         this.restoreSettingsAccordion();
-        if (this.settingsAccordions && this.settingsAccordions.length) {
-            this.settingsAccordions.forEach(sec => sec.addEventListener('toggle', () => this.persistSettingsAccordion()));
-        }
         if (this.cancelDeleteBtn) this.cancelDeleteBtn.addEventListener('click', () => this.closeConfirm());
         if (this.confirmDeleteBtn) this.confirmDeleteBtn.addEventListener('click', () => this.confirmDelete());
 
@@ -424,10 +491,11 @@ class AudioDashboard {
         if (this.imgModeThumbBtnMobile) this.imgModeThumbBtnMobile.addEventListener('click', () => this.setImageMode('thumbnail'));
         if (this.imgModeAiBtnMobile) this.imgModeAiBtnMobile.addEventListener('click', () => this.setImageMode('ai'));
         if (this.imgModeRotateBtnMobile) this.imgModeRotateBtnMobile.addEventListener('click', () => this.setImageMode('rotate'));
-        // Settings menu bindings (view + images)
-        if (this.viewListSettingBtn) this.viewListSettingBtn.addEventListener('click', () => this.setViewMode('list'));
-        if (this.viewGridSettingBtn) this.viewGridSettingBtn.addEventListener('click', () => this.setViewMode('grid'));
-        if (this.viewWallSettingBtn) this.viewWallSettingBtn.addEventListener('click', () => this.setViewMode('wall'));
+        // Settings menu bindings (images + arrangement)
+        if (this.wallArrangeHybridSettingBtn) this.wallArrangeHybridSettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('hybrid'));
+        if (this.wallArrangeCategorySettingBtn) this.wallArrangeCategorySettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('category'));
+        if (this.wallArrangeKeywordsSettingBtn) this.wallArrangeKeywordsSettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('keywords'));
+        if (this.wallArrangeNewestSettingBtn) this.wallArrangeNewestSettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('newest'));
         if (this.imgModeThumbSettingBtn) this.imgModeThumbSettingBtn.addEventListener('click', () => this.setImageMode('thumbnail'));
         if (this.imgModeAiSettingBtn) this.imgModeAiSettingBtn.addEventListener('click', () => this.setImageMode('ai'));
         if (this.imgModeAi2SettingBtn) this.imgModeAi2SettingBtn.addEventListener('click', () => this.setImageMode('ai2'));
@@ -449,7 +517,8 @@ class AudioDashboard {
             this.updateAdminTokenSourceLabel();
         });
         this.updateImageModeUI();
-        
+        this.updateWallArrangeSettingUI();
+
         // Search and filters
         this.searchInput.addEventListener('input', this.debounce(() => this.handleSearch(), 500));
         // Optional top search (mobile + desktop collapsed)
@@ -464,14 +533,26 @@ class AudioDashboard {
         }
         // Header search (desktop)
         this.searchInputHeader = document.getElementById('searchInputHeader');
+        this.searchClearHeader = document.getElementById('searchClearHeader');
         if (this.searchInputHeader) {
             const toggleClear = () => {
                 try {
                     if (!this.searchClearHeader) return;
                     const has = !!this.searchInputHeader.value;
                     this.searchClearHeader.classList.toggle('hidden', !has);
-                } catch(_) {}
+                } catch (_) { }
             };
+            // Shortcut hint: ⌘K (mac) / Ctrl K (others)
+            try {
+                const hintEl = document.getElementById('searchShortcutHint');
+                if (hintEl) {
+                    const plat = (typeof navigator !== 'undefined')
+                        ? String(navigator.platform || navigator.userAgentData?.platform || navigator.userAgent || '')
+                        : '';
+                    const isMac = /Mac|iPhone|iPad|iPod/i.test(plat);
+                    hintEl.textContent = isMac ? '⌘K' : 'Ctrl K';
+                }
+            } catch (_) { }
             this.searchInputHeader.addEventListener('input', this.debounce(() => {
                 const v = this.searchInputHeader.value;
                 if (this.searchInput && this.searchInput.value !== v) this.searchInput.value = v;
@@ -489,7 +570,7 @@ class AudioDashboard {
                 if (this.searchInputTop) this.searchInputTop.value = '';
                 this.searchQuery = '';
                 this.loadContent();
-                try { this.searchClearHeader.classList.add('hidden'); } catch(_) {}
+                try { this.searchClearHeader.classList.add('hidden'); } catch (_) { }
             });
         }
         if (this.sortToolbar) {
@@ -497,11 +578,27 @@ class AudioDashboard {
                 btn.addEventListener('click', () => this.setSortMode(btn.dataset.sort));
             });
         }
-        
+
         // Compact sort select in header
         if (this.sortSelect) {
             this.sortSelect.value = this.currentSort;
             this.sortSelect.addEventListener('change', () => this.setSortMode(this.sortSelect.value));
+        }
+
+        // Semantic search toggle
+        if (this.semanticSearchToggle) {
+            this.semanticSearchToggle.addEventListener('click', () => {
+                this.semanticSearchEnabled = !this.semanticSearchEnabled;
+                this.semanticSearchToggle.dataset.semantic = this.semanticSearchEnabled;
+                this.semanticSearchToggle.classList.toggle('bg-audio-500', this.semanticSearchEnabled);
+                this.semanticSearchToggle.classList.toggle('text-white', this.semanticSearchEnabled);
+                this.semanticSearchToggle.classList.toggle('border-audio-500', this.semanticSearchEnabled);
+                this.semanticSearchToggle.classList.toggle('dark:bg-audio-600', this.semanticSearchEnabled);
+                this.semanticSearchToggle.classList.toggle('bg-white/80', !this.semanticSearchEnabled);
+                this.semanticSearchToggle.classList.toggle('dark:bg-slate-700/80', !this.semanticSearchEnabled);
+                // Re-run search if there's a query
+                if (this.searchQuery) this.handleSearch();
+            });
         }
 
         // Radio button sort controls in sidebar - use delegation for dynamic content
@@ -514,6 +611,27 @@ class AudioDashboard {
                 }
             }
         });
+
+        // iOS/Safari can restore the page from bfcache with stale CSS classes (e.g., wall similarity dimming).
+        const cleanupTransientUi = () => {
+            try {
+                const modal = document.getElementById('wallReaderModal');
+                const isModalOpen = modal && !modal.classList.contains('hidden');
+                const dock = this.contentGrid ? this.contentGrid.querySelector('#wallDockReader') : null;
+                const isDockOpen = dock && !dock.classList.contains('hidden');
+                if (!isModalOpen && !isDockOpen) {
+                    document.body.classList.remove('kaleido-open', 'wall-reader-open');
+                    const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+                    this.clearSimilarityView(grid);
+                }
+            } catch (_) { /* no-op */ }
+        };
+        try {
+            window.addEventListener('pageshow', cleanupTransientUi);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') cleanupTransientUi();
+            });
+        } catch (_) { /* no-op */ }
 
         // Ensure kebab action opens Manage Images (capture phase to beat other handlers)
         document.addEventListener('click', (e) => {
@@ -546,7 +664,7 @@ class AudioDashboard {
         };
         document.addEventListener('pointerup', imageNewHandler, true);
         document.addEventListener('mousedown', imageNewHandler, true);
-        
+
         // Show more sort options toggle
         const toggleMoreSorts = document.getElementById('toggleMoreSorts');
         const showMoreSorts = document.getElementById('showMoreSorts');
@@ -563,7 +681,7 @@ class AudioDashboard {
         if (clearAllFiltersBtn) {
             clearAllFiltersBtn.addEventListener('click', () => this.selectAllFilters());
         }
-        
+
         // Show more languages toggle
         const toggleMoreLanguages = document.getElementById('toggleMoreLanguages');
         const showMoreLanguages = document.getElementById('showMoreLanguages');
@@ -574,10 +692,10 @@ class AudioDashboard {
                 toggleMoreLanguages.textContent = isHidden ? 'Show less' : 'Show more';
             });
         }
-        
+
         // Show more categories toggle - bind after content loads
         this.bindShowMoreToggles();
-        
+
         // Select All / Clear All buttons for Sources
         const selectAllSources = document.getElementById('selectAllSources');
         const clearAllSources = document.getElementById('clearAllSources');
@@ -639,7 +757,7 @@ class AudioDashboard {
                 this.loadContent();
             });
         }
-        
+
         // Select All / Clear All buttons for Content Types
         const selectAllContentTypes = document.getElementById('selectAllContentTypes');
         const clearAllContentTypes = document.getElementById('clearAllContentTypes');
@@ -732,12 +850,12 @@ class AudioDashboard {
         this.queueToggle.addEventListener('click', () => this.toggleQueue());
         if (this.queueClearBtn) this.queueClearBtn.addEventListener('click', () => this.clearQueue());
         // Play All button removed - auto-playlist handles this
-        
+
         // Mobile sidebar controls
         const mobileFiltersToggle = document.getElementById('mobileFiltersToggle');
         const closeSidebar = document.getElementById('closeSidebar');
         const sidebar = this.sidebarElement;
-        
+
         if (mobileFiltersToggle) {
             mobileFiltersToggle.addEventListener('click', () => this.openMobileSidebar());
         }
@@ -757,18 +875,7 @@ class AudioDashboard {
             this.desktopMediaQuery.addListener(() => this.applySidebarCollapsedState());
         }
 
-        const viewBindings = [
-            { btn: this.listViewBtn, mode: 'list' },
-            { btn: this.gridViewBtn, mode: 'grid' },
-            { btn: this.wallViewBtn, mode: 'wall' },
-            { btn: this.listViewBtnMobile, mode: 'list' },
-            { btn: this.gridViewBtnMobile, mode: 'grid' },
-            { btn: this.wallViewBtnMobile, mode: 'wall' }
-        ];
-        viewBindings.forEach(({ btn, mode }) => {
-            if (!btn) return;
-            btn.addEventListener('click', () => this.setViewMode(mode));
-        });
+        // Sidebar toggles
         if (this.sidebarCollapseToggle) {
             this.sidebarCollapseToggle.addEventListener('click', () => {
                 this.sidebarCollapsed = true;
@@ -778,14 +885,14 @@ class AudioDashboard {
         }
         if (this.sidebarExpandToggle) {
             this.sidebarExpandToggle.addEventListener('click', () => {
-                this.sidebarCollapsed = false;
-                localStorage.setItem('ytv2.sidebarCollapsed', '0');
+                this.sidebarCollapsed = !this.sidebarCollapsed;
+                localStorage.setItem('ytv2.sidebarCollapsed', this.sidebarCollapsed ? '1' : '0');
                 this.applySidebarCollapsedState();
             });
         }
         this.applySidebarCollapsedState();
         this.updateViewToggle();
-        
+
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleKeyboard(e));
         this.audioElement.addEventListener('volumechange', () => this.updateMuteIcon());
@@ -843,6 +950,8 @@ class AudioDashboard {
         }
         // URL hash handling for deep links
         window.addEventListener('hashchange', () => this.onHashChange());
+        // URL state handling for reader deep links (back/forward)
+        window.addEventListener('popstate', () => this.applyHashDeepLink());
         // Telemetry flush on unload/hidden
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden' && this.telemetryBuf && this.telemetryBuf.length) {
@@ -880,6 +989,9 @@ class AudioDashboard {
 
         window.addEventListener('beforeunload', () => this.shutdownRealtime());
         window.addEventListener('pagehide', () => this.shutdownRealtime());
+
+        // Filter bar events
+        this.initFilterBarEvents();
     }
 
     clearAllFilters() {
@@ -900,47 +1012,881 @@ class AudioDashboard {
         }
     }
 
-    async loadInitialData() {
+	    async loadInitialData() {
+	        try {
+	            // Apply theme at startup
+	            this.applyTheme(this.themeMode);
+	            this.updateThemeChecks();
+	            // Load filters first to avoid race with initial content fetch
+                await this.loadFilters();
+                await this.waitForFiltersReady({ min: 1, timeoutMs: 3000 });
+                this.applyInitialFilterPayload();
+                await this.loadContent();
+                await this.maybeOpenReprocessFromUrl();
+	            // Queue UI visibility based on flag
+	            if (this.queueSidebar) {
+	                if (this.flags.queueEnabled) this.queueSidebar.classList.remove('hidden');
+	                else this.queueSidebar.classList.add('hidden');
+	            }
+	            if (this.queueToggle) {
+	                if (!this.flags.queueEnabled) this.queueToggle.classList.add('hidden');
+	                else this.queueToggle.classList.remove('hidden');
+	            }
+	            // Restore queue if enabled
+	            if (this.flags.queueEnabled) {
+	                this.restoreQueue();
+	            }
+	            if (!this.currentAudio) {
+	                const playableItems = this.getPlayableItems(this.currentItems);
+	                if (playableItems.length) {
+	                    if (this.autoPlayOnLoad) {
+	                        this.setCurrentFromItem(playableItems[0]);
+	                    } else {
+	                        this.showNowPlayingPlaceholder();
+	                    }
+	                } else {
+	                    this.showNowPlayingPlaceholder();
+	                }
+	            }
+	        } catch (error) {
+	            console.error('Failed to load initial data:', error);
+	            this.showError('Failed to load dashboard data');
+	        } finally {
+	            this.initialLoadComplete = true;
+	            this.flushRealtimeBuffer(true);
+	        }
+	    }
+
+    async maybeOpenReprocessFromUrl() {
+        if (this._handledReprocessParam) return;
+        this._handledReprocessParam = true;
+	        if (typeof window === 'undefined') return;
+	        let params;
+	        try { params = new URLSearchParams(window.location.search || ''); } catch (_) { params = null; }
+	        if (!params) return;
+	        const requested = (params.get('reprocess') || '').trim();
+	        if (!requested) return;
+
+	        // Remove from URL immediately to avoid re-opening on reloads/navigation.
+	        try {
+	            params.delete('reprocess');
+	            const next = window.location.pathname + (params.toString() ? `?${params.toString()}` : '') + (window.location.hash || '');
+	            window.history.replaceState({}, '', next);
+	        } catch (_) { }
+
+	        const wanted = requested;
+	        let item = (this.currentItems || []).find((x) => {
+	            const vid = x?.video_id || x?.videoId || x?.id || '';
+	            const stem = x?.file_stem || x?.fileStem || '';
+	            return vid === wanted || stem === wanted;
+	        }) || null;
+
+	        if (!item) {
+	            try {
+	                const resp = await fetch(`/api/reports/${encodeURIComponent(wanted)}`, { cache: 'no-store' });
+	                if (resp.ok) {
+	                    const data = await resp.json();
+	                    if (data && typeof data === 'object') item = data;
+	                }
+	            } catch (e) {
+	                console.warn('Failed to fetch report detail for reprocess', e);
+	            }
+	        }
+
+	        if (!item) {
+	            this.showToast('Regenerate: report not found', 'warn');
+	            return;
+	        }
+
+	        const reportId = item.file_stem || item.fileStem || wanted;
+        this.openReprocessModal(reportId, null, item);
+    }
+
+    parseInitialFilterPayloadFromUrl() {
+        if (typeof window === 'undefined') return null;
+        let sp;
+        try { sp = new URLSearchParams(window.location.search || ''); } catch (_) { return null; }
+        if (!sp) return null;
+
+        const readList = (keys = []) => {
+            const out = [];
+            const seen = new Set();
+            const push = (raw) => {
+                const val = String(raw || '').trim();
+                if (!val) return;
+                const k = val.toLowerCase();
+                if (seen.has(k)) return;
+                seen.add(k);
+                out.push(val);
+            };
+            keys.forEach((key) => {
+                sp.getAll(key).forEach((raw) => {
+                    String(raw || '').split(',').forEach((part) => push(part));
+                });
+            });
+            return out;
+        };
+
+        const search = (sp.get('q') || sp.get('search') || '').trim();
+        const filters = {
+            category: readList(['category', 'categories']),
+            subcategory: readList(['subcategory', 'subcategories']),
+            channel: readList(['channel', 'channels']),
+            source: readList(['source', 'content_source']),
+            content_type: readList(['content_type', 'contentType']),
+            summary_type: readList(['summary_type', 'summaryType']),
+            language: readList(['language', 'languages']),
+            complexity: readList(['complexity', 'complexity_level'])
+        };
+
+        const hasFilters = Object.values(filters).some((arr) => Array.isArray(arr) && arr.length > 0);
+        if (!search && !hasFilters) return null;
+        return { search, filters };
+    }
+
+    applyInitialFilterPayload() {
+        if (this._appliedInitialFilterPayload) return;
+        this._appliedInitialFilterPayload = true;
+        const payload = this.initialFilterPayload;
+        if (!payload || typeof payload !== 'object') return;
+
+        const normalize = (v) => String(v || '').trim().toLowerCase();
+        const setSearch = (q) => {
+            const query = String(q || '').trim();
+            if (!query) return;
+            this.searchQuery = query;
+            if (this.searchInput) this.searchInput.value = query;
+            if (this.searchInputTop) this.searchInputTop.value = query;
+            if (this.searchInputHeader) this.searchInputHeader.value = query;
+        };
+        const applyGroup = (filterType, requestedValues = [], { clearOnEmpty = false } = {}) => {
+            const values = Array.isArray(requestedValues) ? requestedValues : [];
+            if (!values.length && !clearOnEmpty) return false;
+            const inputs = Array.from(document.querySelectorAll(`input[data-filter="${filterType}"]`));
+            if (!inputs.length) return false;
+            if (!values.length && clearOnEmpty) {
+                inputs.forEach((el) => { el.checked = false; });
+                return true;
+            }
+            const wanted = new Set(values.map(normalize).filter(Boolean));
+            let matched = 0;
+            inputs.forEach((el) => {
+                const active = wanted.has(normalize(el.value));
+                el.checked = active;
+                if (active) matched += 1;
+            });
+            if (!matched) {
+                // Ignore unresolvable URL values and keep this filter section broad.
+                inputs.forEach((el) => { el.checked = true; });
+                return false;
+            }
+            return true;
+        };
+
+        setSearch(payload.search || '');
+
+        const filters = payload.filters || {};
+        const categoryValues = Array.isArray(filters.category) ? filters.category : [];
+        const subcategoryValues = Array.isArray(filters.subcategory) ? filters.subcategory : [];
+
+        if (categoryValues.length > 0) {
+            applyGroup('category', categoryValues);
+            // Mirror "category chip" behavior: categories are broad unless subcategories are explicitly requested.
+            if (subcategoryValues.length === 0) applyGroup('subcategory', [], { clearOnEmpty: true });
+        }
+
+        if (subcategoryValues.length > 0) {
+            const subApplied = applyGroup('subcategory', subcategoryValues);
+            if (subApplied) {
+                document.querySelectorAll('input[data-filter="subcategory"]:checked').forEach((subInput) => {
+                    const parent = subInput.getAttribute('data-parent-category') || '';
+                    if (!parent) return;
+                    const parentInput = document.querySelector(`input[data-filter="category"][value="${CSS.escape(parent)}"]`);
+                    if (parentInput) parentInput.checked = true;
+                });
+            }
+        }
+
+        applyGroup('channel', filters.channel || []);
+        applyGroup('source', filters.source || []);
+        applyGroup('content_type', filters.content_type || []);
+        applyGroup('summary_type', filters.summary_type || []);
+        applyGroup('language', filters.language || []);
+        applyGroup('complexity', filters.complexity || []);
+
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateHeroBadges();
+    }
+
+    // Realtime ingest event handling -------------------------------------------------
+
+    initRealtimeUpdates() {
+        if (typeof window === 'undefined') return;
+        if (this.disableRealtimeSSE) {
+            console.info('Realtime SSE disabled by flag; using polling fallback');
+            this.startPollingFallback();
+            return;
+        }
+        if (window.EventSource) {
+            this.connectEventSource();
+        } else {
+            console.warn('EventSource not supported; falling back to polling');
+            this.startPollingFallback();
+        }
+    }
+
+    connectEventSource() {
+        if (typeof window === 'undefined' || !window.EventSource) return;
+        if (this.eventSource) {
+            try { this.eventSource.close(); } catch (_) { }
+        }
         try {
-            // Apply theme at startup
-            this.applyTheme(this.themeMode);
-            this.updateThemeChecks();
-            // Load filters first to avoid race with initial content fetch
-            await this.loadFilters();
-            await this.waitForFiltersReady({ min: 1, timeoutMs: 3000 });
+            const sseUrl = this.hasNasBridge ? this.buildSseUrl('/api/report-events') : '/api/report-events';
+            const source = new EventSource(sseUrl);
+            this.eventSource = source;
+            source.addEventListener('open', () => {
+                this.realtimeBackoff = 1000;
+                if (this.realtimeReconnectTimer) {
+                    window.clearTimeout(this.realtimeReconnectTimer);
+                    this.realtimeReconnectTimer = null;
+                }
+                this.stopPollingFallback();
+                this.requestMetricsRefresh(500);
+            });
+            source.addEventListener('error', () => {
+                try { source.close(); } catch (_) { }
+                this.eventSource = null;
+                this.scheduleRealtimeReconnect();
+                this.startPollingFallback();
+            });
+            const safeParse = (evt) => {
+                try {
+                    return JSON.parse(evt.data || '{}') || {};
+                } catch (error) {
+                    console.error('Failed to parse SSE event payload', error);
+                    return {};
+                }
+            };
+
+            const successEvents = ['report-added', 'report-synced', 'audio-synced', 'reprocess-complete'];
+            successEvents.forEach((name) => {
+                source.addEventListener(name, (evt) => {
+                    const payload = safeParse(evt);
+                    this.handleReportAddedEvent(payload, { transport: 'sse', eventName: name });
+                });
+            });
+
+            const infoEvents = ['reprocess-scheduled', 'reprocess-requested'];
+            infoEvents.forEach((name) => {
+                source.addEventListener(name, (evt) => {
+                    const payload = safeParse(evt);
+                    this.handleReprocessLifecycle(name, payload);
+                });
+            });
+
+            const failureEvents = [
+                'report-sync-failed',
+                'report-sync-error',
+                'audio-sync-failed',
+                'audio-sync-error',
+                'reprocess-error'
+            ];
+            failureEvents.forEach((name) => {
+                source.addEventListener(name, (evt) => {
+                    const payload = safeParse(evt);
+                    this.handleRealtimeFailure(name, payload);
+                });
+            });
+        } catch (error) {
+            console.error('Failed to connect to report events', error);
+            this.scheduleRealtimeReconnect();
+            this.startPollingFallback();
+        }
+    }
+
+    scheduleRealtimeReconnect() {
+        if (typeof window === 'undefined') return;
+        if (this.realtimeReconnectTimer) return;
+        const delay = this.realtimeBackoff || 1000;
+        this.realtimeReconnectTimer = window.setTimeout(() => {
+            this.realtimeReconnectTimer = null;
+            this.connectEventSource();
+        }, delay);
+        this.realtimeBackoff = Math.min((this.realtimeBackoff || 1000) * 2, 30000);
+    }
+
+    startPollingFallback() {
+        if (typeof window === 'undefined') return;
+        if (this.pollTimer) return;
+        this.pollTimer = window.setInterval(() => this.pollLatestReport(), 45000);
+    }
+
+    stopPollingFallback() {
+        if (typeof window === 'undefined') return;
+        if (this.pollTimer) {
+            window.clearInterval(this.pollTimer);
+            this.pollTimer = null;
+        }
+    }
+
+    async pollLatestReport() {
+        try {
+            const response = await this.nasFetch('/api/reports?latest=true', { cache: 'no-store' });
+            if (!response.ok) return;
+            const payload = await response.json();
+            if (!payload || !payload.report) return;
+            this.handleReportAddedEvent(payload.report, { transport: 'poll', eventName: 'report-synced' });
+        } catch (error) {
+            console.warn('Polling latest report failed', error);
+        }
+    }
+
+    handleReportAddedEvent(data = {}, meta = {}) {
+        if (!data) return;
+        const eventName = (meta.eventName || 'report-added').toLowerCase();
+        let videoId = data.video_id || data.videoId || data.id || null;
+        if (!videoId && meta.videoId) videoId = meta.videoId;
+        if (!videoId) {
+            console.warn('Realtime event missing video_id', data, meta);
+            return;
+        }
+
+        let summaryTypes = data.summary_types || data.summaryTypes || [];
+        if (!Array.isArray(summaryTypes)) {
+            summaryTypes = summaryTypes ? [summaryTypes] : [];
+        }
+        const singleType = data.summary_type || data.summaryType;
+        if (singleType) summaryTypes.push(singleType);
+        summaryTypes = [...new Set(summaryTypes.map((v) => String(v)).filter(Boolean))];
+
+        let timestamp = data.timestamp || data.indexed_at || data.indexedAt || data.created_at || data.updated_at || null;
+        if (!timestamp) {
+            timestamp = new Date().toISOString();
+        }
+        const tsValue = this.normalizeTimestamp(timestamp);
+        const currentTs = this.normalizeTimestamp(this.latestIndexedAt);
+        const bypassRecencyCheck = ['audio-synced', 'reprocess-complete'].includes(eventName);
+        if (!bypassRecencyCheck && currentTs && tsValue && tsValue <= currentTs) {
+            return;
+        }
+        if (tsValue && (!currentTs || tsValue > currentTs)) {
+            this.latestIndexedAt = timestamp;
+        }
+
+        if (eventName === 'audio-synced') {
+            this.showToast(`Audio ready for ${this.describeVideo(data)}`, 'success');
+        }
+        if (eventName === 'reprocess-complete') {
+            this.showToast(`Regenerate finished for ${this.describeVideo(data)}`, 'success');
+        }
+
+        // If Manage Images modal is open for this video, hot‑refresh it in place
+        try {
+            if (this._openImagesModalReportId && this._openImagesModalReportId === videoId) {
+                const fetchAndRefresh = async () => {
+                    try {
+                        const res = await fetch(`/${encodeURIComponent(videoId)}.json?v=${Date.now()}`);
+                        if (!res.ok) return;
+                        const item = await res.json();
+                        // Update currentItems copy
+                        try {
+                            const idx = (this.currentItems || []).findIndex(x => x.file_stem === (item.file_stem || item.video_id));
+                            if (idx >= 0) this.currentItems[idx] = item; else (this.currentItems || []).push(item);
+                        } catch (_) { }
+                        if (typeof this._imagesModalRefresh === 'function') {
+                            this._imagesModalRefresh(item);
+                        }
+                    } catch (_) { }
+                };
+                // Debounce the refresh a bit to avoid double work
+                clearTimeout(this._imagesModalRefreshTimer);
+                this._imagesModalRefreshTimer = setTimeout(fetchAndRefresh, 400);
+            }
+        } catch (_) { }
+
+        this.realtimeEventBuffer.push({ videoId, summaryTypes, timestamp, meta: { ...meta, eventName } });
+        this.scheduleRealtimeFlush();
+        this.requestMetricsRefresh(2000);
+    }
+
+    scheduleRealtimeFlush() {
+        if (typeof window === 'undefined') return;
+        if (this.realtimeFlushTimer) return;
+        this.realtimeFlushTimer = window.setTimeout(() => this.flushRealtimeBuffer(), 800);
+    }
+
+    flushRealtimeBuffer(force = false) {
+        if (this.realtimeFlushTimer) {
+            window.clearTimeout(this.realtimeFlushTimer);
+            this.realtimeFlushTimer = null;
+        }
+        if (!this.initialLoadComplete && !force) {
+            return;
+        }
+        if (!this.realtimeEventBuffer.length) return;
+
+        const buffer = this.realtimeEventBuffer.splice(0);
+        const uniqueVideoIds = new Set(buffer.map((evt) => evt.videoId).filter(Boolean));
+        const newCount = uniqueVideoIds.size || buffer.length;
+        const eventNames = buffer.map((evt) => (evt.meta && evt.meta.eventName) ? evt.meta.eventName : 'report-added');
+        this.realtimePendingCount += newCount;
+
+        const now = Date.now();
+        const sinceLast = now - (this.lastRealtimeRefresh || 0);
+        const canAutoRefresh = (this.currentPage === 1) || force;
+
+        if (canAutoRefresh && sinceLast > 2000) {
+            this.lastRealtimeRefresh = now;
+            this.currentPage = 1;
+            Promise.resolve(this.loadContent())
+                .catch((error) => console.error('Realtime refresh failed', error))
+                .finally(() => {
+                    this.realtimePendingCount = 0;
+                    this.hideRealtimeBanner();
+                    this.requestMetricsRefresh(1200);
+                    // (legacy reopen flow removed; now hot‑refreshes while open)
+                });
+        } else {
+            this.showRealtimeBanner(this.realtimePendingCount, eventNames);
+            this.requestMetricsRefresh(2000);
+        }
+    }
+
+    showRealtimeBanner(count, eventNames = []) {
+        if (!this.realtimeBanner || !this.realtimeBannerText) return;
+        let label = count === 1 ? '1 update available' : `${count} updates available`;
+        if (eventNames.length === 1) {
+            label = `${this.formatEventLabel(eventNames[0])} ready`;
+        }
+        this.realtimeBannerText.textContent = label;
+        this.realtimeBanner.classList.remove('hidden');
+        this.realtimeBanner.setAttribute('aria-hidden', 'false');
+    }
+
+    hideRealtimeBanner() {
+        if (!this.realtimeBanner) return;
+        this.realtimeBanner.classList.add('hidden');
+        this.realtimeBanner.setAttribute('aria-hidden', 'true');
+    }
+
+    shutdownRealtime() {
+        if (typeof window !== 'undefined') {
+            if (this.realtimeReconnectTimer) {
+                window.clearTimeout(this.realtimeReconnectTimer);
+                this.realtimeReconnectTimer = null;
+            }
+            if (this.realtimeFlushTimer) {
+                window.clearTimeout(this.realtimeFlushTimer);
+                this.realtimeFlushTimer = null;
+            }
+        }
+        if (this.eventSource) {
+            try {
+                this.eventSource.close();
+            } catch (_) {
+                // already closed
+            }
+            this.eventSource = null;
+        }
+        this.stopPollingFallback();
+        if (this.metricsTimer) {
+            window.clearInterval(this.metricsTimer);
+            this.metricsTimer = null;
+        }
+        if (this.metricsRefreshTimer) {
+            window.clearTimeout(this.metricsRefreshTimer);
+            this.metricsRefreshTimer = null;
+        }
+    }
+
+    startMetricsPolling() {
+        if (typeof window === 'undefined') return;
+        if (this.metricsTimer) {
+            window.clearInterval(this.metricsTimer);
+            this.metricsTimer = null;
+        }
+        this.fetchMetrics();
+        this.metricsTimer = window.setInterval(() => this.fetchMetrics(), 60000);
+    }
+
+    async fetchMetrics() {
+        try {
+            // Always fetch metrics from our own server to avoid CORS
+            const response = await fetch('/api/metrics', { cache: 'no-store' });
+            if (response.status === 404) {
+                if (this.metricsPanel) this.metricsPanel.classList.add('hidden');
+                return;
+            }
+            // Quiet expected 403 when metrics bridge is not available
+            if (response.status === 403) {
+                if (this.metricsPanel) this.metricsPanel.classList.add('hidden');
+                return;
+            }
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            this.metricsData = data;
+            this.updateMetricsUI(data);
+            if (this.metricsPanel) this.metricsPanel.classList.remove('hidden');
+        } catch (error) {
+            // Avoid noisy logs for expected 403s
+            if (String(error?.message || '').includes('HTTP 403')) {
+                if (this.metricsPanel) this.metricsPanel.classList.add('hidden');
+                return;
+            }
+            console.warn('Failed to load metrics snapshot', error);
+        }
+    }
+
+    updateMetricsUI(data) {
+        if (!data || !this.metricsPanel) return;
+
+        const success = Number(data.ingest_success ?? data.ingest_success_total ?? data.ingest_success_count ?? 0);
+        const failure = Number(data.ingest_failure ?? data.ingest_failure_total ?? data.ingest_failure_count ?? 0);
+        if (this.metricsCountersEl) {
+            this.metricsCountersEl.textContent = `Ingest ✓ ${success} • ✕ ${failure}`;
+        }
+
+        const sseClients = Number(data.sse_clients_current ?? data.sse_clients ?? 0);
+        if (this.metricsSseEl) {
+            this.metricsSseEl.textContent = `SSE clients: ${sseClients}`;
+        }
+
+        const lastVideo = data.last_ingest_video || data.last_ingest_id || '';
+        const lastTimestamp = data.last_ingest_timestamp || data.last_ingest_time || data.last_ingest_at || '';
+        if (this.metricsLastIngestEl) {
+            if (lastVideo || lastTimestamp) {
+                const label = this.truncateText(lastVideo || '—', 18);
+                const relative = this.formatRelativeTime(lastTimestamp);
+                const parts = [`Last ingest: ${label}`];
+                if (relative) parts.push(relative);
+                this.metricsLastIngestEl.textContent = parts.join(' • ');
+            } else {
+                this.metricsLastIngestEl.textContent = 'Last ingest: —';
+            }
+        }
+    }
+
+    requestMetricsRefresh(delay = 2000) {
+        if (typeof window === 'undefined') return;
+        if (this.metricsRefreshTimer) {
+            window.clearTimeout(this.metricsRefreshTimer);
+        }
+        this.metricsRefreshTimer = window.setTimeout(() => this.fetchMetrics(), delay);
+    }
+
+    async fetchLlmModels() {
+        try {
+            const response = await fetch('/api/llm-models');
+            if (!response.ok) {
+                console.warn('Failed to fetch LLM models:', response.status);
+                return;
+            }
+            const data = await response.json();
+            this.llmModels = data.models || [];
+            this.llmModelsDefault = data.default || '';
+            this.populateModelSelect();
+        } catch (error) {
+            console.warn('Error fetching LLM models:', error);
+        }
+    }
+
+    populateModelSelect() {
+        if (!this.reprocessModelSelect) return;
+
+        // Clear existing options
+        this.reprocessModelSelect.innerHTML = '';
+
+        // Add default option
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = `Default (${this.llmModelsDefault.split('/').pop() || 'system'})`;
+        this.reprocessModelSelect.appendChild(defaultOption);
+
+        // Add model options
+        for (const model of this.llmModels) {
+            const option = document.createElement('option');
+            option.value = model.id;
+            option.textContent = model.label || model.model;
+            this.reprocessModelSelect.appendChild(option);
+        }
+    }
+
+    handleReprocessLifecycle(eventName, payload = {}) {
+        const label = this.describeVideo(payload);
+        if (eventName === 'reprocess-scheduled') {
+            this.showToast(`Regenerate scheduled for ${label}`, 'info');
+        }
+        if (eventName === 'reprocess-requested') {
+            this.showToast(`Regenerate started for ${label}`, 'info');
+        }
+        this.requestMetricsRefresh(2500);
+    }
+
+    handleRealtimeFailure(eventName, payload = {}) {
+        const label = this.describeVideo(payload);
+        const message = payload.message || payload.error || 'Unexpected error';
+        const text = `${this.formatEventLabel(eventName)} for ${label} failed: ${message}`;
+        this.showToast(text, 'error');
+        this.requestMetricsRefresh(2000);
+    }
+
+    describeVideo(payload = {}) {
+        const title = payload.title || payload.video_title;
+        const videoId = payload.video_id || payload.videoId || payload.id;
+        if (title) return this.truncateText(title, 40);
+        if (videoId) return this.truncateText(videoId, 16);
+        return 'item';
+    }
+
+    formatEventLabel(name) {
+        const map = {
+            'report-added': 'New report',
+            'report-synced': 'Report update',
+            'audio-synced': 'Audio update',
+            'reprocess-scheduled': 'Regenerate scheduled',
+            'reprocess-requested': 'Regenerate started',
+            'reprocess-complete': 'Regenerate complete',
+            'report-sync-failed': 'Report sync failed',
+            'report-sync-error': 'Report sync error',
+            'audio-sync-failed': 'Audio sync failed',
+            'audio-sync-error': 'Audio sync error',
+            'reprocess-error': 'Regenerate error'
+        };
+        return map[name] || name.replace(/[-_]/g, ' ');
+    }
+
+    async refreshForRealtime() {
+        this.hideRealtimeBanner();
+        this.realtimePendingCount = 0;
+        this.currentPage = 1;
+        try {
             await this.loadContent();
-            // Queue UI visibility based on flag
-            if (this.queueSidebar) {
-                if (this.flags.queueEnabled) this.queueSidebar.classList.remove('hidden');
-                else this.queueSidebar.classList.add('hidden');
+        } catch (error) {
+            console.error('Realtime refresh failed', error);
+        }
+    }
+
+    dismissRealtimeBanner() {
+        this.realtimePendingCount = 0;
+        this.hideRealtimeBanner();
+    }
+
+    normalizeTimestamp(value) {
+        if (!value) return 0;
+        const parsed = Date.parse(value);
+        return Number.isNaN(parsed) ? 0 : parsed;
+    }
+
+    updateLatestIndexFromItems(items) {
+        if (!Array.isArray(items) || !items.length) return;
+        if (this.currentPage !== 1) return;
+        const firstTs = items[0]?.indexed_at || items[0]?.indexedAt || null;
+        const tsValue = this.normalizeTimestamp(firstTs);
+        const current = this.normalizeTimestamp(this.latestIndexedAt);
+        if (tsValue && (!current || tsValue >= current)) {
+            this.latestIndexedAt = firstTs;
+        }
+    }
+
+    shouldDisableRealtimeSSE() {
+        if (typeof window === 'undefined') {
+            return false;
+        }
+        try {
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('noSSE') || params.get('disableSSE') === '1') {
+                return true;
             }
-            if (this.queueToggle) {
-                if (!this.flags.queueEnabled) this.queueToggle.classList.add('hidden');
-                else this.queueToggle.classList.remove('hidden');
-            }
-            // Restore queue if enabled
-            if (this.flags.queueEnabled) {
-                this.restoreQueue();
-            }
-            if (!this.currentAudio) {
-                const playableItems = this.getPlayableItems(this.currentItems);
-                if (playableItems.length) {
-                    if (this.autoPlayOnLoad) {
-                        this.setCurrentFromItem(playableItems[0]);
-                    } else {
-                        this.showNowPlayingPlaceholder();
-                    }
-                } else {
-                    this.showNowPlayingPlaceholder();
+            if (window.localStorage) {
+                const stored = window.localStorage.getItem('ytv2.disableSSE');
+                if (stored === '1') {
+                    return true;
                 }
             }
         } catch (error) {
-            console.error('Failed to load initial data:', error);
-            this.showError('Failed to load dashboard data');
-        } finally {
-            this.initialLoadComplete = true;
-            this.flushRealtimeBuffer(true);
+            console.warn('Unable to evaluate SSE disable flag', error);
         }
+        return false;
+    }
+
+    initNasConfig() {
+        const cfg = (typeof window !== 'undefined' && window.NAS_CONFIG) || {};
+        this.nasBaseUrl = cfg.base_url || '';
+        this.nasBasicUser = cfg.basic_user || '';
+        this.nasBasicPass = cfg.basic_pass || '';
+        this.hasNasBridge = Boolean(this.nasBaseUrl);
+
+        if (!this.reprocessToken) {
+            this.reprocessToken = (typeof window !== 'undefined' && window.REPROCESS_TOKEN) || null;
+            this.reprocessTokenSource = this.reprocessToken ? 'window' : null;
+        }
+
+        if (!this.reprocessToken && typeof window !== 'undefined') {
+            try {
+                const stored = localStorage.getItem('ytv2.reprocessToken');
+                if (stored) {
+                    this.reprocessToken = stored;
+                    this.reprocessTokenSource = 'storage';
+                }
+            } catch (_) {
+                // Ignore storage errors
+            }
+        }
+
+        if (this.nasBasicUser || this.nasBasicPass) {
+            const credentials = `${this.nasBasicUser || ''}:${this.nasBasicPass || ''}`;
+            this.basicAuthHeader = 'Basic ' + this.encodeBase64(credentials);
+        }
+    }
+
+    joinNasUrl(path) {
+        if (!path) return path;
+        const asString = String(path);
+        if (/^https?:\/\//i.test(asString)) {
+            return asString;
+        }
+        if (!this.nasBaseUrl) return asString;
+        try {
+            return new URL(asString, this.nasBaseUrl).toString();
+        } catch (error) {
+            console.warn('Failed to build NAS URL', error);
+            return asString;
+        }
+    }
+
+    buildSseUrl(path) {
+        if (!path) return path;
+        const asString = String(path);
+        if (/^https?:\/\//i.test(asString)) {
+            return asString;
+        }
+        if (!this.nasBaseUrl) return asString;
+        try {
+            const url = new URL(asString, this.nasBaseUrl);
+            if (this.nasBasicUser || this.nasBasicPass) {
+                url.username = this.nasBasicUser || '';
+                url.password = this.nasBasicPass || '';
+            }
+            url.searchParams.set('ngrok-skip-browser-warning', 'true');
+            return url.toString();
+        } catch (error) {
+            console.warn('Failed to build SSE URL', error);
+            return asString;
+        }
+    }
+
+    nasFetch(path, options = {}) {
+        if (!this.nasBaseUrl) {
+            return fetch(path, options);
+        }
+        const url = this.joinNasUrl(path);
+        const headers = new Headers(options.headers || {});
+        if (this.basicAuthHeader) {
+            headers.set('Authorization', this.basicAuthHeader);
+        }
+        headers.set('ngrok-skip-browser-warning', 'true');
+        return fetch(url, { ...options, headers });
+    }
+
+    getPlayableItems(items = this.currentItems) {
+        if (!Array.isArray(items)) return [];
+        return items.filter(item => this.itemHasAudio(item));
+    }
+
+    rebuildPlaylist(items = this.currentItems) {
+        const playable = this.getPlayableItems(items);
+        this.playlist = playable.map(item => item.file_stem);
+        return playable;
+    }
+
+    getAudioSourceForItem(item) {
+        if (!this.itemHasAudio(item)) return null;
+        // 1) Explicit URL from backend wins
+        if (item?.media?.audio_url) {
+            let url = this.normalizeAssetUrl(item.media.audio_url);
+            if (item.audio_version) url += (url.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(String(item.audio_version));
+            return url;
+        }
+        const reportId = item?.file_stem;
+        const videoId = item?.video_id;
+        const source = (item?.content_source || item?.source || '').toLowerCase();
+        // 2) Standard mapped route by video id
+        if (videoId) {
+            let url = `/exports/by_video/${videoId}.mp3`;
+            if (item.audio_version) url += `?v=${encodeURIComponent(String(item.audio_version))}`;
+            return url;
+        }
+        // 3) Fallback to slug name
+        if (reportId) {
+            let url = `/exports/${reportId}.mp3`;
+            if (item.audio_version) url += `?v=${encodeURIComponent(String(item.audio_version))}`;
+            return url;
+        }
+        // 4) Legacy reddit naming under /exports/audio/reddit<slug>.mp3
+        if (source === 'reddit' && reportId) {
+            let url = `/exports/audio/reddit${reportId}.mp3`;
+            if (item.audio_version) url += `?v=${encodeURIComponent(String(item.audio_version))}`;
+            return url;
+        }
+        return null;
+    }
+
+    itemHasAudio(item) {
+        if (!item) return false;
+        const flag = Boolean(item.media && item.media.has_audio);
+        const metaSecs = Number(item.media_metadata?.mp3_duration_seconds || item.media?.audio_duration_seconds || 0);
+        const explicitUrl = Boolean(item.media && item.media.audio_url);
+        return flag || explicitUrl || metaSecs > 0;
+    }
+
+    resetAudioElement() {
+        if (!this.audioElement) return;
+        try {
+            this.audioElement.pause();
+        } catch (_) { }
+        this.audioElement.removeAttribute('src');
+        this.audioElement.load();
+        if (this.progressBar) this.progressBar.style.width = '0%';
+        if (this.currentTimeEl) this.currentTimeEl.textContent = '0:00';
+        if (this.totalTimeEl) this.totalTimeEl.textContent = '0:00';
+        this.refreshAudioVariantBlocks();
+    }
+
+    showNowPlayingPlaceholder(item = null) {
+        this.currentAudio = null;
+        this.isPlaying = false;
+        this.resetAudioElement();
+        document.body.classList.remove('has-current-audio');
+
+        if (this.nowPlayingPreview) this.nowPlayingPreview.classList.remove('hidden');
+
+        if (this.nowPlayingTitle) {
+            if (item && item.title) {
+                const label = item.title || 'Summary';
+                this.nowPlayingTitle.textContent = `${label} (no audio)`;
+            } else {
+                this.nowPlayingTitle.textContent = 'Select an audio summary';
+            }
+        }
+
+        if (this.nowPlayingMeta) {
+            this.nowPlayingMeta.textContent = item ? 'Audio not available' : 'Choose a summary with audio';
+        }
+
+        if (this.nowPlayingThumb) {
+            if (item && item.thumbnail_url) {
+                this.nowPlayingThumb.src = item.thumbnail_url;
+                this.nowPlayingThumb.classList.remove('hidden');
+            } else {
+                this.nowPlayingThumb.classList.add('hidden');
+            }
+        }
+
+        this.updatePlayButton();
+        this.updatePlayingCard();
+        this.updateNowPlayingPreview();
     }
 
     // Realtime ingest event handling -------------------------------------------------
@@ -1594,14 +2540,57 @@ class AudioDashboard {
         this.settingsMenu.classList.toggle('hidden');
         if (!this.settingsMenu.classList.contains('hidden')) {
             this.updateAdminTokenSourceLabel();
+            this.initSettingsTabs();
         }
     }
     closeSettings() { if (!this.settingsMenu) return; this.settingsMenu.classList.add('hidden'); }
 
+    initSettingsTabs() {
+        if (!this.settingsTabs || !this.settingsTabs.length) return;
+        // Restore last active tab (migrate old tab names to 'display')
+        let activeTab = 'display';
+        try {
+            const stored = localStorage.getItem('ytv2.settingsTab');
+            // Migrate old tab names
+            if (stored === 'theme' || stored === 'view') {
+                activeTab = 'display';
+                localStorage.setItem('ytv2.settingsTab', 'display');
+            } else if (stored) {
+                activeTab = stored;
+            }
+        } catch (_) { }
+        this.switchSettingsTab(activeTab);
+        // Bind tab clicks
+        this.settingsTabs.forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                e.preventDefault();
+                const tabId = tab.getAttribute('data-settings-tab');
+                if (tabId) this.switchSettingsTab(tabId);
+            });
+        });
+    }
+
+    switchSettingsTab(tabId) {
+        if (!this.settingsTabs || !this.settingsPanels) return;
+        // Update tabs
+        this.settingsTabs.forEach(tab => {
+            const isActive = tab.getAttribute('data-settings-tab') === tabId;
+            tab.classList.toggle('settings-tab--active', isActive);
+            tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        // Update panels
+        this.settingsPanels.forEach(panel => {
+            const isActive = panel.getAttribute('data-settings-panel') === tabId;
+            panel.classList.toggle('hidden', !isActive);
+        });
+        // Persist
+        try { localStorage.setItem('ytv2.settingsTab', tabId); } catch (_) { }
+    }
+
     restoreSettingsAccordion() {
         if (!this.settingsAccordions) return;
         let map = {};
-        try { map = JSON.parse(localStorage.getItem('ytv2.settingsAccordion') || '{}'); } catch(_) {}
+        try { map = JSON.parse(localStorage.getItem('ytv2.settingsAccordion') || '{}'); } catch (_) { }
         this.settingsAccordions.forEach((sec) => {
             const key = sec.getAttribute('data-settings-section') || '';
             if (!key) return;
@@ -1613,7 +2602,7 @@ class AudioDashboard {
                 const chev = sec.querySelector('summary svg');
                 if (chev) chev.style.transform = sec.open ? 'rotate(180deg)' : 'rotate(0deg)';
                 sec.addEventListener('toggle', () => { if (chev) chev.style.transform = sec.open ? 'rotate(180deg)' : 'rotate(0deg)'; });
-            } catch(_) {}
+            } catch (_) { }
         });
     }
 
@@ -1625,31 +2614,31 @@ class AudioDashboard {
             if (!key) return;
             map[key] = !!sec.open;
         });
-        try { localStorage.setItem('ytv2.settingsAccordion', JSON.stringify(map)); } catch(_) {}
+        try { localStorage.setItem('ytv2.settingsAccordion', JSON.stringify(map)); } catch (_) { }
     }
-    setTheme(mode) { 
-        this.themeMode = mode || 'system'; 
-        localStorage.setItem('ytv2.theme', this.themeMode); 
-        this.applyTheme(this.themeMode); 
-        this.updateThemeChecks(); 
+    setTheme(mode) {
+        this.themeMode = mode || 'system';
+        localStorage.setItem('ytv2.theme', this.themeMode);
+        this.applyTheme(this.themeMode);
+        this.updateThemeChecks();
     }
-    
+
     applyTheme(mode) {
         const root = document.documentElement;
         const mq = window.matchMedia('(prefers-color-scheme: dark)');
         const wantsDark = mode === 'dark' || (mode === 'system' && mq.matches);
-        
+
         // Apply dark class to root element
         root.classList.toggle('dark', wantsDark);
-        
+
         // Bind media query listener for system mode
-        if (!this._mqBound) { 
-            mq.addEventListener('change', () => { 
+        if (!this._mqBound) {
+            mq.addEventListener('change', () => {
                 if ((localStorage.getItem('ytv2.theme') || 'system') === 'system') {
-                    this.applyTheme('system'); 
+                    this.applyTheme('system');
                 }
-            }); 
-            this._mqBound = true; 
+            });
+            this._mqBound = true;
         }
     }
     updateThemeChecks() {
@@ -1665,7 +2654,7 @@ class AudioDashboard {
         try {
             const response = await fetch('/api/filters');
             const filters = await response.json();
-            
+
             const sourceItems = (filters.content_source || filters.source || []).map(item => {
                 const raw = (item.value ?? '').toString();
                 const slug = raw.toLowerCase();
@@ -1681,22 +2670,29 @@ class AudioDashboard {
             this.renderFilterSection(filters.complexity_level, this.complexityFilters, 'complexity');
             this.renderLanguageFilters(filters.languages || []);
             this.renderFilterSection(filters.summary_type, this.summaryTypeFilters, 'summary_type');
-            
+
+            // Populate filter bar dropdowns
+            this.populateSourceDropdown(sourceItems);
+            this.populateCategoryDropdown(filters.categories || []);
+            this.populateChannelDropdown(filters.channels || []);
+            this.populateLanguageDropdown(filters.languages || []);
+            this.populateFilterBarPopover();
+
             // Bind show more toggles after content is loaded
             this.bindShowMoreToggles();
-            
+
             // Fix 1: Initialize currentFilters after filters render
             // This ensures visual state (checkboxes) matches internal state
             this.currentFilters = this.computeFiltersFromDOM();
             this.updateHeroBadges();
             console.log('Initialized currentFilters after render:', this.currentFilters);
             this.updateShowAllButtonVisibility();
-            
+
         } catch (error) {
             console.error('Failed to load filters:', error);
         }
     }
-    
+
     augmentSourceFiltersFromItems(items = []) {
         if (!Array.isArray(items) || !this.sourceFilters) return;
         const existingFilters = this.initialSourceFilters || [];
@@ -1769,7 +2765,7 @@ class AudioDashboard {
         this.currentFilters = this.computeFiltersFromDOM();
         this.updateHeroBadges();
     }
-    
+
     bindShowMoreToggles() {
         // Show more categories toggle
         const toggleMoreCategories = document.getElementById('toggleMoreCategories');
@@ -1781,7 +2777,7 @@ class AudioDashboard {
                 toggleMoreCategories.textContent = isHidden ? 'Show less' : 'Show more';
             });
         }
-        
+
         // Show more channels toggle
         const toggleMoreChannels = document.getElementById('toggleMoreChannels');
         const showMoreChannels = document.getElementById('showMoreChannels');
@@ -1810,27 +2806,26 @@ class AudioDashboard {
             container.innerHTML = '<p class="text-xs text-slate-500 dark:text-slate-400">No data available</p>';
             return;
         }
-        
+
         // Check if this is hierarchical data (categories with subcategories)
         const isHierarchical = filterType === 'category' && items.some(item => item.subcategories && item.subcategories.length > 0);
-        
+
         // Show first 3 items in main area
         const mainItems = items.slice(0, 3);
         const additionalItems = items.slice(3);
-        
+
         // Create hierarchical filter HTML for categories with subcategories
         const createHierarchicalHTML = (item) => {
             const hasSubcategories = item.subcategories && item.subcategories.length > 0;
             const categoryId = `category-${item.value.replace(/[^a-zA-Z0-9]/g, '-')}`;
-            
+
             let html = `
                 <div class="category-group mb-2">
                     <div class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
-                        <input type="checkbox" 
-                               value="${this.escapeHtml(item.value)}" 
+                        <input type="checkbox"
+                               value="${this.escapeHtml(item.value)}"
                                data-filter="${filterType}"
                                data-category-parent="${this.escapeHtml(item.value)}"
-                               checked
                                class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                         ${hasSubcategories ? `
                             <button class="category-expand-btn text-slate-400 hover:text-slate-600 p-1" 
@@ -1851,11 +2846,10 @@ class AudioDashboard {
                         <div id="${categoryId}" class="subcategory-list ml-8 mt-1 hidden">
                             ${item.subcategories.map(sub => `
                                 <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
-                                    <input type="checkbox" 
-                                           value="${this.escapeHtml(sub.value)}" 
+                                    <input type="checkbox"
+                                           value="${this.escapeHtml(sub.value)}"
                                            data-filter="subcategory"
                                            data-parent-category="${this.escapeHtml(item.value)}"
-                                           checked
                                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                                     <span class="text-sm text-slate-600 dark:text-slate-300 flex-1">${this.escapeHtml(sub.label || sub.value || sub)}</span>
                                     <span class="text-xs text-slate-400 dark:text-slate-500 mr-2">${sub.count}</span>
@@ -1872,15 +2866,14 @@ class AudioDashboard {
             `;
             return html;
         };
-        
+
         // Create simple filter HTML for non-hierarchical items
         const createFilterHTML = (item) => `
             <div class="flex items-center space-x-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
                 <label class="flex items-center space-x-2 cursor-pointer flex-1">
-                    <input type="checkbox" 
-                           value="${this.escapeHtml(item.value)}" 
+                    <input type="checkbox"
+                           value="${this.escapeHtml(item.value)}"
                            data-filter="${filterType}"
-                           checked
                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                     <span class="text-sm text-slate-700 dark:text-slate-200">${this.escapeHtml(item.label || item.value)}</span>
                     <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
@@ -1891,31 +2884,31 @@ class AudioDashboard {
                         title="Show only ${this.escapeHtml(item.label || item.value)}">only</button>
             </div>
         `;
-        
+
         // Choose the appropriate HTML creator
         const htmlCreator = isHierarchical ? createHierarchicalHTML : createFilterHTML;
-        
+
         // Render main items - insert before existing show more structure
         const mainHTML = mainItems.map(htmlCreator).join('');
-        
+
         // Find the existing structure elements 
         const existingShowMore = container.querySelector(`[id^="showMore"]`);
         const existingToggle = container.querySelector(`[id^="toggleMore"]`);
-        
+
         if (existingShowMore && existingToggle) {
             // Replace everything before the show more div
             const showMoreHTML = existingShowMore.outerHTML;
             const toggleHTML = existingToggle.outerHTML;
             container.innerHTML = mainHTML + showMoreHTML + toggleHTML;
-            
+
             // Re-get elements after innerHTML change
             const showMoreContainer = container.querySelector(`[id^="showMore"]`);
             const toggleButton = container.querySelector(`[id^="toggleMore"]`);
-            
+
             // Render additional items in show more section
             if (additionalItems.length > 0 && showMoreContainer) {
                 showMoreContainer.innerHTML = additionalItems.map(htmlCreator).join('');
-                
+
                 // Show the toggle button
                 if (toggleButton) toggleButton.classList.remove('hidden');
             } else {
@@ -1931,7 +2924,7 @@ class AudioDashboard {
         container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
             checkbox.addEventListener('change', () => this.handleFilterChange());
         });
-        
+
         // Add expand/collapse functionality for hierarchical categories
         if (isHierarchical) {
             container.querySelectorAll('.category-expand-btn').forEach(btn => {
@@ -1940,7 +2933,7 @@ class AudioDashboard {
                     const targetId = btn.dataset.categoryTarget;
                     const subcategoryList = document.getElementById(targetId);
                     const arrow = btn.querySelector('svg');
-                    
+
                     if (subcategoryList) {
                         const isHidden = subcategoryList.classList.contains('hidden');
                         subcategoryList.classList.toggle('hidden');
@@ -1948,45 +2941,45 @@ class AudioDashboard {
                     }
                 });
             });
-            
+
             // Handle parent-child checkbox relationships
             this.bindCategoryCheckboxLogic(container);
         }
     }
-    
+
     bindCategoryCheckboxLogic(container) {
         // Handle parent category checkbox changes
         container.querySelectorAll('input[data-category-parent]').forEach(parentCheckbox => {
             parentCheckbox.addEventListener('change', () => {
                 const categoryName = parentCheckbox.dataset.categoryParent;
                 const subcategoryCheckboxes = container.querySelectorAll(`input[data-parent-category="${categoryName}"]`);
-                
+
                 // When parent is checked/unchecked, update all subcategories
                 subcategoryCheckboxes.forEach(subCheckbox => {
                     subCheckbox.checked = parentCheckbox.checked;
                 });
-                
+
                 this.handleFilterChange();
             });
         });
-        
+
         // Handle subcategory checkbox changes  
         container.querySelectorAll('input[data-parent-category]').forEach(subCheckbox => {
             subCheckbox.addEventListener('change', () => {
                 const categoryName = subCheckbox.dataset.parentCategory;
                 const parentCheckbox = container.querySelector(`input[data-category-parent="${categoryName}"]`);
                 const allSubcategoryCheckboxes = container.querySelectorAll(`input[data-parent-category="${categoryName}"]`);
-                
+
                 if (parentCheckbox) {
                     // Check if all subcategories are checked
                     const allChecked = Array.from(allSubcategoryCheckboxes).every(cb => cb.checked);
                     const someChecked = Array.from(allSubcategoryCheckboxes).some(cb => cb.checked);
-                    
+
                     // Update parent checkbox state
                     parentCheckbox.checked = allChecked;
                     parentCheckbox.indeterminate = !allChecked && someChecked;
                 }
-                
+
                 this.handleFilterChange();
             });
         });
@@ -1996,29 +2989,28 @@ class AudioDashboard {
         const mainContainer = this.languageFilters;
         const showMoreContainer = document.getElementById('showMoreLanguages');
         const toggleButton = document.getElementById('toggleMoreLanguages');
-        
+
         if (!languages || languages.length === 0) {
             mainContainer.innerHTML = '<p class="text-xs text-slate-500 dark:text-slate-400">No language data available</p>';
             return;
         }
-        
+
         // Show first 3 languages in main area
         const mainLanguages = languages.slice(0, 3);
         const additionalLanguages = languages.slice(3);
-        
-        // Render main languages (preserve the showMoreLanguages structure) - default all to checked
+
+        // Render main languages (preserve the showMoreLanguages structure)
         const mainHTML = mainLanguages.map(item => `
             <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
-                <input type="checkbox" 
-                       value="${this.escapeHtml(item.value)}" 
+                <input type="checkbox"
+                       value="${this.escapeHtml(item.value)}"
                        data-filter="language"
-                       checked
                        class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                 <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.label || item.value)}</span>
                 <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
             </label>
         `).join('');
-        
+
         // Update main container while preserving structure
         const existingStructure = mainContainer.innerHTML;
         const showMoreIndex = existingStructure.indexOf('<div id="showMoreLanguages"');
@@ -2027,28 +3019,27 @@ class AudioDashboard {
         } else {
             mainContainer.innerHTML = mainHTML;
         }
-        
+
         // Render additional languages in show more section
         if (additionalLanguages.length > 0 && showMoreContainer) {
             showMoreContainer.innerHTML = additionalLanguages.map(item => `
                 <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
-                    <input type="checkbox" 
-                           value="${this.escapeHtml(item.value)}" 
+                    <input type="checkbox"
+                           value="${this.escapeHtml(item.value)}"
                            data-filter="language"
-                           checked
                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                     <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.label || item.value)}</span>
                     <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
                 </label>
             `).join('');
-            
+
             // Show the toggle button
             if (toggleButton) toggleButton.classList.remove('hidden');
         } else {
             // Hide toggle button if no additional languages
             if (toggleButton) toggleButton.classList.add('hidden');
         }
-        
+
         // Add event listeners to all language checkboxes
         mainContainer.querySelectorAll('input[type="checkbox"][data-filter="language"]').forEach(checkbox => {
             checkbox.addEventListener('change', () => this.handleFilterChange());
@@ -2062,7 +3053,7 @@ class AudioDashboard {
             (filters[k] ||= []);
             if (el.checked) filters[k].push(el.value);
         });
-        
+
         // Add parent category context for subcategories
         const selectedSubcategories = document.querySelectorAll('input[data-filter="subcategory"]:checked');
         if (selectedSubcategories.length > 0) {
@@ -2075,7 +3066,7 @@ class AudioDashboard {
                 filters.parentCategory = Array.from(parentCategories);
             }
         }
-        
+
         return filters;
     }
 
@@ -2125,15 +3116,15 @@ class AudioDashboard {
         };
 
         const params = new URLSearchParams();
-        
+
         // Add search query
         if (this.searchQuery) params.append('q', this.searchQuery);
-        
+
         // Fix 2: Recompute state from DOM right before fetching (prevents drift)
         this.currentFilters = this.computeFiltersFromDOM();
         this.updateHeroBadges();
         const facet = this.computeFacetState();
-        
+
         // Helper functions (OpenAI's drop-in solution)
         const getAllOptions = (filterType) =>
             Array.from(document.querySelectorAll(`input[data-filter="${filterType}"]`))
@@ -2145,53 +3136,7 @@ class AudioDashboard {
         const noneSelected = (filters) =>
             !anySelected(filters);
 
-        // REQUIRE Category selection (original logic)
-        if (!this.searchQuery && (!facet.categories || facet.categories.length === 0)) {
-            this.currentItems = [];
-            this.renderContent([]);
-            this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
-            this.updateResultsInfo({ page: 1, size: 12, total_count: 0, total_pages: 0 });
-            this.contentGrid.innerHTML = `
-                <div class="text-center py-12 text-slate-400">
-                    <div class="text-lg mb-2">Choose one or more categories</div>
-                    <div class="text-sm">Clear Categories = no categories selected → no results</div>
-                </div>`;
-            return;
-        }
-
-        // REQUIRE Channel selection when any channels exist but none selected
-        const hasChannelSelection = this.currentFilters.channel && this.currentFilters.channel.length > 0;
-        const hasChannelOptions = document.querySelectorAll('input[data-filter="channel"]').length > 0;
-        if (!this.searchQuery && hasChannelOptions && !hasChannelSelection) {
-            this.currentItems = [];
-            this.renderContent([]);
-            this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
-            this.updateResultsInfo({ page: 1, size: 12, total_count: 0, total_pages: 0 });
-            this.contentGrid.innerHTML = `
-                <div class="text-center py-12 text-slate-400">
-                    <div class="text-lg mb-2">Choose one or more channels</div>
-                    <div class="text-sm">Clear Channels = no channels selected → no results</div>
-                </div>`;
-            return;
-        }
-
-        // REQUIRE Source selection when any sources exist but none selected
-        const hasSourceSelection = this.currentFilters.source && this.currentFilters.source.length > 0;
-        const hasSourceOptions = document.querySelectorAll('input[data-filter="source"]').length > 0;
-        if (!this.searchQuery && hasSourceOptions && !hasSourceSelection) {
-            this.currentItems = [];
-            this.renderContent([]);
-            this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
-            this.updateResultsInfo({ page: 1, size: 12, total_count: 0, total_pages: 0 });
-            this.contentGrid.innerHTML = `
-                <div class="text-center py-12 text-slate-400">
-                    <div class="text-lg mb-2">Choose one or more sources</div>
-                    <div class="text-sm">Clear Sources = no sources selected → no results</div>
-                </div>`;
-            return;
-        }
-
-        // Build effectiveFilters by treating "ALL selected" as no filter for that type
+        // Build effectiveFilters by treating "none selected" as "show all" (no filter for that type)
         const effectiveFilters = {};
         Object.entries(this.currentFilters).forEach(([filterType, selectedValues]) => {
             const allValues = getAllOptions(filterType);
@@ -2221,22 +3166,6 @@ class AudioDashboard {
         console.debug('DOM->currentFilters:', this.currentFilters);
         console.debug('effectiveFilters:', effectiveFilters);
 
-        // ✅ Require selection model:
-        // none selected across ALL types → show nothing and stop
-        if (noneSelected(this.currentFilters) && !this.searchQuery) {
-            console.debug('Hit empty state: no filters selected');
-            this.currentItems = [];
-            this.renderContent([]);
-            this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
-            this.updateResultsInfo({ page: 1, size: 12, total_count: 0, total_pages: 0 });
-            this.contentGrid.innerHTML = `
-                <div class="text-center py-12 text-slate-400">
-                    <div class="text-lg mb-2">Choose one or more filters</div>
-                    <div class="text-sm">Clear All = nothing selected → no results</div>
-                </div>`;
-            return;
-        }
-
         // Helper function to normalize parameter values (per OpenAI recommendation)
         const normalizeLabel = (label) => {
             return String(label)
@@ -2249,7 +3178,7 @@ class AudioDashboard {
         // Check if server will handle subcategory filtering (to disable client-side narrowing)
         const hasServerSubcatFilter = Array.isArray(effectiveFilters.subcategory) && effectiveFilters.subcategory.length > 0;
         console.log(`[YTV2] Server subcategory filtering: ${hasServerSubcatFilter}`);
-        
+
         // Build params with special handling for subcategories
         Object.entries(effectiveFilters).forEach(([key, values]) => {
             if (key === 'subcategory') {
@@ -2258,7 +3187,7 @@ class AudioDashboard {
                     const normalizedSubcat = normalizeLabel(subcatValue);
                     console.log(`[YTV2] Adding param: subcategory=${normalizedSubcat} (original: ${subcatValue})`);
                     params.append('subcategory', normalizedSubcat);
-                    
+
                     // Find the parent category for this subcategory
                     const subcatInput = document.querySelector(`input[data-filter="subcategory"][value="${CSS.escape(subcatValue)}"]`);
                     if (subcatInput && subcatInput.dataset.parentCategory) {
@@ -2279,7 +3208,7 @@ class AudioDashboard {
                 });
             }
         });
-        
+
         // Deduplicate parentCategory parameters (per OpenAI recommendation)
         const dedupeParam = (key) => {
             const all = params.getAll(key);
@@ -2291,11 +3220,11 @@ class AudioDashboard {
             }
         };
         dedupeParam('parentCategory');
-        
+
         console.debug('Final URL params:', params.toString());
         // Render loading placeholders before fetching
         showSkeletons();
-        
+
         const isWallMode = this.viewMode === 'wall';
         const requestedPage = isWallMode ? 1 : this.currentPage;
         const pageSize = isWallMode ? 500 : 12;
@@ -2310,14 +3239,14 @@ class AudioDashboard {
             console.log('[YTV2] Request URL:', requestUrl); // Debug logging per OpenAI
             const response = await fetch(requestUrl);
             const data = await response.json();
-            
+
             // Handle API errors (per OpenAI recommendation)
             if (!response.ok) {
                 console.error('API error:', data);
                 this.showError(data?.message || 'Failed to load content');
                 return; // Don't try to process pagination/items
             }
-            
+
             let items = data.reports || data.data || [];
             console.log(`[YTV2] Items from server: ${items.length}`);
 
@@ -2439,23 +3368,27 @@ class AudioDashboard {
     }
 
     renderContent(items) {
+        console.log('[DEBUG] renderContent called with', items?.length, 'items, viewMode:', this.viewMode);
+        if (this.viewMode === 'wall') {
+            try { this.closeWallDockReader({ clearDeepLink: false, skipTelemetry: true }); } catch (_) { }
+        }
         // Safety check for undefined items
         if (!items || !Array.isArray(items)) {
             console.warn('renderContent called with invalid items:', items);
             this.contentGrid.innerHTML = '<div class="text-center py-8 text-gray-400">No summaries available</div>';
             return;
         }
-        
+
         // Show helpful message when no items to display
         if (items.length === 0) {
-            const hasActiveFilters = Object.keys(this.currentFilters).some(key => 
+            const hasActiveFilters = Object.keys(this.currentFilters).some(key =>
                 this.currentFilters[key] && this.currentFilters[key].length > 0
             );
-            
+
             // Helper functions for empty state
             const anySelected = (filters) =>
                 Object.values(filters).some(arr => Array.isArray(arr) && arr.length > 0);
-            
+
             const hasQueryOrFilters = this.searchQuery || anySelected(this.currentFilters);
             this.contentGrid.innerHTML = hasQueryOrFilters
                 ? `<div class="text-center py-12 text-slate-400">
@@ -2468,12 +3401,12 @@ class AudioDashboard {
                    </div>`;
             return;
         }
-        
+
         let html = '';
         if (this.viewMode === 'grid') {
             html = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">${items.map(i => this.createGridCard(i)).join('')}</div>`;
         } else if (this.viewMode === 'wall') {
-            html = `<div class="wall-grid">${items.map(i => this.createWallCard(i)).join('')}</div>`;
+            html = this.renderWallWorkspace(items);
         } else {
             html = items.map(i => this.createContentCard(i)).join('');
         }
@@ -2481,16 +3414,26 @@ class AudioDashboard {
         this.decorateCards(items);
 
         // Make whole card clickable (except controls)
+        console.log('[DEBUG] Attaching click handlers to', this.contentGrid.querySelectorAll('[data-card]').length, 'cards');
         this.contentGrid.querySelectorAll('[data-card]').forEach(card => {
             card.addEventListener('click', (e) => {
-                if (this._suppressOpen) { e.preventDefault(); e.stopPropagation(); return; }
+                console.log('[DEBUG] Card clicked', { viewMode: this.viewMode, target: e.target.tagName });
+                if (this._suppressOpen) { e.preventDefault(); e.stopPropagation(); console.log('[DEBUG] Suppressed'); return; }
                 // Ignore if click on a control, action, or filter chip
-                if (e.target.closest('[data-control]') || e.target.closest('[data-action]') || e.target.closest('[data-filter-chip]')) return;
-                if (this.viewMode === 'wall') {
+                if (e.target.closest('[data-control]') || e.target.closest('[data-action]') || e.target.closest('[data-filter-chip]')) {
+                    console.log('[DEBUG] Ignored - control/action/chip');
+                    return;
+                }
+                // Check if this is a wall card (either by viewMode or by DOM structure)
+                const isWallCard = this.viewMode === 'wall' || card.closest('.wall-grid') || card.classList.contains('wall-card');
+                console.log('[DEBUG] isWallCard:', isWallCard);
+                if (isWallCard) {
                     const id = card.getAttribute('data-report-id');
+                    console.log('[DEBUG] Wall card ID:', id);
                     if (id) { e.preventDefault(); e.stopPropagation(); this.handleWallRead(id, card); return; }
                 }
                 const href = card.dataset.href;
+                console.log('[DEBUG] Navigating to:', href);
                 if (href) window.location.href = href;
             });
             card.addEventListener('keydown', (e) => {
@@ -2512,6 +3455,18 @@ class AudioDashboard {
             });
         });
 
+        // Bind wall card tags button handlers
+        this.contentGrid.querySelectorAll('.wall-card__tags-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent card click
+                e.preventDefault();
+                try {
+                    const tagsData = JSON.parse(btn.dataset.tagsData || '{}');
+                    this.openTagsPopover(btn, document.body, tagsData);
+                } catch (_) { }
+            });
+        });
+
         // Highlight currently playing
         this.updatePlayingCard();
 
@@ -2523,6 +3478,7 @@ class AudioDashboard {
 
         // Apply deep-link expansion if present
         this.applyHashDeepLink();
+        this.autoOpenWallDockIfConfigured();
 
         // After render, ensure currentAudio still exists; if not, advance or clear
         if (this.currentAudio) {
@@ -2532,6 +3488,167 @@ class AudioDashboard {
                 else { this.audioElement.pause(); this.isPlaying = false; this.currentAudio = null; this.updatePlayButton(); this.updateNowPlayingPreview(); }
             }
         }
+    }
+
+    autoOpenWallDockIfConfigured() {
+        if (this.viewMode !== 'wall') return;
+        if (!this.flags || this.flags.wallDockAutoOpenFirst !== true) return;
+        if (this._wallDockAutoOpenedOnce) return;
+        if (!this.isWallDockAvailable()) return;
+
+        const { read: urlRead } = this.parseUrlParams();
+        const { read: hashRead } = this.parseHashParams();
+        if (urlRead || hashRead || (this._activeReader && this._activeReader.id)) {
+            this._wallDockAutoOpenedOnce = true;
+            return;
+        }
+
+        const workspace = this.contentGrid && this.contentGrid.querySelector('[data-wall-workspace]');
+        const grid = workspace ? workspace.querySelector('.wall-grid') : null;
+        const firstCard = grid ? grid.querySelector('.wall-card[data-report-id]') : null;
+        const firstId = firstCard ? firstCard.getAttribute('data-report-id') : '';
+        if (!firstId) return;
+
+        this._wallDockAutoOpenedOnce = true;
+        requestAnimationFrame(() => {
+            try {
+                if (this.viewMode !== 'wall') return;
+                if (this._activeReader && this._activeReader.id) return;
+                this.handleWallRead(firstId, firstCard);
+            } catch (_) { }
+        });
+    }
+
+    renderWallWorkspace(items) {
+        const mode = this.normalizeWallDockArrangeMode(this.wallDockArrangeMode || this.flags.wallDockArrangeModeDefault || 'hybrid');
+        this.wallDockArrangeMode = mode;
+        return `
+            <section class="wall-workspace" data-wall-workspace>
+                <div class="wall-grid">${items.map(i => this.renderWallCardTW(i)).join('')}</div>
+                <aside id="wallDockReader" class="wall-dock hidden" aria-hidden="true" aria-label="Summary reader">
+                    <button type="button" class="wall-dock__return hidden" data-action="wall-dock-return" aria-hidden="true">↑ Back to active card</button>
+                    <div class="wall-dock__chrome">
+                        <div class="wall-dock__topline">
+                            <button type="button" id="wallDockSource" class="wall-dock__source-badge" data-action="wall-reader-open-source">
+                                <span id="wallDockSourceIcon"></span>
+                                <span id="wallDockDuration" class="wall-dock__duration"></span>
+                            </button>
+                            <button type="button" id="wallDockChannel" class="wall-dock__channel hidden"></button>
+                            <button type="button" id="wallDockTags" class="wall-dock__tags-btn hidden">
+                                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                                    <line x1="7" y1="7" x2="7.01" y2="7"/>
+                                </svg>
+                                <span id="wallDockTagsCount">0</span>
+                            </button>
+                            <div class="wall-dock__top-actions">
+                                <div class="wall-dock__menu-wrap">
+                                    <button type="button" class="wall-dock__btn wall-dock__btn--menu summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">•••</button>
+                                </div>
+                                <button type="button" class="wall-dock__close" data-action="wall-dock-close" aria-label="Close">✕</button>
+                            </div>
+                        </div>
+                        <h3 id="wallDockTitle" class="wall-dock__title">Summary</h3>
+                        <div class="summary-card__menu wall-dock__menu hidden" data-kebab-menu role="menu">
+                            <section class="wall-dock__menu-section" data-wall-menu-section="reader">
+                                <p class="wall-dock__menu-label">Reader</p>
+                                <button type="button" class="summary-card__menu-item wall-dock__display-toggle" role="menuitem" data-action="reader-display-inline-toggle" aria-expanded="false" aria-controls="wallDockDisplayPanel">
+                                    <span class="wall-dock__display-toggle-head">
+                                        <span class="wall-dock__display-toggle-icon" aria-hidden="true">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="11" cy="18" r="2"/></svg>
+                                        </span>
+                                        <span class="wall-dock__display-toggle-text">Display</span>
+                                    </span>
+                                    <span class="wall-dock__display-chevron" aria-hidden="true">⌄</span>
+                                </button>
+                                <div id="wallDockDisplayPanel" class="wall-dock__display-panel hidden" data-wall-display-panel>
+                                    <section class="wall-dock__display-group wall-dock__display-group--type">
+                                        <header class="wall-dock__display-group-head">
+                                            <span class="wall-dock__display-group-icon" aria-hidden="true">A</span>
+                                            <span class="wall-dock__display-group-title">Type</span>
+                                        </header>
+                                        <div class="wall-dock__display-row">
+                                            <span class="wall-dock__display-row-icon" aria-hidden="true">SZ</span>
+                                            <div class="wall-dock__display-seg wall-dock__display-seg--dense" role="group" aria-label="Text size">
+                                                <span role="button" data-reader-size-dec aria-pressed="false" title="Smaller text">-</span>
+                                                <span role="button" data-reader-size="s" aria-pressed="false" title="Small">S</span>
+                                                <span role="button" data-reader-size="m" aria-pressed="false" title="Medium">M</span>
+                                                <span role="button" data-reader-size="l" aria-pressed="false" title="Large">L</span>
+                                                <span role="button" data-reader-size-inc aria-pressed="false" title="Larger text">+</span>
+                                            </div>
+                                        </div>
+                                        <div class="wall-dock__display-row">
+                                            <span class="wall-dock__display-row-icon" aria-hidden="true">FN</span>
+                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Font family">
+                                                <span role="button" data-reader-family="sans" aria-pressed="false" title="Sans serif">Sans</span>
+                                                <span role="button" data-reader-family="serif" aria-pressed="false" title="Serif" style="font-family:Georgia,serif">Serif</span>
+                                            </div>
+                                        </div>
+                                        <div class="wall-dock__display-row">
+                                            <span class="wall-dock__display-row-icon" aria-hidden="true">LN</span>
+                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Line spacing">
+                                                <span role="button" data-reader-line="tight" aria-pressed="false" title="Tight spacing">T</span>
+                                                <span role="button" data-reader-line="normal" aria-pressed="false" title="Normal spacing">N</span>
+                                                <span role="button" data-reader-line="loose" aria-pressed="false" title="Loose spacing">L</span>
+                                            </div>
+                                        </div>
+                                    </section>
+                                    <section class="wall-dock__display-group wall-dock__display-group--layout">
+                                        <header class="wall-dock__display-group-head">
+                                            <span class="wall-dock__display-group-icon" aria-hidden="true">[]</span>
+                                            <span class="wall-dock__display-group-title">Layout</span>
+                                        </header>
+                                        <div class="wall-dock__display-row">
+                                            <span class="wall-dock__display-row-icon" aria-hidden="true">P</span>
+                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Paragraph style">
+                                                <span role="button" data-reader-para="spaced" aria-pressed="false" title="Spaced paragraphs">Sp</span>
+                                                <span role="button" data-reader-para="indented" aria-pressed="false" title="Indented paragraphs">In</span>
+                                            </div>
+                                        </div>
+                                        <div class="wall-dock__display-row">
+                                            <span class="wall-dock__display-row-icon" aria-hidden="true">J</span>
+                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Justification">
+                                                <span role="button" data-reader-justify="left" aria-pressed="false" title="Left aligned">Left</span>
+                                                <span role="button" data-reader-justify="justify" aria-pressed="false" title="Justified">Just</span>
+                                            </div>
+                                        </div>
+                                        <div class="wall-dock__display-row">
+                                            <span class="wall-dock__display-row-icon" aria-hidden="true">W</span>
+                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Reading width">
+                                                <span role="button" data-reader-measure="narrow" aria-pressed="false" title="Narrow">N</span>
+                                                <span role="button" data-reader-measure="medium" aria-pressed="false" title="Medium">M</span>
+                                                <span role="button" data-reader-measure="wide" aria-pressed="false" title="Wide">W</span>
+                                                <span role="button" data-reader-measure="full" aria-pressed="false" title="Full width">F</span>
+                                            </div>
+                                        </div>
+                                    </section>
+                                    <section class="wall-dock__display-group wall-dock__display-group--theme">
+                                        <header class="wall-dock__display-group-head">
+                                            <span class="wall-dock__display-group-icon" aria-hidden="true">O</span>
+                                            <span class="wall-dock__display-group-title">Tone</span>
+                                            <button type="button" class="wall-dock__display-reset" data-reader-reset-inline title="Reset reader settings">Reset</button>
+                                        </header>
+                                        <div class="wall-dock__display-row wall-dock__display-row--full">
+                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Reader theme">
+                                                <span role="button" data-reader-theme="light" aria-pressed="false" title="Light theme">Lt</span>
+                                                <span role="button" data-reader-theme="sepia" aria-pressed="false" title="Sepia theme">Se</span>
+                                                <span role="button" data-reader-theme="dark" aria-pressed="false" title="Dark theme">Dk</span>
+                                            </div>
+                                        </div>
+                                    </section>
+                                </div>
+                                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-copy-link">Copy link</button>
+                                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-open-page">Open report page</button>
+                            </section>
+                            <section class="wall-dock__menu-section" data-wall-menu-section="actions">
+                                <p class="wall-dock__menu-label">Actions</p>
+                                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-reprocess">Regenerate…</button>
+                            </section>
+                        </div>
+                    </div>
+                    <div id="wallDockBody" class="wall-dock__body prose prose-sm dark:prose-invert max-w-none"></div>
+                </aside>
+            </section>`;
     }
 
     decorateCards(items) {
@@ -2603,7 +3720,7 @@ class AudioDashboard {
         if (btn.hasAttribute('disabled') || btn.dataset.disabled !== undefined) return;
         if (btn.dataset.busy) return;
         btn.dataset.busy = '1';
-        setTimeout(() => { try { delete btn.dataset.busy; } catch(_){} }, 400);
+        setTimeout(() => { try { delete btn.dataset.busy; } catch (_) { } }, 400);
         const action = btn.dataset.action;
         const id = card.dataset.reportId;
         if (action === 'listen') {
@@ -2708,6 +3825,74 @@ class AudioDashboard {
         if (win) win.opener = null;
     }
 
+    getStoredPlaybackRate() {
+        try {
+            const raw = localStorage.getItem(this.playbackRateKey);
+            const v = Number.parseFloat(String(raw || ''));
+            if (!Number.isFinite(v) || v <= 0) return 1;
+            const rates = Array.isArray(this.playbackRates) && this.playbackRates.length ? this.playbackRates : [1, 1.25, 1.5, 1.75, 2];
+            // Snap to known rates to avoid weird floats
+            const nearest = rates.reduce((best, r) => (Math.abs(r - v) < Math.abs(best - v) ? r : best), 1);
+            return nearest;
+        } catch (_) {
+            return 1;
+        }
+    }
+
+    getEffectivePlaybackRate() {
+        try {
+            const r = Number(this.audioElement?.playbackRate);
+            if (Number.isFinite(r) && r > 0) return r;
+        } catch (_) { }
+        return this.getStoredPlaybackRate();
+    }
+
+    formatPlaybackRate(rate) {
+        const r = Number(rate);
+        if (!Number.isFinite(r) || r <= 0) return '1×';
+        const txt = Number.isInteger(r) ? String(r) : String(r).replace(/0+$/, '').replace(/\.$/, '');
+        return `${txt}×`;
+    }
+
+    applyStoredPlaybackRate() {
+        if (!this.audioElement) return;
+        const rate = this.getStoredPlaybackRate();
+        try { this.audioElement.playbackRate = rate; } catch (_) { }
+    }
+
+    setPlaybackRate(rate, { persist = true } = {}) {
+        const next = Number(rate);
+        if (!Number.isFinite(next) || next <= 0) return;
+        if (this.audioElement) {
+            try { this.audioElement.playbackRate = next; } catch (_) { }
+        }
+        if (persist) {
+            try { localStorage.setItem(this.playbackRateKey, String(next)); } catch (_) { }
+        }
+        this.updatePlaybackRateUi();
+    }
+
+    cyclePlaybackRate() {
+        const rates = Array.isArray(this.playbackRates) && this.playbackRates.length ? this.playbackRates : [1, 1.25, 1.5, 1.75, 2];
+        const cur = this.getEffectivePlaybackRate();
+        const idx = Math.max(0, rates.findIndex(r => Math.abs(r - cur) < 0.001));
+        const next = rates[(idx + 1) % rates.length];
+        this.setPlaybackRate(next, { persist: true });
+        return next;
+    }
+
+    updatePlaybackRateUi(root = document) {
+        if (!root) return;
+        const label = this.formatPlaybackRate(this.getEffectivePlaybackRate());
+        try {
+            root.querySelectorAll('[data-kaleido-audio-rate], [data-playback-rate]').forEach((btn) => {
+                if (!btn) return;
+                btn.textContent = label;
+                btn.setAttribute('aria-label', `Playback speed ${label}`);
+            });
+        } catch (_) { }
+    }
+
     async expandCardInline(id) {
         const card = this.contentGrid.querySelector(`[data-report-id="${id}"]`);
         if (!card) return;
@@ -2726,8 +3911,8 @@ class AudioDashboard {
         // Set id and control linkage
         if (!region.id) region.id = `expand-${id}`;
         const readBtn = card.querySelector('[data-action="read"]');
-        if (readBtn) { 
-            readBtn.setAttribute('aria-controls', region.id); 
+        if (readBtn) {
+            readBtn.setAttribute('aria-controls', region.id);
             readBtn.setAttribute('aria-expanded', 'true');
             // Update arrow to point down when expanded
             const arrow = readBtn.querySelector('span[aria-hidden="true"]');
@@ -2764,12 +3949,12 @@ class AudioDashboard {
             region.innerHTML = expandedContent.html;
             this.bindExpandedVariantControls(region, expandedContent.variantInfo, expandedContent.defaultVariant);
             // Ensure normalized HTML only; reader display options are handled in wall reader header
-            try { const bodyEl = region.querySelector('[data-summary-body]'); this.enhanceSummaryHtml(bodyEl); } catch(_) {}
+            try { const bodyEl = region.querySelector('[data-summary-body]'); this.enhanceSummaryHtml(bodyEl); } catch (_) { }
             // Focus expanded wrapper for a11y (title is sr-only)
             const wrapper = region.querySelector('[data-expanded]');
             if (wrapper) {
                 wrapper.setAttribute('tabindex', '-1');
-                try { wrapper.focus({ preventScroll: true }); } catch(_) { wrapper.focus(); }
+                try { wrapper.focus({ preventScroll: true }); } catch (_) { wrapper.focus(); }
             }
         } catch (err) {
             console.error('Failed to load report', err);
@@ -2882,13 +4067,13 @@ class AudioDashboard {
         const controlsHtml = variantInfo.order.length > 1
             ? `<div class="flex flex-wrap gap-2 text-xs" data-variant-controls>
                 ${variantInfo.order.map((variantId) => {
-                    const meta = variantInfo.map[variantId];
-                    const icon = meta.icon ? `<span class="text-base">${meta.icon}</span>` : '';
-                    return `<button type="button" data-variant="${variantId}" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border transition variant-toggle">
+                const meta = variantInfo.map[variantId];
+                const icon = meta.icon ? `<span class="text-base">${meta.icon}</span>` : '';
+                return `<button type="button" data-variant="${variantId}" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border transition variant-toggle">
                                 ${icon}
                                 <span class="font-medium">${meta.label}</span>
                             </button>`;
-                }).join('')}
+            }).join('')}
                </div>`
             : '';
 
@@ -2922,13 +4107,55 @@ class AudioDashboard {
     }
 
     parseHash() {
-        const h = window.location.hash || '';
-        const m = h.match(/^#report=([^&]+)/);
-        return m ? decodeURIComponent(m[1]) : '';
+        const params = this.parseHashParams();
+        return params.report || '';
+    }
+
+    parseHashParams() {
+        const hash = String(window.location.hash || '');
+        if (!hash || hash === '#') return { report: '', read: '', variant: '' };
+        // Back-compat: #read=<id> (optionally with &variant=...)
+        if (hash.startsWith('#read=')) {
+            try {
+                const sp = new URLSearchParams(hash.slice(1));
+                return {
+                    report: sp.get('report') || '',
+                    read: sp.get('read') || '',
+                    variant: (sp.get('variant') || sp.get('v') || '').toLowerCase()
+                };
+            } catch (_) {
+                const rid = decodeURIComponent(hash.slice('#read='.length).split('&')[0] || '');
+                return { report: '', read: rid, variant: '' };
+            }
+        }
+        // Default: treat the fragment as a querystring (e.g. #report=..., #read=..., etc)
+        try {
+            const sp = new URLSearchParams(hash.slice(1));
+            return {
+                report: sp.get('report') || '',
+                read: sp.get('read') || '',
+                variant: (sp.get('variant') || sp.get('v') || '').toLowerCase()
+            };
+        } catch (_) {
+            return { report: '', read: '', variant: '' };
+        }
+    }
+
+    parseUrlParams() {
+        try {
+            const sp = new URLSearchParams(String(window.location.search || ''));
+            return {
+                read: sp.get('read') || '',
+                variant: (sp.get('variant') || sp.get('v') || '').toLowerCase(),
+                videoId: sp.get('video_id') || sp.get('videoId') || sp.get('video') || ''
+            };
+        } catch (_) {
+            return { read: '', variant: '', videoId: '' };
+        }
     }
 
     onHashChange() {
-        const id = this.parseHash();
+        const { report: id } = this.parseHashParams();
         if (id) {
             this.expandCardInline(id);
         } else if (this.currentExpandedId) {
@@ -2938,22 +4165,629 @@ class AudioDashboard {
     }
 
     applyHashDeepLink() {
-        const id = this.parseHash();
-        if (id) {
-            if (this.flags.cardExpandInline && this.viewMode !== 'wall') {
-                const card = this.contentGrid.querySelector(`[data-report-id="${id}"]`);
-                if (card) this.expandCardInline(id);
-            }
+        const { report: hashReport, read: hashRead, variant: hashVariant } = this.parseHashParams();
+        const { read: urlRead, variant: urlVariant, videoId } = this.parseUrlParams();
+
+        const desiredVariant = (urlVariant || hashVariant || '').toLowerCase();
+        let targetId = (urlRead || hashRead || '').trim();
+
+        if (!targetId && videoId) {
+            try {
+                const found = (this.currentItems || []).find((x) => String(x?.video_id || x?.videoId || '').trim() === String(videoId).trim());
+                if (found && found.file_stem) targetId = String(found.file_stem);
+            } catch (_) { }
+        }
+
+        if (targetId) {
+            // Store variant so readers can select the correct tab after opening.
+            this._pendingReadVariant = { id: targetId, variant: desiredVariant };
+            // If the reader is already open on the right item, only switch variants.
+            try {
+                if (this._activeReader && this._activeReader.id === targetId && this._kaleidoSetVariant && desiredVariant) {
+                    this._kaleidoSetVariant(desiredVariant);
+                    return;
+                }
+            } catch (_) { }
+            this.handleRead(targetId);
             return;
         }
-        const hash = String(window.location.hash || '');
-        if (hash.startsWith('#read=')) {
-            const rid = decodeURIComponent(hash.slice('#read='.length));
-            if (rid) {
-                const card = this.contentGrid && this.contentGrid.querySelector(`[data-report-id="${CSS.escape(rid)}"]`);
-                this.handleRead(rid, card);
+
+        // No reader state: close any open reader, then handle legacy hash expansion.
+        try {
+            if (this._activeReader && this._activeReader.close) {
+                this._activeReader.close();
+            }
+        } catch (_) { }
+
+        if (hashReport) {
+            if (this.flags.cardExpandInline && this.viewMode !== 'wall') {
+                const card = this.contentGrid.querySelector(`[data-report-id="${hashReport}"]`);
+                if (card) this.expandCardInline(hashReport);
             }
         }
+    }
+
+    setReadDeepLink(reportId, variantId = '', { replace = true, videoId = '' } = {}) {
+        try {
+            const id = String(reportId || '').trim();
+            const v = String(variantId || '').trim().toLowerCase();
+            const vid = String(videoId || '').trim();
+
+            const url = new URL(window.location.href);
+            if (id) url.searchParams.set('read', id);
+            else url.searchParams.delete('read');
+
+            if (v) url.searchParams.set('variant', v);
+            else url.searchParams.delete('variant');
+
+            if (vid) url.searchParams.set('video_id', vid);
+            else url.searchParams.delete('video_id');
+
+            const qs = url.searchParams.toString();
+            const nextUrl = url.pathname + (qs ? `?${qs}` : '') + url.hash;
+            if (replace) history.replaceState({}, document.title, nextUrl);
+            else history.pushState({}, document.title, nextUrl);
+        } catch (_) { }
+    }
+
+    clearReadDeepLinkIfMatches(reportId) {
+        try {
+            const id = String(reportId || '').trim();
+            if (!id) return;
+            const url = new URL(window.location.href);
+            const cur = String(url.searchParams.get('read') || '').trim();
+            if (cur && cur !== id) return;
+            if (!cur) {
+                // Back-compat: allow closing when legacy hash read matches.
+                const { read } = this.parseHashParams();
+                if (!read || String(read) !== id) return;
+            }
+            url.searchParams.delete('read');
+            url.searchParams.delete('variant');
+            url.searchParams.delete('video_id');
+            const qs = url.searchParams.toString();
+            const nextUrl = url.pathname + (qs ? `?${qs}` : '') + url.hash;
+            history.replaceState({}, document.title, nextUrl);
+        } catch (_) { }
+    }
+
+    extractTopics(item) {
+        const out = [];
+        const push = (v) => {
+            const s = (v == null) ? '' : String(v).trim();
+            if (!s) return;
+            out.push(s);
+        };
+        const readArray = (arr) => {
+            if (!Array.isArray(arr)) return;
+            arr.forEach(push);
+        };
+        try {
+            const raw = item?.topics_json ?? item?.topics ?? item?.analysis?.topics ?? item?.analysis?.key_topics ?? null;
+            if (typeof raw === 'string') {
+                try {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) readArray(parsed);
+                    else if (parsed && typeof parsed === 'object') {
+                        readArray(parsed.key_topics);
+                        readArray(parsed.topics);
+                        readArray(parsed.named_entities);
+                    }
+                } catch {
+                    // tolerate comma-separated strings
+                    raw.split(',').forEach(push);
+                }
+            } else if (Array.isArray(raw)) {
+                readArray(raw);
+            } else if (raw && typeof raw === 'object') {
+                readArray(raw.key_topics);
+                readArray(raw.topics);
+                readArray(raw.named_entities);
+            }
+        } catch (_) { }
+        const uniq = [];
+        const seen = new Set();
+        out.forEach((s) => {
+            if (!s) return;
+            const k = s.toLowerCase();
+            if (seen.has(k)) return;
+            seen.add(k);
+            uniq.push(s);
+        });
+        return uniq;
+    }
+
+    renderReaderMetaBlock(item, { open = true } = {}) {
+        if (!item) return '';
+        const channel = (item.channel_name || item.channel || '').toString().trim();
+        const hasAudio = this.itemHasAudio ? this.itemHasAudio(item) : false;
+        const videoDur = Number(item?.media_metadata?.video_duration_seconds || item?.duration_seconds || 0);
+        const audioDur = Number(item?.media_metadata?.mp3_duration_seconds || 0);
+        const fmt = (sec) => {
+            try { return this.formatDuration(sec); } catch (_) { return ''; }
+        };
+        const summaryParts = [];
+        if (videoDur > 0) summaryParts.push(`Video ${fmt(videoDur)}`);
+        if (hasAudio && audioDur > 0) summaryParts.push(`Audio ${fmt(audioDur)}`);
+        const summary = summaryParts.length ? summaryParts.join(' • ') : '';
+
+        const cat = this.extractCatsAndSubcats ? this.extractCatsAndSubcats(item) : { categories: [], subcatPairs: [] };
+        const categories = Array.isArray(cat.categories) ? cat.categories : [];
+        const subcatPairs = Array.isArray(cat.subcatPairs) ? cat.subcatPairs : [];
+        const topics = this.extractTopics(item);
+
+        const maxCats = 24;
+        const maxSubs = 28;
+        const maxTopics = 32;
+
+        const filterChip = (filterType, valueText, { label = '', parentCategory = '' } = {}) => {
+            const value = (valueText || '').toString().trim();
+            if (!value) return '';
+            const safeValue = this.escapeHtml(value);
+            const safeLabel = this.escapeHtml((label || value).toString().trim());
+            const parentAttr = parentCategory ? ` data-parent-category="${this.escapeHtml(parentCategory)}"` : '';
+            return `<button type="button" class="reader-meta-chip" data-filter-chip="${this.escapeHtml(filterType)}" data-filter-value="${safeValue}"${parentAttr} title="Filter by ${safeLabel}">${safeLabel}</button>`;
+        };
+
+        const chipsWrap = (chipsHtml, moreCount = 0) => {
+            if (!chipsHtml && !moreCount) return '';
+            return `<div class="reader-meta-chipset">${chipsHtml}${moreCount > 0 ? `<span class="reader-meta-chip reader-meta-chip--more">+${moreCount} more</span>` : ''}</div>`;
+        };
+
+        const catVisible = categories.slice(0, maxCats);
+        const subVisible = subcatPairs.slice(0, maxSubs);
+        const topicVisible = topics.slice(0, maxTopics);
+        const catChips = catVisible.map((c) => filterChip('category', c)).join('');
+        const subChips = subVisible.map(([parent, sub]) => filterChip('subcategory', sub, { parentCategory: parent })).join('');
+        const topicChips = topicVisible.map((t) => filterChip('topic', t)).join('');
+
+        const tabs = [];
+        if (catChips) tabs.push({ id: 'categories', label: `Categories (${categories.length})`, body: chipsWrap(catChips, Math.max(0, categories.length - maxCats)) });
+        if (subChips) tabs.push({ id: 'subcategories', label: `Subcategories (${subcatPairs.length})`, body: chipsWrap(subChips, Math.max(0, subcatPairs.length - maxSubs)) });
+        if (topicChips) tabs.push({ id: 'topics', label: `Topics (${topics.length})`, body: chipsWrap(topicChips, Math.max(0, topics.length - maxTopics)) });
+
+        const channelBtn = channel
+            ? `<button type="button" class="reader-meta__channel" data-filter-chip="channel" data-filter-value="${this.escapeHtml(channel)}" title="Filter by ${this.escapeHtml(channel)}">${this.escapeHtml(channel)}</button>`
+            : '';
+
+        const anyRows = tabs.length > 0 || channelBtn || summary;
+        if (!anyRows) return '';
+        const firstTabId = tabs.length ? tabs[0].id : '';
+
+        return `
+          <details class="reader-meta not-prose mt-3 rounded-lg border border-slate-200 bg-slate-50/50 p-3 dark:border-slate-700 dark:bg-slate-800/80" ${open ? 'open' : ''} data-reader-meta>
+            <summary class="reader-meta__summary flex items-center justify-between gap-3 cursor-pointer select-none">
+              <div class="reader-meta__summary-main min-w-0">
+                <span class="reader-meta__summary-title text-base font-semibold text-slate-900 dark:text-slate-100">Details</span>
+                <div class="reader-meta__summary-subline min-w-0">
+                  ${channelBtn}
+                  ${summary ? `<span class="reader-meta__summary-meta truncate text-sm text-slate-600 dark:text-slate-300">${this.escapeHtml(summary)}</span>` : ''}
+                </div>
+              </div>
+              <span class="reader-meta__chevron text-slate-500 dark:text-slate-300 transition-transform" data-reader-meta-chevron aria-hidden="true">⌄</span>
+            </summary>
+            <div class="reader-meta__inner mt-3 ${tabs.length ? '' : 'hidden'}">
+              <div class="reader-meta-tabs" role="tablist" aria-label="Metadata sections">
+                ${tabs.map((tab) => `
+                  <button type="button" class="reader-meta-tab" data-reader-meta-tab="${this.escapeHtml(tab.id)}" aria-pressed="${tab.id === firstTabId ? 'true' : 'false'}">${this.escapeHtml(tab.label)}</button>
+                `).join('')}
+              </div>
+              <div class="reader-meta-panels">
+                ${tabs.map((tab) => `
+                  <section class="reader-meta-panel${tab.id === firstTabId ? '' : ' hidden'}" data-reader-meta-panel="${this.escapeHtml(tab.id)}">
+                    ${tab.body}
+                  </section>
+                `).join('')}
+              </div>
+            </div>
+          </details>
+        `;
+    }
+
+    renderReaderHeader(item) {
+        // Metadata (source, channel, tags) is now in the topbar, so this returns empty
+        // Keeping the method for compatibility with existing calls
+        return '';
+    }
+
+    openTagsPopover(anchorBtn, container, passedTagsData = null) {
+        // Check if popover already exists for this anchor - toggle close
+        const existing = document.querySelector('.reader-tags-popover');
+        if (existing && existing._anchor === anchorBtn) {
+            existing.remove();
+            return;
+        }
+        // Remove any other existing popover
+        if (existing) existing.remove();
+
+        let tagsData = passedTagsData;
+        if (!tagsData) {
+            try {
+                tagsData = JSON.parse(anchorBtn.getAttribute('data-tags-data') || '{}');
+            } catch (_) {
+                return;
+            }
+        }
+
+        const { categories = [], subcatPairs = [], topics = [], channel } = tagsData;
+
+        // Build popover content with header and close button
+        let content = `
+            <div class="reader-tags-popover__header">
+                <span class="reader-tags-popover__title">Tags</span>
+                <button type="button" class="reader-tags-popover__close" aria-label="Close">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="reader-tags-popover__section">
+        `;
+
+        // Categories
+        if (categories.length) {
+            content += `
+              <div class="reader-tags-popover__label">Categories</div>
+              <div class="reader-tags-popover__chips">
+                ${categories.map(c => `
+                  <button type="button" class="reader-tags-chip" data-filter-chip="category" data-filter-value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</button>
+                `).join('')}
+              </div>
+            `;
+        }
+
+        // Subcategories (grouped by parent)
+        if (subcatPairs.length) {
+            content += `
+              <div class="reader-tags-popover__label">Subcategories</div>
+              <div class="reader-tags-popover__chips">
+                ${subcatPairs.map(([parent, sub]) => `
+                  <button type="button" class="reader-tags-chip reader-tags-chip--sub" data-filter-chip="subcategory" data-filter-value="${this.escapeHtml(sub)}" data-parent-category="${this.escapeHtml(parent)}" title="${this.escapeHtml(parent)} → ${this.escapeHtml(sub)}">
+                    <span class="opacity-60">${this.escapeHtml(parent)}</span> → ${this.escapeHtml(sub)}
+                  </button>
+                `).join('')}
+              </div>
+            `;
+        }
+
+        // Topics
+        if (topics.length) {
+            const maxTopics = 20;
+            const visibleTopics = topics.slice(0, maxTopics);
+            content += `
+              <div class="reader-tags-popover__label">Topics</div>
+              <div class="reader-tags-popover__chips">
+                ${visibleTopics.map(t => `
+                  <button type="button" class="reader-tags-chip" data-filter-chip="topic" data-filter-value="${this.escapeHtml(t)}">${this.escapeHtml(t)}</button>
+                `).join('')}
+                ${topics.length > maxTopics ? `<span class="text-xs text-slate-500">+${topics.length - maxTopics} more</span>` : ''}
+              </div>
+            `;
+        }
+
+        content += '</div>';
+
+        // Create popover
+        const popover = document.createElement('div');
+        popover.className = 'reader-tags-popover';
+        popover._anchor = anchorBtn; // Track anchor for toggle
+        popover.innerHTML = content;
+        document.body.appendChild(popover);
+
+        // Smart positioning - ensure popover stays within viewport
+        const rect = anchorBtn.getBoundingClientRect();
+        const popoverRect = popover.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom - 8;
+        const spaceAbove = rect.top - 8;
+        const spaceRight = window.innerWidth - rect.right - 8;
+        const spaceLeft = rect.left - 8;
+        const margin = 8;
+
+        // Determine max height available
+        const maxheightBelow = spaceBelow - 20;
+        const maxheightAbove = spaceAbove - 20;
+
+        // Vertical positioning
+        if (spaceBelow >= popoverRect.height || spaceBelow >= spaceAbove) {
+            // Position below
+            popover.style.top = `${rect.bottom + margin}px`;
+            popover.style.maxHeight = `${Math.max(200, maxheightBelow)}px`;
+        } else {
+            // Position above, but constrain to viewport
+            const topPosition = Math.max(margin, rect.top - popoverRect.height - margin);
+            popover.style.top = `${topPosition}px`;
+            popover.style.maxHeight = `${Math.max(200, maxheightAbove)}px`;
+        }
+
+        // Horizontal positioning - check if popover would go off left edge
+        popover.style.right = '';
+        popover.style.left = '';
+
+        if (spaceRight >= popoverRect.width || spaceRight >= spaceLeft) {
+            // Position aligned to right edge of button
+            popover.style.right = `${window.innerWidth - rect.right}px`;
+        } else {
+            // Position aligned to left edge of button
+            popover.style.left = `${rect.left}px`;
+        }
+
+        // Close button handler
+        const closeBtn = popover.querySelector('.reader-tags-popover__close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => popover.remove());
+        }
+
+        // Close on click outside
+        const closePopover = (e) => {
+            if (!popover.contains(e.target) && e.target !== anchorBtn) {
+                popover.remove();
+                document.removeEventListener('click', closePopover);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closePopover), 0);
+
+        // Handle chip clicks
+        popover.querySelectorAll('[data-filter-chip]').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const filterType = chip.getAttribute('data-filter-chip');
+                const filterValue = chip.getAttribute('data-filter-value');
+                popover.remove();
+                this.applyFilterChip(filterType, filterValue);
+            });
+        });
+    }
+
+    applyFilterChip(filterType, filterValue) {
+        // Apply filter and close reader
+        if (this.searchInput) this.searchInput.value = '';
+        if (this.searchInputTop) this.searchInputTop.value = '';
+        this.currentFilters[filterType] = [filterValue];
+        this.currentPage = 1;
+        this.updateHeroBadges();
+        this.loadContent();
+        // Close any open readers
+        this.closeWallDockReader();
+        this.closeKaleidoOverlay();
+    }
+
+    openTagsPopoverForItem(item, anchorBtn) {
+        // Remove any existing popover
+        const existing = document.querySelector('.reader-tags-popover');
+        if (existing) existing.remove();
+
+        const cat = this.extractCatsAndSubcats ? this.extractCatsAndSubcats(item) : { categories: [], subcatPairs: [] };
+        const categories = Array.isArray(cat.categories) ? cat.categories : [];
+        const subcatPairs = Array.isArray(cat.subcatPairs) ? cat.subcatPairs : [];
+        const topics = this.extractTopics(item);
+
+        // Build popover content
+        let content = '<div class="reader-tags-popover__section">';
+
+        // Categories
+        if (categories.length) {
+            content += `
+              <div class="reader-tags-popover__label">Categories</div>
+              <div class="reader-tags-popover__chips">
+                ${categories.map(c => `
+                  <button type="button" class="reader-tags-chip" data-filter-chip="category" data-filter-value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</button>
+                `).join('')}
+              </div>
+            `;
+        }
+
+        // Subcategories (grouped by parent)
+        if (subcatPairs.length) {
+            content += `
+              <div class="reader-tags-popover__label">Subcategories</div>
+              <div class="reader-tags-popover__chips">
+                ${subcatPairs.map(([parent, sub]) => `
+                  <button type="button" class="reader-tags-chip reader-tags-chip--sub" data-filter-chip="subcategory" data-filter-value="${this.escapeHtml(sub)}" data-parent-category="${this.escapeHtml(parent)}" title="${this.escapeHtml(parent)} → ${this.escapeHtml(sub)}">
+                    <span class="opacity-60">${this.escapeHtml(parent)}</span> → ${this.escapeHtml(sub)}
+                  </button>
+                `).join('')}
+              </div>
+            `;
+        }
+
+        // Topics
+        if (topics.length) {
+            const maxTopics = 20;
+            const visibleTopics = topics.slice(0, maxTopics);
+            content += `
+              <div class="reader-tags-popover__label">Topics</div>
+              <div class="reader-tags-popover__chips">
+                ${visibleTopics.map(t => `
+                  <button type="button" class="reader-tags-chip" data-filter-chip="topic" data-filter-value="${this.escapeHtml(t)}">${this.escapeHtml(t)}</button>
+                `).join('')}
+                ${topics.length > maxTopics ? `<span class="text-xs text-slate-500">+${topics.length - maxTopics} more</span>` : ''}
+              </div>
+            `;
+        }
+
+        content += '</div>';
+
+        // Create popover
+        const popover = document.createElement('div');
+        popover.className = 'reader-tags-popover';
+        popover.innerHTML = content;
+        document.body.appendChild(popover);
+
+        // Position near anchor
+        const rect = anchorBtn.getBoundingClientRect();
+        popover.style.top = `${rect.bottom + 8}px`;
+        popover.style.right = `${window.innerWidth - rect.right}px`;
+
+        // Close on click outside
+        const closePopover = (e) => {
+            if (!popover.contains(e.target) && e.target !== anchorBtn) {
+                popover.remove();
+                document.removeEventListener('click', closePopover);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closePopover), 0);
+
+        // Handle chip clicks
+        popover.querySelectorAll('[data-filter-chip]').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const filterType = chip.getAttribute('data-filter-chip');
+                const filterValue = chip.getAttribute('data-filter-value');
+                popover.remove();
+                this.applyFilterChip(filterType, filterValue);
+            });
+        });
+    }
+
+    bindReaderHeaderHandlers(container, onFn = null) {
+        if (!container) return;
+        const on = onFn || ((el, type, fn) => el?.addEventListener(type, fn));
+
+        // Tags popover button
+        const tagsBtn = container.querySelector('[data-reader-tags-btn]');
+        if (tagsBtn) {
+            on(tagsBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.openTagsPopover(tagsBtn, container);
+            });
+        }
+        // Source/channel filter chips in header
+        container.querySelectorAll('.reader-header [data-filter-chip]').forEach((chip) => {
+            on(chip, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const filterType = chip.getAttribute('data-filter-chip');
+                const filterValue = chip.getAttribute('data-filter-value');
+                this.applyFilterChip(filterType, filterValue);
+            });
+        });
+    }
+
+    renderWallDockVariantTabs(variantInfo, activeVariantId = '', options = {}) {
+        if (!variantInfo || !Array.isArray(variantInfo.order) || variantInfo.order.length <= 1) return '';
+        const active = String(activeVariantId || '').toLowerCase();
+        const { videoId, canRegenerate = false, reportId = '' } = options;
+        const tabs = variantInfo.order.map((variantId) => {
+            const id = String(variantId || '').toLowerCase();
+            const meta = variantInfo.map[id] || {};
+            const label = this.escapeHtml(meta.label || this.prettyVariantLabel(id));
+            const isActive = id === active;
+            return `
+                <button type="button"
+                        class="wall-dock__variant-tab${isActive ? ' is-active' : ''}"
+                        data-wall-dock-variant="${this.escapeHtml(id)}"
+                        role="tab"
+                        aria-selected="${isActive ? 'true' : 'false'}">
+                    ${label}
+                </button>
+            `;
+        }).join('');
+
+        // Action buttons (regenerate, display options)
+        const actionButtons = `
+            <div class="wall-dock__actions ml-auto flex items-center gap-2">
+                ${canRegenerate ? `
+                    <button type="button"
+                            class="wall-dock__action-btn"
+                            data-wall-action="regenerate"
+                            data-video-id="${this.escapeHtml(videoId || '')}"
+                            data-report-id="${this.escapeHtml(reportId || '')}"
+                            title="Regenerate summary">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        <span class="sr-only">Regenerate</span>
+                    </button>
+                ` : ''}
+                <button type="button"
+                        class="wall-dock__action-btn"
+                        data-wall-action="display"
+                        title="Display options">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                    </svg>
+                    <span class="sr-only">Display options</span>
+                </button>
+            </div>
+        `;
+
+        return `
+            <section class="wall-dock__variant-tabs not-prose" aria-label="Summary variant">
+                <div class="wall-dock__variant-track flex items-center" role="tablist">
+                    <div class="flex gap-1">
+                        ${tabs}
+                    </div>
+                    ${actionButtons}
+                </div>
+            </section>
+        `;
+    }
+
+    applyTopicFilterFromChip(topic) {
+        const q = String(topic || '').trim();
+        if (!q) return;
+        if (this.searchInput) this.searchInput.value = q;
+        if (this.searchInputTop) this.searchInputTop.value = q;
+        if (this.searchInputHeader) this.searchInputHeader.value = q;
+        if (this.searchInput) {
+            this.handleSearch();
+        } else {
+            this.searchQuery = q;
+            this.currentPage = 1;
+            this.updateHeroBadges();
+            this.loadContent();
+        }
+        try { this.showFilterAppliedFeedback('topic', q); } catch (_) { }
+    }
+
+    bindReaderMetaInteractions(root, on = null) {
+        if (!root || typeof root.querySelectorAll !== 'function') return;
+        const bind = (el, type, handler, opts) => {
+            if (!el || !handler) return;
+            if (typeof on === 'function') on(el, type, handler, opts);
+            else el.addEventListener(type, handler, opts);
+        };
+
+        root.querySelectorAll('[data-reader-meta]').forEach((meta) => {
+            const tabs = Array.from(meta.querySelectorAll('[data-reader-meta-tab]'));
+            const panels = Array.from(meta.querySelectorAll('[data-reader-meta-panel]'));
+            if (tabs.length && panels.length) {
+                const activate = (tabId) => {
+                    const wanted = String(tabId || '');
+                    tabs.forEach((btn) => {
+                        const active = btn.getAttribute('data-reader-meta-tab') === wanted;
+                        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+                    });
+                    panels.forEach((panel) => {
+                        const active = panel.getAttribute('data-reader-meta-panel') === wanted;
+                        panel.classList.toggle('hidden', !active);
+                    });
+                };
+                tabs.forEach((btn) => bind(btn, 'click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    activate(btn.getAttribute('data-reader-meta-tab'));
+                }));
+            }
+        });
+
+        root.querySelectorAll('[data-filter-chip]').forEach((chip) => {
+            bind(chip, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const filterType = chip.getAttribute('data-filter-chip') || '';
+                const filterValue = chip.getAttribute('data-filter-value') || '';
+                const parent = chip.getAttribute('data-parent-category') || null;
+                if (!filterType || !filterValue) return;
+                if (filterType === 'topic') {
+                    this.applyTopicFilterFromChip(filterValue);
+                    return;
+                }
+                this.applyFilterFromChip(filterType, filterValue, parent);
+            });
+        });
     }
 
     toggleDeletePopover(card, show) {
@@ -2977,12 +4811,12 @@ class AudioDashboard {
 
     toggleKebabMenu(card, show, trigger) {
         const menu = card.querySelector('[data-kebab-menu]');
-        const btn  = trigger || card.querySelector('[data-action="menu"]');
+        const btn = trigger || card.querySelector('[data-action="menu"]');
         if (!menu || !btn) return;
         const setExpanded = (val) => btn.setAttribute('aria-expanded', val ? 'true' : 'false');
         if (show) {
             // Close any other open menus globally
-            try { document.querySelectorAll('[data-kebab-menu]:not(.hidden)').forEach(m => m.classList.add('hidden')); } catch(_) {}
+            try { document.querySelectorAll('[data-kebab-menu]:not(.hidden)').forEach(m => m.classList.add('hidden')); } catch (_) { }
             setExpanded(true);
             menu.classList.remove('hidden');
             menu.setAttribute('role', 'menu');
@@ -3022,29 +4856,29 @@ class AudioDashboard {
         }
     }
 
-    openReprocessModal(reportId, card) {
-        if (!this.reprocessModal) {
-            this.showToast('Reprocess dialog unavailable', 'error');
-            return;
-        }
-        const item = (this.currentItems || []).find((x) => x.file_stem === reportId) || null;
-        const title = item?.title || card?.querySelector('h3')?.textContent?.trim() || reportId;
-        const videoId = item?.video_id || card?.dataset.videoId;
-        if (!videoId) {
-            this.showToast('Missing video id for reprocess', 'error');
-            return;
-        }
+	    openReprocessModal(reportId, card, itemOverride = null) {
+	        if (!this.reprocessModal) {
+	            this.showToast('Regenerate dialog unavailable', 'error');
+	            return;
+	        }
+	        const item = itemOverride || (this.currentItems || []).find((x) => x.file_stem === reportId) || null;
+	        const title = item?.title || card?.querySelector('h3')?.textContent?.trim() || reportId;
+	        const videoId = item?.video_id || item?.videoId || item?.id || card?.dataset.videoId;
+	        if (!videoId) {
+	            this.showToast('Missing video id for regenerate', 'error');
+	            return;
+	        }
 
-        this.pendingReprocess = {
-            id: reportId,
-            videoId,
-            title,
-            hasAudio: Boolean(item?.media?.has_audio || card?.dataset.hasAudio === 'true')
-        };
+	        this.pendingReprocess = {
+	            id: reportId || item?.file_stem || videoId,
+	            videoId,
+	            title,
+	            hasAudio: Boolean(item?.media?.has_audio || card?.dataset.hasAudio === 'true')
+	        };
 
         if (this.reprocessText) {
             const safeTitle = this.escapeHtml(title || 'this video');
-            this.reprocessText.innerHTML = `Re-run the summarizer for <strong>${safeTitle}</strong>?`;
+            this.reprocessText.innerHTML = `Generate a fresh summary for <strong>${safeTitle}</strong>?`;
         }
 
         this.updateReprocessFootnote();
@@ -3056,7 +4890,7 @@ class AudioDashboard {
         this.reprocessModal.classList.remove('hidden');
         this.reprocessModal.classList.add('flex');
         this.reprocessModal.setAttribute('aria-hidden', 'false');
-        const focusTarget = this.confirmReprocessBtn || this.cancelReprocessBtn;
+        const focusTarget = (this.confirmReprocessBtn && !this.confirmReprocessBtn.disabled) ? this.confirmReprocessBtn : (this.cancelReprocessBtn || this.confirmReprocessBtn);
         if (focusTarget) focusTarget.focus();
     }
 
@@ -3078,38 +4912,176 @@ class AudioDashboard {
         }
     }
 
-    initReprocessState(item) {
-        this.reprocessState = {
-            selected: new Set(['comprehensive']),
-            audioLevels: {
-                'audio-fr': 'intermediate',
-                'audio-es': 'intermediate'
-            }
-        };
+	    getExistingReprocessOutputs(item) {
+	        const out = {};
+	        const normalizeVariantId = (id) => {
+	            const raw = (id ?? '').toString().trim().toLowerCase();
+	            if (!raw) return '';
+	
+	            // Treat `foo:bar` as a variant id with metadata (e.g. proficiency).
+	            const baseOnly = raw.includes(':') ? raw.split(':')[0].trim() : raw;
 
-        if (item?.media?.has_audio) {
-            this.reprocessState.selected.add('audio');
-        }
+	            // Strip accidental label-ish strings and normalize separators
+	            let norm = baseOnly
+	                .replace(/\s+/g, '-')
+	                .replace(/_/g, '-')
+	                .replace(/-+/g, '-')
+	                .replace(/^-|-$/g, '');
+	
+	            // Common aliases from older backends / admin tools
+	            const alias = {
+	                'summary': 'comprehensive',
+	                'full': 'comprehensive',
+	                'comprehensive-summary': 'comprehensive',
+	
+	                'keypoints': 'bullet-points',
+	                'key-point': 'bullet-points',
+	                'key-points': 'bullet-points',
+	                'keypoints-summary': 'bullet-points',
+	                'bulletpoints': 'bullet-points',
+	                'bullet-points': 'bullet-points',
+	
+	                'insights': 'key-insights',
+	                'key-insight': 'key-insights',
+	                'key-insights': 'key-insights',
+	                'keyinsights': 'key-insights',
+	
+	                'audio-en': 'audio',
+	                'audio-english': 'audio',
+	                'audio': 'audio',
+	                'audio-fr': 'audio-fr',
+	                'audio-es': 'audio-es'
+	            };
+	            if (alias[norm]) return alias[norm];
+	
+	            // Some systems encode like `audio-fr-intermediate` instead of `audio-fr:intermediate`
+	            if (norm.startsWith('audio-fr-')) return 'audio-fr';
+	            if (norm.startsWith('audio-es-')) return 'audio-es';
+	            if (norm.startsWith('audio-en-')) return 'audio';
+	
+	            return norm;
+	        };
+	        const add = (id, info = {}) => {
+	            const norm = normalizeVariantId(id);
+	            if (!norm) return;
+	            out[norm] = { ...(out[norm] || {}), ...info, exists: true };
+	        };
+	
+	        const hasVariantsArray =
+	            Array.isArray(item?.summary_variants) ||
+	            Array.isArray(item?.summary?.variants);
+	        const variantFromFieldsRaw = (item?.summary_variant || item?.summary_type_latest || item?.summary_type || '').toString().trim();
+	        const variantFromFields = normalizeVariantId(variantFromFieldsRaw);
+	        try {
+	            const pools = [];
+	            if (Array.isArray(item?.summary_variants)) pools.push(item.summary_variants);
+	            if (Array.isArray(item?.summary?.variants)) pools.push(item.summary.variants);
+	            pools.forEach(arr => {
+                arr.forEach(v => {
+                    if (!v || typeof v !== 'object') return;
+                    let base = (v.variant || v.id || v.name || v.summary_type || v.type || '').toString().trim().toLowerCase();
+                    if (!base) return;
+                    let id = base;
+                    let level = '';
+                    if (base.includes(':')) {
+                        const parts = base.split(':');
+                        id = (parts[0] || '').trim() || base;
+                        level = (parts[1] || '').trim();
+                    }
+                    const st = (v.summary_type || '').toString().trim().toLowerCase();
+                    if (st && st.includes(':')) {
+                        const parts = st.split(':');
+                        const id2 = (parts[0] || '').trim();
+                        const lvl2 = (parts[1] || '').trim();
+                        if (id2) id = id2;
+                        if (lvl2) level = lvl2;
+                    }
+	                    const kind = (v.kind || (String(id).startsWith('audio') ? 'audio' : 'text')) || 'text';
+	                    add(id, { kind, level: level || undefined });
+	                });
+	            });
+	        } catch (_) { }
+
+	        try {
+	            // Only infer "comprehensive" when we truly don't know which variant the main text is.
+	            // `summary_text/html` can represent the *currently selected/latest* text variant (e.g. insights),
+	            // so inferring comprehensive unconditionally causes false "Done" states.
+	            const hasAnyTextVariant = Object.keys(out).some((k) => (out[k]?.kind || '').toString() === 'text');
+	            if ((item?.summary_text || item?.summary_html) && !hasVariantsArray && !variantFromFields && !hasAnyTextVariant) {
+	                add('comprehensive', { kind: 'text' });
+	            }
+	        } catch (_) { }
+	        try {
+	            if (variantFromFields) add(variantFromFields, { kind: String(variantFromFields).startsWith('audio') ? 'audio' : 'text' });
+	        } catch (_) { }
+	        try {
+	            const au = item?.media?.audio_url;
+	            if (au && !out['audio']) add('audio', { kind: 'audio' });
+        } catch (_) { }
+        return out;
+    }
+
+    initReprocessState(item) {
+        const existing = this.getExistingReprocessOutputs(item);
+        // Start with nothing selected. Selection means "regenerate", not "already exists".
+        const selected = new Set();
+        const audioLevels = {};
+        if (existing['audio-fr']?.level) audioLevels['audio-fr'] = existing['audio-fr'].level;
+        if (existing['audio-es']?.level) audioLevels['audio-es'] = existing['audio-es'].level;
+        this.reprocessState = {
+            selected,
+            audioLevels,
+            existing
+        };
     }
 
     renderReprocessVariants() {
         if (!this.reprocessVariantGrid) return;
         const selected = (this.reprocessState && this.reprocessState.selected) || new Set();
+        const existing = (this.reprocessState && this.reprocessState.existing) || {};
+        const levelLabel = (variantId, lang) => {
+            try {
+                const lvl = existing[variantId]?.level;
+                if (!lvl) return '';
+                const opt = PROFICIENCY_LEVELS.find(o => o.level === lvl);
+                if (!opt) return '';
+                return (opt.labels && (opt.labels[lang] || opt.labels.default)) ? (opt.labels[lang] || opt.labels.default) : '';
+            } catch (_) { return ''; }
+        };
 
         const html = REPROCESS_VARIANTS.map((variant) => {
             const isActive = selected.has(variant.id);
+            const isDone = !!existing[variant.id]?.exists;
             const baseClasses = [
-                'flex', 'items-center', 'gap-2', 'px-3', 'py-2', 'rounded-xl', 'text-sm', 'transition', 'duration-150', 'border'
+                'w-full', 'flex', 'items-center', 'justify-between', 'gap-3', 'px-4', 'py-3', 'rounded-xl', 'text-sm', 'transition', 'duration-150', 'border', 'text-left'
             ];
             if (isActive) {
-                baseClasses.push('bg-gradient-to-r', 'from-audio-500', 'to-indigo-500', 'text-white', 'border-transparent', 'shadow');
+                baseClasses.push('bg-audio-600', 'text-white', 'border-transparent', 'shadow');
             } else {
-                baseClasses.push('bg-white/85', 'dark:bg-slate-900/60', 'text-slate-600', 'dark:text-slate-200', 'border-white/60', 'dark:border-slate-700/60', 'hover:bg-white');
+                baseClasses.push('bg-white/85', 'dark:bg-slate-900/60', 'text-slate-700', 'dark:text-slate-100', 'border-white/60', 'dark:border-slate-700/60', 'hover:bg-white/95', 'dark:hover:bg-slate-900/70');
             }
+            const prof = variant.proficiency ? (levelLabel(variant.id, variant.language) || '') : '';
+            const label = variant.label;
+            const subLabel = prof ? prof : (isDone ? 'Already generated' : '');
+            const regenBadge = isActive
+                ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap border border-white/30 bg-white/15 text-white" title="Selected to regenerate">Regenerate</span>`
+                : '';
+            const doneBadge = isDone
+                ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap border border-emerald-300/40 bg-emerald-500/10 text-emerald-200" title="Already generated">Done</span>`
+                : '';
+            const rightBadges = (regenBadge || doneBadge)
+                ? `<span class="flex items-center gap-2 flex-shrink-0">${regenBadge}${doneBadge}</span>`
+                : '';
             return `
-                <button type="button" data-variant="${variant.id}" class="${baseClasses.join(' ')}">
-                    <span class="text-lg">${variant.icon}</span>
-                    <span class="font-medium">${variant.label}</span>
+                <button type="button" data-variant="${variant.id}" aria-pressed="${isActive ? 'true' : 'false'}" class="${baseClasses.join(' ')}">
+                    <span class="flex items-start gap-3 min-w-0">
+                        <span class="text-lg leading-none mt-0.5">${variant.icon}</span>
+                        <span class="min-w-0">
+                            <span class="font-semibold leading-snug block">${this.escapeHtml(label)}</span>
+                            ${subLabel ? `<span class="text-xs opacity-80 block mt-0.5">${this.escapeHtml(subLabel)}</span>` : ''}
+                        </span>
+                    </span>
+                    ${rightBadges}
                 </button>
             `;
         }).join('');
@@ -3118,6 +5090,15 @@ class AudioDashboard {
         this.reprocessVariantGrid.querySelectorAll('[data-variant]').forEach((btn) => {
             btn.addEventListener('click', () => this.toggleVariantSelection(btn.dataset.variant));
         });
+        // Disable Start until at least one output is selected.
+        try {
+            if (this.confirmReprocessBtn) {
+                const any = selected.size > 0;
+                this.confirmReprocessBtn.disabled = !any;
+                this.confirmReprocessBtn.classList.toggle('opacity-50', !any);
+                this.confirmReprocessBtn.classList.toggle('cursor-not-allowed', !any);
+            }
+        } catch (_) { }
     }
 
     renderProficiencyControls() {
@@ -3186,7 +5167,8 @@ class AudioDashboard {
         } else {
             this.reprocessState.selected.add(variantId);
             if (variant.proficiency && !this.reprocessState.audioLevels[variantId]) {
-                this.reprocessState.audioLevels[variantId] = 'intermediate';
+                const fallback = (this.reprocessState.existing && this.reprocessState.existing[variantId] && this.reprocessState.existing[variantId].level) || 'intermediate';
+                this.reprocessState.audioLevels[variantId] = fallback;
             }
         }
 
@@ -3343,6 +5325,13 @@ class AudioDashboard {
             result.defaultId = result.order[0];
         }
 
+        // If an audio file exists but audio isn't surfaced as a summary variant, still offer an Audio tab.
+        try {
+            if (this.itemHasAudio(data) && !result.map['audio']) {
+                addVariant('audio', { audioSrc: audioSrcForData || null });
+            }
+        } catch (_) { }
+
         return result;
     }
 
@@ -3405,12 +5394,17 @@ class AudioDashboard {
 
     // === Reader Display Options (MVP) ===
     readerPrefsKey() {
-        try { return (window.innerWidth || 0) >= 1024 ? 'readerDisplayPrefsDesktop' : 'readerDisplayPrefsMobile'; } catch(_) { return 'readerDisplayPrefs'; }
+        try { return (window.innerWidth || 0) >= 1024 ? 'readerDisplayPrefsDesktop' : 'readerDisplayPrefsMobile'; } catch (_) { return 'readerDisplayPrefs'; }
     }
     getReaderDisplayPrefs() {
         try {
             const raw = localStorage.getItem(this.readerPrefsKey()) || localStorage.getItem('readerDisplayPrefs');
-            if (!raw) return { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
+            if (!raw) {
+                const isDesktop = (typeof window !== 'undefined' && (window.innerWidth || 0) >= 1024);
+                return isDesktop
+                    ? { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'medium' }
+                    : { size: 'l', line: 'loose', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'full' };
+            }
             const obj = JSON.parse(raw);
             // Back-compat: remap older measures to new scale
             let storedMeasure = obj.measure;
@@ -3425,8 +5419,11 @@ class AudioDashboard {
                 justify: READER_JUSTIFY.includes(obj.justify) ? obj.justify : 'left',
                 measure: (storedMeasure && READER_MEASURE_MAP[storedMeasure]) ? storedMeasure : 'narrow'
             };
-        } catch(_) {
-            return { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
+        } catch (_) {
+            const isDesktop = (typeof window !== 'undefined' && (window.innerWidth || 0) >= 1024);
+            return isDesktop
+                ? { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'medium' }
+                : { size: 'l', line: 'loose', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'full' };
         }
     }
     setReaderDisplayPrefs(next) {
@@ -3435,7 +5432,7 @@ class AudioDashboard {
             const merged = { ...cur, ...next };
             localStorage.setItem(this.readerPrefsKey(), JSON.stringify(merged));
             return merged;
-        } catch(_) { return this.getReaderDisplayPrefs(); }
+        } catch (_) { return this.getReaderDisplayPrefs(); }
     }
     applyReaderDisplayPrefs(container, bodyEl) {
         const prefs = this.getReaderDisplayPrefs();
@@ -3443,20 +5440,20 @@ class AudioDashboard {
             const fs = READER_SIZE_MAP[prefs.size] || 1.0;
             const lh = READER_LINE_MAP[prefs.line] || 1.6;
             const ff = READER_FAMILY_MAP[prefs.family] || 'inherit';
-            try { bodyEl.style.setProperty('--reader-font-size', fs + 'rem'); } catch(_) {}
-            try { bodyEl.style.setProperty('--reader-line', String(lh)); } catch(_) {}
-            try { bodyEl.style.setProperty('--reader-font-family', ff); } catch(_) {}
+            try { bodyEl.style.setProperty('--reader-font-size', fs + 'rem'); } catch (_) { }
+            try { bodyEl.style.setProperty('--reader-line', String(lh)); } catch (_) { }
+            try { bodyEl.style.setProperty('--reader-font-family', ff); } catch (_) { }
         }
         if (container) {
-            try { container.classList.remove('reader-theme--light','reader-theme--sepia','reader-theme--dark'); } catch(_) {}
+            try { container.classList.remove('reader-theme--light', 'reader-theme--sepia', 'reader-theme--dark'); } catch (_) { }
             const theme = this.getReaderDisplayPrefs().theme || 'light';
-            try { container.classList.add('reader-theme--' + theme); } catch(_) {}
+            try { container.classList.add('reader-theme--' + theme); } catch (_) { }
             // Paragraph style
             const para = this.getReaderDisplayPrefs().paraStyle || 'spaced';
-            try { container.classList.toggle('reader-para--indented', para === 'indented'); } catch(_) {}
+            try { container.classList.toggle('reader-para--indented', para === 'indented'); } catch (_) { }
             // Justification (CSS applies only on desktop)
             const just = this.getReaderDisplayPrefs().justify || 'left';
-            try { container.classList.toggle('reader-justify--on', just === 'justify'); } catch(_) {}
+            try { container.classList.toggle('reader-justify--on', just === 'justify'); } catch (_) { }
             // Measure (desktop-only cap; stored as variable used by CSS)
             const measureKey = this.getReaderDisplayPrefs().measure || 'auto';
             let mw = READER_MEASURE_MAP[measureKey] || '70ch';
@@ -3467,117 +5464,198 @@ class AudioDashboard {
                     else if (w < 680) mw = '58ch';
                     else if (w < 820) mw = '66ch';
                     else mw = '74ch';
-                } catch(_) {}
+                } catch (_) { }
             }
-            try { container.style.setProperty('--reader-measure', mw); } catch(_) {}
+            try { container.style.setProperty('--reader-measure', mw); } catch (_) { }
         }
     }
     openReaderDisplayPopover(container, bodyEl, anchorBtn) {
         // Close any existing
-        try { document.querySelectorAll('.reader-display-popover').forEach(el => el.remove()); } catch(_) {}
+        try { document.querySelectorAll('.reader-display-popover').forEach(el => el.remove()); } catch (_) { }
         const prefs = this.getReaderDisplayPrefs();
+        const isMobile = (window.innerWidth || 0) <= 640;
         const pop = document.createElement('div');
         pop.className = 'reader-display-popover pop-animate';
         pop.setAttribute('role', 'dialog');
-        const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed?'true':'false'}" title="${String(label).replace(/<[^>]+>/g,'')}">${label}</span>`;
+        const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed ? 'true' : 'false'}" title="${String(label).replace(/<[^>]+>/g, '')}">${label}</span>`;
         const sizeSeg = `
           <div class="reader-segment" role="group" aria-label="Text size">
             ${segBtn('data-reader-size-dec', 'A−', false)}
-            <span data-size-chip style="font-size:${(READER_SIZE_MAP[prefs.size]||1.0)}rem; padding:0 .5rem;">A</span>
+            <span data-size-chip style="font-size:${(READER_SIZE_MAP[prefs.size] || 1.0)}rem; padding:0 .5rem;">A</span>
             ${segBtn('data-reader-size-inc', 'A+', false)}
           </div>`;
         const lineSeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Line height">
-            ${segBtn('data-reader-line="tight"', 'Tight', prefs.line==='tight')}
-            ${segBtn('data-reader-line="normal"', 'Normal', prefs.line==='normal')}
-            ${segBtn('data-reader-line="loose"', 'Loose', prefs.line==='loose')}
+            ${segBtn('data-reader-line="tight"', 'Tight', prefs.line === 'tight')}
+            ${segBtn('data-reader-line="normal"', 'Normal', prefs.line === 'normal')}
+            ${segBtn('data-reader-line="loose"', 'Loose', prefs.line === 'loose')}
           </div>`;
         const familySeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Font family">
-            ${segBtn('data-reader-family="sans"', '<span style=\\"font-family:system-ui,sans-serif\\">Aa</span>', prefs.family==='sans')}
-            ${segBtn('data-reader-family="serif"', '<span style=\\"font-family:Georgia,serif\\">Aa</span>', prefs.family==='serif')}
+            ${segBtn('data-reader-family="sans"', '<span style=\\"font-family:system-ui,sans-serif\\">Aa</span>', prefs.family === 'sans')}
+            ${segBtn('data-reader-family="serif"', '<span style=\\"font-family:Georgia,serif\\">Aa</span>', prefs.family === 'serif')}
           </div>`;
         const justifySeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Justification">
-            ${segBtn('data-reader-justify="left"', 'Left', prefs.justify==='left')}
-            ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify==='justify')}
+            ${segBtn('data-reader-justify="left"', 'Left', prefs.justify === 'left')}
+            ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify === 'justify')}
           </div>`;
         const themeSeg = `
           <div class="reader-segment" role="radiogroup" aria-label="Theme">
-            ${segBtn('data-reader-theme="light"', 'Light', prefs.theme==='light')}
-            ${segBtn('data-reader-theme="sepia"', 'Sepia', prefs.theme==='sepia')}
-            ${segBtn('data-reader-theme="dark"', 'Dark', prefs.theme==='dark')}
+            ${segBtn('data-reader-theme="light"', 'Light', prefs.theme === 'light')}
+            ${segBtn('data-reader-theme="sepia"', 'Sepia', prefs.theme === 'sepia')}
+            ${segBtn('data-reader-theme="dark"', 'Dark', prefs.theme === 'dark')}
           </div>`;
         const paraTile = (id, label) => `
-          <div class="reader-tile" data-reader-para="${id}" aria-pressed="${prefs.paraStyle===id?'true':'false'}" role="button" aria-label="${label}" title="${label}">
-            <div class="tile-preview">${id==='indented' ? '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.6\\" stroke-linecap=\\"round\\"><path d=\\"M8 6h11\\"/><path d=\\"M5 10h14\\"/><path d=\\"M5 14h14\\"/><path d=\\"M5 18h14\\"/></svg>' : '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.4\\" stroke-linecap=\\"round\\"><rect x=\\"5\\" y=\\"5\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/><rect x=\\"5\\" y=\\"15\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/></svg>'}</div>
+          <div class="reader-tile" data-reader-para="${id}" aria-pressed="${prefs.paraStyle === id ? 'true' : 'false'}" role="button" aria-label="${label}" title="${label}">
+            <div class="tile-preview">${id === 'indented' ? '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.6\\" stroke-linecap=\\"round\\"><path d=\\"M8 6h11\\"/><path d=\\"M5 10h14\\"/><path d=\\"M5 14h14\\"/><path d=\\"M5 18h14\\"/></svg>' : '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.4\\" stroke-linecap=\\"round\\"><rect x=\\"5\\" y=\\"5\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/><rect x=\\"5\\" y=\\"15\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/></svg>'}</div>
           </div>`;
         const themeTile = (id, label) => `
-          <div class="reader-tile" data-reader-theme="${id}" aria-pressed="${prefs.theme===id?'true':'false'}" role="button" aria-label="${label}">
+          <div class="reader-tile" data-reader-theme="${id}" aria-pressed="${prefs.theme === id ? 'true' : 'false'}" role="button" aria-label="${label}">
             <div class="tile-preview"><div class="tile-preview-inner">${'<div class=\\"strip\\"></div>'.repeat(3)}</div></div>
             <div class="tile-label">${label}</div>
           </div>`;
         const measureTile = (id, label) => {
-          let w = 6, x = 9;
-          if (id === 'medium') { w = 8; x = 8; }
-          if (id === 'wide') { w = 11; x = 6.5; }
-          if (id === 'full') { w = 14; x = 5; }
-          return `
-          <div class="reader-tile" data-reader-measure="${id}" aria-pressed="${prefs.measure===id?'true':'false'}" role="button" aria-label="${label}" title="${label}">
+            let w = 6, x = 9;
+            if (id === 'medium') { w = 8; x = 8; }
+            if (id === 'wide') { w = 11; x = 6.5; }
+            if (id === 'full') { w = 14; x = 5; }
+            return `
+          <div class="reader-tile" data-reader-measure="${id}" aria-pressed="${prefs.measure === id ? 'true' : 'false'}" role="button" aria-label="${label}" title="${label}">
             <div class="tile-preview"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.2\"><rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"3\"/><rect x=\"${x}\" y=\"7\" width=\"${w}\" height=\"10\" rx=\"1.2\" fill=\"currentColor\"/></svg></div>
           </div>`;
         };
         const justifyMini = `
           <div class="justify-mini"><span class="jline"></span><span class="jline"></span><span class="jline"></span></div>`;
-        pop.innerHTML = `
-          <div class="reader-popover-header">
-            <span class="title">Display Options</span>
-            <div class="actions">
-              <button type="button" class="reader-reset" data-reader-reset>Reset to Defaults</button>
-              <button type="button" class="reader-close" aria-label="Close" data-reader-close>×</button>
-            </div>
-          </div>
-          <div class="reader-preview-row">
-            <div class="reader-live-preview" id="readerPreview">The quick brown fox jumps over the lazy dog. The five boxing wizards jump quickly. A mad boxer shot a quick, gloved jab to the jaw of his dizzy opponent. Pack my box with five dozen liquor jugs.</div>
-          </div>
-          <div class="reader-panel reader-grid">
-            <div class="reader-col">
-              <div class="reader-group">
-                <h5>Typography</h5>
-                <div class="reader-field">
-                  <div class="reader-field-label">Font Size</div>
-                  <div class="reader-display-row" data-row="size">${sizeSeg}</div>
-                </div>
-                <div class="reader-field">
-                  <div class="reader-field-label">Font Family</div>
-                  <div class="reader-display-row" data-row="family">${familySeg}</div>
-                </div>
-                <div class="reader-field">
-                  <div class="reader-field-label">Line Spacing</div>
-                  <div class="reader-display-row" data-row="line">${lineSeg}</div>
+        if (isMobile) {
+            pop.innerHTML = `
+              <div class="reader-popover-header reader-popover-header--sheet">
+                <span class="title">Display</span>
+                <div class="actions">
+                  <button type="button" class="reader-reset" data-reader-reset>Reset</button>
+                  <button type="button" class="reader-close" aria-label="Close" data-reader-close>×</button>
                 </div>
               </div>
-            </div>
-            <div class="reader-col">
-              <div class="reader-group">
-                <h5>Layout</h5>
-                <div class="reader-display-row" data-row="para"><div class="reader-segment" role="radiogroup" aria-label="Paragraph style">${segBtn('data-reader-para=\"spaced\"', 'Spaced', prefs.paraStyle==='spaced')}${segBtn('data-reader-para=\"indented\"', 'Indented', prefs.paraStyle==='indented')}</div></div>
-                <div class="reader-display-row" data-row="justify"><div class="reader-segment" role="radiogroup" aria-label="Justification">${segBtn('data-reader-justify=\"left\"','Left', prefs.justify==='left')}${segBtn('data-reader-justify=\"justify\"','Justified', prefs.justify==='justify')}</div></div>
-                <div class="reader-display-row" data-row="measure"><div class="reader-segment" role="radiogroup" aria-label="Reading width">${segBtn('data-reader-measure=\"narrow\"', 'Narrow', prefs.measure==='narrow')}${segBtn('data-reader-measure=\"medium\"', 'Medium', prefs.measure==='medium')}${segBtn('data-reader-measure=\"wide\"', 'Wide', prefs.measure==='wide')}${segBtn('data-reader-measure=\"full\"', 'Full', prefs.measure==='full')}</div></div>
-                <div class="reader-field">
-                  <div class="reader-field-label">Theme</div>
-                  <div class="reader-display-row" data-row="theme">${themeSeg}</div>
-                  <div class="mt-2 flex items-center gap-2 text-sm">
-                    <label class="inline-flex items-center gap-2">
-                      <input type="checkbox" data-reader-system ${prefs.systemTheme ? 'checked' : ''} /> Match System Theme
+              <div class="reader-tabs" role="tablist" aria-label="Display options sections">
+                <button type="button" class="reader-tab" data-reader-tab="text" role="tab" aria-selected="true">Text</button>
+                <button type="button" class="reader-tab" data-reader-tab="layout" role="tab" aria-selected="false">Layout</button>
+                <button type="button" class="reader-tab" data-reader-tab="theme" role="tab" aria-selected="false">Theme</button>
+              </div>
+              <div class="reader-preview-row reader-preview-row--compact">
+                <div class="reader-live-preview reader-live-preview--compact" id="readerPreview">The quick brown fox jumps over the lazy dog. The five boxing wizards jump quickly. Pack my box with five dozen liquor jugs.</div>
+              </div>
+              <div class="reader-pane" data-reader-pane="text">
+                <div class="reader-group">
+                  <div class="reader-field">
+                    <div class="reader-field-label">Font Size</div>
+                    <div class="reader-display-row" data-row="size">${sizeSeg}</div>
+                  </div>
+                  <div class="reader-field">
+                    <div class="reader-field-label">Line Spacing</div>
+                    <div class="reader-display-row" data-row="line">${lineSeg}</div>
+                  </div>
+                  <div class="reader-field">
+                    <div class="reader-field-label">Font Family</div>
+                    <div class="reader-display-row" data-row="family">${familySeg}</div>
+                  </div>
+                </div>
+              </div>
+              <div class="reader-pane" data-reader-pane="layout" hidden>
+                <div class="reader-group">
+                  <div class="reader-field">
+                    <div class="reader-field-label">Paragraphs</div>
+                    <div class="reader-display-row" data-row="para">
+                      <div class="reader-segment" role="radiogroup" aria-label="Paragraph style">
+                        ${segBtn('data-reader-para=\"spaced\"', 'Spaced', prefs.paraStyle === 'spaced')}
+                        ${segBtn('data-reader-para=\"indented\"', 'Indented', prefs.paraStyle === 'indented')}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="reader-field">
+                    <div class="reader-field-label">Justification</div>
+                    <div class="reader-display-row" data-row="justify" data-justify-state="${prefs.justify === 'justify' ? 'justify' : 'left'}">
+                      <div class="reader-segment" role="radiogroup" aria-label="Justification">
+                        ${segBtn('data-reader-justify=\"left\"', 'Left', prefs.justify === 'left')}
+                        ${segBtn('data-reader-justify=\"justify\"', 'Justified', prefs.justify === 'justify')}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="reader-field">
+                    <div class="reader-field-label">Reading Width</div>
+                    <div class="reader-display-row" data-row="measure">
+                      <div class="reader-segment" role="radiogroup" aria-label="Reading width">
+                        ${segBtn('data-reader-measure=\"narrow\"', 'Narrow', prefs.measure === 'narrow')}
+                        ${segBtn('data-reader-measure=\"medium\"', 'Medium', prefs.measure === 'medium')}
+                        ${segBtn('data-reader-measure=\"wide\"', 'Wide', prefs.measure === 'wide')}
+                        ${segBtn('data-reader-measure=\"full\"', 'Full', prefs.measure === 'full')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="reader-pane" data-reader-pane="theme" hidden>
+                <div class="reader-group">
+                  <div class="reader-field">
+                    <div class="reader-field-label">Theme</div>
+                    <div class="reader-display-row" data-row="theme">${themeSeg}</div>
+                    <label class="reader-system-toggle">
+                      <input type="checkbox" data-reader-system ${prefs.systemTheme ? 'checked' : ''} />
+                      <span>Match system</span>
                     </label>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>`;
+            `;
+        } else {
+            pop.innerHTML = `
+              <div class="reader-popover-header">
+                <span class="title">Display Options</span>
+                <div class="actions">
+                  <button type="button" class="reader-reset" data-reader-reset>Reset to Defaults</button>
+                  <button type="button" class="reader-close" aria-label="Close" data-reader-close>×</button>
+                </div>
+              </div>
+              <div class="reader-preview-row">
+                <div class="reader-live-preview" id="readerPreview">The quick brown fox jumps over the lazy dog. The five boxing wizards jump quickly. A mad boxer shot a quick, gloved jab to the jaw of his dizzy opponent. Pack my box with five dozen liquor jugs.</div>
+              </div>
+              <div class="reader-panel reader-grid">
+                <div class="reader-col">
+                  <div class="reader-group">
+                    <h5>Typography</h5>
+                    <div class="reader-field">
+                      <div class="reader-field-label">Font Size</div>
+                      <div class="reader-display-row" data-row="size">${sizeSeg}</div>
+                    </div>
+                    <div class="reader-field">
+                      <div class="reader-field-label">Font Family</div>
+                      <div class="reader-display-row" data-row="family">${familySeg}</div>
+                    </div>
+                    <div class="reader-field">
+                      <div class="reader-field-label">Line Spacing</div>
+                      <div class="reader-display-row" data-row="line">${lineSeg}</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="reader-col">
+                  <div class="reader-group">
+                    <h5>Layout</h5>
+                    <div class="reader-display-row" data-row="para"><div class="reader-segment" role="radiogroup" aria-label="Paragraph style">${segBtn('data-reader-para=\"spaced\"', 'Spaced', prefs.paraStyle === 'spaced')}${segBtn('data-reader-para=\"indented\"', 'Indented', prefs.paraStyle === 'indented')}</div></div>
+                    <div class="reader-display-row" data-row="justify"><div class="reader-segment" role="radiogroup" aria-label="Justification">${segBtn('data-reader-justify=\"left\"', 'Left', prefs.justify === 'left')}${segBtn('data-reader-justify=\"justify\"', 'Justified', prefs.justify === 'justify')}</div></div>
+                    <div class="reader-display-row" data-row="measure"><div class="reader-segment" role="radiogroup" aria-label="Reading width">${segBtn('data-reader-measure=\"narrow\"', 'Narrow', prefs.measure === 'narrow')}${segBtn('data-reader-measure=\"medium\"', 'Medium', prefs.measure === 'medium')}${segBtn('data-reader-measure=\"wide\"', 'Wide', prefs.measure === 'wide')}${segBtn('data-reader-measure=\"full\"', 'Full', prefs.measure === 'full')}</div></div>
+                    <div class="reader-field">
+                      <div class="reader-field-label">Theme</div>
+                      <div class="reader-display-row" data-row="theme">${themeSeg}</div>
+                      <div class="mt-2 flex items-center gap-2 text-sm">
+                        <label class="inline-flex items-center gap-2">
+                          <input type="checkbox" data-reader-system ${prefs.systemTheme ? 'checked' : ''} /> Match System Theme
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>`;
+        }
         // Position relative to anchor (desktop) or as bottom sheet (mobile)
-        const isMobile = (window.innerWidth || 0) <= 640;
         let scrim = null;
         if (isMobile) {
             try {
@@ -3590,7 +5668,7 @@ class AudioDashboard {
                 pop.style.right = '0';
                 pop.style.top = 'auto';
                 pop.style.bottom = '0';
-            } catch(_) {}
+            } catch (_) { }
         } else {
             const anchorRect = anchorBtn.getBoundingClientRect();
             pop.style.position = 'fixed';
@@ -3608,29 +5686,48 @@ class AudioDashboard {
                 // Also clamp if off left
                 let left = window.innerWidth - right - pr.width;
                 if (left < 12) { right = Math.round(Math.max(12, window.innerWidth - 12 - pr.width)); }
-            } catch(_) {}
+            } catch (_) { }
             pop.style.top = top + 'px';
             pop.style.right = right + 'px';
         }
         if (!pop.parentElement) document.body.appendChild(pop);
         // Initialize preview theme class
         try {
-          const prev = pop.querySelector('#readerPreview');
-          if (prev) {
-            let baseTheme = 'light';
-            try {
-              if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
-              else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
-            } catch(_) {}
-            const effectiveTheme = (prefs.systemTheme ? baseTheme : (prefs.theme || baseTheme));
-            prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
-            prev.classList.add('preview-theme--' + effectiveTheme);
-          }
-        } catch(_) {}
-        const closeAll = () => { try { pop.remove(); } catch(_) {} if (scrim) { try { scrim.remove(); } catch(_) {} scrim = null; } window.removeEventListener('resize', onAway, true); document.removeEventListener('click', onAway, true); };
+            const prev = pop.querySelector('#readerPreview');
+            if (prev) {
+                let baseTheme = 'light';
+                try {
+                    if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
+                    else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
+                } catch (_) { }
+                const effectiveTheme = (prefs.systemTheme ? baseTheme : (prefs.theme || baseTheme));
+                prev.classList.remove('preview-theme--light', 'preview-theme--sepia', 'preview-theme--dark');
+                prev.classList.add('preview-theme--' + effectiveTheme);
+            }
+        } catch (_) { }
+        const closeAll = () => { try { pop.remove(); } catch (_) { } if (scrim) { try { scrim.remove(); } catch (_) { } scrim = null; } window.removeEventListener('resize', onAway, true); document.removeEventListener('click', onAway, true); };
         if (scrim) scrim.addEventListener('click', closeAll);
         const onAway = (e) => { if (!pop.contains(e.target) && e.target !== anchorBtn) closeAll(); };
         setTimeout(() => { document.addEventListener('click', onAway, true); window.addEventListener('resize', onAway, true); }, 0);
+        // Mobile tabs
+        if (isMobile) {
+            const tabs = Array.from(pop.querySelectorAll('[data-reader-tab]'));
+            const panes = Array.from(pop.querySelectorAll('[data-reader-pane]'));
+            const setTab = (name) => {
+                tabs.forEach(t => t.setAttribute('aria-selected', t.getAttribute('data-reader-tab') === name ? 'true' : 'false'));
+                panes.forEach(p => {
+                    const match = p.getAttribute('data-reader-pane') === name;
+                    if (match) p.removeAttribute('hidden'); else p.setAttribute('hidden', '');
+                });
+            };
+            tabs.forEach(t => {
+                t.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    setTab(t.getAttribute('data-reader-tab') || 'text');
+                });
+            });
+            setTab('text');
+        }
         // Handlers
         pop.addEventListener('click', (e) => {
             const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-theme], [data-reader-para], [data-reader-justify], [data-reader-measure], [data-reader-size-inc], [data-reader-size-dec]');
@@ -3648,13 +5745,13 @@ class AudioDashboard {
             if (size && READER_SIZE_MAP[size]) next.size = size;
             if (inc || dec) {
                 try {
-                    const order = ['s','m','l','xl','xxl'];
+                    const order = ['s', 'm', 'l', 'xl', 'xxl'];
                     const cur = this.getReaderDisplayPrefs().size || 'm';
                     let idx = Math.max(0, order.indexOf(cur));
                     if (inc && idx < order.length - 1) idx++;
                     if (dec && idx > 0) idx--;
                     next.size = order[idx];
-                } catch(_) {}
+                } catch (_) { }
             }
             if (line && READER_LINE_MAP[line]) next.line = line;
             if (family && READER_FAMILY_MAP[family]) next.family = family;
@@ -3666,39 +5763,39 @@ class AudioDashboard {
             this.applyReaderDisplayPrefs(container, bodyEl);
             // Update live preview
             try {
-              const prev = pop.querySelector('#readerPreview');
-              if (prev) {
-                const fs = READER_SIZE_MAP[merged.size] || 1.0;
-                const lh = READER_LINE_MAP[merged.line] || 1.6;
-                const ff = READER_FAMILY_MAP[merged.family] || 'inherit';
-                prev.style.fontSize = fs + 'rem';
-                prev.style.lineHeight = String(lh);
-                prev.style.fontFamily = ff;
-                let baseTheme = 'light';
-                try {
-                  if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
-                  else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
-                } catch(_) {}
-                const effectiveTheme = (merged.systemTheme ? baseTheme : merged.theme);
-                prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
-                prev.classList.add('preview-theme--' + effectiveTheme);
-              }
-              const chip = pop.querySelector('[data-size-chip]');
-              if (chip) chip.style.fontSize = (READER_SIZE_MAP[merged.size]||1.0) + 'rem';
-            } catch(_) {}
+                const prev = pop.querySelector('#readerPreview');
+                if (prev) {
+                    const fs = READER_SIZE_MAP[merged.size] || 1.0;
+                    const lh = READER_LINE_MAP[merged.line] || 1.6;
+                    const ff = READER_FAMILY_MAP[merged.family] || 'inherit';
+                    prev.style.fontSize = fs + 'rem';
+                    prev.style.lineHeight = String(lh);
+                    prev.style.fontFamily = ff;
+                    let baseTheme = 'light';
+                    try {
+                        if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
+                        else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
+                    } catch (_) { }
+                    const effectiveTheme = (merged.systemTheme ? baseTheme : merged.theme);
+                    prev.classList.remove('preview-theme--light', 'preview-theme--sepia', 'preview-theme--dark');
+                    prev.classList.add('preview-theme--' + effectiveTheme);
+                }
+                const chip = pop.querySelector('[data-size-chip]');
+                if (chip) chip.style.fontSize = (READER_SIZE_MAP[merged.size] || 1.0) + 'rem';
+            } catch (_) { }
             // Update pressed states
-            pop.querySelectorAll('[data-reader-size]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-size')===merged.size ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-line]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-line')===merged.line ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-family]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-family')===merged.family ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-theme]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-theme')===merged.theme ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-para]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-para')===merged.paraStyle ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-justify]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-justify')===merged.justify ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-measure]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-measure')===merged.measure ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-size]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-size') === merged.size ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-line]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-line') === merged.line ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-family]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-family') === merged.family ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-theme]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-theme') === merged.theme ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-para]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-para') === merged.paraStyle ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-justify]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-justify') === merged.justify ? 'true' : 'false'));
+            pop.querySelectorAll('[data-reader-measure]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-measure') === merged.measure ? 'true' : 'false'));
             // Update micro preview for justification
             const jr = pop.querySelector('[data-row="justify"]');
             if (jr) jr.setAttribute('data-justify-state', merged.justify === 'justify' ? 'justify' : 'left');
             // Light telemetry on change
-            try { this.sendTelemetry && this.sendTelemetry('reader_display_change', merged); } catch(_) {}
+            try { this.sendTelemetry && this.sendTelemetry('reader_display_change', merged); } catch (_) { }
         });
         // Reset handler
         const resetBtn = pop.querySelector('[data-reader-reset]');
@@ -3709,32 +5806,34 @@ class AudioDashboard {
                 try {
                     if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
                     else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
-                } catch(_) {}
-                const defaults = { size: 'm', line: 'normal', family: 'sans', theme: baseTheme, systemTheme: false, paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
+                } catch (_) { }
+                const defaults = isMobile
+                    ? { size: 'l', line: 'loose', family: 'sans', theme: baseTheme, systemTheme: false, paraStyle: 'spaced', justify: 'left', measure: 'full' }
+                    : { size: 'm', line: 'normal', family: 'sans', theme: baseTheme, systemTheme: false, paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
                 const merged = this.setReaderDisplayPrefs(defaults);
                 this.applyReaderDisplayPrefs(container, bodyEl);
                 // Update UI state
-                ['size','line','family','theme','para','justify','measure'].forEach(key => {
-                  pop.querySelectorAll('[data-reader-' + key + ']').forEach(el => {
-                    const val = el.getAttribute('data-reader-' + key);
-                    const want = String(merged[key === 'para' ? 'paraStyle' : key]);
-                    el.setAttribute('aria-pressed', val === want ? 'true' : 'false');
-                  });
+                ['size', 'line', 'family', 'theme', 'para', 'justify', 'measure'].forEach(key => {
+                    pop.querySelectorAll('[data-reader-' + key + ']').forEach(el => {
+                        const val = el.getAttribute('data-reader-' + key);
+                        const want = String(merged[key === 'para' ? 'paraStyle' : key]);
+                        el.setAttribute('aria-pressed', val === want ? 'true' : 'false');
+                    });
                 });
                 const jr = pop.querySelector('[data-row="justify"]');
                 if (jr) jr.setAttribute('data-justify-state', 'left');
                 const sys = pop.querySelector('[data-reader-system]');
                 if (sys) sys.checked = false;
                 try {
-                  const prev = pop.querySelector('#readerPreview');
-                  if (prev) {
-                    prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
-                    prev.classList.add('preview-theme--' + baseTheme);
-                    prev.style.fontSize = (READER_SIZE_MAP[merged.size]||1.0) + 'rem';
-                    prev.style.lineHeight = String(READER_LINE_MAP[merged.line]||1.6);
-                    prev.style.fontFamily = (READER_FAMILY_MAP[merged.family]||'inherit');
-                  }
-                } catch(_) {}
+                    const prev = pop.querySelector('#readerPreview');
+                    if (prev) {
+                        prev.classList.remove('preview-theme--light', 'preview-theme--sepia', 'preview-theme--dark');
+                        prev.classList.add('preview-theme--' + baseTheme);
+                        prev.style.fontSize = (READER_SIZE_MAP[merged.size] || 1.0) + 'rem';
+                        prev.style.lineHeight = String(READER_LINE_MAP[merged.line] || 1.6);
+                        prev.style.fontFamily = (READER_FAMILY_MAP[merged.family] || 'inherit');
+                    }
+                } catch (_) { }
             });
         }
         // System theme checkbox
@@ -3745,19 +5844,19 @@ class AudioDashboard {
                 this.applyReaderDisplayPrefs(container, bodyEl);
                 // Update preview theme class to follow system
                 try {
-                  const prev = pop.querySelector('#readerPreview');
-                  if (prev) {
-                    let baseTheme = 'light';
-                    try {
-                      if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
-                      else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
-                    } catch(_) {}
-                    const prefsNow = this.getReaderDisplayPrefs();
-                    const eff = prefsNow.systemTheme ? baseTheme : (prefsNow.theme || baseTheme);
-                    prev.classList.remove('preview-theme--light','preview-theme--sepia','preview-theme--dark');
-                    prev.classList.add('preview-theme--' + eff);
-                  }
-                } catch(_) {}
+                    const prev = pop.querySelector('#readerPreview');
+                    if (prev) {
+                        let baseTheme = 'light';
+                        try {
+                            if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
+                            else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
+                        } catch (_) { }
+                        const prefsNow = this.getReaderDisplayPrefs();
+                        const eff = prefsNow.systemTheme ? baseTheme : (prefsNow.theme || baseTheme);
+                        prev.classList.remove('preview-theme--light', 'preview-theme--sepia', 'preview-theme--dark');
+                        prev.classList.add('preview-theme--' + eff);
+                    }
+                } catch (_) { }
             });
         }
         const closeBtn = pop.querySelector('[data-reader-close]');
@@ -3768,7 +5867,7 @@ class AudioDashboard {
         if (!this.pendingReprocess) return;
         const videoId = this.pendingReprocess.videoId;
         if (!videoId) {
-            this.showToast('Missing video id for reprocess', 'error');
+            this.showToast('Missing video id for regenerate', 'error');
             return;
         }
         const summaryTypes = this.getSelectedSummaryTypes();
@@ -3782,7 +5881,7 @@ class AudioDashboard {
         const regenerateAudio = summaryTypes.some((type) => type.startsWith('audio'));
         const token = await this.getReprocessToken();
         if (!token) {
-            this.showToast('Reprocess token required', 'warn');
+            this.showToast('Auth token required', 'warn');
             if (this.confirmReprocessBtn) {
                 this.confirmReprocessBtn.disabled = false;
             }
@@ -3801,7 +5900,13 @@ class AudioDashboard {
             if (summaryTypes.length) {
                 payload.summary_types = summaryTypes;
             }
-            const response = await this.nasFetch('/api/reprocess', {
+            // Include selected LLM model if not default
+            if (this.reprocessModelSelect && this.reprocessModelSelect.value) {
+                payload.llm_model = this.reprocessModelSelect.value;
+            }
+            // Reprocess is served by the dashboard (and may proxy to NAS via NGROK_BASE_URL),
+            // so always call the local endpoint to avoid CORS / base_url ambiguity.
+            const response = await fetch('/api/reprocess', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -3811,14 +5916,24 @@ class AudioDashboard {
             });
             if (!response.ok) {
                 const text = await response.text();
-                throw new Error(text || `HTTP ${response.status}`);
+                let errorMsg = text || `HTTP ${response.status}`;
+                // Parse JSON error if present
+                try {
+                    const jsonErr = JSON.parse(text);
+                    if (jsonErr.error === 'forbidden') {
+                        errorMsg = 'Invalid admin token. Please check your token in Settings.';
+                    } else if (jsonErr.error) {
+                        errorMsg = jsonErr.error;
+                    }
+                } catch (_) { }
+                throw new Error(errorMsg);
             }
-            this.showToast(`Reprocess scheduled for ${this.describeVideo(this.pendingReprocess)}`, 'success');
+            this.showToast(`Regenerate scheduled for ${this.describeVideo(this.pendingReprocess)}`, 'success');
             this.requestMetricsRefresh(2000);
             this.closeReprocessModal();
         } catch (error) {
-            console.error('Reprocess request failed', error);
-            this.showToast(`Reprocess failed: ${error.message || error}`, 'error');
+            console.error('Regenerate request failed', error);
+            this.showToast(`Regenerate failed: ${error.message || error}`, 'error');
         } finally {
             if (this.confirmReprocessBtn) {
                 this.confirmReprocessBtn.disabled = false;
@@ -3845,23 +5960,23 @@ class AudioDashboard {
                     'Content-Type': 'application/json'
                 }
             });
-            
+
             if (!res.ok) {
                 const errorText = await res.text();
                 throw new Error(`HTTP ${res.status}: ${errorText}`);
             }
-            
+
             const result = await res.json();
-            
+
             // Smooth remove
             cardEl.classList.add('transition', 'duration-200', 'ease-out', 'opacity-0', 'scale-95');
             setTimeout(() => {
                 cardEl.remove();
                 this.showToast('Deleted successfully', 'success');
             }, 200);
-            
+
             // Ask server to refresh
-            fetch('/api/refresh').catch(() => {});
+            fetch('/api/refresh').catch(() => { });
         } catch (err) {
             console.error('Delete failed', err);
             this.showToast(`Delete failed: ${err.message}`, 'error');
@@ -3920,14 +6035,8 @@ class AudioDashboard {
 
     createContentCard(item) {
         const normalizedItem = this.normalizeCardItem(item);
-        // Experimental Tailwind-first card revamp (v5)
-        if (this.flags && this.flags.twRevamp) {
-            return this.renderStreamCardTW(normalizedItem);
-        }
-        if (this.flags && this.flags.cardV4) {
-            return this.renderStreamCardV4(normalizedItem);
-        }
-        return this.renderSummaryCard(normalizedItem, { view: 'list' });
+        // In list view, always use the audio-first stream card layout
+        return this.renderStreamCardV4(normalizedItem);
     }
 
     createGridCard(item) {
@@ -3987,7 +6096,7 @@ class AudioDashboard {
         const identityMeta = useMinimalMeta ? identityMetaMinimal : identityMetaClassic;
 
         const taxonomyMarkup = this.renderCategorySection(item.file_stem, categories, subcatPairs);
-        const actionMarkup = this.renderActionBar(item, buttonDurations, hasAudio);
+        const mediaActions = this.renderActionBar(item, buttonDurations, hasAudio);
         const totalSecondsAttr = Number.isFinite(totalSecs) ? totalSecs : 0;
 
         const thumb = item.thumbnail_url
@@ -4187,7 +6296,7 @@ class AudioDashboard {
             <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
-                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Regenerate…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
             </div>
             <div class="summary-card__popover hidden" data-delete-popover>
@@ -4262,7 +6371,7 @@ class AudioDashboard {
                 </div>
             </article>`;
     }
-// V5 Grid card (Mosaic): Tailwind-first tile
+    // V5 Grid card (Mosaic): Tailwind-first tile
     renderGridCardTW(item) {
         const hasAudio = this.itemHasAudio(item);
         const rawSource = item.content_source || 'youtube';
@@ -4302,27 +6411,13 @@ class AudioDashboard {
         const visibleLimitG = (this.flags && this.flags.twChipsVisible) || 4;
         const chipBar = this.renderChipBarV5(item.file_stem, categories, subcatPairs, visibleLimitG);
         const pendingChip = this.renderPendingImageOverrideChip(item);
-        const snippet = this.getSummarySnippet(item, 180);
         return `
             <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0"
-                     class="mosaic-card group rounded-2xl border border-slate-200/70 dark:border-slate-800/60 bg-white/80 dark:bg-slate-900/70 backdrop-blur hover:shadow-xl transition-all overflow-hidden">
-                <div class="relative w-full h-40">
-                    ${toggleBtn}
-                    ${mediaImgs}
-                    <div class="mosaic-card__progress absolute inset-x-0 bottom-0 h-1.5 bg-white/40 dark:bg-slate-900/40" data-card-progress-container data-total-seconds="${totalSecondsAttr}">
-                        <div class="mosaic-card__progress-bar h-full bg-sky-500/90 dark:bg-sky-400/90" data-card-progress></div>
-                    </div>
-                </div>
-                <div class="mosaic-card__content">
-                    <div class="mosaic-card__main">
-                        ${pendingChip ? `<div class="mb-1">${pendingChip}</div>` : ''}
-                        ${chipBar}
-                        <h3 class="mosaic-card__title line-clamp-2 text-slate-900 dark:text-slate-100">${title}</h3>
-                        <div class="mosaic-card__divider" role="presentation"></div>
-                        ${snippet ? `<p class="mosaic-card__snippet text-[13px] text-slate-700 dark:text-slate-300 line-clamp-3">${this.escapeHtml(snippet)}</p>` : '<div class="mosaic-card__snippet mosaic-card__snippet--empty"></div>'}
-                        <button type="button" class="mosaic-card__readmore text-[13px] font-semibold text-audio-600 hover:text-audio-700" data-action="read">Read more</button>
-                    </div>
-                    ${mediaActions ? `<div class="mosaic-card__actions">${mediaActions}</div>` : ''}
+                     class="wall-card compact">
+                <div class="wall-card__media">${mediaImgs}</div>
+                <div class="wall-card__overlay">
+                    ${chipBar ? `<div class="wall-card__meta">${chipBar}</div>` : '<div class="wall-card__meta"></div>'}
+                    <h3 class="wall-card__title line-clamp-2">${title}</h3>
                 </div>
             </article>`;
     }
@@ -4338,7 +6433,27 @@ class AudioDashboard {
         let mediaActions = this.renderMediaActionsV5(item, buttonDurations, hasAudio, watchLinkAvailable, source);
         // Remove inline reader button in wall mode; clicking the card opens reader
         mediaActions = `<div class="stream-card__media-actions">${mediaActions || ''}</div>`;
-        const chipRail = this.renderChipBarV5(item.file_stem, categories, subcatPairs, 3);
+
+        // Calculate metadata for new card layout
+        const channel = (item.channel_name || item.channel || '').toString().trim();
+        const videoDur = Number(item?.media_metadata?.video_duration_seconds || item?.duration_seconds || 0);
+        const fmt = (sec) => { if (!sec || sec <= 0) return ''; const m = Math.floor(sec / 60); const s = Math.floor(sec % 60); return `${m}:${s.toString().padStart(2, '0')}`; };
+        const duration = videoDur > 0 ? fmt(videoDur) : '';
+        const topics = this.extractTopics(item);
+        const totalTags = (categories?.length || 0) + (subcatPairs?.length || 0) + (topics?.length || 0);
+
+        // Source icons
+        const sourceIcons = {
+            youtube: `<svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>`,
+            reddit: `<svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/></svg>`,
+            web: `<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`
+        };
+        const sourceIcon = sourceIcons[source] || sourceIcons.web;
+
+        // Tags data for popover
+        const tagsData = { categories, subcatPairs, topics, channel };
+        const tagsDataAttr = `data-tags-data='${JSON.stringify(tagsData).replace(/'/g, "&#39;")}'`;
+
         const pendingChip = this.renderPendingImageOverrideChip(item);
         const menuMarkup = `
             <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
@@ -4351,7 +6466,7 @@ class AudioDashboard {
             <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
-                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Regenerate…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
             </div>`;
         const title = this.escapeHtml(item.title);
@@ -4375,206 +6490,1539 @@ class AudioDashboard {
         } else {
             mediaImgs = `<div class="wall-card__thumb wall-card__thumb--fallback"></div>`;
         }
+
+        // Tags button (top-right corner)
+        const tagsBtn = totalTags > 0 ? `
+            <button type="button" class="wall-card__tags-btn" ${tagsDataAttr} title="${totalTags} tags">
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                    <line x1="7" y1="7" x2="7.01" y2="7"/>
+                </svg>
+                <span class="wall-card__tags-count">${totalTags}</span>
+            </button>` : '';
+
+        // Meta row: source + duration, channel
+        const metaRow = `
+            <div class="wall-card__meta-row">
+                <span class="wall-card__source">
+                    ${sourceIcon}
+                    ${duration ? `<span class="wall-card__duration">${duration}</span>` : ''}
+                </span>
+                ${channel ? `<span class="wall-card__channel">${this.escapeHtml(channel)}</span>` : ''}
+                ${pendingChip || ''}
+            </div>`;
+
         return `
-            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0" class="wall-card">
+            <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0" class="wall-card wall-card--${source}">
                 ${menuMarkup}
+                ${tagsBtn}
                 <div class="wall-card__media">${toggleBtn}${mediaImgs}</div>
                 <div class="wall-card__overlay">
-                    <div class="wall-card__meta">${chipRail || ''}${pendingChip ? `<div class=\"inline-block ml-2\">${pendingChip}</div>` : ''}</div>
-                    <h3 class="wall-card__title">${title}</h3>
-                    <div class="wall-card__actions">${mediaActions || ''}</div>
+                    ${metaRow}
+                    <h3 class="wall-card__title line-clamp-3">${title}</h3>
                 </div>
             </article>`;
     }
 
+    normalizeWallDockArrangeMode(mode) {
+        const raw = String(mode || '').toLowerCase();
+        if (raw === 'category' || raw === 'keywords' || raw === 'newest' || raw === 'hybrid') return raw;
+        return 'hybrid';
+    }
+
+    isWallDockAvailable() {
+        const enabled = !this.flags || this.flags.wallDockedReaderEnabled !== false;
+        const desktop = (window.innerWidth || 0) >= 1100;
+        return !!(enabled && desktop && this.viewMode === 'wall');
+    }
+
+    setWallDockArrangeMode(mode) {
+        const next = this.normalizeWallDockArrangeMode(mode);
+        this.wallDockArrangeMode = next;
+        try { localStorage.setItem(this.wallDockArrangeModeKey, next); } catch (_) { }
+        this.updateWallArrangeSettingUI();
+        return next;
+    }
+
+    updateWallArrangeSettingUI() {
+        const buttons = {
+            hybrid: this.wallArrangeHybridSettingBtn,
+            category: this.wallArrangeCategorySettingBtn,
+            keywords: this.wallArrangeKeywordsSettingBtn,
+            newest: this.wallArrangeNewestSettingBtn
+        };
+        const activeMode = this.normalizeWallDockArrangeMode(this.wallDockArrangeMode || this.flags?.wallDockArrangeModeDefault || 'hybrid');
+        const setBtnActive = (btn, active) => {
+            if (!btn) return;
+            btn.classList.toggle('is-active', !!active);
+            btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        };
+        Object.entries(buttons).forEach(([mode, btn]) => setBtnActive(btn, mode === activeMode));
+    }
+
+    applyWallArrangeModeFromSettings(mode) {
+        const next = this.setWallDockArrangeMode(mode);
+        const workspace = this.contentGrid && this.contentGrid.querySelector('[data-wall-workspace]');
+        const dock = workspace ? workspace.querySelector('#wallDockReader') : null;
+        if (dock) this.syncWallDockArrangeButtons(dock, next);
+        const activeId = this._wallDockSelectedId || (this._activeReader && this._activeReader.mode === 'dock' ? this._activeReader.id : '');
+        if (activeId && workspace && workspace.classList.contains('wall-dock-open')) {
+            this.applyWallDockArrangement(activeId, next, { scrollSelected: false });
+        }
+    }
+
+    setWallDockWidth(workspace, grid) {
+        if (!workspace || !grid) return;
+        const first = grid.querySelector('.wall-card');
+        const styles = window.getComputedStyle(grid);
+        const gap = parseFloat(styles.columnGap || styles.gap || '16') || 16;
+        const cardW = first ? first.getBoundingClientRect().width : 210;
+        const dockCols = (window.innerWidth || 0) >= 1680 ? 3 : 2;
+        const widthPx = (dockCols * cardW) + (Math.max(0, dockCols - 1) * gap) + 24;
+        const clamped = Math.max(340, Math.min(640, Math.round(widthPx)));
+        workspace.style.setProperty('--wall-dock-w', `${clamped}px`);
+    }
+
+    getWallGridColumnCount(grid) {
+        if (!grid) return 1;
+        const first = grid.querySelector('.wall-card');
+        const styles = window.getComputedStyle(grid);
+        const gap = parseFloat(styles.columnGap || styles.gap || '16') || 16;
+        const cardW = first ? first.getBoundingClientRect().width : 210;
+        const cols = Math.floor((grid.clientWidth + gap) / (Math.max(1, cardW) + gap));
+        return Math.max(1, cols || 1);
+    }
+
+    getWallDockAnchorIndex(grid, totalCount) {
+        if (!totalCount) return 0;
+        const cols = this.getWallGridColumnCount(grid);
+        const targetRow = totalCount > cols ? 1 : 0;
+        const targetCol = Math.floor((cols - 1) / 2);
+        const idx = (targetRow * cols) + targetCol;
+        return Math.max(0, Math.min(totalCount - 1, idx));
+    }
+
+    getWallItemTimestampMs(item) {
+        try {
+            const t = item?.indexed_at || item?.indexedAt || item?.created_at || item?.updated_at || item?.timestamp || null;
+            if (!t) return 0;
+            const ms = Date.parse(String(t));
+            return Number.isFinite(ms) ? ms : 0;
+        } catch (_) {
+            return 0;
+        }
+    }
+
+    rankWallDockCandidates(selectedId, mode, candidateIds) {
+        const id = String(selectedId || '').trim();
+        const list = Array.isArray(candidateIds) ? candidateIds.filter(Boolean) : [];
+        if (!id || !list.length) return [];
+        const itemMap = new Map((this.currentItems || []).map(it => [it.file_stem, it]));
+        const base = itemMap.get(id);
+        if (!base) return list.filter(cid => cid !== id);
+
+        const arrange = this.normalizeWallDockArrangeMode(mode);
+        const fallbackOrder = list.filter(cid => cid !== id);
+        const baseMeta = this.extractCatsAndSubcats(base);
+        const baseCatSet = new Set(baseMeta.categories || []);
+        const basePairSet = new Set((baseMeta.subcatPairs || []).map(p => `${p[0]}>${p[1]}`));
+        const baseTitleTokens = this._tokenizeTitle(base.title || '');
+        const baseSummaryTokens = this._tokenizeTitle(this.getSummarySnippet(base, 260) || '');
+        const now = Date.now() || 1;
+
+        const scored = fallbackOrder.map((cid, index) => {
+            const item = itemMap.get(cid);
+            if (!item) return { id: cid, index, score: Number.NEGATIVE_INFINITY, ts: 0 };
+            const ts = this.getWallItemTimestampMs(item);
+            let score = 0;
+
+            if (arrange === 'newest') {
+                score = ts;
+            } else if (arrange === 'category') {
+                const meta = this.extractCatsAndSubcats(item);
+                const catSet = new Set(meta.categories || []);
+                const pairSet = new Set((meta.subcatPairs || []).map(p => `${p[0]}>${p[1]}`));
+                const catOverlap = [...baseCatSet].filter(x => catSet.has(x)).length;
+                const subOverlap = [...basePairSet].filter(x => pairSet.has(x)).length;
+                const sameSource = String(base.content_source || '').toLowerCase() === String(item.content_source || '').toLowerCase();
+                score = (catOverlap * 3.5) + (subOverlap * 5.0) + (sameSource ? 0.5 : 0);
+            } else if (arrange === 'keywords') {
+                const titleTokens = this._tokenizeTitle(item.title || '');
+                const summaryTokens = this._tokenizeTitle(this.getSummarySnippet(item, 260) || '');
+                score = (this._jaccard(baseTitleTokens, titleTokens) * 2.2) + (this._jaccard(baseSummaryTokens, summaryTokens) * 1.4);
+            } else {
+                score = this.computeHeuristicSimilarity(base, item);
+                const fresh = ts > 0 ? Math.min(1, ts / now) : 0;
+                score += (fresh * 0.25);
+            }
+
+            return { id: cid, index, score, ts };
+        });
+
+        scored.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            if (b.ts !== a.ts) return b.ts - a.ts;
+            return a.index - b.index;
+        });
+        return scored.map(r => r.id);
+    }
+
+    buildWallDockAroundPositions(anchor, count) {
+        const out = [];
+        if (!count || count <= 0) return out;
+        const center = Math.max(0, Math.min(count - 1, anchor));
+        out.push(center);
+        for (let step = 1; out.length < count; step++) {
+            const left = center - step;
+            const right = center + step;
+            if (left >= 0) out.push(left);
+            if (out.length >= count) break;
+            if (right < count) out.push(right);
+            if (left < 0 && right >= count) break;
+        }
+        return out;
+    }
+
+    animateWallDockReflow(cards, beforeRects, selectedId) {
+        if (!Array.isArray(cards) || !beforeRects || typeof beforeRects.get !== 'function') return;
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        cards.forEach((card) => {
+            const cid = card.getAttribute('data-report-id');
+            if (!cid || cid === selectedId) return;
+            const from = beforeRects.get(cid);
+            if (!from) return;
+            const to = card.getBoundingClientRect();
+            const dx = from.left - to.left;
+            const dy = from.top - to.top;
+            if (Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
+            try {
+                card.animate(
+                    [
+                        { transform: `translate(${dx}px, ${dy}px)` },
+                        { transform: 'translate(0px, 0px)' }
+                    ],
+                    {
+                        duration: 360,
+                        easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+                    }
+                );
+            } catch (_) { }
+        });
+    }
+
+    syncWallDockArrangeButtons(dock, mode) {
+        if (!dock) return;
+        const arrange = this.normalizeWallDockArrangeMode(mode);
+        dock.querySelectorAll('[data-wall-arrange-mode]').forEach((btn) => {
+            const active = btn.getAttribute('data-wall-arrange-mode') === arrange;
+            if (btn.hasAttribute('aria-pressed')) btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+            if (btn.getAttribute('role') === 'menuitemradio' || btn.hasAttribute('aria-checked')) {
+                btn.setAttribute('aria-checked', active ? 'true' : 'false');
+            }
+        });
+    }
+
+    applyWallDockArrangement(selectedId, mode, { scrollSelected = false } = {}) {
+        const workspace = this.contentGrid && this.contentGrid.querySelector('[data-wall-workspace]');
+        const grid = workspace ? workspace.querySelector('.wall-grid') : null;
+        if (!grid) return;
+        const cards = Array.from(grid.querySelectorAll('.wall-card'));
+        if (!cards.length) return;
+        const cardIds = cards.map(c => c.getAttribute('data-report-id')).filter(Boolean);
+        if (!cardIds.includes(selectedId)) return;
+
+        const arrange = this.setWallDockArrangeMode(mode || this.wallDockArrangeMode);
+        this.setWallDockWidth(workspace, grid);
+        const beforeRects = new Map(cards.map((card) => {
+            const cid = card.getAttribute('data-report-id');
+            return [cid, card.getBoundingClientRect()];
+        }));
+        const ranked = this.rankWallDockCandidates(selectedId, arrange, cardIds);
+        const rankedSet = new Set(ranked);
+        const sequence = [...ranked, ...cardIds.filter(cid => cid !== selectedId && !rankedSet.has(cid))];
+        const selectedIndex = cardIds.indexOf(selectedId);
+        const selectedCardEl = cards.find((card) => card.getAttribute('data-report-id') === selectedId) || null;
+        const currentOrder = selectedCardEl ? Number.parseInt(selectedCardEl.dataset.wallOrder || '', 10) : Number.NaN;
+        const anchor = Number.isFinite(currentOrder) && currentOrder >= 0
+            ? Math.max(0, Math.min(cardIds.length - 1, currentOrder))
+            : (selectedIndex >= 0 ? selectedIndex : this.getWallDockAnchorIndex(grid, cardIds.length));
+        const positions = this.buildWallDockAroundPositions(anchor, cardIds.length);
+        const slots = new Array(cardIds.length).fill('');
+        slots[anchor] = selectedId;
+        let seqIdx = 0;
+        for (let i = 0; i < positions.length && seqIdx < sequence.length; i++) {
+            const nextPos = positions[i];
+            if (nextPos === anchor) continue;
+            slots[nextPos] = sequence[seqIdx++];
+        }
+        if (seqIdx < sequence.length) {
+            for (let i = 0; i < slots.length && seqIdx < sequence.length; i++) {
+                if (!slots[i]) slots[i] = sequence[seqIdx++];
+            }
+        }
+        const orderMap = new Map(slots.map((cid, idx) => [cid, idx]));
+
+        cards.forEach((card, idx) => {
+            const cid = card.getAttribute('data-report-id');
+            const nextOrder = orderMap.has(cid) ? orderMap.get(cid) : (slots.length + idx);
+            card.style.order = String(nextOrder);
+            card.dataset.wallOrder = String(nextOrder);
+            const active = cid === selectedId;
+            card.classList.toggle('wall-card--selected', active);
+            card.classList.toggle('wall-card--focus-anchor', active);
+        });
+        this.animateWallDockReflow(cards, beforeRects, selectedId);
+
+        const selectedCard = grid.querySelector(`.wall-card[data-report-id="${CSS.escape(selectedId)}"]`);
+        if (selectedCard && scrollSelected) {
+            const mainContent = document.querySelector('main');
+            if (mainContent) {
+                const scrollerRect = mainContent.getBoundingClientRect();
+                const cardRect = selectedCard.getBoundingClientRect();
+                const delta = (cardRect.top - scrollerRect.top) - ((scrollerRect.height * 0.33) - (cardRect.height * 0.5));
+                mainContent.scrollTo({ top: Math.max(0, mainContent.scrollTop + delta), behavior: 'smooth' });
+            }
+        }
+    }
+
+    closeWallDockReader({ clearDeepLink = true, skipTelemetry = false } = {}) {
+        const workspace = this.contentGrid && this.contentGrid.querySelector('[data-wall-workspace]');
+        const grid = workspace ? workspace.querySelector('.wall-grid') : null;
+        const dock = workspace ? workspace.querySelector('#wallDockReader') : null;
+        const activeId = this._wallDockSelectedId || (this._activeReader && this._activeReader.mode === 'dock' ? this._activeReader.id : '') || '';
+
+        if (this._wallDockTeardown && Array.isArray(this._wallDockTeardown)) {
+            this._wallDockTeardown.forEach((fn) => { try { fn(); } catch (_) { } });
+        }
+        this._wallDockTeardown = [];
+
+        // Trigger exit animation before hiding
+        if (dock && workspace && workspace.classList.contains('wall-dock-open')) {
+            workspace.classList.add('wall-dock-closing');
+            // Wait for animation to complete, then finish cleanup
+            setTimeout(() => {
+                dock.classList.add('hidden');
+                dock.setAttribute('aria-hidden', 'true');
+                workspace.classList.remove('wall-dock-open');
+                workspace.classList.remove('wall-dock-closing');
+                workspace.style.removeProperty('--wall-dock-w');
+                workspace.style.removeProperty('--wall-dock-scroll-shift');
+            }, 280); // Match dockSlideOut duration
+        } else {
+            if (dock) {
+                dock.classList.add('hidden');
+                dock.setAttribute('aria-hidden', 'true');
+            }
+            if (workspace) {
+                workspace.classList.remove('wall-dock-open');
+                workspace.classList.remove('wall-dock-closing');
+                workspace.style.removeProperty('--wall-dock-w');
+                workspace.style.removeProperty('--wall-dock-scroll-shift');
+            }
+        }
+        if (grid) {
+            grid.querySelectorAll('.wall-card').forEach((card) => {
+                card.style.removeProperty('order');
+                card.removeAttribute('data-wall-order');
+                card.classList.remove('wall-card--selected');
+                card.classList.remove('wall-card--focus-anchor');
+            });
+        }
+
+        this._wallDockSelectedId = '';
+        if (this._activeReader && this._activeReader.mode === 'dock') this._activeReader = null;
+        this._kaleidoSetVariant = null;
+
+        const modal = document.getElementById('wallReaderModal');
+        const modalOpen = modal && !modal.classList.contains('hidden');
+        const hasInline = !!(grid && grid.querySelector('[data-wall-reader]'));
+        if (!modalOpen && !hasInline) {
+            document.body.classList.remove('wall-reader-open');
+        }
+
+        if (clearDeepLink && activeId) {
+            try { this.clearReadDeepLinkIfMatches(activeId); } catch (_) { }
+        }
+        if (!skipTelemetry && activeId) {
+            this.sendTelemetry('read_close', { id: activeId, view: 'wall', reader: 'dock' });
+        }
+    }
+
+    openWallDockReader(id, cardEl) {
+        if (!this.isWallDockAvailable()) return false;
+
+        const workspace = this.contentGrid && this.contentGrid.querySelector('[data-wall-workspace]');
+        const grid = workspace ? workspace.querySelector('.wall-grid') : null;
+        const dock = workspace ? workspace.querySelector('#wallDockReader') : null;
+        const titleEl = dock ? dock.querySelector('#wallDockTitle') : null;
+        const body = dock ? dock.querySelector('#wallDockBody') : null;
+        const item = (this.currentItems || []).find(x => x.file_stem === id);
+
+        if (!workspace || !grid || !dock || !titleEl || !body || !item) return false;
+
+        if (this._wallDockTeardown && Array.isArray(this._wallDockTeardown)) {
+            this._wallDockTeardown.forEach((fn) => { try { fn(); } catch (_) { } });
+        }
+        this._wallDockTeardown = [];
+        const on = (target, type, fn, opts) => {
+            if (!target || !fn) return;
+            target.addEventListener(type, fn, opts);
+            this._wallDockTeardown.push(() => { try { target.removeEventListener(type, fn, opts); } catch (_) { } });
+        };
+
+        const card = cardEl || grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`);
+        if (card) card.classList.add('wall-card--selected');
+        this._wallDockSelectedId = id;
+
+        // Check if dock is already open (content switch vs first open)
+        const isContentSwitch = workspace.classList.contains('wall-dock-open');
+
+        this.setWallDockWidth(workspace, grid);
+        dock.classList.remove('hidden');
+        dock.setAttribute('aria-hidden', 'false');
+        workspace.classList.add('wall-dock-open');
+        document.body.classList.add('wall-reader-open');
+
+        // Animate content change when switching between cards
+        if (isContentSwitch) {
+            if (body) {
+                body.style.animation = 'dockContentSwitch 360ms cubic-bezier(0.34, 1.3, 0.64, 1) both';
+                setTimeout(() => { body.style.animation = ''; }, 360);
+            }
+            // Also animate the chrome (title area) with a subtle pulse
+            const chrome = dock.querySelector('.wall-dock__chrome');
+            if (chrome) {
+                chrome.style.animation = 'dockChromePulse 280ms ease-out';
+                setTimeout(() => { chrome.style.animation = ''; }, 280);
+            }
+        }
+
+        titleEl.textContent = item.title || 'Summary';
+
+        // Populate dock header metadata (source + duration, channel, tags)
+        const source = (item.content_source || item.source || 'unknown').toString().toLowerCase();
+        const channel = (item.channel_name || item.channel || '').toString().trim();
+        const videoDur = Number(item?.media_metadata?.video_duration_seconds || item?.duration_seconds || 0);
+        const fmt = (sec) => { if (!sec || sec <= 0) return ''; const m = Math.floor(sec / 60); const s = Math.floor(sec % 60); return `${m}:${s.toString().padStart(2, '0')}`; };
+        const duration = videoDur > 0 ? fmt(videoDur) : '';
+
+        // Source icons
+        const sourceIcons = {
+            youtube: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>`,
+            reddit: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/></svg>`,
+            web: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`
+        };
+
+        const sourceIconEl = dock.querySelector('#wallDockSourceIcon');
+        const durationEl = dock.querySelector('#wallDockDuration');
+        const sourceBtn = dock.querySelector('#wallDockSource');
+        if (sourceIconEl) sourceIconEl.innerHTML = sourceIcons[source] || sourceIcons.web;
+        if (durationEl) durationEl.textContent = duration;
+        if (sourceBtn) sourceBtn.className = `wall-dock__source-badge wall-dock__source-badge--${source}`;
+
+        // Channel
+        const channelEl = dock.querySelector('#wallDockChannel');
+        if (channelEl) {
+            if (channel) {
+                channelEl.textContent = channel;
+                channelEl.classList.remove('hidden');
+                on(channelEl, 'click', () => this.applyFilterChip('channel', channel));
+            } else {
+                channelEl.classList.add('hidden');
+            }
+        }
+
+        // Tags button
+        const tagsEl = dock.querySelector('#wallDockTags');
+        const tagsCountEl = dock.querySelector('#wallDockTagsCount');
+        const cat = this.extractCatsAndSubcats ? this.extractCatsAndSubcats(item) : { categories: [], subcatPairs: [] };
+        const totalTags = (cat.categories?.length || 0) + (cat.subcatPairs?.length || 0) + (this.extractTopics(item)?.length || 0);
+        if (tagsEl && tagsCountEl) {
+            if (totalTags > 0) {
+                tagsCountEl.textContent = totalTags;
+                tagsEl.classList.remove('hidden');
+                on(tagsEl, 'click', () => this.openTagsPopoverForItem(item, tagsEl));
+            } else {
+                tagsEl.classList.add('hidden');
+            }
+        }
+
+        const fallbackSummary = this.computeFallbackSummaryHtml(item);
+        const variantInfo = this.extractVariantInfo(item, fallbackSummary);
+        const defaultVariant = variantInfo?.defaultId || (variantInfo?.order && variantInfo.order[0]) || '';
+
+        // Helper to bind action button handlers after rendering variant tabs
+        const bindVariantTabActions = (container) => {
+            const regenerateBtn = container.querySelector('[data-wall-action="regenerate"]');
+            if (regenerateBtn) {
+                on(regenerateBtn, 'click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.openReprocessModal(id, card || dock, item);
+                });
+            }
+            const displayBtn = container.querySelector('[data-wall-action="display"]');
+            if (displayBtn) {
+                on(displayBtn, 'click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.openReaderDisplayPopover(dock, body, displayBtn);
+                });
+            }
+        };
+
+        const canRegenerate = item && (item.content_source === 'youtube' || item.video_id);
+
+        const setActiveVariant = (variantId) => {
+            const normalized = String(variantId || '').toLowerCase();
+            if (!normalized || !variantInfo || !variantInfo.map[normalized]) return;
+            const entry = variantInfo.map[normalized];
+            const variantTabsHtml = this.renderWallDockVariantTabs(variantInfo, normalized, {
+                videoId: item?.video_id || '',
+                canRegenerate,
+                reportId: id
+            });
+            try { this.setReadDeepLink(id, normalized, { replace: true, videoId: item?.video_id || '' }); } catch (_) { }
+            dock.dataset.currentVariant = normalized;
+
+            if (entry.kind === 'audio') {
+                const reportId = variantInfo.reportId || id;
+                const audioSrc = entry.audioSrc || variantInfo.audioSrc || null;
+                body.innerHTML = this.renderReaderHeader(item) + variantTabsHtml + this.renderInlineAudioVariant(reportId, entry, audioSrc, { docked: true });
+                body.querySelectorAll('[data-wall-dock-variant]').forEach((btn) => {
+                    on(btn, 'click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setActiveVariant(btn.getAttribute('data-wall-dock-variant'));
+                    });
+                });
+                bindVariantTabActions(body);
+                this.bindReaderHeaderHandlers(body, on);
+                this.bindReaderMetaInteractions(body, on);
+                this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
+                this.bindKaleidoInlineAudioControls(body, on);
+                // Add kaleido cleanup to teardown array
+                if (body._kaleidoCleanup) {
+                    this._wallDockTeardown.push(body._kaleidoCleanup);
+                }
+                this.refreshAudioVariantBlocks();
+                return;
+            }
+
+            body.innerHTML = this.renderReaderHeader(item) + variantTabsHtml + (entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>');
+            body.querySelectorAll('[data-wall-dock-variant]').forEach((btn) => {
+                on(btn, 'click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setActiveVariant(btn.getAttribute('data-wall-dock-variant'));
+                });
+            });
+            bindVariantTabActions(body);
+            this.bindReaderHeaderHandlers(body, on);
+            this.bindReaderMetaInteractions(body, on);
+            try { this.applyReaderDisplayPrefs(dock, body); } catch (_) { }
+            try { this.enhanceSummaryHtml(body); } catch (_) { }
+        };
+
+        this._kaleidoSetVariant = (v) => { try { setActiveVariant(String(v || '').toLowerCase()); } catch (_) { } };
+
+        let requestedVariant = '';
+        try {
+            const pending = this._pendingReadVariant;
+            if (pending && pending.id === id) {
+                requestedVariant = (pending.variant || '').toLowerCase();
+                this._pendingReadVariant = null;
+            }
+        } catch (_) { }
+
+        if (variantInfo && Array.isArray(variantInfo.order) && variantInfo.order.length > 0) {
+            const initialVariant = (requestedVariant && variantInfo.map[requestedVariant]) ? requestedVariant : (defaultVariant || variantInfo.order[0]);
+            setActiveVariant(initialVariant);
+        } else {
+            body.innerHTML = this.renderReaderHeader(item) + this.renderWallReaderSection(item);
+            this.bindReaderHeaderHandlers(body, on);
+            this.bindReaderMetaInteractions(body, on);
+            try { this.applyReaderDisplayPrefs(dock, body); } catch (_) { }
+            try { this.enhanceSummaryHtml(body); } catch (_) { }
+            try { this.setReadDeepLink(id, '', { replace: true, videoId: item?.video_id || '' }); } catch (_) { }
+        }
+
+        const openBtn = dock.querySelector('[data-action="wall-reader-open-page"]');
+        const copyBtn = dock.querySelector('[data-action="wall-reader-copy-link"]');
+        // sourceBtn already declared above for header population
+        const reprocessBtn = dock.querySelector('[data-action="wall-reader-reprocess"]');
+        const displayInlineBtn = dock.querySelector('[data-action="reader-display-inline-toggle"]');
+        const displayPanel = dock.querySelector('[data-wall-display-panel]');
+        const menuBtn = dock.querySelector('[data-action="menu"]');
+        const menu = dock.querySelector('[data-kebab-menu]');
+        const closeBtn = dock.querySelector('[data-action="wall-dock-close"]');
+        const returnBtn = dock.querySelector('[data-action="wall-dock-return"]');
+        const slug = (item.content_source || 'youtube').toString().toLowerCase();
+        const canYoutube = Boolean(item.video_id);
+        const sourceKind = slug === 'youtube' ? 'youtube' : (slug === 'reddit' ? 'reddit' : (item.canonical_url ? 'web' : 'source'));
+
+        if (closeBtn) on(closeBtn, 'click', (e) => { e.preventDefault(); this.closeWallDockReader(); });
+
+        if (openBtn) on(openBtn, 'click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            window.location.href = `/${encodeURIComponent(id)}.json?v=2`;
+            if (menu && menuBtn) this.toggleKebabMenu(dock, false, menuBtn);
+        });
+        if (copyBtn) on(copyBtn, 'click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.copyLink(card || dock, id);
+            if (menu && menuBtn) this.toggleKebabMenu(dock, false, menuBtn);
+        });
+        const syncInlineDisplayPanel = (prefsInput = null) => {
+            if (!displayPanel) return;
+            const prefs = prefsInput || this.getReaderDisplayPrefs();
+            displayPanel.querySelectorAll('[data-reader-size]').forEach((el) => {
+                el.setAttribute('aria-pressed', el.getAttribute('data-reader-size') === prefs.size ? 'true' : 'false');
+            });
+            displayPanel.querySelectorAll('[data-reader-line]').forEach((el) => {
+                el.setAttribute('aria-pressed', el.getAttribute('data-reader-line') === prefs.line ? 'true' : 'false');
+            });
+            displayPanel.querySelectorAll('[data-reader-family]').forEach((el) => {
+                el.setAttribute('aria-pressed', el.getAttribute('data-reader-family') === prefs.family ? 'true' : 'false');
+            });
+            displayPanel.querySelectorAll('[data-reader-theme]').forEach((el) => {
+                el.setAttribute('aria-pressed', el.getAttribute('data-reader-theme') === prefs.theme ? 'true' : 'false');
+            });
+            displayPanel.querySelectorAll('[data-reader-para]').forEach((el) => {
+                el.setAttribute('aria-pressed', el.getAttribute('data-reader-para') === prefs.paraStyle ? 'true' : 'false');
+            });
+            displayPanel.querySelectorAll('[data-reader-justify]').forEach((el) => {
+                el.setAttribute('aria-pressed', el.getAttribute('data-reader-justify') === prefs.justify ? 'true' : 'false');
+            });
+            displayPanel.querySelectorAll('[data-reader-measure]').forEach((el) => {
+                el.setAttribute('aria-pressed', el.getAttribute('data-reader-measure') === prefs.measure ? 'true' : 'false');
+            });
+        };
+        syncInlineDisplayPanel();
+
+        if (displayInlineBtn && displayPanel) {
+            on(displayInlineBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const expanded = displayInlineBtn.getAttribute('aria-expanded') === 'true';
+                displayInlineBtn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+                displayPanel.classList.toggle('hidden', expanded);
+            });
+            on(displayPanel, 'click', (e) => {
+                const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-theme], [data-reader-para], [data-reader-justify], [data-reader-measure], [data-reader-size-inc], [data-reader-size-dec], [data-reader-reset-inline]');
+                if (!btn) return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (btn.hasAttribute('data-reader-reset-inline')) {
+                    const defaults = { size: 'm', line: 'normal', family: 'sans', theme: 'light', systemTheme: false, paraStyle: 'spaced', justify: 'left', measure: 'medium' };
+                    const merged = this.setReaderDisplayPrefs(defaults);
+                    this.applyReaderDisplayPrefs(dock, body);
+                    syncInlineDisplayPanel(merged);
+                    return;
+                }
+                const size = btn.getAttribute('data-reader-size');
+                const line = btn.getAttribute('data-reader-line');
+                const family = btn.getAttribute('data-reader-family');
+                const theme = btn.getAttribute('data-reader-theme');
+                const para = btn.getAttribute('data-reader-para');
+                const justify = btn.getAttribute('data-reader-justify');
+                const measure = btn.getAttribute('data-reader-measure');
+                const inc = btn.hasAttribute('data-reader-size-inc');
+                const dec = btn.hasAttribute('data-reader-size-dec');
+                const next = {};
+                if (size && READER_SIZE_MAP[size]) next.size = size;
+                if (inc || dec) {
+                    const order = ['s', 'm', 'l', 'xl', 'xxl'];
+                    const cur = this.getReaderDisplayPrefs().size || 'm';
+                    let idx = Math.max(0, order.indexOf(cur));
+                    if (inc && idx < order.length - 1) idx += 1;
+                    if (dec && idx > 0) idx -= 1;
+                    next.size = order[idx];
+                }
+                if (line && READER_LINE_MAP[line]) next.line = line;
+                if (family && READER_FAMILY_MAP[family]) next.family = family;
+                if (theme && READER_THEMES.includes(theme)) next.theme = theme;
+                if (para && READER_PARA_STYLES.includes(para)) next.paraStyle = para;
+                if (justify && READER_JUSTIFY.includes(justify)) next.justify = justify;
+                if (measure && READER_MEASURE_MAP[measure]) next.measure = measure;
+                const merged = this.setReaderDisplayPrefs(next);
+                this.applyReaderDisplayPrefs(dock, body);
+                syncInlineDisplayPanel(merged);
+            });
+        }
+
+        if (sourceBtn) {
+            const canOpen = (slug === 'youtube') ? canYoutube : Boolean(item.canonical_url);
+            const hostLabel = (() => {
+                try {
+                    if (!item.canonical_url) return '';
+                    const host = new URL(item.canonical_url).hostname.replace(/^www\./i, '');
+                    return host || '';
+                } catch (_) { return ''; }
+            })();
+            const label = slug === 'youtube'
+                ? 'YouTube'
+                : (slug === 'reddit' ? 'Reddit' : (hostLabel || 'Source'));
+            sourceBtn.dataset.sourceKind = sourceKind;
+            sourceBtn.title = canOpen ? `Open ${label}` : `${label} unavailable`;
+            sourceBtn.disabled = !canOpen;
+            sourceBtn.classList.toggle('is-disabled', !canOpen);
+            on(sourceBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!canOpen) return;
+                this.openSourceLink(slug, item.video_id, item.canonical_url);
+            });
+        }
+
+        if (reprocessBtn) {
+            reprocessBtn.classList.toggle('hidden', !canYoutube);
+            reprocessBtn.disabled = !canYoutube;
+            reprocessBtn.classList.toggle('is-disabled', !canYoutube);
+            const reprocessSection = dock.querySelector('[data-wall-menu-section="actions"]');
+            if (reprocessSection) reprocessSection.classList.toggle('hidden', !canYoutube);
+            on(reprocessBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!canYoutube) return;
+                this.openReprocessModal(id, card || dock, item);
+                if (menu && menuBtn) this.toggleKebabMenu(dock, false, menuBtn);
+            });
+        }
+
+        if (menuBtn && menu) {
+            menu.classList.add('hidden');
+            on(menuBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const expanded = menuBtn.getAttribute('aria-expanded') === 'true';
+                if (!expanded && displayInlineBtn && displayPanel) {
+                    displayInlineBtn.setAttribute('aria-expanded', 'false');
+                    displayPanel.classList.add('hidden');
+                }
+                this.toggleKebabMenu(dock, !expanded, menuBtn);
+            });
+            on(menu, 'click', (e) => {
+                const actionEl = e.target.closest('[data-action]');
+                if (!actionEl) return;
+                const action = actionEl.getAttribute('data-action');
+                if (action === 'wall-arrange-set') {
+                    const nextMode = this.setWallDockArrangeMode(actionEl.getAttribute('data-wall-arrange-mode'));
+                    this.syncWallDockArrangeButtons(dock, nextMode);
+                    this.applyWallDockArrangement(id, nextMode, { scrollSelected: false });
+                    requestAnimationFrame(() => { updateReturnBtnVisibility(); });
+                    this.toggleKebabMenu(dock, false, menuBtn);
+                    return;
+                }
+            });
+        }
+
+        const getSelectedCardEl = () => {
+            const selectedId = this._wallDockSelectedId || id;
+            if (!selectedId) return null;
+            const selector = `.wall-card[data-report-id="${CSS.escape(selectedId)}"]`;
+            return grid.querySelector(selector) || card || null;
+        };
+        const isSelectedCardVisible = () => {
+            const selected = getSelectedCardEl();
+            if (!selected) return true;
+            const rect = selected.getBoundingClientRect();
+            const viewportTop = 84;
+            const viewportBottom = window.innerHeight - 18;
+            const visiblePx = Math.min(rect.bottom, viewportBottom) - Math.max(rect.top, viewportTop);
+            const minVisible = Math.max(44, Math.min(rect.height * 0.32, 120));
+            return visiblePx >= minVisible;
+        };
+        const updateReturnBtnVisibility = () => {
+            if (!returnBtn) return;
+            const show = workspace.classList.contains('wall-dock-open') && !isSelectedCardVisible();
+            returnBtn.classList.toggle('hidden', !show);
+            returnBtn.setAttribute('aria-hidden', show ? 'false' : 'true');
+        };
+        if (returnBtn) {
+            on(returnBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const selected = getSelectedCardEl();
+                if (!selected) return;
+                selected.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+                selected.classList.add('wall-card--return-target');
+                window.setTimeout(() => { try { selected.classList.remove('wall-card--return-target'); } catch (_) { } }, 900);
+                window.setTimeout(() => { try { updateReturnBtnVisibility(); } catch (_) { } }, 460);
+            });
+        }
+
+        this.syncWallDockArrangeButtons(dock, this.wallDockArrangeMode);
+        requestAnimationFrame(() => {
+            this.applyWallDockArrangement(id, this.wallDockArrangeMode, { scrollSelected: false });
+            updateReturnBtnVisibility();
+        });
+
+        const getOrderedIds = () => Array.from(grid.querySelectorAll('.wall-card'))
+            .map((el) => ({ id: el.getAttribute('data-report-id'), ord: Number.parseInt(el.dataset.wallOrder || '0', 10) }))
+            .filter((x) => !!x.id)
+            .sort((a, b) => (a.ord - b.ord))
+            .map((x) => x.id);
+
+        const goByOffset = (delta) => {
+            const ordered = getOrderedIds();
+            const idx = ordered.indexOf(id);
+            if (idx === -1) return;
+            const nextIdx = Math.max(0, Math.min(ordered.length - 1, idx + delta));
+            const nextId = ordered[nextIdx];
+            if (!nextId || nextId === id) return;
+            const nextCard = grid.querySelector(`[data-card][data-report-id="${CSS.escape(nextId)}"]`);
+            this.openWallDockReader(nextId, nextCard);
+        };
+
+        const onKey = (e) => {
+            if (e.key === 'Escape') { this.closeWallDockReader(); return; }
+            if (e.key === 'ArrowRight') { e.preventDefault(); goByOffset(1); return; }
+            if (e.key === 'ArrowLeft') { e.preventDefault(); goByOffset(-1); return; }
+        };
+        on(document, 'keydown', onKey);
+
+        const onResize = () => {
+            if (!this.isWallDockAvailable()) {
+                this.closeWallDockReader({ clearDeepLink: false, skipTelemetry: true });
+                return;
+            }
+            this.setWallDockWidth(workspace, grid);
+            this.applyWallDockArrangement(id, this.wallDockArrangeMode, { scrollSelected: false });
+            updateReturnBtnVisibility();
+        };
+        on(window, 'resize', onResize, { passive: true });
+
+        // Keep dock sticky and visibly drift downward as the user scrolls.
+        const mainScroller = document.querySelector('main');
+        const rootScroller = document.scrollingElement || document.documentElement || document.body;
+        let lastShiftPx = '';
+        const updateDockScrollShift = () => {
+            if (!workspace) return;
+            const stMain = Number(mainScroller?.scrollTop || 0);
+            const stRoot = Number(rootScroller?.scrollTop || 0);
+            const stDocEl = Number(document.documentElement?.scrollTop || 0);
+            const stBody = Number(document.body?.scrollTop || 0);
+            const stWindow = Number(window.scrollY || 0);
+            const st = Math.max(stMain, stRoot, stDocEl, stBody, stWindow);
+            const shift = Math.max(0, Math.min(96, Math.round(st * 0.16)));
+            const next = `${shift}px`;
+            if (next === lastShiftPx) return;
+            lastShiftPx = next;
+            workspace.style.setProperty('--wall-dock-scroll-shift', next);
+        };
+        let scrollTicking = false;
+        const onMainScroll = () => {
+            if (scrollTicking) return;
+            scrollTicking = true;
+            requestAnimationFrame(() => {
+                scrollTicking = false;
+                updateDockScrollShift();
+                updateReturnBtnVisibility();
+            });
+        };
+        updateDockScrollShift();
+        updateReturnBtnVisibility();
+        const scrollTargets = [mainScroller, window, rootScroller].filter(Boolean);
+        Array.from(new Set(scrollTargets)).forEach((target) => on(target, 'scroll', onMainScroll, { passive: true }));
+
+        // Safety poll for environments that update scrollTop without dispatching scroll events.
+        const stickyPoll = window.setInterval(() => {
+            updateDockScrollShift();
+            updateReturnBtnVisibility();
+        }, 180);
+        this._wallDockTeardown.push(() => { try { window.clearInterval(stickyPoll); } catch (_) { } });
+
+        this._activeReader = { id, mode: 'dock', close: () => this.closeWallDockReader() };
+        this.sendTelemetry('read_open', { id, view: 'wall', reader: 'dock' });
+        return true;
+    }
+
     // --- Wall reader handlers ---
     handleWallRead(id, cardEl) {
+        console.log('[DEBUG] handleWallRead called with id:', id);
+        if (this.openWallDockReader(id, cardEl) !== false) {
+            return true;
+        }
+        const preferKaleido = !!(this.flags && this.flags.wallKaleidoPreferred === true);
+        console.log('[DEBUG] preferKaleido:', preferKaleido, 'flags:', this.flags);
+        if (preferKaleido) {
+            console.log('[DEBUG] calling openWallModalReader');
+            const opened = this.openWallModalReader(id, cardEl);
+            if (opened !== false) return opened;
+            console.warn('[DEBUG] openWallModalReader unavailable, falling back to inline wall reader');
+        }
+        const useInline = (this.flags && Object.prototype.hasOwnProperty.call(this.flags, 'wallReadInline')) ? !!this.flags.wallReadInline : true;
         const useMega = this.flags && this.flags.wallMegaSpanEnabled;
         const useFlip = this.flags && this.flags.wallFlipEnabled;
-        const useInline = (this.flags && Object.prototype.hasOwnProperty.call(this.flags, 'wallReadInline')) ? !!this.flags.wallReadInline : true;
-        const isDesktop = window.innerWidth >= 1024;
+        const isDesktop = window.innerWidth >= 1100;
+        try { this.closeWallDockReader({ clearDeepLink: false, skipTelemetry: true }); } catch (_) { }
+        if (useInline && isDesktop) {
+            return this.openWallRowReader(id, cardEl);
+        }
         if (useMega && isDesktop) {
             return this.openWallMegaCard(id, cardEl);
         }
         if (useFlip && isDesktop) {
             return this.openWallFlipCard(id, cardEl);
         }
-        if (useInline && isDesktop) {
-            return this.openWallRowReader(id, cardEl);
-        }
-        return this.openWallModalReader(id);
+        return this.openWallModalReader(id, cardEl);
     }
 
-    openWallModalReader(id) {
-        const modal = document.getElementById('wallReaderModal');
-        const body = document.getElementById('wallReaderBody');
-        const sheet = document.getElementById('wallReaderSheet');
-        const titleEl = document.getElementById('wallReaderTitle');
-        const closeBtn = document.getElementById('wallReaderClose');
+	    openWallModalReader(id, cardEl) {
+	        console.log('[DEBUG] openWallModalReader called with id:', id);
+	        const modal = document.getElementById('wallReaderModal');
+	        const body = document.getElementById('wallReaderBody');
+	        const sheet = document.getElementById('wallReaderSheet');
+	        const titleEl = document.getElementById('wallReaderTitle');
+	        const sourceEl = document.getElementById('wallReaderSource');
+	        const heroEl = document.getElementById('wallReaderHero');
+	        const variantsEl = document.getElementById('wallReaderVariants');
+	        const filmstrip = document.getElementById('wallReaderFilmstrip');
+	        const stripEl = modal ? modal.querySelector('.kaleido-strip') : null;
+	        const closeBtn = document.getElementById('wallReaderClose');
+	        const backdrop = modal ? modal.querySelector('.kaleido-backdrop') : null;
+        console.log('[DEBUG] Modal elements:', { modal: !!modal, body: !!body, sheet: !!sheet, titleEl: !!titleEl, heroEl: !!heroEl });
+        const prevBtns = modal ? Array.from(modal.querySelectorAll('[data-kaleido-prev]')) : [];
+        const nextBtns = modal ? Array.from(modal.querySelectorAll('[data-kaleido-next]')) : [];
+        const stripRelated = document.getElementById('kStripRelated');
+        const stripAll = document.getElementById('kStripAll');
+        const stripHide = document.getElementById('kStripHide');
         const item = (this.currentItems || []).find(x => x.file_stem === id);
-        if (!modal || !body || !item) return;
-        titleEl.textContent = item.title || 'Summary';
-        body.innerHTML = this.renderWallReaderSection(item);
-        // Apply saved reader display preferences
-        try { this.applyReaderDisplayPrefs(modal, body); } catch(_) {}
-        // Normalize NAS HTML for headings/lists on mobile modal
-        try { this.enhanceSummaryHtml(body); } catch (_) {}
-        // Inject Display Options (Aa) control
-        try {
-            const headerRight = modal.querySelector('.mobile-reader-header .flex.items-center.gap-2');
-            if (headerRight) {
-                const aaBtn = document.createElement('button');
-                aaBtn.type = 'button';
-                aaBtn.className = 'ybtn ybtn-ghost px-2 py-1.5 rounded-md';
-                aaBtn.setAttribute('aria-haspopup', 'dialog');
-                aaBtn.setAttribute('aria-expanded', 'false');
-                aaBtn.title = 'Display options';
-                aaBtn.dataset.action = 'reader-display';
-                aaBtn.textContent = 'Aa';
-                aaBtn.addEventListener('click', (e) => {
-                    e.preventDefault(); e.stopPropagation();
-                    this.openReaderDisplayPopover(modal, body, aaBtn);
-                });
-                headerRight.prepend(aaBtn);
-            }
-        } catch(_) {}
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-        try { document.body.classList.add('mobile-modal-open'); } catch(_) {}
-        const onClose = () => {
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-            closeBtn.removeEventListener('click', onClose);
-            modal.removeEventListener('click', onOutside);
-            document.removeEventListener('keydown', onEsc);
-            try { document.body.classList.remove('mobile-modal-open'); } catch(_) {}
-            this.sendTelemetry('read_close', { id, view: 'wall' });
+        if (!modal || !body || !sheet || !titleEl || !item) {
+            console.warn('[DEBUG] Missing required wall reader elements', { modal: !!modal, body: !!body, sheet: !!sheet, titleEl: !!titleEl, item: !!item });
+            return false;
+        }
+        try { sheet.classList.remove('kaleido-scrolled'); } catch (_) { }
+
+        const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
+        const card = cardEl || (grid ? grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`) : null);
+        if (this._kaleidoOriginCard && this._kaleidoOriginCard !== card) {
+            try { this._kaleidoOriginCard.classList.remove('wall-card--selected'); } catch (_) { }
+        }
+
+        // Remove any previous listeners
+        if (this._kaleidoTeardown && Array.isArray(this._kaleidoTeardown)) {
+            this._kaleidoTeardown.forEach(fn => { try { fn(); } catch (_) { } });
+        }
+        this._kaleidoTeardown = [];
+        const on = (target, type, fn, opts) => {
+            if (!target || !fn) return;
+            target.addEventListener(type, fn, opts);
+            this._kaleidoTeardown.push(() => { try { target.removeEventListener(type, fn, opts); } catch (_) { } });
         };
-        const onOutside = (e) => { if (e.target === modal) onClose(); };
-        const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
-        const onArrowRowInline = (e) => {
-            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-            e.preventDefault();
-            const cardsAll = Array.from(grid.querySelectorAll('.wall-card'));
-            const i = cardsAll.indexOf(cardEl);
-            if (i === -1) return;
-            const j = e.key === 'ArrowLeft' ? Math.max(0, i - 1) : Math.min(cardsAll.length - 1, i + 1);
-            if (j === i) return;
-            const nextCard = cardsAll[j];
-            const nextId = nextCard?.getAttribute('data-report-id');
-            if (nextId) this.openWallRowReader(nextId, nextCard);
-        };
-        const onArrow = (e) => {
-            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-            e.preventDefault();
-            const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
-            const cardsAll = grid ? Array.from(grid.querySelectorAll('.wall-card')) : [];
-            const current = this.contentGrid && this.contentGrid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`);
-            const i = current ? cardsAll.indexOf(current) : -1;
-            if (i === -1) return;
-            const j = e.key === 'ArrowLeft' ? Math.max(0, i - 1) : Math.min(cardsAll.length - 1, i + 1);
-            const nextCard = cardsAll[j];
-            const nextId = nextCard?.getAttribute('data-report-id');
-            if (nextId) {
-                onClose();
-                this.openWallModalReader(nextId);
+
+	        // Populate content
+	        titleEl.textContent = item.title || 'Summary';
+
+            // Populate topbar metadata (source + duration, channel, tags)
+            const source = (item.content_source || item.source || 'unknown').toString().toLowerCase();
+            const channel = (item.channel_name || item.channel || '').toString().trim();
+            const videoDur = Number(item?.media_metadata?.video_duration_seconds || item?.duration_seconds || 0);
+            const fmt = (sec) => { if (!sec || sec <= 0) return ''; const m = Math.floor(sec / 60); const s = Math.floor(sec % 60); return `${m}:${s.toString().padStart(2, '0')}`; };
+            const duration = videoDur > 0 ? fmt(videoDur) : '';
+
+            // Source icons
+            const sourceIcons = {
+                youtube: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>`,
+                reddit: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z"/></svg>`,
+                web: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`
+            };
+
+            if (sourceEl) {
+                const icon = sourceIcons[source] || sourceIcons.web;
+                sourceEl.innerHTML = `${icon}${duration ? ` <span class="font-mono">${duration}</span>` : ''}`;
+                sourceEl.className = `kaleido-source-badge kaleido-source-badge--${source}`;
             }
-        };
-        closeBtn.addEventListener('click', onClose);
-        modal.addEventListener('click', onOutside);
-        document.addEventListener('keydown', onEsc);
-        document.addEventListener('keydown', onArrow);
-        document.addEventListener('keydown', onArrow);
-        // Swipe-down to close (drag the sheet)
+
+            // Channel
+            const channelEl = document.getElementById('wallReaderChannel');
+            if (channelEl) {
+                if (channel) {
+                    channelEl.textContent = channel;
+                    channelEl.classList.remove('hidden');
+                    channelEl.onclick = () => this.applyFilterChip('channel', channel);
+                } else {
+                    channelEl.classList.add('hidden');
+                }
+            }
+
+            // Tags button
+            const tagsEl = document.getElementById('wallReaderTags');
+            const cat = this.extractCatsAndSubcats ? this.extractCatsAndSubcats(item) : { categories: [], subcatPairs: [] };
+            const totalTags = (cat.categories?.length || 0) + (cat.subcatPairs?.length || 0) + (this.extractTopics(item)?.length || 0);
+            if (tagsEl) {
+                if (totalTags > 0) {
+                    tagsEl.classList.remove('hidden');
+                    tagsEl.querySelector('.kaleido-tags-count').textContent = totalTags;
+                    tagsEl.onclick = () => this.openTagsPopoverForItem(item, tagsEl);
+                } else {
+                    tagsEl.classList.add('hidden');
+                }
+            }
+
+	        // Variants (text/audio) inside the reader so mobile can switch + play audio while the mini player is hidden.
+	        const fallbackSummary = this.computeFallbackSummaryHtml(item);
+	        const variantInfo = this.extractVariantInfo(item, fallbackSummary);
+	        const defaultVariant = variantInfo?.defaultId || (variantInfo?.order && variantInfo.order[0]) || null;
+
+	        const renderVariantControls = () => {
+	            if (!variantsEl) return;
+	            if (!variantInfo || !Array.isArray(variantInfo.order) || variantInfo.order.length <= 1) {
+	                variantsEl.innerHTML = '';
+	                variantsEl.classList.add('hidden');
+	                return;
+	            }
+	            variantsEl.classList.remove('hidden');
+	            variantsEl.innerHTML = variantInfo.order.map((variantId) => {
+	                const meta = variantInfo.map[variantId] || {};
+	                const icon = meta.icon ? `<span class="text-base">${meta.icon}</span>` : '';
+	                const label = this.escapeHtml(meta.label || this.prettyVariantLabel(variantId));
+	                return `<button type="button" data-variant="${this.escapeHtml(variantId)}"
+	                      class="kaleido-variant-btn inline-flex items-center gap-2 px-3 py-2 rounded-full border border-white/60 dark:border-slate-700/60 bg-white/80 dark:bg-slate-900/60 text-slate-600 dark:text-slate-200 shadow-sm transition">
+	                      ${icon}<span class="text-sm font-medium">${label}</span>
+	                    </button>`;
+	            }).join('');
+	        };
+
+			        const setActiveVariant = (variantId) => {
+			            if (!variantId || !variantInfo || !variantInfo.map[variantId]) return;
+			            const entry = variantInfo.map[variantId];
+			            try { this.setReadDeepLink(id, variantId, { replace: true, videoId: item?.video_id || '' }); } catch (_) { }
+
+		            if (variantsEl) {
+		                variantsEl.querySelectorAll('[data-variant]').forEach((btn) => {
+		                    const isActive = btn.getAttribute('data-variant') === variantId;
+	                    btn.classList.toggle('bg-audio-500', isActive);
+	                    btn.classList.toggle('text-white', isActive);
+	                    btn.classList.toggle('border-transparent', isActive);
+	                    btn.classList.toggle('shadow', isActive);
+	                    btn.classList.toggle('bg-white/80', !isActive);
+	                    btn.classList.toggle('dark:bg-slate-900/60', !isActive);
+	                    btn.classList.toggle('text-slate-600', !isActive);
+	                    btn.classList.toggle('dark:text-slate-200', !isActive);
+	                    btn.classList.toggle('border-white/60', !isActive);
+	                    btn.classList.toggle('dark:border-slate-700/60', !isActive);
+	                });
+	                variantsEl.dataset.currentVariant = variantId;
+	            }
+
+		            if (entry.kind === 'audio') {
+		                const reportId = variantInfo.reportId || id;
+		                const audioSrc = entry.audioSrc || variantInfo.audioSrc || null;
+		                body.innerHTML = this.renderInlineAudioVariant(reportId, entry, audioSrc);
+                        this.bindReaderHeaderHandlers(body, on);
+                        this.bindReaderMetaInteractions(body, on);
+		                this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
+		                this.bindKaleidoInlineAudioControls(body, on);
+		                // Add kaleido cleanup to teardown array
+		                if (body._kaleidoCleanup) {
+		                    this._wallDockTeardown.push(body._kaleidoCleanup);
+		                }
+		                this.refreshAudioVariantBlocks();
+		                return;
+		            }
+
+			            body.innerHTML = (entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>');
+                    this.bindReaderHeaderHandlers(body, on);
+                    this.bindReaderMetaInteractions(body, on);
+		            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
+		            try { this.enhanceSummaryHtml(body); } catch (_) { }
+			        };
+
+			        // Allow URL (popstate) to switch variants without reopening the reader.
+			        try {
+			            this._kaleidoSetVariant = (v) => { try { setActiveVariant(String(v || '').toLowerCase()); } catch (_) { } };
+			        } catch (_) {
+			            this._kaleidoSetVariant = null;
+			        }
+
+			        renderVariantControls();
+		        // Deep-link / restore selected variant if requested via hash.
+		        let requestedVariant = '';
+		        try {
+		            const pending = this._pendingReadVariant;
+		            if (pending && pending.id === id) {
+		                requestedVariant = (pending.variant || '').toLowerCase();
+		                this._pendingReadVariant = null;
+		            }
+		        } catch (_) { }
+		        if (variantInfo && Array.isArray(variantInfo.order) && variantInfo.order.length > 1) {
+		            if (variantsEl) {
+		                variantsEl.querySelectorAll('[data-variant]').forEach((btn) => {
+		                    on(btn, 'click', (e) => {
+	                        e.preventDefault();
+	                        e.stopPropagation();
+	                        const v = btn.getAttribute('data-variant');
+	                        setActiveVariant(v);
+		                    });
+		                });
+		            }
+		            const initial = (requestedVariant && variantInfo.map[requestedVariant])
+		                ? requestedVariant
+		                : (defaultVariant || variantInfo.order[0]);
+		            setActiveVariant(initial);
+		        } else if (variantInfo && Array.isArray(variantInfo.order) && variantInfo.order.length === 1) {
+		            setActiveVariant(variantInfo.order[0]);
+		        } else {
+		            body.innerHTML = this.renderWallReaderSection(item);
+                    this.bindReaderMetaInteractions(body, on);
+		            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
+		            try { this.enhanceSummaryHtml(body); } catch (_) { }
+		        }
+
+	        // Hero artwork
+	        let heroUrl = '';
         try {
-            if (sheet) {
-                let startY = 0, curY = 0, dragging = false;
-                const threshold = 84;
-                const onStart = (e) => { dragging = true; startY = (e.touches? e.touches[0].clientY : e.clientY); curY = startY; sheet.style.transition = 'none'; };
-                const onMove = (e) => {
-                    if (!dragging) return;
-                    curY = (e.touches? e.touches[0].clientY : e.clientY);
-                    const dy = Math.max(0, curY - startY);
-                    if (sheet.scrollTop <= 0 || dy > 0) {
-                        sheet.style.transform = `translateY(${dy}px)`;
-                        try { e.preventDefault(); } catch(_) {}
-                    }
-                };
-                const onEnd = () => {
-                    if (!dragging) return;
-                    dragging = false;
-                    const dy = Math.max(0, curY - startY);
-                    sheet.style.transition = 'transform 200ms ease';
-                    if (dy > threshold) { sheet.style.transform = 'translateY(100%)'; setTimeout(onClose, 160); }
-                    else { sheet.style.transform = 'translateY(0)'; }
-                };
-                sheet.addEventListener('touchstart', onStart, { passive: true });
-                sheet.addEventListener('touchmove', onMove, { passive: false });
-                sheet.addEventListener('touchend', onEnd);
-                // Mouse (dev tools)
-                sheet.addEventListener('mousedown', onStart);
-                window.addEventListener('mousemove', onMove, { passive: false });
-                window.addEventListener('mouseup', onEnd);
-                // Cleanup when modal hides
-                const obs = new MutationObserver(() => {
-                    if (modal.classList.contains('hidden')) {
-                        sheet.removeEventListener('touchstart', onStart);
-                        sheet.removeEventListener('touchmove', onMove);
-                        sheet.removeEventListener('touchend', onEnd);
-                        sheet.removeEventListener('mousedown', onStart);
-                        window.removeEventListener('mousemove', onMove);
-                        window.removeEventListener('mouseup', onEnd);
-                        obs.disconnect();
-                    }
-                });
-                obs.observe(modal, { attributes: true, attributeFilter: ['class'] });
+            heroUrl = item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
+            if (!heroUrl && item.thumbnail_url) heroUrl = item.thumbnail_url;
+        } catch (_) { }
+        if (heroEl) {
+            if (heroUrl) {
+                heroEl.dataset.empty = 'false';
+                heroEl.innerHTML = `<img class="kaleido-hero-img" src="${heroUrl}" alt="">`;
+            } else {
+                heroEl.dataset.empty = 'true';
+                heroEl.innerHTML = '';
             }
-        } catch(_) {}
-        // Actions: Open, kebab menu
-        try {
-            const openBtn = modal.querySelector('[data-action="wall-reader-open-page"]');
-            const menuBtn = modal.querySelector('[data-action="menu"]');
-            const cardEl = this.contentGrid && this.contentGrid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`);
-            if (openBtn) {
-                openBtn.addEventListener('click', () => {
-                    window.location.href = `/${encodeURIComponent(id)}.json?v=2`;
+        }
+
+        const applyRelatedState = (active) => {
+            let similarIds = [];
+            if (!grid) return similarIds;
+            if (active && this.flags && this.flags.wallSimilarityEnabled) {
+                try { similarIds = this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')) || []; } catch (_) { similarIds = []; }
+                grid.classList.add('wall-sim-only');
+            } else {
+                try { this.clearSimilarityView(grid); } catch (_) { }
+                grid.classList.remove('wall-sim-only');
+            }
+            return similarIds;
+        };
+
+	        // Menu + display + open page
+		        try {
+		            const openBtn = modal.querySelector('[data-action="wall-reader-open-page"]');
+		            const copyBtn = modal.querySelector('[data-action="wall-reader-copy-link"]');
+		            const sourceBtn = modal.querySelector('[data-action="wall-reader-open-source"]');
+		            const youtubeBtn = modal.querySelector('[data-action="wall-reader-open-youtube"]');
+		            const reprocessBtn = modal.querySelector('[data-action="wall-reader-reprocess"]');
+		            const displayBtn = modal.querySelector('[data-action="reader-display"]');
+		            const menuBtn = modal.querySelector('[data-action="menu"]');
+		            const menu = modal.querySelector('[data-kebab-menu]');
+		            if (openBtn) {
+		                on(openBtn, 'click', (e) => { e.preventDefault(); window.location.href = `/${encodeURIComponent(id)}.json?v=2`; });
+	            }
+		            if (copyBtn) {
+		                on(copyBtn, 'click', (e) => { e.preventDefault(); e.stopPropagation(); this.copyLink(card || modal, id); });
+		            }
+		            const slug = (item.content_source || 'youtube').toString().toLowerCase();
+		            const canYoutube = Boolean(item.video_id);
+
+		            if (youtubeBtn) {
+		                youtubeBtn.classList.toggle('hidden', !canYoutube);
+		                youtubeBtn.disabled = !canYoutube;
+		                youtubeBtn.classList.toggle('opacity-50', !canYoutube);
+		                youtubeBtn.classList.toggle('cursor-not-allowed', !canYoutube);
+		                on(youtubeBtn, 'click', (e) => {
+		                    e.preventDefault();
+		                    e.stopPropagation();
+		                    if (!canYoutube) return;
+		                    this.openYoutube(item.video_id);
+		                });
+		            }
+
+		            if (sourceBtn) {
+		                // For YouTube sources we show a dedicated YouTube button, so Source is reserved for canonical links.
+		                const canOpen = slug !== 'youtube' ? Boolean(item.canonical_url) : false;
+		                const label = slug === 'reddit' ? 'Reddit' : 'Source';
+		                sourceBtn.textContent = label;
+		                sourceBtn.classList.toggle('hidden', slug === 'youtube');
+		                sourceBtn.disabled = !canOpen;
+		                sourceBtn.classList.toggle('opacity-50', !canOpen);
+		                sourceBtn.classList.toggle('cursor-not-allowed', !canOpen);
+		                on(sourceBtn, 'click', (e) => {
+		                    e.preventDefault();
+		                    e.stopPropagation();
+		                    if (!canOpen) return;
+		                    this.openSourceLink(slug, item.video_id, item.canonical_url);
+		                });
+		            }
+
+		            if (reprocessBtn) {
+		                reprocessBtn.classList.toggle('hidden', !canYoutube);
+		                reprocessBtn.disabled = !canYoutube;
+		                reprocessBtn.classList.toggle('opacity-50', !canYoutube);
+		                reprocessBtn.classList.toggle('cursor-not-allowed', !canYoutube);
+		                on(reprocessBtn, 'click', (e) => {
+		                    e.preventDefault();
+		                    e.stopPropagation();
+		                    if (!canYoutube) return;
+		                    this.openReprocessModal(id, card || modal, item);
+		                });
+		            }
+		            if (displayBtn) {
+		                on(displayBtn, 'click', (e) => { e.preventDefault(); e.stopPropagation(); this.openReaderDisplayPopover(modal, body, displayBtn); });
+		            }
+	            if (menuBtn && menu) {
+                menu.classList.add('hidden');
+                on(menuBtn, 'click', (e) => { e.stopPropagation(); this.toggleKebabMenu(modal, true, menuBtn); });
+                on(menu, 'click', (e) => {
+                    const a = e.target.closest('[data-action]');
+                    if (!a) return;
+                    const act = a.getAttribute('data-action');
+                    if (act === 'copy-link') { this.copyLink(card || modal, id); this.toggleKebabMenu(modal, false); }
+                    if (act === 'reprocess') { this.openReprocessModal(id, card || modal); this.toggleKebabMenu(modal, false); }
+                    if (act === 'delete') { if (card) this.handleDelete(id, card); this.toggleKebabMenu(modal, false); }
                 });
             }
-            // Add refresh control for mobile modal
+        } catch (_) { }
+
+        // Filmstrip + navigation (works both in wall view and when opened outside the wall grid)
+        const itemsAll = this.currentItems || [];
+        const byId = new Map(itemsAll.map(it => [it.file_stem, it]));
+        const cardsAll = grid ? Array.from(grid.querySelectorAll('.wall-card')) : [];
+        const allIdsRaw = (grid ? cardsAll.map(c => c.getAttribute('data-report-id')) : itemsAll.map(it => it.file_stem))
+            .filter(Boolean);
+        const allPos = new Map(allIdsRaw.map((cid, idx) => [cid, idx]));
+
+        const tsFor = (it) => {
             try {
-                const headerRight = modal.querySelector('.mobile-reader-header .flex.items-center.gap-2');
-                if (headerRight) {
-                    const rbtn = document.createElement('button');
-                    rbtn.className = 'ybtn ybtn-ghost px-2 py-1.5 rounded-md';
-                    rbtn.setAttribute('title', 'Refresh');
-                    rbtn.setAttribute('aria-label', 'Refresh');
-                    rbtn.textContent = '↻';
-                    rbtn.addEventListener('click', (e) => {
-                        e.preventDefault(); e.stopPropagation();
-                        // Reload the page in mobile web-app context
-                        try { location.reload(); } catch(_) { window.location.href = window.location.href; }
-                    });
-                    headerRight.insertBefore(rbtn, headerRight.firstChild);
-                }
-            } catch(_) {}
-            if (menuBtn) {
-                menuBtn.addEventListener('click', () => this.toggleKebabMenu(modal, true, menuBtn));
-                const menu = modal.querySelector('[data-kebab-menu]');
-                if (menu) {
-                    const onMenuClick = (e) => {
-                        const a = e.target.closest('[data-action]');
-                        if (!a) return;
-                        const act = a.getAttribute('data-action');
-                        if (act === 'copy-link') { this.copyLink(cardEl || modal, id); this.toggleKebabMenu(modal, false); }
-                        if (act === 'reprocess') { this.openReprocessModal(id, cardEl || modal); this.toggleKebabMenu(modal, false); }
-                        if (act === 'delete') { if (cardEl) this.handleDelete(id, cardEl); this.toggleKebabMenu(modal, false); }
-                    };
-                    menu.addEventListener('click', onMenuClick);
-                }
+                const t = it?.indexed_at || it?.indexedAt || it?.created_at || it?.updated_at || it?.timestamp || null;
+                if (!t) return 0;
+                const ms = Date.parse(String(t));
+                return Number.isFinite(ms) ? ms : 0;
+            } catch (_) { return 0; }
+        };
+
+        // Chronological (newest first). If timestamps missing, preserve original order.
+        const allIdsChrono = allIdsRaw.slice().sort((a, b) => {
+            const ta = tsFor(byId.get(a));
+            const tb = tsFor(byId.get(b));
+            if (ta !== tb) return tb - ta;
+            return (allPos.get(a) ?? 0) - (allPos.get(b) ?? 0);
+        });
+
+        const computeSimilarIds = () => {
+            try {
+                if (!this.flags || !this.flags.wallSimilarityEnabled) return [];
+                const base = byId.get(id);
+                if (!base) return [];
+                const scored = allIdsRaw
+                    .filter(cid => cid && cid !== id)
+                    .map(cid => {
+                        const it = byId.get(cid);
+                        if (!it) return null;
+                        return { id: cid, score: this.computeHeuristicSimilarity(base, it) };
+                    })
+                    .filter(Boolean)
+                    .sort((a, b) => b.score - a.score);
+                // Drop extremely low-signal matches to avoid "Similar" feeling random
+                const top = scored.filter(r => r.score > 0.15).slice(0, 24);
+                return top.map(r => r.id);
+            } catch (_) { return []; }
+        };
+
+        const uniq = (ids) => {
+            const seen = new Set();
+            const out = [];
+            (ids || []).forEach(v => {
+                if (!v || seen.has(v)) return;
+                seen.add(v);
+                out.push(v);
+            });
+            return out;
+        };
+
+        let stripMode = 'none'; // 'none' | 'all' | 'related'
+        let simIds = [];
+
+        const getPoolIds = (mode) => {
+            if (mode === 'related') return uniq([id, ...simIds]);
+            // All + None still navigate through the full result set
+            return uniq(allIdsChrono);
+        };
+
+        const openById = (targetId) => {
+            if (!targetId) return;
+            const nextCard = grid ? grid.querySelector(`[data-card][data-report-id="${CSS.escape(targetId)}"]`) : null;
+            this.openWallModalReader(targetId, nextCard);
+        };
+
+        const disableNav = (btns, disabled) => {
+            btns.forEach(btn => {
+                btn.disabled = disabled;
+                btn.classList.toggle('opacity-50', disabled);
+                btn.classList.toggle('cursor-not-allowed', disabled);
+            });
+        };
+
+        const updateNavButtons = () => {
+            const pool = getPoolIds(stripMode);
+            const idx = pool.indexOf(id);
+            disableNav(prevBtns, idx <= 0);
+            disableNav(nextBtns, idx === -1 || idx >= pool.length - 1);
+        };
+
+        const goByOffset = (delta) => {
+            const pool = getPoolIds(stripMode);
+            if (!pool.length) return;
+            const idx = pool.indexOf(id);
+            const cur = idx === -1 ? 0 : idx;
+            const nextIdx = Math.min(pool.length - 1, Math.max(0, cur + delta));
+            const nextId = pool[nextIdx];
+            if (nextId && nextId !== id) openById(nextId);
+        };
+
+        prevBtns.forEach(btn => { btn.onclick = null; on(btn, 'click', (e) => { e.preventDefault(); goByOffset(-1); }); });
+        nextBtns.forEach(btn => { btn.onclick = null; on(btn, 'click', (e) => { e.preventDefault(); goByOffset(1); }); });
+
+        const buildFilmstrip = () => {
+            if (!filmstrip) return;
+            const isMobile = (typeof window !== 'undefined' && (window.innerWidth || 0) <= 640);
+            if (filmstrip) {
+                try { filmstrip.classList.toggle('kaleido-filmstrip--hidden', stripMode === 'none'); } catch (_) { }
             }
-        } catch (_) {}
-        this.sendTelemetry('read_open', { id, view: 'wall' });
-    }
+            try { if (stripEl) stripEl.classList.toggle('kaleido-strip--collapsed', stripMode === 'none'); } catch (_) { }
+            try { sheet.classList.toggle('kaleido-strip-collapsed', stripMode === 'none'); } catch (_) { }
+            if (stripMode === 'none') {
+                filmstrip.innerHTML = '';
+                return;
+            }
+            const poolIds = stripMode === 'all' ? getPoolIds('all') : getPoolIds(stripMode);
+            const nodes = poolIds.map(cid => {
+                const itm = byId.get(cid) || null;
+                const thumb = itm ? (itm.summary_image_url ? this.normalizeAssetUrl(itm.summary_image_url) : (itm.thumbnail_url || '')) : '';
+                const titleTxt = itm?.title || '';
+                const snippet = this.getSummarySnippet ? (this.getSummarySnippet(itm, 90) || '') : '';
+                return { id: cid, title: titleTxt, thumb, snippet, active: cid === id };
+            }).filter(x => !!x.id);
+            filmstrip.innerHTML = nodes.map(n => `
+                <button class="kaleido-film-item ${n.active ? 'is-active' : ''}" data-film-id="${this.escapeHtml(n.id)}" aria-label="${this.escapeHtml(n.title || 'Open')}" title="${this.escapeHtml(n.title || '')}">
+                    <div class="kaleido-film-thumb">${n.thumb ? `<img src="${n.thumb}" alt="">` : ''}</div>
+                    <div class="kaleido-film-meta">
+                        <div class="kaleido-film-title">${this.escapeHtml(n.title || '')}</div>
+                        <div class="kaleido-film-snippet">${this.escapeHtml(n.snippet || '')}</div>
+                    </div>
+                </button>
+            `).join('');
+            filmstrip.querySelectorAll('[data-film-id]').forEach(btn => {
+                on(btn, 'click', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    const targetId = btn.getAttribute('data-film-id');
+                    openById(targetId);
+                });
+            });
+        };
+
+        const setStripButtons = () => {
+            const setBtn = (btn, pressed) => { if (btn) btn.setAttribute('aria-pressed', pressed ? 'true' : 'false'); };
+            setBtn(stripRelated, stripMode === 'related');
+            setBtn(stripAll, stripMode === 'all');
+            setBtn(stripHide, stripMode === 'none');
+        };
+
+        const setStripMode = (mode) => {
+            stripMode = (mode === 'related' || mode === 'all' || mode === 'none') ? mode : 'none';
+            try { localStorage.setItem('kaleidoStripMode', stripMode); } catch (_) { }
+            setStripButtons();
+
+            if (stripMode === 'related') {
+                const idsFromGrid = applyRelatedState(true) || [];
+                simIds = idsFromGrid.length ? idsFromGrid : computeSimilarIds();
+                if (!simIds.length) {
+                    try { this.showToast('No related summaries in this result set', 'info'); } catch (_) { }
+                }
+            } else {
+                simIds = [];
+                try { applyRelatedState(false); } catch (_) { }
+            }
+
+            updateNavButtons();
+            buildFilmstrip();
+        };
+
+        // Restore last chosen mode; default to Hide on mobile, All on desktop.
+        try {
+            const saved = (localStorage.getItem('kaleidoStripMode') || '').toLowerCase();
+            const isMobile = (typeof window !== 'undefined' && (window.innerWidth || 0) <= 640);
+            if (saved === 'related' || saved === 'all' || saved === 'none') stripMode = saved;
+            else stripMode = isMobile ? 'none' : 'all';
+        } catch (_) {
+            const isMobile = (typeof window !== 'undefined' && (window.innerWidth || 0) <= 640);
+            stripMode = isMobile ? 'none' : 'all';
+        }
+
+        if (stripRelated) {
+            on(stripRelated, 'click', (e) => {
+                e.preventDefault();
+                setStripMode(stripMode === 'related' ? 'none' : 'related');
+            });
+        }
+        if (stripAll) {
+            on(stripAll, 'click', (e) => {
+                e.preventDefault();
+                setStripMode(stripMode === 'all' ? 'none' : 'all');
+            });
+        }
+        if (stripHide) {
+            on(stripHide, 'click', (e) => {
+                e.preventDefault();
+                setStripMode('none');
+            });
+        }
+
+        setStripMode(stripMode);
+
+        // Swipe left/right to navigate between summaries (mobile)
+        try {
+            let sx = 0;
+            let sy = 0;
+            let started = false;
+            let startT = 0;
+            const shouldIgnore = (target) => {
+                if (!target) return false;
+                return !!target.closest('.kaleido-filmstrip, .reader-display-popover, [data-kebab-menu], [data-action="menu"], button, a, input, textarea, select');
+            };
+            on(sheet, 'touchstart', (e) => {
+                const t = e.touches && e.touches[0];
+                if (!t) return;
+                if (shouldIgnore(e.target)) return;
+                started = true;
+                startT = Date.now();
+                sx = t.clientX;
+                sy = t.clientY;
+            }, { passive: true });
+            on(sheet, 'touchend', (e) => {
+                if (!started) return;
+                started = false;
+                const t = e.changedTouches && e.changedTouches[0];
+                if (!t) return;
+                const dx = t.clientX - sx;
+                const dy = t.clientY - sy;
+                const dt = Date.now() - startT;
+                if (dt > 700) return;
+                if (Math.abs(dx) < 70) return;
+                if (Math.abs(dx) < Math.abs(dy) * 1.6) return;
+                if (dx < 0) goByOffset(1);
+                else goByOffset(-1);
+            }, { passive: true });
+        } catch (_) { }
+
+        // Collapse chrome a bit once you start scrolling the reader body (desktop).
+        // Mobile uses a unified scroller where the hero naturally scrolls away.
+        try {
+            const w = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 1024;
+            const isMobile = w <= 640;
+            const scroller = isMobile ? (modal.querySelector('.kaleido-main') || modal.querySelector('.kaleido-content')) : modal.querySelector('.kaleido-content');
+            const syncScroll = () => {
+                if (isMobile) {
+                    sheet.classList.remove('kaleido-scrolled');
+                    return;
+                }
+                const top = scroller ? (scroller.scrollTop || 0) : 0;
+                sheet.classList.toggle('kaleido-scrolled', top > 24);
+            };
+            if (scroller) {
+                on(scroller, 'scroll', syncScroll, { passive: true });
+                syncScroll();
+            }
+        } catch (_) { }
+
+		        const close = () => {
+		            try {
+		                if (this._activeReader && this._activeReader.id === id) this._activeReader = null;
+		                this._kaleidoSetVariant = null;
+		            } catch (_) { }
+		            try { this.clearReadDeepLinkIfMatches(id); } catch (_) { }
+		            const targetRect = (this._kaleidoOriginCard || card || (grid && grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`)))?.getBoundingClientRect();
+	            if (sheet && targetRect) {
+	                const rectNow = sheet.getBoundingClientRect();
+	                const dx = targetRect.left - rectNow.left;
+	                const dy = targetRect.top - rectNow.top;
+                const sx = targetRect.width / Math.max(1, rectNow.width);
+                const sy = targetRect.height / Math.max(1, rectNow.height);
+                sheet.style.transition = 'transform 200ms ease, opacity 180ms ease';
+                sheet.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+                sheet.style.opacity = '0';
+            }
+            if (backdrop) backdrop.style.opacity = '0';
+            try { sheet.classList.remove('kaleido-scrolled'); } catch (_) { }
+            if (card) card.classList.remove('wall-card--selected');
+            // Always clear similarity classes when closing the reader; otherwise the wall grid can stay dimmed.
+            try { this.clearSimilarityView(grid); } catch (_) { }
+            if (this._kaleidoTeardown) {
+                this._kaleidoTeardown.forEach(fn => { try { fn(); } catch (_) { } });
+                this._kaleidoTeardown = [];
+            }
+            // Remove global "modal open" classes immediately (iOS bfcache can skip pending timeouts).
+            try { document.body.classList.remove('kaleido-open'); } catch (_) { }
+            try { document.body.classList.remove('wall-reader-open'); } catch (_) { }
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('kaleido-visible');
+                if (sheet) { sheet.style.transform = ''; sheet.style.opacity = ''; sheet.style.transition = ''; }
+            }, 210);
+		            this.sendTelemetry('read_close', { id, view: 'wall' });
+		        };
+
+		        // Track the open reader so URL popstate can close/switch.
+		        try { this._activeReader = { id, mode: 'modal', close }; } catch (_) { }
+
+	        const onEsc = (e) => {
+	            if (e.key === 'Escape') return close();
+	            if (e.key === 'ArrowRight') return goByOffset(1);
+	            if (e.key === 'ArrowLeft') return goByOffset(-1);
+        };
+        const onBackdrop = (e) => { if (e.target === backdrop) close(); };
+
+        on(closeBtn, 'click', (e) => { e.preventDefault(); close(); });
+        on(document, 'keydown', onEsc);
+        if (backdrop) on(backdrop, 'click', onBackdrop);
+
+        // Show modal + animate in
+        const wasHidden = modal.classList.contains('hidden');
+        const startRect = card ? card.getBoundingClientRect() : null;
+        modal.classList.remove('hidden');
+        modal.classList.add('kaleido-visible');
+        if (card) card.classList.add('wall-card--selected');
+        document.body.classList.add('kaleido-open');
+        document.body.classList.add('wall-reader-open');
+        if (backdrop) backdrop.style.opacity = '1';
+
+        if (wasHidden && sheet) {
+            const targetRect = sheet.getBoundingClientRect();
+            if (startRect) {
+                const dx = startRect.left - targetRect.left;
+                const dy = startRect.top - targetRect.top;
+                const sx = Math.min(1.2, startRect.width / Math.max(1, targetRect.width));
+                const sy = Math.min(1.2, startRect.height / Math.max(1, targetRect.height));
+                sheet.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+                sheet.style.opacity = '0.1';
+                requestAnimationFrame(() => {
+                    sheet.style.transform = 'translate(0, 0) scale(1)';
+                    sheet.style.opacity = '1';
+                });
+            } else {
+                sheet.style.opacity = '1';
+                sheet.style.transform = 'scale(1)';
+            }
+	        } else if (sheet) {
+	            sheet.style.opacity = '1';
+	            sheet.style.transform = 'translate(0, 0) scale(1)';
+	        }
+
+		        this._kaleidoOriginCard = card || this._kaleidoOriginCard;
+		        try {
+		            const cur = (this.parseUrlParams && this.parseUrlParams().read) ? String(this.parseUrlParams().read) : '';
+		            const replace = cur === String(id);
+		            this.setReadDeepLink(id, defaultVariant || '', { replace, videoId: item?.video_id || '' });
+		        } catch (_) { }
+			        this.sendTelemetry('read_open', { id, view: 'wall' });
+                    return true;
+			    }
 
     openWallRowReader(id, cardEl) {
         const grid = this.contentGrid && this.contentGrid.querySelector('.wall-grid');
@@ -4584,16 +8032,18 @@ class AudioDashboard {
         if (prev && prev.getAttribute('data-wall-reader-id') === id) {
             // Toggle: clicking again on same item collapses
             prev.parentElement.removeChild(prev);
-            try { cardEl.classList.remove('wall-card--selected'); } catch(_) {}
+            try { cardEl.classList.remove('wall-card--selected'); } catch (_) { }
+            try { if (this._activeReader && this._activeReader.id === id) this._activeReader = null; } catch (_) { }
             // When the inline reader is fully closed, drop the global flag
-            try { document.body.classList.remove('wall-reader-open'); } catch(_) {}
+            try { document.body.classList.remove('wall-reader-open'); } catch (_) { }
+            try { this.clearReadDeepLinkIfMatches(id); } catch (_) { }
             this.sendTelemetry('read_close', { id, view: 'wall', toggled: true });
             return;
         }
         if (prev && prev.parentElement) prev.parentElement.removeChild(prev);
         // Clear previous selection highlight and connector overlay
         grid.querySelectorAll('.wall-card--selected').forEach(el => el.classList.remove('wall-card--selected'));
-        try { this.removeWallConnectorOverlay(); } catch(_) {}
+        try { this.removeWallConnectorOverlay(); } catch (_) { }
         const item = (this.currentItems || []).find(x => x.file_stem === id);
         if (!item) return;
         // Find last card in the clicked row by similar offsetTop
@@ -4624,18 +8074,23 @@ class AudioDashboard {
         }
         section.style.overflow = 'hidden';
         section.style.height = '0px';
-        section.innerHTML = `
-            <div class="wall-expander__header">
-                <div class="flex items-center gap-3">
-                    ${imgSrc ? `<img class="wall-expander__thumb" alt="" src="${imgSrc}">` : ''}
-                    <h4 class="wall-expander__title">${this.escapeHtml(item.title || 'Summary')}</h4>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="reader-display" title="Display options" aria-haspopup="dialog" aria-expanded="false">Aa</button>
-                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-page" title="Open page">Open</button>
-                    <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                            <circle cx="5" cy="12" r="1.5"></circle>
+		        section.innerHTML = `
+		            <div class="wall-expander__header">
+		                <div class="flex items-center gap-3">
+		                    ${imgSrc ? `<img class="wall-expander__thumb" alt="" src="${imgSrc}">` : ''}
+		                    <h4 class="wall-expander__title">${this.escapeHtml(item.title || 'Summary')}</h4>
+		                </div>
+		                <div class="flex items-center gap-2">
+		                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-source" title="Open source">Source</button>
+		                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-youtube" title="Open on YouTube">YouTube</button>
+		                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-copy-link" title="Copy link">Copy</button>
+		                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-reprocess" title="Reprocess">Reprocess</button>
+		                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-playback-rate title="Playback speed">${this.formatPlaybackRate(this.getEffectivePlaybackRate())}</button>
+		                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="reader-display" title="Display options" aria-haspopup="dialog" aria-expanded="false">Aa</button>
+		                    <button class="ybtn ybtn-ghost px-2 py-1.5 rounded-md" data-action="wall-reader-open-page" title="Open page">Open</button>
+	                    <button class="summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">
+	                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+	                            <circle cx="5" cy="12" r="1.5"></circle>
                             <circle cx="12" cy="12" r="1.5"></circle>
                             <circle cx="19" cy="12" r="1.5"></circle>
                         </svg>
@@ -4643,7 +8098,7 @@ class AudioDashboard {
             <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
-                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Regenerate…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
             </div>
                     <button class="wall-expander__close" aria-label="Close" data-action="wall-reader-close">
@@ -4651,9 +8106,17 @@ class AudioDashboard {
                     </button>
                 </div>
             </div>
+            ${this.renderReaderHeader(item)}
             <div class="prose prose-sm dark:prose-invert max-w-none" data-summary-body>${this.renderWallReaderSection(item)}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
+        this.bindReaderHeaderHandlers(section);
+        this.bindReaderMetaInteractions(section);
+        try {
+            const cur = (this.parseUrlParams && this.parseUrlParams().read) ? String(this.parseUrlParams().read) : '';
+            const replace = cur === String(id);
+            this.setReadDeepLink(id, '', { replace, videoId: item?.video_id || '' });
+        } catch (_) { }
         // Animate open height
         requestAnimationFrame(() => {
             const full = section.scrollHeight;
@@ -4672,7 +8135,7 @@ class AudioDashboard {
             this.enhanceSummaryHtml(body);
             // Apply saved reader display preferences to inline reader
             this.applyReaderDisplayPrefs(section, body);
-        } catch (_) {}
+        } catch (_) { }
         // Highlight the source card and set caret position (relative to expander)
         try {
             cardEl.classList.add('wall-card--selected');
@@ -4692,7 +8155,7 @@ class AudioDashboard {
             // Draw/update connector overlay (curved link + subtle glow)
             this.updateWallConnectorOverlay(cardEl, section, caretLeft);
             // Recompute once after layout settles (fonts/images)
-            try { setTimeout(() => this.updateWallConnectorOverlay(cardEl, section, caretLeft), 150); } catch(_) {}
+            try { setTimeout(() => this.updateWallConnectorOverlay(cardEl, section, caretLeft), 150); } catch (_) { }
             // Keep overlay aligned on scroll/resize until closed
             const boundUpdate = () => this.updateWallConnectorOverlay(cardEl, section);
             this._wallConnectorHandlers = this._wallConnectorHandlers || [];
@@ -4702,11 +8165,74 @@ class AudioDashboard {
                 { type: 'scroll', fn: boundUpdate, opts: { passive: true } }
             ];
             this._wallConnectorHandlers.forEach(h => window.addEventListener(h.type, h.fn, h.opts));
-        } catch(_) {}
-        const closeBtn = section.querySelector('[data-action="wall-reader-close"]');
-        const displayBtn = section.querySelector('[data-action="reader-display"]');
-        const openBtn = section.querySelector('[data-action="wall-reader-open-page"]');
-        const menuBtn = section.querySelector('[data-action="menu"]');
+        } catch (_) { }
+	        const closeBtn = section.querySelector('[data-action="wall-reader-close"]');
+		        const displayBtn = section.querySelector('[data-action="reader-display"]');
+		        const openBtn = section.querySelector('[data-action="wall-reader-open-page"]');
+		        const copyBtn = section.querySelector('[data-action="wall-reader-copy-link"]');
+		        const sourceBtn = section.querySelector('[data-action="wall-reader-open-source"]');
+		        const youtubeBtn = section.querySelector('[data-action="wall-reader-open-youtube"]');
+		        const reprocessBtn = section.querySelector('[data-action="wall-reader-reprocess"]');
+		        const speedBtn = section.querySelector('[data-playback-rate]');
+		        const menuBtn = section.querySelector('[data-action="menu"]');
+	        // Mirror Kaleido top actions (Copy / Source / Playback speed)
+		        try {
+		            if (copyBtn) {
+		                copyBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.copyLink(cardEl, id); });
+		            }
+		            if (sourceBtn) {
+		                const slug = (item.content_source || 'youtube').toString().toLowerCase();
+		                const canYoutube = Boolean(item.video_id);
+		                const canSource = slug !== 'youtube' ? Boolean(item.canonical_url) : false;
+		                const label = slug === 'reddit' ? 'Reddit' : 'Source';
+		                sourceBtn.textContent = label;
+		                sourceBtn.classList.toggle('hidden', slug === 'youtube');
+		                sourceBtn.disabled = !canSource;
+		                sourceBtn.classList.toggle('opacity-50', !canSource);
+		                sourceBtn.classList.toggle('cursor-not-allowed', !canSource);
+		                sourceBtn.addEventListener('click', (e) => {
+		                    e.preventDefault();
+		                    e.stopPropagation();
+		                    if (!canSource) return;
+		                    this.openSourceLink(slug, item.video_id, item.canonical_url);
+		                });
+
+		                if (youtubeBtn) {
+		                    youtubeBtn.classList.toggle('hidden', !canYoutube);
+		                    youtubeBtn.disabled = !canYoutube;
+		                    youtubeBtn.classList.toggle('opacity-50', !canYoutube);
+		                    youtubeBtn.classList.toggle('cursor-not-allowed', !canYoutube);
+		                    youtubeBtn.addEventListener('click', (e) => {
+		                        e.preventDefault();
+		                        e.stopPropagation();
+		                        if (!canYoutube) return;
+		                        this.openYoutube(item.video_id);
+		                    });
+		                }
+
+		                if (reprocessBtn) {
+		                    reprocessBtn.classList.toggle('hidden', !canYoutube);
+		                    reprocessBtn.disabled = !canYoutube;
+		                    reprocessBtn.classList.toggle('opacity-50', !canYoutube);
+		                    reprocessBtn.classList.toggle('cursor-not-allowed', !canYoutube);
+		                    reprocessBtn.addEventListener('click', (e) => {
+		                        e.preventDefault();
+		                        e.stopPropagation();
+		                        if (!canYoutube) return;
+		                        this.openReprocessModal(id, cardEl, item);
+		                    });
+		                }
+		            }
+		            if (speedBtn) {
+		                this.updatePlaybackRateUi(section);
+		                speedBtn.addEventListener('click', (e) => {
+	                    e.preventDefault();
+	                    e.stopPropagation();
+	                    this.cyclePlaybackRate();
+	                    this.updatePlaybackRateUi(section);
+	                });
+	            }
+	        } catch (_) { }
         // Inject a refresh button into header actions
         try {
             const actions = section.querySelector('.wall-expander__header .flex.items-center.gap-2');
@@ -4722,14 +8248,14 @@ class AudioDashboard {
                 // Similarity controls (halo mode)
                 if (this.flags && this.flags.wallSimilarityEnabled) {
                     // Apply immediately when opening
-                    try { this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')); } catch(_) {}
+                    try { this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')); } catch (_) { }
                     if (!actions.querySelector('[data-sim-reset]')) {
                         const simLabel = document.createElement('span');
                         simLabel.className = 'wall-sim-pill';
                         simLabel.textContent = 'Similar shown';
                         const simReset = document.createElement('button');
                         simReset.className = 'wall-sim-reset';
-                        simReset.setAttribute('data-sim-reset','');
+                        simReset.setAttribute('data-sim-reset', '');
                         simReset.textContent = 'Reset';
                         simReset.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.clearSimilarityView(grid); });
                         actions.insertBefore(simReset, actions.firstChild);
@@ -4737,8 +8263,9 @@ class AudioDashboard {
                     }
                 }
             }
-        } catch(_) {}
+        } catch (_) { }
         const onClose = () => {
+            try { if (this._activeReader && this._activeReader.id === id) this._activeReader = null; } catch (_) { }
             if (!section || !section.parentElement) return;
             // Animate collapse
             section.style.overflow = 'hidden';
@@ -4751,9 +8278,10 @@ class AudioDashboard {
             const finalize = () => {
                 if (section && section.parentElement) section.parentElement.removeChild(section);
                 section.removeEventListener('transitionend', finalize);
-                try { document.body.classList.remove('wall-reader-open'); } catch(_) {}
-                try { this.removeWallConnectorOverlay(); } catch(_) {}
-                try { this.clearSimilarityView(grid); } catch(_) {}
+                try { document.body.classList.remove('wall-reader-open'); } catch (_) { }
+                try { this.clearReadDeepLinkIfMatches(id); } catch (_) { }
+                try { this.removeWallConnectorOverlay(); } catch (_) { }
+                try { this.clearSimilarityView(grid); } catch (_) { }
                 if (this._wallConnectorHandlers) {
                     this._wallConnectorHandlers.forEach(h => window.removeEventListener(h.type, h.fn, h.opts));
                     this._wallConnectorHandlers = [];
@@ -4763,8 +8291,9 @@ class AudioDashboard {
             document.removeEventListener('keydown', onEsc);
             document.removeEventListener('keydown', onArrow);
             this.sendTelemetry('read_close', { id, view: 'wall' });
-            try { cardEl.classList.remove('wall-card--selected'); } catch(_) {}
+            try { cardEl.classList.remove('wall-card--selected'); } catch (_) { }
         };
+        try { this._activeReader = { id, mode: 'inline', close: onClose }; } catch (_) { }
         const onEsc = (e) => { if (e.key === 'Escape') onClose(); };
         const onArrow = (e) => {
             if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
@@ -4854,7 +8383,7 @@ class AudioDashboard {
             // Smooth cubic curve; control points halfway vertically with slight horizontal bias
             const midY = Math.round((startY + endY) / 2);
             const c1x = startX, c1y = midY;
-            const c2x = endX,   c2y = midY;
+            const c2x = endX, c2y = midY;
 
             const d = `M ${startX} ${startY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${endX} ${endY}`;
             path.setAttribute('d', d);
@@ -4868,7 +8397,7 @@ class AudioDashboard {
             if (!item || !cardEl) return;
             // If an overlay is already open, close it first
             if (this._flipOverlay && this._flipOverlay.parentElement) {
-                try { this._flipOverlay.parentElement.removeChild(this._flipOverlay); } catch(_) {}
+                try { this._flipOverlay.parentElement.removeChild(this._flipOverlay); } catch (_) { }
                 this._flipOverlay = null;
             }
             // Scrim
@@ -4906,12 +8435,17 @@ class AudioDashboard {
                       <circle cx="19" cy="12" r="1.5"></circle>
                     </svg>
                   </button>
+                  <button class="summary-card__menu-btn" data-mega-close aria-label="Close" style="margin-left: 0.5rem;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                   <button class="flip-close" aria-label="Close" data-flip-close>✕</button>
                 </div>
                 <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                   <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                   <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
-                  <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                  <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Regenerate…</button>
                   <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
                 </div>
               </div>
@@ -4945,13 +8479,13 @@ class AudioDashboard {
             try {
                 const bodyHost = ov.querySelector('[data-flip-body]');
                 if (bodyHost) bodyHost.innerHTML = this.renderWallReaderSection(item);
-            } catch(_) {}
+            } catch (_) { }
             // Flip after grow
             setTimeout(() => { ov.classList.add('is-flipped'); }, 260);
             // Close handlers
             const close = () => {
-                try { ov.parentElement && ov.parentElement.removeChild(ov); } catch(_) {}
-                try { scrim.parentElement && scrim.parentElement.removeChild(scrim); } catch(_) {}
+                try { ov.parentElement && ov.parentElement.removeChild(ov); } catch (_) { }
+                try { scrim.parentElement && scrim.parentElement.removeChild(scrim); } catch (_) { }
                 this._flipOverlay = null;
             };
             ov.addEventListener('click', (e) => {
@@ -4988,13 +8522,13 @@ class AudioDashboard {
                     this.applyReaderDisplayPrefs(ov, bodyHost);
                     aaBtn.addEventListener('click', (e) => { e.preventDefault(); this.openReaderDisplayPopover(ov, bodyHost, aaBtn); });
                 }
-            } catch(_) {}
-        } catch (_) {}
+            } catch (_) { }
+        } catch (_) { }
     }
     // --- Wall similarity (heuristic, client-only) ---
     _tokenizeTitle(text) {
         try {
-            const stop = new Set(['the','a','an','and','or','of','to','in','on','for','with','from','by','at','is','are','be','this','that','it','as','vs','vs.','you','your']);
+            const stop = new Set(['the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'from', 'by', 'at', 'is', 'are', 'be', 'this', 'that', 'it', 'as', 'vs', 'vs.', 'you', 'your']);
             return String(text || '')
                 .toLowerCase()
                 .replace(/[^a-z0-9\s]+/g, ' ')
@@ -5039,40 +8573,39 @@ class AudioDashboard {
     }
     applySimilarityView(selectedId, grid, mode = 'halo') {
         try {
-            if (!grid || !selectedId) return;
+            if (!grid || !selectedId) return [];
             const cards = Array.from(grid.querySelectorAll('.wall-card'));
             const items = this.currentItems || [];
             const base = items.find(x => x.file_stem === selectedId);
-            if (!base) return;
+            if (!base) return [];
             const scored = cards.map(card => {
                 const id = card.getAttribute('data-report-id');
                 const it = items.find(x => x.file_stem === id);
                 const sc = it && it !== base ? this.computeHeuristicSimilarity(base, it) : -1;
                 return { id, card, item: it, score: sc };
             }).filter(r => r.item && r.id !== selectedId);
-            scored.sort((a,b) => b.score - a.score);
+            scored.sort((a, b) => b.score - a.score);
             const K = Math.max(12, Math.min(36, Math.round((window.innerWidth || 1200) / 48))); // rough responsive pick
-            const top = scored.slice(0, K);
+            const top = scored.filter(r => r.score > 0.15).slice(0, K);
             // Halo mode: dim all then mark top as similar
             grid.classList.add('wall-sim-active');
             cards.forEach(c => c.classList.add('wall-card--dim'));
-            // Stagger highlight for top matches
-            top.forEach((r, idx) => {
-              setTimeout(() => {
-                try { r.card.classList.add('wall-card--similar'); r.card.classList.remove('wall-card--dim'); } catch(_) {}
-              }, 24 * idx);
+            top.forEach((r) => {
+                try { r.card.classList.add('wall-card--similar'); r.card.classList.remove('wall-card--dim'); } catch (_) { }
             });
             // Keep selected fully visible
             const sel = grid.querySelector(`.wall-card[data-report-id="${CSS.escape(selectedId)}"]`);
             if (sel) sel.classList.remove('wall-card--dim');
             this._wallSimApplied = { selectedId, mode, grid };
-        } catch (_) { /* no-op */ }
+            return top.map(r => r.id).filter(Boolean);
+        } catch (_) { return []; }
     }
     clearSimilarityView(grid) {
         try {
             const container = grid || (this.contentGrid && this.contentGrid.querySelector('.wall-grid'));
             if (!container) return;
             container.classList.remove('wall-sim-active');
+            container.classList.remove('wall-sim-only');
             container.querySelectorAll('.wall-card').forEach(c => { c.classList.remove('wall-card--dim'); c.classList.remove('wall-card--similar'); });
             this._wallSimApplied = null;
         } catch (_) { /* no-op */ }
@@ -5093,22 +8626,22 @@ class AudioDashboard {
             this.resetWallCardStyles(grid);
             // Calibrate grid row height BEFORE measuring so FLIP doesn't miss the reflow
             try {
-              const sample = grid.querySelector('.wall-card');
-              if (sample) {
-                const h = sample.getBoundingClientRect().height;
-                if (h && h > 0) grid.style.setProperty('--wall-row-h', Math.round(h) + 'px');
-              }
-            } catch(_) {}
+                const sample = grid.querySelector('.wall-card');
+                if (sample) {
+                    const h = sample.getBoundingClientRect().height;
+                    if (h && h > 0) grid.style.setProperty('--wall-row-h', Math.round(h) + 'px');
+                }
+            } catch (_) { }
             // Capture positions for FLIP reflow animation
             const before = new Map();
             try {
-              Array.from(grid.querySelectorAll('.wall-card')).forEach(el => { before.set(el, el.getBoundingClientRect()); });
-            } catch(_) {}
+                Array.from(grid.querySelectorAll('.wall-card')).forEach(el => { before.set(el, el.getBoundingClientRect()); });
+            } catch (_) { }
             // Close any other mega-cards first
             try {
                 const openMegas = Array.from(grid.querySelectorAll('.wall-card.wall-card--mega'));
                 openMegas.forEach(el => { if (el !== cardEl) this.closeWallMegaCard(el.getAttribute('data-report-id') || '', el); });
-            } catch(_) {}
+            } catch (_) { }
             // Save original markup
             cardEl._origHTML = cardEl.innerHTML;
             cardEl.classList.add('wall-card--mega');
@@ -5120,14 +8653,14 @@ class AudioDashboard {
               <div class="summary-card__menu hidden" data-kebab-menu role="menu" data-report-id="${item.file_stem}">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
-                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Regenerate…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
               </div>`;
             cardEl.innerHTML = `
               <div class="mega-inner">
                 <div class="mega-face mega-face--front">
                   <div class="mega-front">
-                    ${(item.summary_image_url||item.thumbnail_url)?`<img class=\"mega-front-thumb\" alt=\"\" src=\"${this.normalizeAssetUrl(item.summary_image_url || item.thumbnail_url)}\">`:''}
+                    ${(item.summary_image_url || item.thumbnail_url) ? `<img class=\"mega-front-thumb\" alt=\"\" src=\"${this.normalizeAssetUrl(item.summary_image_url || item.thumbnail_url)}\">` : ''}
                     <div class="mega-front-overlay">
                       <div class="mega-front-meta">${chipRail || ''}</div>
                       <h3 class="mega-front-title">${safeTitle}</h3>
@@ -5143,7 +8676,10 @@ class AudioDashboard {
                   <div class="mega-footer">
                     <div class="mega-left">
                       <span class="wall-sim-pill" data-sim-label>Similar shown</span>
-                      <label class="toggle" data-control><input type="checkbox" data-sim-only data-control> Show only</label>
+                      <label class="toggle" data-control title="Show only similar items">
+                        <input type="checkbox" data-sim-only data-control>
+                      </label>
+                      <span class="text-xs font-medium opacity-70">Show only</span>
                       <button class="wall-sim-reset" data-sim-reset data-control>Reset</button>
                     </div>
                     <div class="mega-right">
@@ -5169,78 +8705,78 @@ class AudioDashboard {
             // 2) After neighbors finish, grow the clicked card into the reserved 2x2 area, then flip to summary
             let beforeRect = null, afterRect = null;
             try {
-              beforeRect = before.get(cardEl) || cardEl.getBoundingClientRect();
-              afterRect = cardEl.getBoundingClientRect();
-              // Freeze the card at its pre-expand position/size using FLIP transform
-              const dx = (beforeRect.left + window.pageXOffset) - (afterRect.left + window.pageXOffset);
-              const dy = (beforeRect.top + window.pageYOffset) - (afterRect.top + window.pageYOffset);
-              const sx = beforeRect.width && afterRect.width ? (beforeRect.width / afterRect.width) : 1;
-              const sy = beforeRect.height && afterRect.height ? (beforeRect.height / afterRect.height) : 1;
-              // Disable any base transition so this snap does not animate
-              cardEl.style.setProperty('transition', 'none', 'important');
-              cardEl.style.transformOrigin = 'top left';
-              cardEl.style.willChange = 'transform';
-              cardEl.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px) scale(${sx}, ${sy})`;
-              // Keep this card below neighbors during their move-out
-              cardEl.style.zIndex = '5';
-              cardEl.classList.add('mega-glow');
-              // No transition yet — we want neighbors to animate first
-            } catch(_) {}
+                beforeRect = before.get(cardEl) || cardEl.getBoundingClientRect();
+                afterRect = cardEl.getBoundingClientRect();
+                // Freeze the card at its pre-expand position/size using FLIP transform
+                const dx = (beforeRect.left + window.pageXOffset) - (afterRect.left + window.pageXOffset);
+                const dy = (beforeRect.top + window.pageYOffset) - (afterRect.top + window.pageYOffset);
+                const sx = beforeRect.width && afterRect.width ? (beforeRect.width / afterRect.width) : 1;
+                const sy = beforeRect.height && afterRect.height ? (beforeRect.height / afterRect.height) : 1;
+                // Disable any base transition so this snap does not animate
+                cardEl.style.setProperty('transition', 'none', 'important');
+                cardEl.style.transformOrigin = 'top left';
+                cardEl.style.willChange = 'transform';
+                cardEl.style.transform = `translate(${Math.round(dx)}px, ${Math.round(dy)}px) scale(${sx}, ${sy})`;
+                // Keep this card below neighbors during their move-out
+                cardEl.style.zIndex = '5';
+                cardEl.classList.add('mega-glow');
+                // No transition yet — we want neighbors to animate first
+            } catch (_) { }
             // Animate grid reflow (FLIP) after reflow commits, then scroll
             try {
-              requestAnimationFrame(() => requestAnimationFrame(() => {
-                const totalMs = this.animateGridReflow(grid, before) || (this.flipDebugMs || 620);
-                // Scroll after animation starts, not before (avoid canceling transforms)
-                setTimeout(() => {
-                  try {
-                    const header = document.querySelector('header');
-                    const hh = header ? header.getBoundingClientRect().height : 64;
-                    const r = cardEl.getBoundingClientRect();
-                    const needsScroll = (r.top < hh + 12) || (r.bottom > (window.innerHeight - 12));
-                    if (needsScroll) {
-                      const top = Math.max(0, r.top + window.pageYOffset - hh - 16);
-                      window.scrollTo({ top, behavior: 'smooth' });
-                    }
-                  } catch(_) {}
-                }, 80);
-                // Phase 2: start earlier (half of neighbor stagger duration) so the wait isn't too long
-                const halfMs = Math.max(240, Math.round(totalMs * 0.5));
-                setTimeout(() => {
-                  try {
-                    // Animate the transform back to identity to expand into place
-                    cardEl.style.setProperty('transition', 'transform 520ms cubic-bezier(0.22, 1, 0.36, 1)', 'important');
-                    // force reflow before clearing transform
-                    void cardEl.offsetWidth;
-                    cardEl.style.transform = '';
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    const totalMs = this.animateGridReflow(grid, before) || (this.flipDebugMs || 620);
+                    // Scroll after animation starts, not before (avoid canceling transforms)
                     setTimeout(() => {
-                      try {
-                        cardEl.style.removeProperty('transition');
-                        cardEl.style.removeProperty('will-change');
-                        cardEl.style.removeProperty('z-index');
-                      } catch(_) {}
-                      try { cardEl.classList.add('wall-card--flipped'); } catch(_) {}
-                    }, 560);
-                  } catch(_) {}
-                }, halfMs + 60);
-              }));
-            } catch(_) {}
+                        try {
+                            const header = document.querySelector('header');
+                            const hh = header ? header.getBoundingClientRect().height : 64;
+                            const r = cardEl.getBoundingClientRect();
+                            const needsScroll = (r.top < hh + 12) || (r.bottom > (window.innerHeight - 12));
+                            if (needsScroll) {
+                                const top = Math.max(0, r.top + window.pageYOffset - hh - 16);
+                                window.scrollTo({ top, behavior: 'smooth' });
+                            }
+                        } catch (_) { }
+                    }, 80);
+                    // Phase 2: start earlier (half of neighbor stagger duration) so the wait isn't too long
+                    const halfMs = Math.max(240, Math.round(totalMs * 0.5));
+                    setTimeout(() => {
+                        try {
+                            // Animate the transform back to identity to expand into place
+                            cardEl.style.setProperty('transition', 'transform 520ms cubic-bezier(0.22, 1, 0.36, 1)', 'important');
+                            // force reflow before clearing transform
+                            void cardEl.offsetWidth;
+                            cardEl.style.transform = '';
+                            setTimeout(() => {
+                                try {
+                                    cardEl.style.removeProperty('transition');
+                                    cardEl.style.removeProperty('will-change');
+                                    cardEl.style.removeProperty('z-index');
+                                } catch (_) { }
+                                try { cardEl.classList.add('wall-card--flipped'); } catch (_) { }
+                            }, 560);
+                        } catch (_) { }
+                    }, halfMs + 60);
+                }));
+            } catch (_) { }
             // Apply similarity halo and set label count
             let similarCount = 0;
             try {
-              const items = this.currentItems || [];
-              const base = items.find(x => x.file_stem === id);
-              const cards = Array.from(grid.querySelectorAll('.wall-card'));
-              const scored = cards.map(card => {
-                const cid = card.getAttribute('data-report-id');
-                const it = items.find(x => x.file_stem === cid);
-                const sc = it && it !== base ? this.computeHeuristicSimilarity(base, it) : -1;
-                return { cid, card, item: it, score: sc };
-              }).filter(r => r.item && r.cid !== id).sort((a,b)=>b.score-a.score);
-              const K = Math.max(12, Math.min(36, Math.round((window.innerWidth || 1200) / 48)));
-              similarCount = Math.min(K, scored.length);
-              try { this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')); } catch(_) {}
-            } catch(_) {}
-            try { const lbl = cardEl.querySelector('[data-sim-label]'); if (lbl) lbl.textContent = `Similar (${similarCount || ''})`; } catch(_) {}
+                const items = this.currentItems || [];
+                const base = items.find(x => x.file_stem === id);
+                const cards = Array.from(grid.querySelectorAll('.wall-card'));
+                const scored = cards.map(card => {
+                    const cid = card.getAttribute('data-report-id');
+                    const it = items.find(x => x.file_stem === cid);
+                    const sc = it && it !== base ? this.computeHeuristicSimilarity(base, it) : -1;
+                    return { cid, card, item: it, score: sc };
+                }).filter(r => r.item && r.cid !== id).sort((a, b) => b.score - a.score);
+                const K = Math.max(12, Math.min(36, Math.round((window.innerWidth || 1200) / 48)));
+                similarCount = Math.min(K, scored.length);
+                try { this.applySimilarityView(id, grid, (this.flags.wallSimilarityMode || 'halo')); } catch (_) { }
+            } catch (_) { }
+            try { const lbl = cardEl.querySelector('[data-sim-label]'); if (lbl) lbl.textContent = `Similar (${similarCount || ''})`; } catch (_) { }
             // Wire actions
             const openBtn = cardEl.querySelector('[data-mega-open]');
             if (openBtn) openBtn.addEventListener('click', (ev) => { ev.preventDefault(); window.location.href = `/${encodeURIComponent(id)}.json?v=2`; });
@@ -5274,22 +8810,22 @@ class AudioDashboard {
             // Similar controls
             const simOnly = cardEl.querySelector('[data-sim-only]');
             if (simOnly) simOnly.addEventListener('change', (e) => {
-              e.stopPropagation();
-              try { grid.classList.toggle('wall-sim-only', !!simOnly.checked); } catch(_) {}
+                e.stopPropagation();
+                try { grid.classList.toggle('wall-sim-only', !!simOnly.checked); } catch (_) { }
             });
             const simReset = cardEl.querySelector('[data-sim-reset]');
-            if (simReset) simReset.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.clearSimilarityView(grid); try { if (simOnly) simOnly.checked = false; grid.classList.remove('wall-sim-only'); } catch(_) {}; });
+            if (simReset) simReset.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.clearSimilarityView(grid); try { if (simOnly) simOnly.checked = false; grid.classList.remove('wall-sim-only'); } catch (_) { }; });
             // Prevent clicks inside mega content from bubbling to card (which would close it)
-            try { cardEl.querySelector('.mega-inner').addEventListener('click', (e)=> e.stopPropagation()); } catch(_) {}
-        } catch (_) {}
+            try { cardEl.querySelector('.mega-inner').addEventListener('click', (e) => e.stopPropagation()); } catch (_) { }
+        } catch (_) { }
     }
     openReaderFooterDrawer(container, bodyEl, anchorBtn) {
         try {
             // Close if open
             const existing = container.querySelector('.reader-drawer');
-            if (existing) { existing.classList.toggle('open'); if (!existing.classList.contains('open')) { setTimeout(()=> existing.remove(), 180); } return; }
+            if (existing) { existing.classList.toggle('open'); if (!existing.classList.contains('open')) { setTimeout(() => existing.remove(), 180); } return; }
             const prefs = this.getReaderDisplayPrefs();
-            const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed?'true':'false'}">${label}</span>`;
+            const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed ? 'true' : 'false'}">${label}</span>`;
             const sizeSeg = `
               <div class="reader-segment" role="group" aria-label="Text size">
                 ${segBtn('data-reader-size-dec', 'A−', false)}
@@ -5298,31 +8834,31 @@ class AudioDashboard {
               </div>`;
             const lineSeg = `
               <div class="reader-segment" role="radiogroup" aria-label="Line height">
-                ${segBtn('data-reader-line="tight"', 'Tight', prefs.line==='tight')}
-                ${segBtn('data-reader-line="normal"', 'Normal', prefs.line==='normal')}
-                ${segBtn('data-reader-line="loose"', 'Loose', prefs.line==='loose')}
+                ${segBtn('data-reader-line="tight"', 'Tight', prefs.line === 'tight')}
+                ${segBtn('data-reader-line="normal"', 'Normal', prefs.line === 'normal')}
+                ${segBtn('data-reader-line="loose"', 'Loose', prefs.line === 'loose')}
               </div>`;
             const familySeg = `
               <div class="reader-segment" role="radiogroup" aria-label="Font family">
-                ${segBtn('data-reader-family="sans"', '<span style=\\"font-family:system-ui,sans-serif\\">Aa</span>', prefs.family==='sans')}
-                ${segBtn('data-reader-family="serif"', '<span style=\\"font-family:Georgia,serif\\">Aa</span>', prefs.family==='serif')}
+                ${segBtn('data-reader-family="sans"', '<span style=\\"font-family:system-ui,sans-serif\\">Aa</span>', prefs.family === 'sans')}
+                ${segBtn('data-reader-family="serif"', '<span style=\\"font-family:Georgia,serif\\">Aa</span>', prefs.family === 'serif')}
               </div>`;
             const justifySeg = `
               <div class="reader-segment" role="radiogroup" aria-label="Justification">
-                ${segBtn('data-reader-justify="left"', 'Left', prefs.justify==='left')}
-                ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify==='justify')}
+                ${segBtn('data-reader-justify="left"', 'Left', prefs.justify === 'left')}
+                ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify === 'justify')}
               </div>`;
             const paraSeg = `
               <div class="reader-segment" role="radiogroup" aria-label="Paragraph style">
-                ${segBtn('data-reader-para="spaced"', 'Spaced', prefs.paraStyle==='spaced')}
-                ${segBtn('data-reader-para="indented"', 'Indented', prefs.paraStyle==='indented')}
+                ${segBtn('data-reader-para="spaced"', 'Spaced', prefs.paraStyle === 'spaced')}
+                ${segBtn('data-reader-para="indented"', 'Indented', prefs.paraStyle === 'indented')}
               </div>`;
             const measureSeg = `
               <div class="reader-segment" role="radiogroup" aria-label="Reading width">
-                ${segBtn('data-reader-measure="narrow"', 'Narrow', prefs.measure==='narrow')}
-                ${segBtn('data-reader-measure="medium"', 'Medium', prefs.measure==='medium')}
-                ${segBtn('data-reader-measure="wide"', 'Wide', prefs.measure==='wide')}
-                ${segBtn('data-reader-measure="full"', 'Full', prefs.measure==='full')}
+                ${segBtn('data-reader-measure="narrow"', 'Narrow', prefs.measure === 'narrow')}
+                ${segBtn('data-reader-measure="medium"', 'Medium', prefs.measure === 'medium')}
+                ${segBtn('data-reader-measure="wide"', 'Wide', prefs.measure === 'wide')}
+                ${segBtn('data-reader-measure="full"', 'Full', prefs.measure === 'full')}
               </div>`;
             const drawer = document.createElement('div');
             drawer.className = 'reader-drawer';
@@ -5335,22 +8871,22 @@ class AudioDashboard {
                 <button type="button" class="reader-close" data-close>×</button>
               </div>
               <div class="drawer-row" data-pane="typo" style="display:block">${sizeSeg} ${familySeg} ${lineSeg}</div>
-              <div class="drawer-row" data-pane="layout" style="display:none">${paraSeg} ${justifySeg} ${measureSeg.replace('</div>','')}${segBtn('data-reader-measure="auto"','Auto', prefs.measure==='auto')}</div>
+              <div class="drawer-row" data-pane="layout" style="display:none">${paraSeg} ${justifySeg} ${measureSeg.replace('</div>', '')}${segBtn('data-reader-measure="auto"', 'Auto', prefs.measure === 'auto')}</div>
             `;
             const host = container.querySelector('.mega-face--back') || container;
             host.appendChild(drawer);
             const setTab = (name) => {
-              const a = drawer.querySelector('[data-tab="typo"]'); const b = drawer.querySelector('[data-tab="layout"]');
-              const p1 = drawer.querySelector('[data-pane="typo"]'); const p2 = drawer.querySelector('[data-pane="layout"]');
-              a.setAttribute('aria-pressed', name==='typo'?'true':'false');
-              b.setAttribute('aria-pressed', name==='layout'?'true':'false');
-              p1.style.display = name==='typo' ? 'block' : 'none';
-              p2.style.display = name==='layout' ? 'block' : 'none';
+                const a = drawer.querySelector('[data-tab="typo"]'); const b = drawer.querySelector('[data-tab="layout"]');
+                const p1 = drawer.querySelector('[data-pane="typo"]'); const p2 = drawer.querySelector('[data-pane="layout"]');
+                a.setAttribute('aria-pressed', name === 'typo' ? 'true' : 'false');
+                b.setAttribute('aria-pressed', name === 'layout' ? 'true' : 'false');
+                p1.style.display = name === 'typo' ? 'block' : 'none';
+                p2.style.display = name === 'layout' ? 'block' : 'none';
             };
             drawer.addEventListener('click', (e) => {
                 const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-para], [data-reader-justify], [data-reader-measure], [data-reader-size-inc], [data-reader-size-dec], [data-tab], [data-close]');
                 if (!btn) return;
-                if (btn.hasAttribute('data-close')) { drawer.classList.remove('open'); setTimeout(()=> drawer.remove(), 180); return; }
+                if (btn.hasAttribute('data-close')) { drawer.classList.remove('open'); setTimeout(() => drawer.remove(), 180); return; }
                 if (btn.hasAttribute('data-tab')) { setTab(btn.getAttribute('data-tab')); return; }
                 const size = btn.getAttribute('data-reader-size');
                 const line = btn.getAttribute('data-reader-line');
@@ -5363,12 +8899,12 @@ class AudioDashboard {
                 let next = {};
                 if (size && READER_SIZE_MAP[size]) next.size = size;
                 if (inc || dec) {
-                  const order = ['s','m','l','xl','xxl'];
-                  const cur = this.getReaderDisplayPrefs().size || 'm';
-                  let idx = Math.max(0, order.indexOf(cur));
-                  if (inc && idx < order.length - 1) idx++;
-                  if (dec && idx > 0) idx--;
-                  next.size = order[idx];
+                    const order = ['s', 'm', 'l', 'xl', 'xxl'];
+                    const cur = this.getReaderDisplayPrefs().size || 'm';
+                    let idx = Math.max(0, order.indexOf(cur));
+                    if (inc && idx < order.length - 1) idx++;
+                    if (dec && idx > 0) idx--;
+                    next.size = order[idx];
                 }
                 if (line && READER_LINE_MAP[line]) next.line = line;
                 if (family && READER_FAMILY_MAP[family]) next.family = family;
@@ -5378,18 +8914,18 @@ class AudioDashboard {
                 const merged = this.setReaderDisplayPrefs(next);
                 this.applyReaderDisplayPrefs(container, bodyEl);
                 // Update toggles states
-                ['size','line','family','para','justify','measure'].forEach(key => {
-                  drawer.querySelectorAll('[data-reader-' + key + ']').forEach(el => {
-                    const val = el.getAttribute('data-reader-' + key);
-                    const want = String(merged[key === 'para' ? 'paraStyle' : key]);
-                    el.setAttribute('aria-pressed', val === want ? 'true' : 'false');
-                  });
+                ['size', 'line', 'family', 'para', 'justify', 'measure'].forEach(key => {
+                    drawer.querySelectorAll('[data-reader-' + key + ']').forEach(el => {
+                        const val = el.getAttribute('data-reader-' + key);
+                        const want = String(merged[key === 'para' ? 'paraStyle' : key]);
+                        el.setAttribute('aria-pressed', val === want ? 'true' : 'false');
+                    });
                 });
             });
             // Start on Typography tab with slide-up
             setTab('typo');
-            requestAnimationFrame(()=> drawer.classList.add('open'));
-        } catch (_) {}
+            requestAnimationFrame(() => drawer.classList.add('open'));
+        } catch (_) { }
     }
     animateGridReflow(grid, beforeMap) {
         if (!grid || !beforeMap || !(beforeMap instanceof Map)) return;
@@ -5399,7 +8935,7 @@ class AudioDashboard {
         const transitions = [];
         const baseMs = 900; // lengthen for clearer motion; can be overridden with ?flipms
         const durMs = this.flipDebugMs || baseMs;
-        const scaleStart = 1.04; // slight shrink while moving into place
+        const scaleStart = 1.10; // more dramatic scale effect while moving into place
 
         const movers = [];
         cards.forEach(el => {
@@ -5425,12 +8961,12 @@ class AudioDashboard {
 
         // Stagger: overlapped group first (tight cascade), then others by distance
         const primary = movers.filter(m => m.overlapped);
-        const others  = movers.filter(m => !m.overlapped).sort((a,b) => a.dist - b.dist);
+        const others = movers.filter(m => !m.overlapped).sort((a, b) => a.dist - b.dist);
 
         const schedule = [];
-        primary.forEach((m, i) => schedule.push({ ...m, delay: i * 70 }));
-        const baseDelay = primary.length ? (primary.length - 1) * 70 + 120 : 0;
-        others.forEach((m, i) => schedule.push({ ...m, delay: baseDelay + Math.min(300, i * 30) }));
+        primary.forEach((m, i) => schedule.push({ ...m, delay: i * 100 }));
+        const baseDelay = primary.length ? (primary.length - 1) * 100 + 160 : 0;
+        others.forEach((m, i) => schedule.push({ ...m, delay: baseDelay + Math.min(450, i * 45) }));
 
         let maxEnd = 0;
         schedule.forEach(item => {
@@ -5444,7 +8980,7 @@ class AudioDashboard {
                 el.style.setProperty('z-index', '40', 'important');
                 // Opacity fade for overlapped (the three directly under the mega area)
                 if (overlapped) {
-                    el.style.setProperty('opacity', '0.55', 'important');
+                    el.style.setProperty('opacity', '0.40', 'important');
                 }
                 // Force reflow, then animate to identity (0 translate, scale 1)
                 void el.offsetWidth;
@@ -5455,11 +8991,11 @@ class AudioDashboard {
                 transitions.push(el);
                 const end = delay + durMs;
                 if (end > maxEnd) maxEnd = end;
-            } catch (_) {}
+            } catch (_) { }
         });
 
         const cleanup = () => {
-            transitions.forEach(el => { try { el.style.removeProperty('transition'); el.style.removeProperty('will-change'); el.style.removeProperty('z-index'); el.style.removeProperty('transform-origin'); el.style.removeProperty('opacity'); } catch(_) {} });
+            transitions.forEach(el => { try { el.style.removeProperty('transition'); el.style.removeProperty('will-change'); el.style.removeProperty('z-index'); el.style.removeProperty('transform-origin'); el.style.removeProperty('opacity'); } catch (_) { } });
         };
         // Primary timeout cleanup
         setTimeout(cleanup, maxEnd + 160);
@@ -5494,8 +9030,8 @@ class AudioDashboard {
                 cardEl.classList.remove('mega-glow');
             }
             this.clearSimilarityView(grid);
-            try { grid.classList.remove('wall-sim-only'); } catch(_) {}
-        } catch (_) {}
+            try { grid.classList.remove('wall-sim-only'); } catch (_) { }
+        } catch (_) { }
     }
 
     // Normalize NAS HTML variants at render time to ensure headings/lists styles apply
@@ -5603,7 +9139,7 @@ class AudioDashboard {
             <div class="summary-card__menu hidden" data-kebab-menu role="menu">
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="copy-link">Copy link</button>
                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
-                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Reprocess…</button>
+                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="reprocess">Regenerate…</button>
                 <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
             </div>
                         <div class="summary-card__popover hidden" data-delete-popover>
@@ -5691,12 +9227,14 @@ class AudioDashboard {
         const map = {
             category: 'Category',
             categories: 'Category',
+            subcategory: 'Subcategory',
             channel: 'Channel',
             channels: 'Channel',
             content_type: 'Content',
             content_type_filters: 'Content',
             summary_type: 'Summary',
-            language: 'Language'
+            language: 'Language',
+            topic: 'Topic'
         };
         return map[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     }
@@ -5836,16 +9374,16 @@ class AudioDashboard {
         }
 
         const showPages = 5;
-        
+
         let startPage = Math.max(1, currentPage - Math.floor(showPages / 2));
         let endPage = Math.min(totalPages, startPage + showPages - 1);
-        
+
         if (endPage - startPage < showPages - 1) {
             startPage = Math.max(1, endPage - showPages + 1);
         }
 
         let paginationHTML = '';
-        
+
         // Previous button
         if (currentPage > 1) {
             paginationHTML += `
@@ -5859,9 +9397,9 @@ class AudioDashboard {
         for (let i = startPage; i <= endPage; i++) {
             paginationHTML += `
                 <button data-page="${i}" 
-                        class="px-3 py-2 text-sm ${i === currentPage 
-                            ? 'bg-audio-500 text-white' 
-                            : 'text-slate-600 hover:text-audio-600'} 
+                        class="px-3 py-2 text-sm ${i === currentPage
+                    ? 'bg-audio-500 text-white'
+                    : 'text-slate-600 hover:text-audio-600'} 
                                rounded-lg transition-colors">
                     ${i}
                 </button>
@@ -5954,7 +9492,7 @@ class AudioDashboard {
         try {
             // Clean up any leftover state from previous sessions
             this._cleanupScrubState();
-            
+
             // Find the report data
             const reportCard = document.querySelector(`[data-report-id="${reportId}"]`);
             if (!reportCard) return;
@@ -5973,9 +9511,9 @@ class AudioDashboard {
 
             // Extract report info from the card
             const title = item?.title || reportCard.querySelector('h3').textContent.trim();
-            
+
             // Reset per-card progress bars
-            try { document.querySelectorAll('[data-card-progress]').forEach(el => { el.style.width = '0%'; el.setAttribute('aria-valuenow', '0'); }); } catch(_) {}
+            try { document.querySelectorAll('[data-card-progress]').forEach(el => { el.style.width = '0%'; el.setAttribute('aria-valuenow', '0'); }); } catch (_) { }
 
             // Update current track info and mini player
             if (item) {
@@ -6014,16 +9552,16 @@ class AudioDashboard {
                 this.nowPlayingThumb.src = cardImg.src;
                 this.nowPlayingThumb.classList.remove('hidden');
             }
-            
+
             // Load and play audio (user initiated)
             this.audioElement.src = audioSrc;
             this.audioElement.load();
             this.userInitiatedPlay = true;
-            
+
             // Update now playing preview
             this.updateNowPlayingPreview();
             this.updatePlayingCard();
-            
+
         } catch (error) {
             console.error('Failed to play audio:', error);
             this.showError('Failed to play audio');
@@ -6063,7 +9601,7 @@ class AudioDashboard {
                     if (/^Listen\b/i.test(t)) span.remove();
                 });
             }
-        } catch (_) {}
+        } catch (_) { }
         this.showToast('Audio not available for this summary', 'warn');
         // Reset current track
         this.isPlaying = false;
@@ -6130,14 +9668,16 @@ class AudioDashboard {
             this.nextBtn.classList.toggle('cursor-not-allowed', !enableNext);
         }
 
-        if (this.isPlaying) {
-            this.playIcon.classList.add('hidden');
-            this.pauseIcon.classList.remove('hidden');
-        } else {
-            this.playIcon.classList.remove('hidden');
-            this.pauseIcon.classList.add('hidden');
+        if (this.playIcon && this.pauseIcon) {
+            if (this.isPlaying) {
+                this.playIcon.classList.add('hidden');
+                this.pauseIcon.classList.remove('hidden');
+            } else {
+                this.playIcon.classList.remove('hidden');
+                this.pauseIcon.classList.add('hidden');
+            }
         }
-        
+
         // Update mobile play button
         if (this.mobilePlayIcon && this.mobilePauseIcon) {
             if (this.isPlaying) {
@@ -6175,16 +9715,18 @@ class AudioDashboard {
         // Show/hide top mini-player when sidebar collapsed (desktop)
         if (this.topMiniPlayer) {
             const collapsed = document.body.classList.contains('sidebar-collapsed');
-            if (collapsed && this.currentAudio) {
+            const allow = this.viewMode !== 'wall';
+            if (collapsed && this.currentAudio && allow) {
                 this.topMiniPlayer.classList.remove('hidden');
             } else {
                 this.topMiniPlayer.classList.add('hidden');
             }
         }
-        
-        // Show/hide mobile mini-player
+
+        // Show/hide bottom mini-player (hidden in wall view)
         if (this.mobileMiniPlayer) {
-            if (this.currentAudio) {
+            const allow = this.viewMode !== 'wall';
+            if (this.currentAudio && allow) {
                 this.mobileMiniPlayer.classList.remove('hidden', 'translate-y-full');
                 this.mobileMiniPlayer.classList.add('translate-y-0');
             } else {
@@ -6199,32 +9741,18 @@ class AudioDashboard {
     }
 
     setViewMode(mode) {
-        const previousMode = this.viewMode;
-        this.viewMode = mode;
-        localStorage.setItem('ytv2.viewMode', mode);
-        if (mode === 'wall') {
-            this._previousSidebarCollapsed = this.sidebarCollapsed;
-            this._previousPageBeforeWall = this.currentPage;
-            this.currentPage = 1;
-            if (!this.sidebarCollapsed && this.desktopMediaQuery?.matches) {
-                this.sidebarCollapsed = true;
-                localStorage.setItem('ytv2.sidebarCollapsed', '1');
-                this.applySidebarCollapsedState();
-            }
-        } else {
-            if (previousMode === 'wall' && typeof this._previousPageBeforeWall === 'number') {
-                this.currentPage = this._previousPageBeforeWall;
-                this._previousPageBeforeWall = undefined;
-            }
-            if (typeof this._previousSidebarCollapsed === 'boolean') {
-                const shouldRestore = this._previousSidebarCollapsed;
-                this._previousSidebarCollapsed = undefined;
-                this.sidebarCollapsed = shouldRestore;
-                localStorage.setItem('ytv2.sidebarCollapsed', shouldRestore ? '1' : '0');
-                this.applySidebarCollapsedState();
-            }
+        // Wall mode only - list/grid retired
+        this.viewMode = 'wall';
+        const np = document.getElementById('nowPlayingPreview');
+        const mini = document.getElementById('mobileMiniPlayer');
+        if (np) np.classList.add('hidden');
+        if (mini) mini.classList.add('hidden');
+        this.currentPage = 1;
+        if (!this.sidebarCollapsed && this.desktopMediaQuery?.matches) {
+            this.sidebarCollapsed = true;
+            localStorage.setItem('ytv2.sidebarCollapsed', '1');
+            this.applySidebarCollapsedState();
         }
-        // Re-render current items
         this.updateViewToggle();
         if (this.currentItems && this.currentItems.length) {
             this.renderContent(this.currentItems);
@@ -6233,42 +9761,11 @@ class AudioDashboard {
     }
 
     updateViewToggle() {
-        const buttons = [
-            this.listViewBtn,
-            this.gridViewBtn,
-            this.wallViewBtn,
-            this.listViewBtnMobile,
-            this.gridViewBtnMobile,
-            this.wallViewBtnMobile
-        ].filter(Boolean);
-        if (!buttons.length) return;
-
-        const activeClasses = ['bg-audio-600', 'text-white', 'shadow-lg'];
-        const inactiveClasses = ['bg-white/80', 'dark:bg-slate-900/70', 'text-slate-600', 'dark:text-slate-200', 'border', 'border-white/60', 'dark:border-slate-700/70', 'shadow-sm'];
-
-        buttons.forEach(btn => {
-            btn.classList.remove(...activeClasses, ...inactiveClasses);
-            btn.classList.add(...inactiveClasses);
-        });
-
-        const map = {
-            list: [this.listViewBtn, this.listViewBtnMobile],
-            grid: [this.gridViewBtn, this.gridViewBtnMobile],
-            wall: [this.wallViewBtn, this.wallViewBtnMobile]
-        };
-        const desired = (map[this.viewMode] || []).filter(Boolean);
-        const fallback = (map.list || []).filter(Boolean);
-        const targets = desired.length ? desired : (fallback.length ? fallback : [buttons[0]]);
-        targets.forEach(btn => {
-            btn.classList.remove(...inactiveClasses);
-            btn.classList.add(...activeClasses);
-        });
-
-        document.body.classList.toggle('wall-mode', this.viewMode === 'wall');
+        // Wall mode only - ensure body class is set
+        document.body.classList.add('wall-mode');
         if (this.resultsHero) {
-            this.resultsHero.classList.toggle('hidden', this.viewMode === 'wall');
+            this.resultsHero.classList.add('hidden');
         }
-
         this.updateHeroBadges();
     }
 
@@ -6283,7 +9780,10 @@ class AudioDashboard {
             this.sidebarCollapseToggle.setAttribute('aria-pressed', shouldCollapse ? 'true' : 'false');
         }
         if (this.sidebarExpandToggle) {
-            this.sidebarExpandToggle.setAttribute('aria-hidden', shouldCollapse ? 'false' : 'true');
+            this.sidebarExpandToggle.setAttribute('aria-pressed', shouldCollapse ? 'false' : 'true');
+            const label = this.sidebarExpandToggle.querySelector('span');
+            if (label) label.textContent = shouldCollapse ? 'Filters' : 'Hide';
+            this.sidebarExpandToggle.title = shouldCollapse ? 'Show Filters' : 'Hide Filters';
         }
     }
 
@@ -6395,18 +9895,18 @@ class AudioDashboard {
     updateProgress() {
         const currentTime = this.audioElement.currentTime;
         const duration = this.audioElement.duration;
-        
+
         if (duration && !isNaN(duration) && !isNaN(currentTime)) {
             const progress = (currentTime / duration) * 100;
-            this.progressBar.style.width = `${progress}%`;
-            this.currentTimeEl.textContent = this.formatDuration(currentTime);
+            if (this.progressBar) this.progressBar.style.width = `${progress}%`;
+            if (this.currentTimeEl) this.currentTimeEl.textContent = this.formatDuration(currentTime);
             if (this.topProgressBar) {
                 this.topProgressBar.style.width = `${progress}%`;
             }
             if (this.topNowPlayingTitle && this.currentAudio) {
                 this.topNowPlayingTitle.textContent = this.currentAudio.title;
             }
-            
+
             // Update now playing preview
             if (this.nowPlayingProgress) {
                 this.nowPlayingProgress.style.width = `${progress}%`;
@@ -6414,7 +9914,7 @@ class AudioDashboard {
             if (this.nowPlayingMeta) {
                 this.nowPlayingMeta.textContent = `${this.formatDuration(currentTime)} / ${this.formatDuration(duration)}`;
             }
-            
+
             // Update mobile mini-player
             if (this.mobileProgressBar) {
                 this.mobileProgressBar.style.width = `${progress}%`;
@@ -6470,11 +9970,11 @@ class AudioDashboard {
                 if (bar) { bar.style.width = '0%'; bar.setAttribute('aria-valuenow', '0'); }
             }
         }
-        
+
         // Update playing state
         const wasPlaying = this.isPlaying;
         this.isPlaying = !this.audioElement.paused;
-        
+
         if (wasPlaying !== this.isPlaying) {
             this.updatePlayButton();
         }
@@ -6643,15 +10143,21 @@ class AudioDashboard {
         `;
     }
 
-    renderInlineAudioVariant(reportId, entry, audioSrc) {
+    renderInlineAudioVariant(reportId, entry, audioSrc, options = {}) {
+        const opts = options || {};
+        const isDocked = Boolean(opts.docked);
         const available = Boolean(audioSrc);
         const isActive = this.currentAudio && this.currentAudio.id === reportId;
         const isPlaying = isActive && this.isPlaying;
+        const inKaleido = (typeof document !== 'undefined' && document.body && document.body.classList && document.body.classList.contains('kaleido-open'));
+        const useEnhancedPlayer = inKaleido || isDocked;
+        const titleClass = (inKaleido || isDocked) ? 'text-slate-100' : 'text-slate-800 dark:text-slate-100';
+        const statusClass = (inKaleido || isDocked) ? 'text-slate-200/90' : 'text-slate-600 dark:text-slate-300';
         const statusText = !available
             ? 'Audio summary is not available for this item.'
             : isActive
-                ? (isPlaying ? 'Now playing via the global controls.' : 'Ready – press play to resume.')
-                : 'Ready to play. Use the button below to start playback.';
+                ? (isPlaying ? 'Playing now.' : 'Paused. Press play to resume.')
+                : (isDocked ? 'Ready to play while you read.' : 'Ready to play. Use the button below to start playback.');
         const buttonLabel = !available
             ? 'Unavailable'
             : isActive && isPlaying ? 'Pause audio' : 'Play audio';
@@ -6664,17 +10170,85 @@ class AudioDashboard {
                    Download
                </a>`
             : '';
+        const waveformBars = Array.from({ length: 56 }).map((_, idx) => {
+            const h = 22 + ((idx * 9) % 58);
+            const durationMs = 300 + ((idx % 7) * 40);
+            const delayMs = (idx % 5) * 25;
+            return `<span class="kaleido-audio-wavebar" data-wave-index="${idx}" style="--h:${h}%;--wave-d:${durationMs}ms;--wave-delay:${delayMs}ms"></span>`;
+        }).join('');
+
+        const enhancedControls = useEnhancedPlayer ? `
+            <div class="kaleido-audio-controls" data-kaleido-audio-controls>
+                <div class="kaleido-audio-wave" data-kaleido-audio-wave aria-hidden="true">
+                    ${waveformBars}
+                </div>
+                <input type="range" min="0" max="1000" value="0"
+                       class="kaleido-audio-seek${isDocked ? ' kaleido-audio-seek--dock' : ''}"
+                       data-kaleido-audio-seek ${available ? '' : 'disabled aria-disabled=\"true\"'} />
+                <div class="kaleido-audio-row">
+                    <button type="button" ${buttonState}
+                            class="kaleido-audio-play"
+                            data-variant-audio-btn data-listen-button data-default-label="Play" data-playing-label="Pause"
+                            aria-pressed="${isActive && isPlaying ? 'true' : 'false'}">
+                        <span class="kaleido-audio-play-icon" data-icon-play aria-hidden="true">▶</span>
+                        <span class="kaleido-audio-play-icon hidden" data-icon-pause aria-hidden="true">⏸</span>
+                        <span class="kaleido-audio-play-label" data-label>${isActive && isPlaying ? 'Pause' : 'Play'}</span>
+                    </button>
+                    <button type="button" class="kaleido-audio-skip" data-kaleido-audio-skip-back ${available ? '' : 'disabled aria-disabled=\"true\"'} title="Skip back 15s" data-skip-seconds="-15">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">
+                            <path d="M11 7 6 12l5 5"></path>
+                            <path d="M18 7 13 12l5 5"></path>
+                        </svg>
+                        <span class="kaleido-audio-skip-label">-15s</span>
+                    </button>
+                    <button type="button" class="kaleido-audio-skip" data-kaleido-audio-skip-forward ${available ? '' : 'disabled aria-disabled=\"true\"'} title="Skip forward 15s" data-skip-seconds="15">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true">
+                            <path d="M13 7 18 12l-5 5"></path>
+                            <path d="M6 7 11 12l-5 5"></path>
+                        </svg>
+                        <span class="kaleido-audio-skip-label">+15s</span>
+                    </button>
+                    <div class="kaleido-audio-time" data-kaleido-audio-time>0:00 / —</div>
+                    <div class="kaleido-audio-volume" data-kaleido-audio-volume>
+                        <button type="button" class="kaleido-audio-volume-btn" data-kaleido-audio-volume-btn ${available ? '' : 'disabled aria-disabled=\"true\"'} title="Mute/Unmute">
+                            <svg class="kaleido-audio-volume-icon" data-volume-high viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true">
+                                <polygon points="11 5 6 9 3 9 3 15 6 15 11 19 11 5"></polygon>
+                                <path d="M15.5 8.5a5 5 0 0 1 0 7"></path>
+                                <path d="M18.8 5.6a9 9 0 0 1 0 12.8"></path>
+                            </svg>
+                            <svg class="kaleido-audio-volume-icon hidden" data-volume-low viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true">
+                                <polygon points="11 5 6 9 3 9 3 15 6 15 11 19 11 5"></polygon>
+                                <path d="M15.8 9.2a4 4 0 0 1 0 5.6"></path>
+                            </svg>
+                            <svg class="kaleido-audio-volume-icon hidden" data-volume-mute viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true">
+                                <polygon points="11 5 6 9 3 9 3 15 6 15 11 19 11 5"></polygon>
+                                <path d="m15 9 6 6"></path>
+                                <path d="m21 9-6 6"></path>
+                            </svg>
+                        </button>
+                        <input type="range" min="0" max="100" value="100" class="kaleido-audio-volume-slider" data-kaleido-audio-volume-slider ${available ? '' : 'disabled aria-disabled=\"true\"'} />
+                    </div>
+                    <button type="button" class="kaleido-audio-rate" data-kaleido-audio-rate ${available ? '' : 'disabled aria-disabled=\"true\"'} title="Playback speed">${this.formatPlaybackRate(this.getEffectivePlaybackRate())}</button>
+                    ${downloadLink}
+                </div>
+            </div>
+        ` : '';
+
+        const containerClass = inKaleido
+            ? 'kaleido-audio-panel'
+            : isDocked
+                ? 'kaleido-audio-panel kaleido-audio-panel--dock'
+            : 'rounded-xl border border-slate-200/80 bg-slate-50/80 p-4 text-sm dark:border-slate-700/70 dark:bg-slate-800/60';
 
         return `
-            <div class="rounded-xl border border-slate-200/80 bg-slate-50/80 p-4 text-sm dark:border-slate-700/70 dark:bg-slate-800/60"
+            <div class="${containerClass}"
                  data-audio-variant data-report-id="${reportId || ''}" data-audio-available="${available ? '1' : ''}">
-                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div class="space-y-1">
-                        <p class="font-semibold text-slate-800 dark:text-slate-100">${this.escapeHtml(entry.label || 'Audio summary')}</p>
-                        <p class="text-slate-600 dark:text-slate-300" data-audio-status>${statusText}</p>
-                        <p class="text-xs text-slate-500 dark:text-slate-400">Use the primary player controls to scrub or adjust speed.</p>
-                    </div>
-                    <div class="flex items-center gap-2 self-start md:self-auto">
+                <div class="space-y-2">
+                    <p class="font-semibold ${titleClass}">${this.escapeHtml(entry.label || 'Audio summary')}</p>
+                    <p class="${statusClass}" data-audio-status>${statusText}</p>
+                </div>
+                ${useEnhancedPlayer ? enhancedControls : `
+                    <div class="mt-3 flex items-center gap-2">
                         ${downloadLink}
                         <button type="button" ${buttonState}
                                 class="inline-flex items-center gap-2 rounded-full border border-white/40 bg-gradient-to-r from-audio-500 to-indigo-500 px-4 py-1.5 text-sm font-semibold text-white shadow-md disabled:cursor-not-allowed disabled:border-slate-400 disabled:bg-slate-300 disabled:text-slate-600 dark:disabled:border-slate-600 dark:disabled:bg-slate-700 dark:disabled:text-slate-300"
@@ -6682,10 +10256,317 @@ class AudioDashboard {
                             ${buttonLabel}
                         </button>
                     </div>
-                </div>
+                `}
             </div>
         `;
     }
+
+	    bindKaleidoInlineAudioControls(container, on) {
+	        if (!container || typeof on !== 'function') return;
+	        if (!this.audioElement) return;
+            // Guard: prevent multiple bindings to the same container
+            if (container._kaleidoControlsBound) return;
+            container._kaleidoControlsBound = true;
+	        const seek = container.querySelector('[data-kaleido-audio-seek]');
+	        const time = container.querySelector('[data-kaleido-audio-time]');
+	        const rateBtn = container.querySelector('[data-kaleido-audio-rate]');
+            const wave = container.querySelector('[data-kaleido-audio-wave]');
+            const waveBars = wave ? Array.from(wave.querySelectorAll('.kaleido-audio-wavebar')) : [];
+	            const skipBack = container.querySelector('[data-kaleido-audio-skip-back]');
+            const skipForward = container.querySelector('[data-kaleido-audio-skip-forward]');
+            const volumeBtn = container.querySelector('[data-kaleido-audio-volume-btn]');
+            const volumeSlider = container.querySelector('[data-kaleido-audio-volume-slider]');
+	        if (!seek && !time && !rateBtn && !wave && !skipBack && !skipForward && !volumeBtn) return;
+
+        let seeking = false;
+        const fmt = (sec) => {
+            try { return this.formatDuration(sec); } catch (_) { return '0:00'; }
+        };
+
+        // Web Audio API for real-time waveform visualization
+        let audioContext = null;
+        let analyser = null;
+        let source = null;
+        let animationFrame = null;
+
+        const setupAudioContext = () => {
+            if (audioContext) return;
+            // Guard: Only create MediaElementSource once per audio element
+            if (this.audioElement._audioSourceConnected) return;
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source = audioContext.createMediaElementSource(this.audioElement);
+                source.connect(analyser);
+                analyser.connect(audioContext.destination);
+                this.audioElement._audioSourceConnected = true;
+            } catch (e) {
+                console.warn('Web Audio API not available:', e);
+            }
+        };
+
+        const updateWaveform = () => {
+            if (!analyser || !waveBars.length) return;
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(dataArray);
+            const binCount = dataArray.length || 1;
+            const barCount = waveBars.length || 1;
+            waveBars.forEach((bar, idx) => {
+                const start = Math.floor((idx / barCount) * binCount);
+                const end = Math.max(start + 1, Math.floor(((idx + 1) / barCount) * binCount));
+                let peak = 0;
+                for (let i = start; i < end; i += 1) {
+                    const val = dataArray[i] || 0;
+                    if (val > peak) peak = val;
+                }
+                const amp = Math.pow(peak / 255, 0.62);
+                const contour = 0.9 + (Math.sin(idx * 0.42) * 0.12);
+                const height = Math.max(22, Math.min(100, 22 + (amp * 76 * contour)));
+                bar.style.setProperty('--h', `${height}%`);
+                bar.style.setProperty('--wave-scale', (0.86 + amp * 0.92).toFixed(3));
+            });
+            animationFrame = requestAnimationFrame(updateWaveform);
+        };
+
+        const startWaveform = () => {
+            if (!audioContext) setupAudioContext();
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            if (animationFrame) cancelAnimationFrame(animationFrame);
+            waveBars.forEach((bar) => bar.classList.add('is-animated'));
+            updateWaveform();
+        };
+
+        const stopWaveform = () => {
+            if (animationFrame) {
+                cancelAnimationFrame(animationFrame);
+                animationFrame = null;
+            }
+            waveBars.forEach((bar, idx) => {
+                const h = 22 + ((idx * 9) % 58);
+                bar.style.setProperty('--h', `${h}%`);
+                bar.style.removeProperty('--wave-scale');
+                bar.classList.remove('is-animated');
+            });
+        };
+
+        const skip = (seconds) => {
+            if (!this.audioElement) return;
+            this.audioElement.currentTime = Math.max(0, Math.min(this.audioElement.duration || 0, this.audioElement.currentTime + seconds));
+        };
+	        const update = () => {
+            if (!this.audioElement) return;
+            const dur = Number(this.audioElement.duration || 0);
+            const cur = Number(this.audioElement.currentTime || 0);
+            const durOk = Number.isFinite(dur) && dur > 0;
+            if (time) {
+                time.textContent = `${fmt(cur)} / ${durOk ? fmt(dur) : '—'}`;
+            }
+            if (seek && durOk && !seeking) {
+                const v = Math.max(0, Math.min(1000, Math.round((cur / dur) * 1000)));
+                seek.value = String(v);
+            }
+            let pct = 0;
+            if (seek) {
+                const v = Number(seek.value || 0);
+                pct = Math.max(0, Math.min(100, (v / 1000) * 100));
+                seek.style.background = `linear-gradient(90deg, rgba(56,189,248,0.95) 0%, rgba(99,102,241,0.9) ${pct}%, rgba(255,255,255,0.12) ${pct}%, rgba(255,255,255,0.12) 100%)`;
+            } else if (durOk) {
+                pct = Math.max(0, Math.min(100, (cur / dur) * 100));
+            }
+            if (wave) {
+                wave.style.setProperty('--wave-progress', `${pct}%`);
+            }
+	        };
+
+        // Skip buttons
+        if (skipBack) {
+            on(skipBack, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                skip(-15);
+            });
+        }
+
+        if (skipForward) {
+            on(skipForward, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                skip(15);
+            });
+        }
+
+        // Volume control
+        const updateVolumeVisual = (vol) => {
+            if (!volumeSlider) return;
+            const clampedVol = Math.max(0, Math.min(1, vol));
+            volumeSlider.value = String(Math.round(clampedVol * 100));
+            volumeSlider.style.background = `linear-gradient(90deg, rgba(56,189,248,0.95) 0%, rgba(99,102,241,0.9) ${clampedVol * 100}%, rgba(255,255,255,0.12) ${clampedVol * 100}%, rgba(255,255,255,0.12) 100%)`;
+            // Update icon
+            if (volumeBtn) {
+                const highIcon = volumeBtn.querySelector('[data-volume-high]');
+                const lowIcon = volumeBtn.querySelector('[data-volume-low]');
+                const muteIcon = volumeBtn.querySelector('[data-volume-mute]');
+                if (highIcon && lowIcon && muteIcon) {
+                    highIcon.classList.add('hidden');
+                    lowIcon.classList.add('hidden');
+                    muteIcon.classList.add('hidden');
+                    if (clampedVol === 0) {
+                        muteIcon.classList.remove('hidden');
+                    } else if (clampedVol < 0.5) {
+                        lowIcon.classList.remove('hidden');
+                    } else {
+                        highIcon.classList.remove('hidden');
+                    }
+                }
+            }
+        };
+
+        if (volumeBtn && volumeSlider) {
+            const currentVol = this.audioElement.volume || 1;
+            updateVolumeVisual(currentVol);
+            on(volumeSlider, 'input', (e) => {
+                const vol = Number(e.target.value) / 100;
+                this.audioElement.volume = Math.max(0, Math.min(1, vol));
+                updateVolumeVisual(vol);
+            });
+            on(volumeBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (this.audioElement.volume > 0) {
+                    this.audioElement._savedVolume = this.audioElement.volume;
+                    this.audioElement.volume = 0;
+                } else {
+                    this.audioElement.volume = this.audioElement._savedVolume || 1;
+                }
+                updateVolumeVisual(this.audioElement.volume);
+            });
+        }
+
+        // Keyboard shortcuts - only active when container is hovered or focused
+        let keyboardHandlerActive = false;
+
+        const activateKeyboardHandler = () => {
+            keyboardHandlerActive = true;
+            container.classList.add('keyboard-shortcuts-active');
+        };
+
+        const deactivateKeyboardHandler = () => {
+            keyboardHandlerActive = false;
+            container.classList.remove('keyboard-shortcuts-active');
+        };
+
+        const keyboardHandler = (e) => {
+            // Only handle if active, audio is loaded, and not in an input
+            if (!keyboardHandlerActive) return;
+            if (!this.currentAudio) return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+            switch(e.key) {
+                case ' ':
+                    e.preventDefault();
+                    this.togglePlayPause();
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    skip(e.shiftKey ? -5 : -15);
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    skip(e.shiftKey ? 5 : 15);
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    if (this.audioElement) {
+                        this.audioElement.volume = Math.min(1, this.audioElement.volume + 0.1);
+                        updateVolumeVisual(this.audioElement.volume);
+                    }
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    if (this.audioElement) {
+                        this.audioElement.volume = Math.max(0, this.audioElement.volume - 0.1);
+                        updateVolumeVisual(this.audioElement.volume);
+                    }
+                    break;
+                case 'm':
+                case 'M':
+                    e.preventDefault();
+                    if (volumeBtn) volumeBtn.click();
+                    break;
+            }
+        };
+
+        // Activate keyboard shortcuts on hover/focus
+        on(container, 'mouseenter', activateKeyboardHandler);
+        on(container, 'mouseleave', deactivateKeyboardHandler);
+        on(container, 'focusin', activateKeyboardHandler);
+        on(container, 'focusout', (e) => {
+            // Only deactivate if focus is leaving the container entirely
+            if (!container.contains(e.relatedTarget)) {
+                deactivateKeyboardHandler();
+            }
+        });
+
+        // Start/stop waveform based on play state
+        on(this.audioElement, 'play', () => {
+            update();
+            startWaveform();
+        });
+        on(this.audioElement, 'pause', () => {
+            update();
+            stopWaveform();
+        });
+
+	        if (rateBtn) {
+	            const syncRate = () => {
+	                this.updatePlaybackRateUi(container);
+	            };
+	            syncRate();
+	            on(rateBtn, 'click', (e) => {
+	                e.preventDefault();
+	                e.stopPropagation();
+	                this.cyclePlaybackRate();
+	                syncRate();
+	            });
+	            on(this.audioElement, 'ratechange', syncRate);
+	        }
+
+	        if (seek) {
+            on(seek, 'input', () => {
+                const dur = Number(this.audioElement.duration || 0);
+                if (!Number.isFinite(dur) || dur <= 0) return;
+                const v = Number(seek.value || 0);
+                const t = (v / 1000) * dur;
+                if (Number.isFinite(t)) this.audioElement.currentTime = Math.max(0, Math.min(dur, t));
+            });
+            on(seek, 'pointerdown', () => { seeking = true; });
+            on(seek, 'pointerup', () => { seeking = false; update(); });
+            on(seek, 'touchstart', () => { seeking = true; }, { passive: true });
+            on(seek, 'touchend', () => { seeking = false; update(); }, { passive: true });
+        }
+
+        on(this.audioElement, 'timeupdate', update);
+	        on(this.audioElement, 'loadedmetadata', update);
+	        on(this.audioElement, 'durationchange', update);
+	        document.addEventListener('keydown', keyboardHandler);
+
+	        const cleanup = () => {
+	            stopWaveform();
+	            document.removeEventListener('keydown', keyboardHandler);
+	            container.removeEventListener('mouseenter', activateKeyboardHandler);
+	            container.removeEventListener('mouseleave', deactivateKeyboardHandler);
+	            container.removeEventListener('focusin', activateKeyboardHandler);
+	            container.removeEventListener('focusout', deactivateKeyboardHandler);
+	            deactivateKeyboardHandler();
+	            container._kaleidoControlsBound = false;
+	        };
+
+	        container._kaleidoCleanup = cleanup;
+
+	        update();
+	    }
 
     attachInlineAudioVariantHandlers(container, reportId, audioSrc) {
         const block = container.querySelector('[data-audio-variant]');
@@ -6698,9 +10579,11 @@ class AudioDashboard {
                 event.stopPropagation();
                 if (!audioSrc) return;
                 const isActive = this.currentAudio && this.currentAudio.id === reportId;
-                if (isActive && this.isPlaying) {
+                if (isActive) {
+                    // Already loaded, just toggle play/pause
                     this.togglePlayPause();
                 } else {
+                    // New track, load it
                     this.playAudio(reportId);
                 }
                 this.refreshAudioVariantBlocks();
@@ -6724,11 +10607,16 @@ class AudioDashboard {
             const available = block.getAttribute('data-audio-available') === '1';
             const statusEl = block.querySelector('[data-audio-status]');
             const button = block.querySelector('[data-variant-audio-btn]');
+            const isDockedPlayer = block.classList.contains('kaleido-audio-panel--dock');
+            const labelEl = button ? button.querySelector('[data-label]') : null;
+            const playIcon = button ? button.querySelector('[data-icon-play]') : null;
+            const pauseIcon = button ? button.querySelector('[data-icon-pause]') : null;
 
             if (!available) {
                 if (statusEl) statusEl.textContent = 'Audio summary is not available for this item.';
                 if (button) {
-                    button.textContent = 'Unavailable';
+                    if (labelEl) labelEl.textContent = 'Unavailable';
+                    else button.textContent = 'Unavailable';
                     button.disabled = true;
                 }
                 return;
@@ -6739,13 +10627,27 @@ class AudioDashboard {
 
             if (statusEl) {
                 statusEl.textContent = isActive
-                    ? (isPlaying ? 'Now playing via the global controls.' : 'Ready – press play to resume.')
-                    : 'Ready to play. Use the button below to start playback.';
+                    ? (isPlaying ? 'Playing now.' : 'Paused. Press play to resume.')
+                    : (isDockedPlayer ? 'Ready to play while you read.' : 'Ready to play. Use the button below to start playback.');
             }
 
             if (button) {
                 button.disabled = false;
-                button.textContent = isActive && isPlaying ? 'Pause audio' : 'Play audio';
+                const defaultLabel = button.getAttribute('data-default-label') || 'Play';
+                const playingLabel = button.getAttribute('data-playing-label') || 'Pause';
+                const nextLabel = isActive && isPlaying ? playingLabel : defaultLabel;
+                if (labelEl) labelEl.textContent = nextLabel;
+                else button.textContent = nextLabel;
+                button.setAttribute('aria-pressed', String(isActive && isPlaying));
+                if (playIcon && pauseIcon) {
+                    if (isActive && isPlaying) {
+                        playIcon.classList.add('hidden');
+                        pauseIcon.classList.remove('hidden');
+                    } else {
+                        playIcon.classList.remove('hidden');
+                        pauseIcon.classList.add('hidden');
+                    }
+                }
             }
         });
     }
@@ -6975,7 +10877,7 @@ class AudioDashboard {
                 const u = variants[i]?.url || '';
                 if (typeof u === 'string' && /(?:^|\/)AI2_/i.test(u)) return this.normalizeAssetUrl(u);
             }
-        } catch (_) {}
+        } catch (_) { }
         return '';
     }
 
@@ -7019,11 +10921,20 @@ class AudioDashboard {
                 rotate: this.imgModeRotateSettingBtn
             }
         ];
-        sets.forEach(s => {
+        sets.forEach((s, idx) => {
             if (!s) return;
-            [s.thumb, s.ai, s.ai2, s.rotate].forEach(btn => { if (btn) btn.classList.remove('bg-slate-200', 'dark:bg-slate-700'); });
-            const active = this.imageMode === 'thumbnail' ? s.thumb : this.imageMode === 'ai' ? s.ai : this.imageMode === 'ai2' ? s.ai2 : s.rotate;
-            if (active) active.classList.add('bg-slate-200', 'dark:bg-slate-700');
+            const isSettingsPanel = idx === 2;
+            if (isSettingsPanel) {
+                // Use is-active class for settings panel
+                [s.thumb, s.ai, s.ai2, s.rotate].forEach(btn => { if (btn) btn.classList.remove('is-active'); });
+                const active = this.imageMode === 'thumbnail' ? s.thumb : this.imageMode === 'ai' ? s.ai : this.imageMode === 'ai2' ? s.ai2 : s.rotate;
+                if (active) active.classList.add('is-active');
+            } else {
+                // Legacy style for header buttons
+                [s.thumb, s.ai, s.ai2, s.rotate].forEach(btn => { if (btn) btn.classList.remove('bg-slate-200', 'dark:bg-slate-700'); });
+                const active = this.imageMode === 'thumbnail' ? s.thumb : this.imageMode === 'ai' ? s.ai : this.imageMode === 'ai2' ? s.ai2 : s.rotate;
+                if (active) active.classList.add('bg-slate-200', 'dark:bg-slate-700');
+            }
         });
     }
 
@@ -7034,7 +10945,7 @@ class AudioDashboard {
         this.updateImageModeUI();
         this.applyImageModeToAllCards();
         // Fallback: aggressively ensure mode is reflected for all cards
-        try { this.forceSwapAllCardsForCurrentMode(); } catch(_) {}
+        try { this.forceSwapAllCardsForCurrentMode(); } catch (_) { }
         // Increment rotation step if staying in rotate mode
         if (mode === 'rotate') {
             this.rotateCounter = (prev === 'rotate') ? (this.rotateCounter + 1) : 0;
@@ -7062,8 +10973,8 @@ class AudioDashboard {
                     const ai1 = item && item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '';
                     const ai2 = this.getAi2UrlForItem(item) || '';
                     const target = this.imageMode === 'ai2' ? (ai2 || ai1) : (ai1 || ai2);
-                    if (ai1) try { imgSummary.setAttribute('data-ai1-url', ai1); } catch(_) {}
-                    if (ai2) try { imgSummary.setAttribute('data-ai2-url', ai2); } catch(_) {}
+                    if (ai1) try { imgSummary.setAttribute('data-ai1-url', ai1); } catch (_) { }
+                    if (ai2) try { imgSummary.setAttribute('data-ai2-url', ai2); } catch (_) { }
                     if (target && imgSummary.src !== target) imgSummary.src = target;
                     imgSummary.classList.remove('hidden');
                 }
@@ -7146,8 +11057,8 @@ class AudioDashboard {
                     showSummary = true;
                     if (imgSummary && pick.url) {
                         if (imgSummary.src !== pick.url) imgSummary.src = pick.url;
-                        try { imgSummary.setAttribute('data-ai1-url', a1 || ''); } catch(_) {}
-                        try { imgSummary.setAttribute('data-ai2-url', pick.url); } catch(_) {}
+                        try { imgSummary.setAttribute('data-ai1-url', a1 || ''); } catch (_) { }
+                        try { imgSummary.setAttribute('data-ai2-url', pick.url); } catch (_) { }
                     }
                 }
             } else {
@@ -7169,10 +11080,10 @@ class AudioDashboard {
                 let ai1 = imgSummary.getAttribute('data-ai1-url') || (item.summary_image_url ? this.normalizeAssetUrl(item.summary_image_url) : '') || '';
                 let ai2 = imgSummary.getAttribute('data-ai2-url') || this.getAi2UrlForItem(item) || '';
                 const target = wantAi2 ? (ai2 || ai1) : (ai1 || ai2);
-                if (ai1) try { imgSummary.setAttribute('data-ai1-url', ai1); } catch(_) {}
-                if (ai2) try { imgSummary.setAttribute('data-ai2-url', ai2); } catch(_) {}
+                if (ai1) try { imgSummary.setAttribute('data-ai1-url', ai1); } catch (_) { }
+                if (ai2) try { imgSummary.setAttribute('data-ai2-url', ai2); } catch (_) { }
                 if (target && imgSummary.src !== target) imgSummary.src = target;
-            } catch (_) {}
+            } catch (_) { }
         }
 
         if (showSummary) {
@@ -7235,7 +11146,7 @@ class AudioDashboard {
                 console.warn('Failed to parse subcategories_json:', e, item.subcategories_json);
             }
         }
-        
+
         // Also check for pre-parsed categories from SQLiteContentIndex
         if (!subcategoriesStructure && item?.analysis?.categories?.length) {
             subcategoriesStructure = { categories: item.analysis.categories };
@@ -7262,7 +11173,7 @@ class AudioDashboard {
         const rich = Array.isArray(item?.analysis?.categories) ? item.analysis.categories : [];
 
         let categories = [];
-        
+
         // Prefer schema_version >= 2 structured data
         if (item?.analysis?.schema_version >= 2 && Array.isArray(item?.analysis?.categories)) {
             categories = item.analysis.categories.map(c => c?.category).filter(Boolean);
@@ -7272,7 +11183,7 @@ class AudioDashboard {
             const catsLegacy = Array.isArray(item?.analysis?.category)
                 ? item.analysis.category
                 : (item?.analysis?.category ? [item.analysis.category] : []);
-            
+
             categories = Array.from(new Set([...catsRich, ...catsLegacy]))
                 .flatMap(cat => {
                     // If we get a comma-separated string, split it into separate categories
@@ -7283,13 +11194,13 @@ class AudioDashboard {
                 })
                 .filter(Boolean);
         }
-        
+
         // Build [parent, subcat] pairs from rich
         const pairsRich = rich.flatMap(c => {
             const parent = c?.category;
             if (!parent) return [];
             const arr = Array.isArray(c?.subcategories) ? c.subcategories
-                      : (c?.subcategory ? [c.subcategory] : []);
+                : (c?.subcategory ? [c.subcategory] : []);
             return (arr || []).map(sc => [parent, sc]);
         });
 
@@ -7304,7 +11215,7 @@ class AudioDashboard {
                 if (subcategory && !categories.includes(subcategory)) {
                     // Find the correct parent category for this subcategory
                     const correctParent = SUBCATEGORY_PARENTS[subcategory];
-                    
+
                     if (correctParent && categories.includes(correctParent)) {
                         // Pair with correct parent if it's in the categories list
                         legacyPairs.push([correctParent, subcategory]);
@@ -7324,7 +11235,7 @@ class AudioDashboard {
             return true;
         });
         const subcats = Array.from(new Set(subcatPairs.map(([, s]) => s)));
-        
+
         return { categories, subcats, subcatPairs };
     }
 
@@ -7362,7 +11273,7 @@ class AudioDashboard {
         const rect = el.getBoundingClientRect();
         const clientX = ('clientX' in event) ? event.clientX : (event.touches && event.touches[0] ? event.touches[0].clientX : 0);
         const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-        
+
         // If this card is already playing, seek immediately
         if (this.currentAudio && this.currentAudio.id === id && this.audioElement) {
             const duration = this.audioElement.duration;
@@ -7371,7 +11282,7 @@ class AudioDashboard {
             }
             return;
         }
-        
+
         // Otherwise, start playing this card and seek when ready
         this._pendingSeek = pct;
         this.playAudio(id);
@@ -7380,25 +11291,25 @@ class AudioDashboard {
     beginCardScrubDrag(el, startX) {
         const card = el.closest('[data-report-id]');
         if (!card) return;
-        
+
         // Prevent conflicting drag operations
         if (this._dragState) return;
-        
+
         const id = card.dataset.reportId;
         this._dragState = { el, id };
         this._suppressOpen = true; // prevent card open after drag-end click
-        
+
         let finalSeekPct = 0;
-        
+
         const onMove = (clientX) => {
             const rect = el.getBoundingClientRect();
             const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
             finalSeekPct = pct;
-            
+
             // Update visual progress bar immediately
             const bar = el.querySelector('[data-card-progress]');
             if (bar) bar.style.width = `${pct * 100}%`;
-            
+
             // Check if this is the currently active card (dynamic check during drag)
             const isCurrentlyActive = this.currentAudio && this.currentAudio.id === id;
             if (isCurrentlyActive && this.audioElement) {
@@ -7408,10 +11319,10 @@ class AudioDashboard {
                 }
             }
         };
-        
+
         const move = (e) => onMove(e.clientX);
         const moveTouch = (e) => onMove(e.touches[0].clientX);
-        
+
         const up = () => {
             const isActiveCard = this.currentAudio && this.currentAudio.id === id;
             if (!isActiveCard) {
@@ -7479,7 +11390,92 @@ class AudioDashboard {
         if (this.searchInputHeader && this.searchInputHeader.value !== v) this.searchInputHeader.value = v;
         this.currentPage = 1;
         this.updateHeroBadges();
-        this.loadContent();
+
+        // Use semantic search if enabled and there's a query
+        if (this.semanticSearchEnabled && this.searchQuery) {
+            this.performSemanticSearch();
+        } else {
+            this.loadContent();
+        }
+    }
+
+    async performSemanticSearch() {
+        if (!this.searchQuery) return;
+
+        // Show loading state
+        if (this.contentGrid) {
+            this.contentGrid.innerHTML = `
+                <div class="col-span-full text-center py-8 text-slate-500">
+                    <div class="animate-pulse">Searching with AI...</div>
+                </div>`;
+        }
+
+        try {
+            // Use hybrid search (combines semantic + keyword via RRF)
+            const response = await fetch(`/api/semantic-search?q=${encodeURIComponent(this.searchQuery)}&topk=50&mode=hybrid`);
+            const data = await response.json();
+
+            if (!data.available) {
+                this.contentGrid.innerHTML = `
+                    <div class="col-span-full text-center py-8 text-slate-500">
+                        <div class="text-lg mb-2">Semantic search unavailable</div>
+                        <div class="text-sm">${data.error || 'ChromaDB not initialized'}</div>
+                    </div>`;
+                return;
+            }
+
+            if (data.results.length === 0) {
+                this.contentGrid.innerHTML = `
+                    <div class="col-span-full text-center py-8 text-slate-500">
+                        <div class="text-lg mb-2">No results found</div>
+                        <div class="text-sm">Try a different search term</div>
+                    </div>`;
+                this.updateResultsInfo({ page: 1, size: 0, total_count: 0, total_pages: 0 });
+                return;
+            }
+
+            // Get full item data from backend for the matched IDs
+            const ids = data.results.map(r => r.id);
+            const itemsResponse = await fetch(`/api/reports?ids=${ids.join(',')}`);
+            const itemsData = await itemsResponse.json();
+            const itemsMap = new Map((itemsData.reports || []).map(item => [item.video_id || item.file_stem || item.id, item]));
+
+            // Merge semantic scores with items
+            const mergedItems = data.results.map(result => {
+                const item = itemsMap.get(result.id);
+                if (item) {
+                    item._semanticScore = result.score;
+                }
+                return item;
+            }).filter(Boolean);
+
+            this.currentItems = mergedItems;
+            this.renderContent(mergedItems);
+            this.renderPagination({ page: 1, size: mergedItems.length, total_count: mergedItems.length, total_pages: 1, has_next: false, has_prev: false });
+            this.updateResultsInfo({ page: 1, size: mergedItems.length, total_count: mergedItems.length, total_pages: 1 });
+
+            // Show search indicator with type
+            if (this.contentGrid) {
+                const searchType = data.search_type || 'hybrid';
+                const indicator = document.createElement('div');
+                indicator.className = 'col-span-full flex items-center gap-2 text-sm text-slate-500 mb-2';
+                indicator.innerHTML = `
+                    <svg class="w-4 h-4 text-audio-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2a4 4 0 0 1 4 4c0 1.5-.8 2.8-2 3.5v1.5h3a3 3 0 0 1 3 3v1a2 2 0 0 1-2 2h-1v3a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2v-3h-1a2 2 0 0 1-2-2v-1a3 3 0 0 1 3-3h3v-1.5c-1.2-.7-2-2-2-3.5a4 4 0 0 1 4-4z"/>
+                    </svg>
+                    <span>AI ${searchType} search: ${mergedItems.length} results for "${this.escapeHtml(this.searchQuery)}"</span>
+                `;
+                this.contentGrid.prepend(indicator);
+            }
+
+        } catch (error) {
+            console.error('Semantic search error:', error);
+            this.contentGrid.innerHTML = `
+                <div class="col-span-full text-center py-8 text-red-500">
+                    <div class="text-lg mb-2">Search error</div>
+                    <div class="text-sm">${error.message}</div>
+                </div>`;
+        }
     }
 
     setSortMode(mode) {
@@ -7487,18 +11483,18 @@ class AudioDashboard {
         this.currentPage = 1;
         this.updateSortToggle();
         this.updateRadioSortUI();
-        
+
         // Scroll to top of results to make sorting change visible
         const mainContent = document.querySelector('main');
         if (mainContent) {
             mainContent.scrollTop = 0;
         }
-        
+
         // Clear current content and show loading to indicate change
         if (this.contentGrid) {
             this.contentGrid.innerHTML = '<div class="col-span-full text-center py-8 text-slate-500">Loading sorted results...</div>';
         }
-        
+
         this.loadContent();
     }
 
@@ -7526,7 +11522,7 @@ class AudioDashboard {
             const isSelected = radio.value === this.currentSort;
             const radioDiv = radio.nextElementSibling;
             const innerDiv = radioDiv.querySelector('div');
-            
+
             if (isSelected) {
                 radio.checked = true;
                 radioDiv.classList.remove('border-slate-300', 'dark:border-slate-600');
@@ -7545,7 +11541,7 @@ class AudioDashboard {
 
     handleFilterChange() {
         this.currentFilters = {};
-        
+
         // Collect all checked filters
         document.querySelectorAll('input[type="checkbox"][data-filter]:checked').forEach(checkbox => {
             const filterType = checkbox.dataset.filter;
@@ -7554,7 +11550,7 @@ class AudioDashboard {
             }
             this.currentFilters[filterType].push(checkbox.value);
         });
-        
+
         this.currentPage = 1;
         this.loadContent();
         this.updateShowAllButtonVisibility();
@@ -7562,7 +11558,7 @@ class AudioDashboard {
 
     applyFilterFromChip(filterType, filterValue, parentCategory = null) {
         console.log('🔍 Filter chip clicked:', { filterType, filterValue, parentCategory });
-        
+
         // Only clear filters of the same type (preserve other filter types)
         if (filterType === 'channel') {
             // For channels, only clear other channel filters (preserve categories, etc.)
@@ -7585,7 +11581,7 @@ class AudioDashboard {
                 cb.checked = false;
             });
         }
-        
+
         // Apply the clicked filter
         let checkbox = null;
         if (filterType === 'subcategory' && parentCategory) {
@@ -7608,10 +11604,10 @@ class AudioDashboard {
                 }
             }
         }
-        
+
         // Trigger filter update
         this.handleFilterChange();
-        
+
         // Show visual feedback that filter was applied
         this.showFilterAppliedFeedback(filterType, filterValue);
     }
@@ -7713,7 +11709,7 @@ class AudioDashboard {
 
     toggleMute() {
         if (!this.audioElement) return;
-        
+
         this.audioElement.muted = !this.audioElement.muted;
         this.updateMuteIcon();
     }
@@ -7731,8 +11727,20 @@ class AudioDashboard {
     handleKeyboard(event) {
         // Ignore if typing in an input
         if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
-        
-        switch(event.code) {
+
+        // Cmd/Ctrl + K focuses search (matches the header hint).
+        // Important: this avoids clobbering the single-key "K" next-track shortcut.
+        if ((event.metaKey || event.ctrlKey) && event.code === 'KeyK') {
+            event.preventDefault();
+            const target = this.searchInputHeader || this.searchInputTop || this.searchInput;
+            if (target) {
+                try { target.focus(); } catch (_) { }
+                try { target.select(); } catch (_) { }
+            }
+            return;
+        }
+
+        switch (event.code) {
             case 'Space':
                 if (this.currentAudio) {
                     event.preventDefault();
@@ -7803,7 +11811,7 @@ class AudioDashboard {
     // Utility methods
     formatDuration(seconds) {
         if (!seconds || isNaN(seconds)) return '0:00';
-        
+
         const minutes = Math.floor(seconds / 60);
         const remainingSeconds = Math.floor(seconds % 60);
         return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
@@ -7811,15 +11819,15 @@ class AudioDashboard {
 
     formatReadingTime(minutes) {
         if (!minutes || isNaN(minutes)) return null;
-        
+
         if (minutes < 1) return '< 1 min';
         return `${minutes} min`;
     }
 
     getButtonDurations(item) {
         const durations = {};
-        
-        
+
+
         // Read duration from media_metadata.estimated_reading_minutes or calculate from word_count
         if (item.media_metadata?.estimated_reading_minutes) {
             durations.read = this.formatReadingTime(item.media_metadata.estimated_reading_minutes);
@@ -7828,18 +11836,18 @@ class AudioDashboard {
             const readingMinutes = Math.max(1, Math.round(item.word_count / 200));
             durations.read = this.formatReadingTime(readingMinutes);
         }
-        
+
         // Listen duration from media_metadata.mp3_duration_seconds
         if (item.media_metadata?.mp3_duration_seconds) {
             durations.listen = this.formatDuration(item.media_metadata.mp3_duration_seconds);
         }
-        
+
         // Watch duration from media_metadata.video_duration_seconds or fallback to duration_seconds
         const videoDuration = item.media_metadata?.video_duration_seconds || item.duration_seconds;
         if (videoDuration) {
             durations.watch = this.formatDuration(videoDuration);
         }
-        
+
         return durations;
     }
 
@@ -7921,7 +11929,7 @@ class AudioDashboard {
         if (entered) {
             this.reprocessToken = entered.trim();
             this.reprocessTokenSource = 'prompt';
-            try { localStorage.setItem('ytv2.reprocessToken', this.reprocessToken); this.reprocessTokenSource = 'storage'; } catch (_) {}
+            try { localStorage.setItem('ytv2.reprocessToken', this.reprocessToken); this.reprocessTokenSource = 'storage'; } catch (_) { }
             this.updateReprocessFootnote();
             return this.reprocessToken;
         }
@@ -7940,7 +11948,7 @@ class AudioDashboard {
 
             const panel = document.createElement('div');
             panel.className = 'w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl';
-            const hint = `Paste your admin token (DEBUG_TOKEN). Find it in Render → Environment → DEBUG_TOKEN. This is saved locally in this browser.`;
+            const hint = `Enter your admin token. This is saved locally in your browser.`;
             const detected = (typeof window !== 'undefined' && window.REPROCESS_TOKEN) ? '<span class="text-xs text-emerald-600 dark:text-emerald-400">A server-provided token is available.</span>' : '';
             panel.innerHTML = `
               <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
@@ -7951,7 +11959,8 @@ class AudioDashboard {
                 <p class="text-sm text-slate-600 dark:text-slate-300">${hint}</p>
                 ${detected}
                 <label class="block text-sm text-slate-600 dark:text-slate-300 mb-1" for="adminTokenInput">Admin token</label>
-                <input id="adminTokenInput" type="text" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-audio-500" placeholder="Paste DEBUG_TOKEN here" />
+                <input id="adminTokenInput" type="text" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-audio-500" placeholder="Enter admin token" />
+                <p id="tokenError" class="text-xs text-red-500 dark:text-red-400 hidden">Invalid token. Please try again.</p>
                 <p class="text-xs text-slate-500 dark:text-slate-400">Tip: You can change or clear this later in Settings → Admin.</p>
               </div>
               <div class="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-end gap-2">
@@ -7960,27 +11969,76 @@ class AudioDashboard {
               </div>`;
             overlay.appendChild(panel);
             document.body.appendChild(overlay);
-            this._openImagesModalReportId = reportId;
 
             const input = panel.querySelector('#adminTokenInput');
             const save = panel.querySelector('[data-save]');
             const cancel = panel.querySelector('[data-cancel]');
             const close = panel.querySelector('[data-close]');
+            const errorEl = panel.querySelector('#tokenError');
+            try {
+                const existing = this.reprocessToken || localStorage.getItem('ytv2.reprocessToken') || '';
+                if (input && existing) input.value = String(existing);
+            } catch (_) { }
             setTimeout(() => input && input.focus(), 10);
 
-            const cleanup = () => { try { document.body.removeChild(overlay); } catch(_) {} };
+            const cleanup = () => { try { document.body.removeChild(overlay); } catch (_) { } };
             const finish = (val) => { cleanup(); resolve(val); };
 
-            save.addEventListener('click', () => finish(input.value.trim()));
+            // Validate token by making a test API call
+            const validateToken = async (token) => {
+                if (!token) return false;
+                try {
+                    // Try a lightweight API call to validate the token
+                    const response = await fetch('/api/reprocess', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Reprocess-Token': token
+                        },
+                        body: JSON.stringify({ video_id: 'test-validation', summary_types: [] })
+                    });
+                    // 202 = valid, 401/403 = invalid token, other = server error (still accept token)
+                    return response.status !== 401 && response.status !== 403;
+                } catch (e) {
+                    // Network error - accept token anyway
+                    return true;
+                }
+            };
+
+            save.addEventListener('click', async () => {
+                const token = input.value.trim();
+                if (!token) {
+                    errorEl.classList.remove('hidden');
+                    errorEl.textContent = 'Please enter a token.';
+                    return;
+                }
+                save.disabled = true;
+                save.textContent = 'Validating...';
+                const isValid = await validateToken(token);
+                if (isValid) {
+                    finish(token);
+                } else {
+                    errorEl.classList.remove('hidden');
+                    errorEl.textContent = 'Invalid token. Please check and try again.';
+                    save.disabled = false;
+                    save.textContent = 'Save';
+                    input.focus();
+                    input.select();
+                }
+            });
             cancel.addEventListener('click', () => finish(null));
             close.addEventListener('click', () => finish(null));
             overlay.addEventListener('click', (e) => { if (e.target === overlay) finish(null); });
-            panel.addEventListener('keydown', (e) => { if (e.key === 'Escape') finish(null); if (e.key === 'Enter') finish(input.value.trim()); });
+            panel.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') finish(null);
+                if (e.key === 'Enter') save.click();
+            });
+            input.addEventListener('input', () => { errorEl.classList.add('hidden'); });
         });
     }
 
     resetStoredReprocessToken() {
-        try { localStorage.removeItem('ytv2.reprocessToken'); } catch (_) {}
+        try { localStorage.removeItem('ytv2.reprocessToken'); } catch (_) { }
         if (typeof window !== 'undefined' && window.REPROCESS_TOKEN) {
             this.reprocessToken = window.REPROCESS_TOKEN;
             this.reprocessTokenSource = 'window';
@@ -7989,7 +12047,7 @@ class AudioDashboard {
             this.reprocessTokenSource = null;
         }
         this.updateReprocessFootnote();
-        this.showToast('Reprocess token cleared. You will be prompted next time.', 'info');
+        this.showToast('Auth token cleared. You will be prompted next time.', 'info');
     }
 
     updateReprocessFootnote() {
@@ -8023,7 +12081,7 @@ class AudioDashboard {
                 const item = (this.currentItems || []).find(x => x.file_stem === reportId);
                 const a = item && item.analysis ? item.analysis : {};
                 defaultPrompt = a.summary_image_prompt_last_used || a.summary_image_prompt || '';
-            } catch(_) {}
+            } catch (_) { }
             const promptText = await this.promptForImagePrompt(defaultPrompt, reportId);
             if (!promptText && promptText !== '') return; // canceled
             const token = await this.getReprocessToken();
@@ -8037,7 +12095,7 @@ class AudioDashboard {
                 body: JSON.stringify({ video_id: reportId, prompt: promptText })
             });
             if (!res.ok) {
-                const msg = await res.text().catch(()=>'');
+                const msg = await res.text().catch(() => '');
                 this.showToast(`Failed to save image prompt (${res.status})`, 'error');
                 console.error('set-image-prompt failed', res.status, msg);
                 return;
@@ -8097,7 +12155,7 @@ class AudioDashboard {
                               </div>`;
                         }).join('');
                         const olderCount = (() => {
-                            try { return variants.filter(v => this.normalizeAssetUrl(v.url || '') !== selectedUrl).length; } catch(_) { return 0; }
+                            try { return variants.filter(v => this.normalizeAssetUrl(v.url || '') !== selectedUrl).length; } catch (_) { return 0; }
                         })();
                         if (!olderCount) {
                             rows += `
@@ -8112,7 +12170,7 @@ class AudioDashboard {
                           </div>`;
                     }
                 }
-            } catch(_) {}
+            } catch (_) { }
 
             panel.innerHTML = `
               <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
@@ -8141,7 +12199,7 @@ class AudioDashboard {
             setTimeout(() => input.focus(), 10);
 
             const cleanup = () => {
-                try { document.body.removeChild(overlay); } catch(_) {}
+                try { document.body.removeChild(overlay); } catch (_) { }
             };
             const finish = (val) => { cleanup(); resolve(val); };
 
@@ -8183,7 +12241,7 @@ class AudioDashboard {
                                 body: JSON.stringify({ video_id: reportId, url: selected.url })
                             });
                             if (!res.ok) {
-                                const msg = await res.text().catch(()=> '');
+                                const msg = await res.text().catch(() => '');
                                 console.error('select-image-variant failed', res.status, msg);
                                 this.showToast(`Failed to select image (${res.status})`, 'error');
                                 return;
@@ -8195,7 +12253,7 @@ class AudioDashboard {
                                     item.summary_image_url = selected.url;
                                     if (item.analysis) item.analysis.summary_image_selected_url = selected.url;
                                 }
-                            } catch(_) {}
+                            } catch (_) { }
                             this.updateCardSummaryImage(reportId, selected.url);
                         } catch (err) {
                             console.error('select-image-variant error', err);
@@ -8231,7 +12289,7 @@ class AudioDashboard {
             if (!a2Default) {
                 const lastA2 = [...allVars].reverse().find(v => isAi2(v) && v.prompt);
                 if (lastA2) a2Default = lastA2.prompt;
-                else if (a.summary_image_prompt_last_used && isAi2(allVars[allVars.length-1]||{})) a2Default = a.summary_image_prompt_last_used;
+                else if (a.summary_image_prompt_last_used && isAi2(allVars[allVars.length - 1] || {})) a2Default = a.summary_image_prompt_last_used;
             }
             await this.openManageImagesModal(reportId, item, a1Default || '', a2Default || '');
         } catch (e) {
@@ -8244,7 +12302,7 @@ class AudioDashboard {
         return new Promise((resolve) => {
             const overlay = document.createElement('div');
             overlay.className = 'fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4';
-            try { overlay.style.zIndex = '130'; } catch(_) {}
+            try { overlay.style.zIndex = '130'; } catch (_) { }
             const panel = document.createElement('div');
             panel.className = 'w-full max-w-3xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl';
 
@@ -8258,7 +12316,7 @@ class AudioDashboard {
                 const url = v.url || '';
                 const isAi2 = m === 'ai2' || tmpl === 'ai2_freestyle' || (ps && ps.startsWith('ai2')) || /(?:^|\/)AI2_/i.test(url);
                 return !isAi2;
-            }).sort((a,b)=>{ const ca=(a.created_at||'')+''; const cb=(b.created_at||'')+''; return ca<cb?1:ca>cb?-1:0; });
+            }).sort((a, b) => { const ca = (a.created_at || '') + ''; const cb = (b.created_at || '') + ''; return ca < cb ? 1 : ca > cb ? -1 : 0; });
             // Map URLs to prompts + created_at from variants for AI2
             const urlToPrompt = new Map();
             const urlToCreated = new Map();
@@ -8276,10 +12334,10 @@ class AudioDashboard {
                 (a1VariantsAll || []).forEach(v => { if (v && v.url) known.add(this.normalizeAssetUrl(v.url)); });
                 (ai2Urls || []).forEach(u => { if (u) known.add(this.normalizeAssetUrl(u)); });
                 this._imagesModalKnownUrls = known;
-            } catch(_) {}
+            } catch (_) { }
             const a2Variants = ai2Urls
                 .map(u => ({ url: u, image_mode: 'ai2', prompt: urlToPrompt.get(this.normalizeAssetUrl(u)) || '', created_at: urlToCreated.get(this.normalizeAssetUrl(u)) || '' }))
-                .sort((a,b) => {
+                .sort((a, b) => {
                     const ca = (a.created_at || '') + '';
                     const cb = (b.created_at || '') + '';
                     return ca < cb ? 1 : ca > cb ? -1 : 0;
@@ -8310,7 +12368,7 @@ class AudioDashboard {
                   </div>`;
             };
 
-            let a1Rows = a1Variants.map((v,i)=>htmlRow(v,i,a1Selected,'ai1')).join('');
+            let a1Rows = a1Variants.map((v, i) => htmlRow(v, i, a1Selected, 'ai1')).join('');
             if (!a1Rows) {
                 if (a1Selected) {
                     a1Rows = htmlRow({ url: a1Selected, prompt: a1Default || '' }, 0, a1Selected, 'ai1');
@@ -8318,7 +12376,7 @@ class AudioDashboard {
                     a1Rows = '<div class="px-2 py-3 text-xs text-slate-500">No AI1 variants yet.</div>';
                 }
             }
-            const a2Rows = a2Variants.map((v,i)=>htmlRow(v,i,a2Selected,'ai2')).join('') || '<div class="px-2 py-3 text-xs text-slate-500">No AI2 variants yet.</div>';
+            const a2Rows = a2Variants.map((v, i) => htmlRow(v, i, a2Selected, 'ai2')).join('') || '<div class="px-2 py-3 text-xs text-slate-500">No AI2 variants yet.</div>';
 
             panel.innerHTML = `
               <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
@@ -8336,7 +12394,7 @@ class AudioDashboard {
                 <div data-pane="ai1">
                   <label class="block text-sm mb-1">AI1 prompt</label>
                   <textarea data-input-ai1 rows="4" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2">${this.escapeHtml(a1Default)}</textarea>
-                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai1-line style="${(a.summary_image_prompt_original||'').trim() ? '' : 'display:none'}">Default: <span data-default-ai1>${this.escapeHtml((a.summary_image_prompt_original||'').trim() || '')}</span></div>
+                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai1-line style="${(a.summary_image_prompt_original || '').trim() ? '' : 'display:none'}">Default: <span data-default-ai1>${this.escapeHtml((a.summary_image_prompt_original || '').trim() || '')}</span></div>
                   <div class="mt-1 text-xs text-slate-500 dark:text-slate-400 hidden" data-status-ai1><span class="inline-flex items-center gap-1" data-status-ai1-text><svg class="animate-spin h-3 w-3 text-audio-600" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg> Regenerating…</span></div>
                   <div class="mt-2 flex items-center gap-2"><button data-save-ai1 class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Regenerate AI1</button><button data-use-default-ai1 class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Use default prompt</button></div>
                   <div class="mt-3 text-xs uppercase tracking-wide text-slate-400">AI1 variants</div>
@@ -8345,7 +12403,7 @@ class AudioDashboard {
                 <div data-pane="ai2" class="hidden">
                   <label class="block text-sm mb-1">AI2 prompt</label>
                   <textarea data-input-ai2 rows="4" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2">${this.escapeHtml(a2Default)}</textarea>
-                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai2-line style="${(a.summary_image_ai2_prompt_original||'').trim() ? '' : 'display:none'}">Default: <span data-default-ai2>${this.escapeHtml((a.summary_image_ai2_prompt_original||'').trim() || '')}</span></div>
+                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai2-line style="${(a.summary_image_ai2_prompt_original || '').trim() ? '' : 'display:none'}">Default: <span data-default-ai2>${this.escapeHtml((a.summary_image_ai2_prompt_original || '').trim() || '')}</span></div>
                   <div class="mt-1 text-xs text-slate-500 dark:text-slate-400 hidden" data-status-ai2><span class="inline-flex items-center gap-1" data-status-ai2-text><svg class="animate-spin h-3 w-3 text-audio-600" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg> Regenerating…</span></div>
                   <div class="mt-2 flex items-center gap-2"><button data-save-ai2 class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Regenerate AI2</button><button data-use-default-ai2 class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Use default prompt</button></div>
                   <div class="mt-3 text-xs uppercase tracking-wide text-slate-400">AI2 variants</div>
@@ -8386,8 +12444,8 @@ class AudioDashboard {
                 tabA2.classList.toggle('bg-slate-200', !a1on); tabA2.classList.toggle('dark:bg-slate-700', !a1on);
             };
             setTab('ai1');
-            tabA1.addEventListener('click', ()=> setTab('ai1'));
-            tabA2.addEventListener('click', ()=> setTab('ai2'));
+            tabA1.addEventListener('click', () => setTab('ai1'));
+            tabA2.addEventListener('click', () => setTab('ai2'));
 
             const setStatus = (mode, kind /* 'regen' | 'ready' | 'hide' */) => {
                 const el = mode === 'ai2' ? statusA2 : statusA1;
@@ -8399,7 +12457,7 @@ class AudioDashboard {
                 } else if (kind === 'ready') {
                     if (span) span.innerHTML = '<svg class="h-3 w-3 text-emerald-600" viewBox="0 0 24 24"><path fill="currentColor" d="M9 16.2l-3.5-3.5 1.4-1.4L9 13.4l7.1-7.1 1.4 1.4z"/></svg> New image ready';
                     el.classList.remove('hidden');
-                    setTimeout(()=>{ el.classList.add('hidden'); }, 1800);
+                    setTimeout(() => { el.classList.add('hidden'); }, 1800);
                 } else {
                     el.classList.add('hidden');
                 }
@@ -8419,7 +12477,7 @@ class AudioDashboard {
             };
 
             const startPollingForNewVariants = (videoId) => {
-                try { if (this._imagesModalPollTimer) clearInterval(this._imagesModalPollTimer); } catch(_) {}
+                try { if (this._imagesModalPollTimer) clearInterval(this._imagesModalPollTimer); } catch (_) { }
                 const startKnown = new Set(this._imagesModalKnownUrls || []);
                 const tick = async () => {
                     try {
@@ -8432,7 +12490,7 @@ class AudioDashboard {
                             vars.forEach(v => { if (v && v.url) urls.add(this.normalizeAssetUrl(v.url)); });
                             const ai2 = this.getAi2VariantUrls(itm) || [];
                             ai2.forEach(u => { if (u) urls.add(this.normalizeAssetUrl(u)); });
-                        } catch(_) {}
+                        } catch (_) { }
                         // Detect new URLs vs startKnown
                         let hasNew = false;
                         urls.forEach(u => { if (!startKnown.has(u)) hasNew = true; });
@@ -8442,7 +12500,7 @@ class AudioDashboard {
                             clearInterval(this._imagesModalPollTimer);
                             this._imagesModalPollTimer = null;
                         }
-                    } catch(_) {}
+                    } catch (_) { }
                 };
                 this._imagesModalPollTimer = setInterval(tick, 3000);
                 // also run immediately once
@@ -8465,10 +12523,10 @@ class AudioDashboard {
                 // Fallback polling in case NAS writes directly to DB without SSE
                 startPollingForNewVariants(videoId);
             };
-            saveA1.addEventListener('click', ()=> onSavePrompt('ai1', (inputA1.value||'').trim()));
-            saveA2.addEventListener('click', ()=> onSavePrompt('ai2', (inputA2.value||'').trim()));
-            if (useDefaultA1) useDefaultA1.addEventListener('click', ()=> { inputA1.value = (a.summary_image_prompt_original || a.summary_image_prompt || a1Default || ''); });
-            if (useDefaultA2) useDefaultA2.addEventListener('click', ()=> { inputA2.value = (a.summary_image_ai2_prompt_original || a.summary_image_ai2_prompt || a2Default || ''); });
+            saveA1.addEventListener('click', () => onSavePrompt('ai1', (inputA1.value || '').trim()));
+            saveA2.addEventListener('click', () => onSavePrompt('ai2', (inputA2.value || '').trim()));
+            if (useDefaultA1) useDefaultA1.addEventListener('click', () => { inputA1.value = (a.summary_image_prompt_original || a.summary_image_prompt || a1Default || ''); });
+            if (useDefaultA2) useDefaultA2.addEventListener('click', () => { inputA2.value = (a.summary_image_ai2_prompt_original || a.summary_image_ai2_prompt || a2Default || ''); });
 
             // Simple in-modal confirmation UI (instead of window.confirm)
             const confirmModal = (message, confirmLabel = 'Delete') => new Promise((resolve) => {
@@ -8484,9 +12542,9 @@ class AudioDashboard {
                   </div>`;
                 ov.appendChild(box);
                 document.body.appendChild(ov);
-                const done = (v) => { try { ov.remove(); } catch(_) {}; resolve(v); };
-                box.querySelector('[data-cancel]')?.addEventListener('click', ()=>done(false));
-                box.querySelector('[data-ok]')?.addEventListener('click', ()=>done(true));
+                const done = (v) => { try { ov.remove(); } catch (_) { }; resolve(v); };
+                box.querySelector('[data-cancel]')?.addEventListener('click', () => done(false));
+                box.querySelector('[data-ok]')?.addEventListener('click', () => done(true));
             });
 
             const onDeleteVariant = async (mode, url) => {
@@ -8501,10 +12559,10 @@ class AudioDashboard {
                 });
                 if (!res.ok) {
                     let msg = 'Failed to delete image';
-                    try { const j = await res.json(); if (j && j.error) msg += `: ${j.error}`; } catch(_) {}
+                    try { const j = await res.json(); if (j && j.error) msg += `: ${j.error}`; } catch (_) { }
                     this.showToast(msg, 'error'); return;
                 }
-                const j = await res.json().catch(()=>({}));
+                const j = await res.json().catch(() => ({}));
                 // Update in-memory pointers if this was the selected one
                 try {
                     const itemRef = (this.currentItems || []).find(x => x.file_stem === reportId);
@@ -8523,7 +12581,7 @@ class AudioDashboard {
                             }
                         }
                     }
-                } catch(_) {}
+                } catch (_) { }
                 // Remove the row from the list UI
                 const listEl = mode === 'ai2' ? listA2 : listA1;
                 const rowEl = listEl.querySelector(`[data-variant-row][data-url="${CSS.escape(this.normalizeAssetUrl(url))}"]`);
@@ -8536,9 +12594,9 @@ class AudioDashboard {
                     if (remaining.length > 0) {
                         await onSelectVariant(mode, remaining[0], true);
                     }
-                } catch(_) {}
+                } catch (_) { }
                 // Ensure cards reflect current mode and fallbacks
-                try { this.forceSwapAllCardsForCurrentMode(); } catch(_) {}
+                try { this.forceSwapAllCardsForCurrentMode(); } catch (_) { }
                 this.showToast('Image deleted', 'success');
             };
 
@@ -8550,11 +12608,11 @@ class AudioDashboard {
                     if (!token) { this.showToast('Token required', 'warn'); return; }
                     const res = await fetch('/api/delete-all-ai-images', {
                         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                        body: JSON.stringify({ video_id: videoId, modes: ['ai1','ai2'] })
+                        body: JSON.stringify({ video_id: videoId, modes: ['ai1', 'ai2'] })
                     });
                     if (!res.ok) {
                         let msg = 'Failed to delete AI images';
-                        try { const j = await res.json(); if (j && j.error) msg += `: ${j.error}`; } catch(_) {}
+                        try { const j = await res.json(); if (j && j.error) msg += `: ${j.error}`; } catch (_) { }
                         this.showToast(msg, 'error'); return;
                     }
                     // Clear lists
@@ -8568,8 +12626,8 @@ class AudioDashboard {
                             itemRef.analysis.summary_image_selected_url = '';
                             itemRef.analysis.summary_image_ai2_url = '';
                         }
-                    } catch(_) {}
-                    try { this.forceSwapAllCardsForCurrentMode(); } catch(_) {}
+                    } catch (_) { }
+                    try { this.forceSwapAllCardsForCurrentMode(); } catch (_) { }
                     this.showToast('All AI images deleted', 'success');
                 });
             }
@@ -8628,7 +12686,7 @@ class AudioDashboard {
                             else img.setAttribute('data-ai1-url', normalized);
                         }
                     }
-                } catch(_) {}
+                } catch (_) { }
                 this.updateCardSummaryImage(reportId, normalized);
                 // Update selection badges/buttons in the active list
                 if (mode === 'ai2') {
@@ -8652,7 +12710,7 @@ class AudioDashboard {
                             const rowUrl = this.normalizeAssetUrl(row?.getAttribute('data-url') || '');
                             const findIdx = variantsArr.findIndex(x => this.normalizeAssetUrl(x.url || '') === rowUrl);
                             if (findIdx >= 0) { idx = findIdx; v = variantsArr[findIdx]; }
-                        } catch(_) {}
+                        } catch (_) { }
                     }
                     if (!v) return;
                     if (useBtn) {
@@ -8675,62 +12733,62 @@ class AudioDashboard {
                     try {
                         const idx = (this.currentItems || []).findIndex(x => x.file_stem === reportId);
                         if (idx >= 0) this.currentItems[idx] = itm;
-                    } catch(_) {}
+                    } catch (_) { }
                     const allVars = Array.isArray(itm.analysis?.summary_image_variants) ? itm.analysis.summary_image_variants : [];
                     const newUrls = new Set();
                     try {
                         const prev = this._imagesModalKnownUrls || new Set();
                         allVars.forEach(v => { const u = v && v.url ? this.normalizeAssetUrl(v.url) : ''; if (u && !prev.has(u)) newUrls.add(u); });
-                    } catch(_) {}
+                    } catch (_) { }
                     // Rebuild AI1 list
                     const a1v = allVars.filter(v => {
-                        const m=(v.image_mode||'').toLowerCase();
-                        const t=(v.template||'').toLowerCase();
-                        const ps=(v.prompt_source||'').toLowerCase();
-                        const u=(v.url||'').toUpperCase();
-                        const isAi2 = (m==='ai2') || (t==='ai2_freestyle') || (ps && ps.startsWith('ai2')) || u.includes('/AI2_') || u.startsWith('AI2_');
+                        const m = (v.image_mode || '').toLowerCase();
+                        const t = (v.template || '').toLowerCase();
+                        const ps = (v.prompt_source || '').toLowerCase();
+                        const u = (v.url || '').toUpperCase();
+                        const isAi2 = (m === 'ai2') || (t === 'ai2_freestyle') || (ps && ps.startsWith('ai2')) || u.includes('/AI2_') || u.startsWith('AI2_');
                         return !isAi2;
-                    }).sort((a,b)=>{ const ca=(a.created_at||'')+''; const cb=(b.created_at||'')+''; return ca<cb?1:ca>cb?-1:0; });
+                    }).sort((a, b) => { const ca = (a.created_at || '') + ''; const cb = (b.created_at || '') + ''; return ca < cb ? 1 : ca > cb ? -1 : 0; });
                     const renderRow = (v, i, sel, mode) => {
-                        const url = this.normalizeAssetUrl(v.url||''); const isSel = sel && url && (url===this.normalizeAssetUrl(sel)); const when=this.formatRelativeTime(v.created_at); const preview=(v.prompt||'').slice(0,120);
-                        return `<div class="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 relative" data-variant-row data-url="${url}"><div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 dark:bg-slate-700 flex-shrink-0 relative" data-thumb><img src="${url}" alt="variant" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'" />${isSel ? '<span class=\'y-badge-selected absolute top-1 left-1 px-1.5 py-0.5 text-[10px] rounded bg-emerald-600 text-white\'>Selected</span>' : ''}</div><div class="flex-1 min-w-0"><div class="text-xs text-slate-500 dark:text-slate-400">${when||''}</div><div class="text-sm text-slate-700 dark:text-slate-200 truncate">${this.escapeHtml(preview)}</div><div class="mt-2 flex items-center gap-2"><button type="button" data-use-prompt data-mode="${mode}" data-index="${i}" class="px-2 py-1 text-xs rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">Use this prompt</button>${isSel ? '' : `<button type=\"button\" data-select-image data-mode=\"${mode}\" data-index=\"${i}\" class=\"px-2 py-1 text-xs rounded-md bg-audio-600 text-white hover:bg-audio-700\">Select this image</button>`}${mode==='ai1' || mode==='ai2' ? `<button type=\"button\" data-delete-image data-mode=\"${mode}\" data-index=\"${i}\" class=\"px-2 py-1 text-xs rounded-md border border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20\">Delete</button>`: ''}</div></div></div>`;
+                        const url = this.normalizeAssetUrl(v.url || ''); const isSel = sel && url && (url === this.normalizeAssetUrl(sel)); const when = this.formatRelativeTime(v.created_at); const preview = (v.prompt || '').slice(0, 120);
+                        return `<div class="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 relative" data-variant-row data-url="${url}"><div class="w-16 h-16 rounded-md overflow-hidden bg-slate-200 dark:bg-slate-700 flex-shrink-0 relative" data-thumb><img src="${url}" alt="variant" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'" />${isSel ? '<span class=\'y-badge-selected absolute top-1 left-1 px-1.5 py-0.5 text-[10px] rounded bg-emerald-600 text-white\'>Selected</span>' : ''}</div><div class="flex-1 min-w-0"><div class="text-xs text-slate-500 dark:text-slate-400">${when || ''}</div><div class="text-sm text-slate-700 dark:text-slate-200 truncate">${this.escapeHtml(preview)}</div><div class="mt-2 flex items-center gap-2"><button type="button" data-use-prompt data-mode="${mode}" data-index="${i}" class="px-2 py-1 text-xs rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">Use this prompt</button>${isSel ? '' : `<button type=\"button\" data-select-image data-mode=\"${mode}\" data-index=\"${i}\" class=\"px-2 py-1 text-xs rounded-md bg-audio-600 text-white hover:bg-audio-700\">Select this image</button>`}${mode === 'ai1' || mode === 'ai2' ? `<button type=\"button\" data-delete-image data-mode=\"${mode}\" data-index=\"${i}\" class=\"px-2 py-1 text-xs rounded-md border border-red-600 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20\">Delete</button>` : ''}</div></div></div>`;
                     };
                     const a1Sel = itm.summary_image_url || itm.analysis?.summary_image_selected_url || '';
-                    let a1Html = a1v.map((v,i)=>renderRow(v,i,a1Sel,'ai1')).join('');
+                    let a1Html = a1v.map((v, i) => renderRow(v, i, a1Sel, 'ai1')).join('');
                     if (!a1Html) a1Html = '<div class="px-2 py-3 text-xs text-slate-500">No AI1 variants yet.</div>';
                     listA1.innerHTML = a1Html;
                     // Highlight newly-added rows (AI1)
                     try {
                         listA1.querySelectorAll('[data-variant-row]').forEach(row => {
-                            const u = this.normalizeAssetUrl(row.getAttribute('data-url')||'');
+                            const u = this.normalizeAssetUrl(row.getAttribute('data-url') || '');
                             if (newUrls.has(u)) {
-                                row.classList.add('ring','ring-audio-400','ring-offset-1');
-                                setTimeout(()=>{ row.classList.remove('ring','ring-audio-400','ring-offset-1'); }, 1500);
+                                row.classList.add('ring', 'ring-audio-400', 'ring-offset-1');
+                                setTimeout(() => { row.classList.remove('ring', 'ring-audio-400', 'ring-offset-1'); }, 1500);
                             }
                         });
-                    } catch(_) {}
-                    listClick(listA1,'ai1',a1v);
+                    } catch (_) { }
+                    listClick(listA1, 'ai1', a1v);
 
                     // Rebuild AI2 list
                     const urlToPrompt = new Map();
-                    allVars.forEach(v=>{ if (v.url) urlToPrompt.set(this.normalizeAssetUrl(v.url), v.prompt||''); });
+                    allVars.forEach(v => { if (v.url) urlToPrompt.set(this.normalizeAssetUrl(v.url), v.prompt || ''); });
                     const ai2Urls = this.getAi2VariantUrls(itm);
-                    const a2v = ai2Urls.map(u=>({ url:u, image_mode:'ai2', prompt:urlToPrompt.get(this.normalizeAssetUrl(u))||'', created_at:'' }));
+                    const a2v = ai2Urls.map(u => ({ url: u, image_mode: 'ai2', prompt: urlToPrompt.get(this.normalizeAssetUrl(u)) || '', created_at: '' }));
                     const a2Sel = itm.summary_image_ai2_url || itm.analysis?.summary_image_ai2_url || '';
-                    let a2Html = a2v.map((v,i)=>renderRow(v,i,a2Sel,'ai2')).join('');
+                    let a2Html = a2v.map((v, i) => renderRow(v, i, a2Sel, 'ai2')).join('');
                     if (!a2Html) a2Html = '<div class="px-2 py-3 text-xs text-slate-500">No AI2 variants yet.</div>';
                     listA2.innerHTML = a2Html;
                     // Highlight newly-added rows (AI2)
                     try {
                         listA2.querySelectorAll('[data-variant-row]').forEach(row => {
-                            const u = this.normalizeAssetUrl(row.getAttribute('data-url')||'');
+                            const u = this.normalizeAssetUrl(row.getAttribute('data-url') || '');
                             if (newUrls.has(u)) {
-                                row.classList.add('ring','ring-audio-400','ring-offset-1');
-                                setTimeout(()=>{ row.classList.remove('ring','ring-audio-400','ring-offset-1'); }, 1500);
+                                row.classList.add('ring', 'ring-audio-400', 'ring-offset-1');
+                                setTimeout(() => { row.classList.remove('ring', 'ring-audio-400', 'ring-offset-1'); }, 1500);
                             }
                         });
-                    } catch(_) {}
-                    listClick(listA2,'ai2',a2v);
+                    } catch (_) { }
+                    listClick(listA2, 'ai2', a2v);
 
                     // Update the visible card thumbnail in the grid for this item
                     try {
@@ -8740,17 +12798,17 @@ class AudioDashboard {
                             const ai1 = a1Sel ? this.normalizeAssetUrl(a1Sel) : '';
                             const ai2 = a2Sel ? this.normalizeAssetUrl(a2Sel) : '';
                             if (imgSum) {
-                                if (ai1) try { imgSum.setAttribute('data-ai1-url', ai1); } catch(_) {}
-                                if (ai2) try { imgSum.setAttribute('data-ai2-url', ai2); } catch(_) {}
+                                if (ai1) try { imgSum.setAttribute('data-ai1-url', ai1); } catch (_) { }
+                                if (ai2) try { imgSum.setAttribute('data-ai2-url', ai2); } catch (_) { }
                             }
-                            try { this.applyImageModeToCard(card); } catch(_) {}
+                            try { this.applyImageModeToCard(card); } catch (_) { }
                         }
-                    } catch(_) {}
+                    } catch (_) { }
 
                     // Flip status to ready for both panes, then hide
                     // If a mode was regenerating, flip its status to ready and re-enable
-                    if (this._imagesModalRegenSet.has('ai1')) { setStatus('ai1','ready'); setBusy('ai1', false); }
-                    if (this._imagesModalRegenSet.has('ai2')) { setStatus('ai2','ready'); setBusy('ai2', false); }
+                    if (this._imagesModalRegenSet.has('ai1')) { setStatus('ai1', 'ready'); setBusy('ai1', false); }
+                    if (this._imagesModalRegenSet.has('ai2')) { setStatus('ai2', 'ready'); setBusy('ai2', false); }
                     // Update known URLs baseline
                     try {
                         const known = this._imagesModalKnownUrls || new Set();
@@ -8758,15 +12816,15 @@ class AudioDashboard {
                         const urls2 = this.getAi2VariantUrls(itm) || [];
                         urls2.forEach(u => { if (u) known.add(this.normalizeAssetUrl(u)); });
                         this._imagesModalKnownUrls = known;
-                    } catch(_) {}
-                } catch(_) {}
+                    } catch (_) { }
+                } catch (_) { }
             };
 
             // Default display radio removed for now
 
-            const finish = () => { try { document.body.removeChild(overlay); } catch(_) {}; if (this._openImagesModalReportId === reportId) this._openImagesModalReportId = null; try { if (this._imagesModalPollTimer) { clearInterval(this._imagesModalPollTimer); this._imagesModalPollTimer = null; } } catch(_) {}; resolve(); };
+            const finish = () => { try { document.body.removeChild(overlay); } catch (_) { }; if (this._openImagesModalReportId === reportId) this._openImagesModalReportId = null; try { if (this._imagesModalPollTimer) { clearInterval(this._imagesModalPollTimer); this._imagesModalPollTimer = null; } } catch (_) { }; resolve(); };
             this._closeImagesModal = finish;
-            overlay.addEventListener('click', (e)=>{ if (e.target === overlay) finish(); });
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) finish(); });
             closeBtns.forEach(btn => btn && btn.addEventListener('click', finish));
         });
     }
@@ -8798,7 +12856,7 @@ class AudioDashboard {
             const defaultImg = card.querySelector('[data-role="thumb-default"]');
             if (summaryImg) {
                 summaryImg.src = normalized;
-                try { summaryImg.setAttribute('data-ai1-url', normalized); } catch(_) {}
+                try { summaryImg.setAttribute('data-ai1-url', normalized); } catch (_) { }
                 summaryImg.classList.remove('hidden');
             }
             if (defaultImg) {
@@ -8878,7 +12936,7 @@ class AudioDashboard {
                 return headerLine + bulletLines;
             }).join('\n\n');
             text = rebuilt;
-        } catch (_) {}
+        } catch (_) { }
 
         // Detect "run-on hyphen bullets" and convert to line-broken bullets
         // Example: "... sentence. - point one - point two - point three" -> break into lines with "- "
@@ -8892,7 +12950,7 @@ class AudioDashboard {
                     .replace(/(?:^|([.!?]))\s*[-–—]\s+/g, (m, p1) => (p1 ? p1 + '\n- ' : '- '))
                     .replace(/\s{2,}/g, ' ');
             }
-        } catch (_) {}
+        } catch (_) { }
 
         // Check for structured markers
         const hasMainTopic = /^(?:•\s*)?\*\*Main topic:\*\*\s*.+$/mi.test(text);
@@ -8945,11 +13003,11 @@ class AudioDashboard {
         // 2) Extract takeaway if present
         const takeawayMatch = text.match(/\*\*Takeaway:\*\*\s*(.+?)(?=\*\*|$)/is);
         const takeaway = takeawayMatch ? takeawayMatch[1].trim() : null;
-        
+
         // 3) Find content after "**Key points:**" marker, before takeaway
         const keyStartIdx = text.search(/\*\*Key points:\*\*/i);
         let bulletBlock = '';
-        
+
         if (keyStartIdx >= 0) {
             // Take everything after the "Key points:" marker
             let bulletText = text.slice(keyStartIdx).replace(/\*\*Key points:\*\*/i, '').trim();
@@ -9026,7 +13084,7 @@ class AudioDashboard {
         const hasHeaders = /^[A-Z][^.\n]*\s*$/m.test(text); // Lines that look like headers
         const hasBulletPoints = /^(?:\s*[-•*]\s+)/m.test(text); // Bullet points
         const hasStructuredSections = /^(?:Overview|What's New|Key|Main|Summary|Takeaway)[\s:]/mi.test(text);
-        
+
         return (hasHeaders && hasBulletPoints) || hasStructuredSections;
     }
 
@@ -9117,16 +13175,17 @@ class AudioDashboard {
             warn: 'bg-amber-600',
             info: 'bg-slate-800'
         };
-        el.className = `fixed top-4 left-1/2 -translate-x-1/2 z-50 px-3 py-2 rounded-lg text-white shadow ${colors[type] || colors.info}`;
+        const duration = type === 'error' ? 4000 : 2500; // Longer for errors
+        el.className = `fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg text-white text-sm font-medium shadow-lg max-w-md text-center ${colors[type] || colors.info}`;
         el.textContent = message;
         document.body.appendChild(el);
         // SR live update
         const sr = document.getElementById('srLive');
         if (sr) sr.textContent = message;
         setTimeout(() => {
-            el.classList.add('opacity-0', 'transition', 'duration-200');
-            setTimeout(() => el.remove(), 220);
-        }, 1600);
+            el.classList.add('opacity-0', 'transition', 'duration-300');
+            setTimeout(() => el.remove(), 320);
+        }, duration);
     }
 
     // Queue rendering/persistence (Phase 3)
@@ -9140,7 +13199,7 @@ class AudioDashboard {
             const aria = isCurrent ? ' aria-current="true"' : '';
             return `
               <button data-queue-index="${idx}"${aria} class="w-full text-left px-3 py-2 rounded-lg border ${isCurrent ? 'border-audio-400 bg-audio-50' : 'border-slate-200 hover:bg-slate-50'} text-sm truncate">
-                <span class="text-slate-600">${(idx+1).toString().padStart(2,'0')}.</span>
+                <span class="text-slate-600">${(idx + 1).toString().padStart(2, '0')}.</span>
                 <span class="ml-2 ${isCurrent ? 'text-audio-700 font-medium' : 'text-slate-700'}">${title}</span>
               </button>`;
         }).join('');
@@ -9169,7 +13228,7 @@ class AudioDashboard {
         try {
             const data = { playlist: this.playlist || [], index: this.currentTrackIndex };
             sessionStorage.setItem(this.queueKey, JSON.stringify(data));
-        } catch (_) {}
+        } catch (_) { }
     }
 
     restoreQueue() {
@@ -9200,7 +13259,7 @@ class AudioDashboard {
                 }
                 this.renderQueue();
             }
-        } catch (_) {}
+        } catch (_) { }
     }
 
     // Telemetry batching + sampling
@@ -9221,7 +13280,7 @@ class AudioDashboard {
     }
 
     sendTelemetry(eventName, payload = {}) {
-        const sampled = ['cta_listen','cta_watch'].includes(eventName) ? (Math.random() < 0.25) : true;
+        const sampled = ['cta_listen', 'cta_watch'].includes(eventName) ? (Math.random() < 0.25) : true;
         if (!sampled) return;
         this.queueTelemetry({ event: eventName, ...payload, t: Date.now() });
     }
@@ -9277,65 +13336,803 @@ class AudioDashboard {
         this._dragState = null;
         this._suppressOpen = false;
         this._dragEndedAt = null;
-        
+
         // Clean up any lingering event listeners
         try {
             ['mousemove', 'mouseup', 'touchmove', 'touchend'].forEach(event => {
                 window.removeEventListener(event, this._tempHandler);
             });
-        } catch(e) { /* ignore */ }
+        } catch (e) { /* ignore */ }
     }
 
     // Progress bar drag handling for both desktop and mobile mini players
     beginProgressDrag(event, isMobile) {
         if (!this.audioElement || !this.currentAudio) return;
-        
+
         // Prevent conflicting drag operations
         if (this._dragState) return;
-        
+
         event.preventDefault();
         const container = isMobile ? this.mobileProgressContainer : this.progressContainer;
         const progressBar = isMobile ? this.mobileProgressBar : this.progressBar;
-        
+
+        if (!container) return;
+
         const onMove = (clientX) => {
             const rect = container.getBoundingClientRect();
             const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-            
+
             // Update visual progress
             if (progressBar) progressBar.style.width = `${pct * 100}%`;
-            
+
             // Seek audio
             const duration = this.audioElement.duration;
             if (duration && !isNaN(duration)) {
                 this.audioElement.currentTime = pct * duration;
             }
         };
-        
+
         const move = (e) => onMove(e.clientX);
         const moveTouch = (e) => onMove(e.touches[0].clientX);
-        
+
         const cleanup = () => {
             window.removeEventListener('mousemove', move);
             window.removeEventListener('mouseup', cleanup);
             window.removeEventListener('touchmove', moveTouch);
             window.removeEventListener('touchend', cleanup);
         };
-        
+
         window.addEventListener('mousemove', move);
         window.addEventListener('mouseup', cleanup);
         window.addEventListener('touchmove', moveTouch, { passive: true });
         window.addEventListener('touchend', cleanup);
-        
+
         // Initial position
         const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : 0);
         onMove(clientX);
+    }
+
+    // ========================================
+    // Filter Bar Methods
+    // ========================================
+
+    initFilterBarEvents() {
+        // Sort dropdown
+        if (this.sortDropdownBtn && this.sortDropdownMenu) {
+            this.sortDropdownBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleDropdown('sort');
+            });
+            this.sortDropdownMenu.querySelectorAll('.sort-option').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const sortValue = btn.dataset.sort;
+                    this.applySort(sortValue);
+                    this.closeAllDropdowns();
+                });
+            });
+        }
+
+        // Source dropdown
+        if (this.sourceDropdownBtn && this.sourceDropdownMenu) {
+            this.sourceDropdownBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleDropdown('source');
+            });
+            this.sourceDropdownMenu.addEventListener('click', (e) => {
+                const btn = e.target.closest('.source-option');
+                if (btn) {
+                    const sourceValue = btn.dataset.source;
+                    this.applySourceFilter(sourceValue);
+                    this.closeAllDropdowns();
+                }
+            });
+        }
+
+        // Category dropdown
+        if (this.categoryDropdownBtn && this.categoryDropdownMenu) {
+            this.categoryDropdownBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleDropdown('category');
+            });
+            this.categoryDropdownMenu.addEventListener('click', (e) => {
+                const btn = e.target.closest('.category-option');
+                if (btn) {
+                    const value = btn.dataset.category;
+                    this.applyCategoryFilter(value);
+                    this.closeAllDropdowns();
+                }
+            });
+        }
+
+        // Channel dropdown
+        if (this.channelDropdownBtn && this.channelDropdownMenu) {
+            this.channelDropdownBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleDropdown('channel');
+            });
+            this.channelDropdownMenu.addEventListener('click', (e) => {
+                const btn = e.target.closest('.channel-option');
+                if (btn) {
+                    const value = btn.dataset.channel;
+                    this.applyChannelFilter(value);
+                    this.closeAllDropdowns();
+                }
+            });
+        }
+
+        // Language dropdown
+        if (this.languageDropdownBtn && this.languageDropdownMenu) {
+            this.languageDropdownBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleDropdown('language');
+            });
+            this.languageDropdownMenu.addEventListener('click', (e) => {
+                const btn = e.target.closest('.language-option');
+                if (btn) {
+                    const value = btn.dataset.language;
+                    this.applyLanguageFilter(value);
+                    this.closeAllDropdowns();
+                }
+            });
+        }
+
+        // Filter popover
+        if (this.filterPopoverBtn && this.filterPopover) {
+            this.filterPopoverBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleFilterPopover();
+            });
+        }
+        if (this.filterPopoverClose) {
+            this.filterPopoverClose.addEventListener('click', () => this.closeFilterPopover());
+        }
+        if (this.filterBarApply) {
+            this.filterBarApply.addEventListener('click', () => this.applyPendingFilters());
+        }
+        if (this.filterBarClearAll) {
+            this.filterBarClearAll.addEventListener('click', () => this.clearAllFiltersBar());
+        }
+
+        // Delegated change handler for filter popover checkboxes
+        if (this.filterPopover) {
+            this.filterPopover.addEventListener('change', (e) => {
+                const cb = e.target;
+                if (cb.matches('input[data-filter]')) {
+                    const filterType = cb.dataset.filter;
+                    const value = cb.value;
+                    const sidebarCb = document.querySelector(`#sidebar input[data-filter="${filterType}"][value="${value}"]`);
+                    if (sidebarCb) sidebarCb.checked = cb.checked;
+                    this.currentFilters = this.computeFiltersFromDOM();
+                    this.updateFilterBarUI();
+                    this.debouncedLoadContent();
+                }
+            });
+        }
+
+        // Delegated click handler for filter chips
+        if (this.activeFilterChips) {
+            this.activeFilterChips.addEventListener('click', (e) => {
+                const chip = e.target.closest('.filter-chip');
+                if (chip) {
+                    e.stopPropagation();
+                    this.removeFilterChip(chip.dataset.chipType);
+                    return;
+                }
+                const clearBtn = e.target.closest('#clearAllChips');
+                if (clearBtn) {
+                    this.clearAllFiltersBar();
+                }
+            });
+        }
+
+        // Close dropdowns on outside click
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#sortDropdownContainer') &&
+                !e.target.closest('#sourceDropdownContainer') &&
+                !e.target.closest('#categoryDropdownContainer') &&
+                !e.target.closest('#channelDropdownContainer') &&
+                !e.target.closest('#languageDropdownContainer') &&
+                !e.target.closest('#filterPopoverContainer')) {
+                this.closeAllDropdowns();
+            }
+        });
+    }
+
+    toggleDropdown(type) {
+        let menu;
+        if (type === 'sort') menu = this.sortDropdownMenu;
+        else if (type === 'source') menu = this.sourceDropdownMenu;
+        else if (type === 'category') menu = this.categoryDropdownMenu;
+        else if (type === 'channel') menu = this.channelDropdownMenu;
+        else if (type === 'language') menu = this.languageDropdownMenu;
+
+        if (!menu) return;
+
+        const isHidden = menu.classList.contains('hidden');
+        this.closeAllDropdowns();
+        if (isHidden) {
+            menu.classList.remove('hidden');
+        }
+    }
+
+    toggleFilterPopover() {
+        if (!this.filterPopover) return;
+        const isHidden = this.filterPopover.classList.contains('hidden');
+        this.closeAllDropdowns();
+        if (isHidden) {
+            this.filterPopover.classList.remove('hidden');
+        }
+    }
+
+    closeFilterPopover() {
+        if (this.filterPopover) {
+            this.filterPopover.classList.add('hidden');
+        }
+    }
+
+    closeAllDropdowns() {
+        if (this.sortDropdownMenu) this.sortDropdownMenu.classList.add('hidden');
+        if (this.sourceDropdownMenu) this.sourceDropdownMenu.classList.add('hidden');
+        if (this.categoryDropdownMenu) this.categoryDropdownMenu.classList.add('hidden');
+        if (this.channelDropdownMenu) this.channelDropdownMenu.classList.add('hidden');
+        if (this.languageDropdownMenu) this.languageDropdownMenu.classList.add('hidden');
+        if (this.filterPopover) this.filterPopover.classList.add('hidden');
+    }
+
+    applySort(sortValue) {
+        this.currentSort = sortValue;
+        const labels = {
+            'added_desc': 'Recently Added',
+            'video_newest': 'Video Newest',
+            'video_oldest': 'Video Oldest',
+            'title_az': 'Title A→Z',
+            'title_za': 'Title Z→A',
+            'duration_desc': 'Longest First',
+            'duration_asc': 'Shortest First'
+        };
+        if (this.sortDropdownLabel) {
+            this.sortDropdownLabel.textContent = labels[sortValue] || sortValue;
+        }
+        if (this.sortDropdownMenu) {
+            this.sortDropdownMenu.querySelectorAll('.sort-option').forEach(btn => {
+                const check = btn.querySelector('.sort-check');
+                if (check) {
+                    check.classList.toggle('hidden', btn.dataset.sort !== sortValue);
+                }
+            });
+        }
+        this.debouncedLoadContent();
+    }
+
+    populateSourceDropdown(items) {
+        if (!this.sourceDropdownMenu || !items || items.length === 0) return;
+
+        let html = `<button data-source="all" class="source-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+            <span class="w-4 h-4 flex items-center justify-center"><span class="source-check hidden">✓</span></span>
+            All
+        </button>`;
+
+        items.forEach(item => {
+            const value = item.value || item;
+            const label = item.label || value;
+            html += `<button data-source="${this.escapeHtml(value)}" class="source-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                <span class="w-4 h-4 flex items-center justify-center"><span class="source-check hidden">✓</span></span>
+                ${this.escapeHtml(label)}
+            </button>`;
+        });
+
+        this.sourceDropdownMenu.innerHTML = html;
+        this.updateSourceDropdownState();
+    }
+
+    applySourceFilter(sourceValue) {
+        const sourceCheckboxes = document.querySelectorAll('input[data-filter="source"]');
+        if (sourceValue === 'all') {
+            sourceCheckboxes.forEach(cb => { cb.checked = false; });
+        } else {
+            sourceCheckboxes.forEach(cb => { cb.checked = cb.value === sourceValue; });
+        }
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateFilterBarUI();
+        this.updateHeroBadges();
+        this.debouncedLoadContent();
+    }
+
+    updateSourceDropdownState() {
+        if (!this.sourceDropdownMenu) return;
+
+        const sourceFilters = (this.currentFilters && this.currentFilters.source) || [];
+        const allSources = this.sourceDropdownMenu.querySelectorAll('.source-option');
+
+        allSources.forEach(btn => {
+            const check = btn.querySelector('.source-check');
+            if (check) check.classList.add('hidden');
+        });
+
+        if (sourceFilters.length === 0) {
+            if (this.sourceDropdownLabel) this.sourceDropdownLabel.textContent = 'All';
+            const allBtn = this.sourceDropdownMenu.querySelector('[data-source="all"]');
+            if (allBtn) {
+                const check = allBtn.querySelector('.source-check');
+                if (check) check.classList.remove('hidden');
+            }
+        } else if (sourceFilters.length === 1) {
+            if (this.sourceDropdownLabel) this.sourceDropdownLabel.textContent = sourceFilters[0];
+            allSources.forEach(btn => {
+                if (btn.dataset.source === sourceFilters[0]) {
+                    const check = btn.querySelector('.source-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        } else {
+            if (this.sourceDropdownLabel) this.sourceDropdownLabel.textContent = `${sourceFilters.length} selected`;
+            allSources.forEach(btn => {
+                if (sourceFilters.includes(btn.dataset.source)) {
+                    const check = btn.querySelector('.source-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        }
+    }
+
+    populateCategoryDropdown(items) {
+        if (!this.categoryDropdownMenu || !items || items.length === 0) return;
+
+        let html = `<button data-category="all" class="category-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+            <span class="w-4 h-4 flex items-center justify-center"><span class="category-check hidden">✓</span></span>
+            All Categories
+        </button>`;
+
+        items.slice(0, 15).forEach(item => {
+            const value = item.value || item;
+            const label = item.label || value;
+            html += `<button data-category="${this.escapeHtml(value)}" class="category-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                <span class="w-4 h-4 flex items-center justify-center"><span class="category-check hidden">✓</span></span>
+                ${this.escapeHtml(label)}
+            </button>`;
+        });
+
+        if (items.length > 15) {
+            html += `<div class="px-4 py-2 text-xs text-slate-400">+${items.length - 15} more in sidebar</div>`;
+        }
+
+        this.categoryDropdownMenu.innerHTML = html;
+        this.updateCategoryDropdownState();
+    }
+
+    applyCategoryFilter(value) {
+        const categoryCheckboxes = document.querySelectorAll('input[data-filter="category"]');
+        if (value === 'all') {
+            categoryCheckboxes.forEach(cb => { cb.checked = false; });
+        } else {
+            categoryCheckboxes.forEach(cb => { cb.checked = cb.value === value; });
+        }
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateFilterBarUI();
+        this.updateHeroBadges();
+        this.debouncedLoadContent();
+    }
+
+    updateCategoryDropdownState() {
+        if (!this.categoryDropdownMenu) return;
+
+        const categoryFilters = (this.currentFilters && this.currentFilters.category) || [];
+        const allOptions = this.categoryDropdownMenu.querySelectorAll('.category-option');
+
+        allOptions.forEach(btn => {
+            const check = btn.querySelector('.category-check');
+            if (check) check.classList.add('hidden');
+        });
+
+        if (categoryFilters.length === 0) {
+            if (this.categoryDropdownLabel) this.categoryDropdownLabel.textContent = 'All';
+            const allBtn = this.categoryDropdownMenu.querySelector('[data-category="all"]');
+            if (allBtn) {
+                const check = allBtn.querySelector('.category-check');
+                if (check) check.classList.remove('hidden');
+            }
+        } else if (categoryFilters.length === 1) {
+            if (this.categoryDropdownLabel) this.categoryDropdownLabel.textContent = categoryFilters[0];
+            allOptions.forEach(btn => {
+                if (btn.dataset.category === categoryFilters[0]) {
+                    const check = btn.querySelector('.category-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        } else {
+            if (this.categoryDropdownLabel) this.categoryDropdownLabel.textContent = `${categoryFilters.length} selected`;
+            allOptions.forEach(btn => {
+                if (categoryFilters.includes(btn.dataset.category)) {
+                    const check = btn.querySelector('.category-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        }
+    }
+
+    populateChannelDropdown(items) {
+        if (!this.channelDropdownMenu || !items || items.length === 0) return;
+
+        let html = `<button data-channel="all" class="channel-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+            <span class="w-4 h-4 flex items-center justify-center"><span class="channel-check hidden">✓</span></span>
+            All Channels
+        </button>`;
+
+        items.slice(0, 15).forEach(item => {
+            const value = item.value || item;
+            const label = item.label || value;
+            html += `<button data-channel="${this.escapeHtml(value)}" class="channel-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                <span class="w-4 h-4 flex items-center justify-center"><span class="channel-check hidden">✓</span></span>
+                ${this.escapeHtml(label)}
+            </button>`;
+        });
+
+        if (items.length > 15) {
+            html += `<div class="px-4 py-2 text-xs text-slate-400">+${items.length - 15} more in sidebar</div>`;
+        }
+
+        this.channelDropdownMenu.innerHTML = html;
+        this.updateChannelDropdownState();
+    }
+
+    applyChannelFilter(value) {
+        const channelCheckboxes = document.querySelectorAll('input[data-filter="channel"]');
+        if (value === 'all') {
+            channelCheckboxes.forEach(cb => { cb.checked = false; });
+        } else {
+            channelCheckboxes.forEach(cb => { cb.checked = cb.value === value; });
+        }
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateFilterBarUI();
+        this.updateHeroBadges();
+        this.debouncedLoadContent();
+    }
+
+    updateChannelDropdownState() {
+        if (!this.channelDropdownMenu) return;
+
+        const channelFilters = (this.currentFilters && this.currentFilters.channel) || [];
+        const allOptions = this.channelDropdownMenu.querySelectorAll('.channel-option');
+
+        allOptions.forEach(btn => {
+            const check = btn.querySelector('.channel-check');
+            if (check) check.classList.add('hidden');
+        });
+
+        if (channelFilters.length === 0) {
+            if (this.channelDropdownLabel) this.channelDropdownLabel.textContent = 'All';
+            const allBtn = this.channelDropdownMenu.querySelector('[data-channel="all"]');
+            if (allBtn) {
+                const check = allBtn.querySelector('.channel-check');
+                if (check) check.classList.remove('hidden');
+            }
+        } else if (channelFilters.length === 1) {
+            if (this.channelDropdownLabel) this.channelDropdownLabel.textContent = channelFilters[0];
+            allOptions.forEach(btn => {
+                if (btn.dataset.channel === channelFilters[0]) {
+                    const check = btn.querySelector('.channel-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        } else {
+            if (this.channelDropdownLabel) this.channelDropdownLabel.textContent = `${channelFilters.length} selected`;
+            allOptions.forEach(btn => {
+                if (channelFilters.includes(btn.dataset.channel)) {
+                    const check = btn.querySelector('.channel-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        }
+    }
+
+    populateLanguageDropdown(items) {
+        if (!this.languageDropdownMenu || !items || items.length === 0) return;
+
+        // Normalize language codes
+        const normalizedItems = [];
+        const seenLanguages = new Set();
+
+        items.forEach(item => {
+            const value = (item.value || item || '').toLowerCase();
+            const label = item.label || value;
+
+            if (value === 'en' || value === 'en-us') {
+                if (!seenLanguages.has('en')) {
+                    seenLanguages.add('en');
+                    normalizedItems.push({ value: 'en', label: 'English', count: (item.count || 0) });
+                } else {
+                    const existing = normalizedItems.find(i => i.value === 'en');
+                    if (existing && item.count) existing.count += item.count;
+                }
+            } else {
+                if (!seenLanguages.has(value)) {
+                    seenLanguages.add(value);
+                    normalizedItems.push({ value: value, label: label, count: (item.count || 0) });
+                }
+            }
+        });
+
+        let html = `<button data-language="all" class="language-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+            <span class="w-4 h-4 flex items-center justify-center"><span class="language-check hidden">✓</span></span>
+            All Languages
+        </button>`;
+
+        normalizedItems.forEach(item => {
+            html += `<button data-language="${this.escapeHtml(item.value)}" class="language-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                <span class="w-4 h-4 flex items-center justify-center"><span class="language-check hidden">✓</span></span>
+                ${this.escapeHtml(item.label)}
+            </button>`;
+        });
+
+        this.languageDropdownMenu.innerHTML = html;
+        this.updateLanguageDropdownState();
+    }
+
+    applyLanguageFilter(value) {
+        const languageCheckboxes = document.querySelectorAll('input[data-filter="language"]');
+        if (value === 'all') {
+            languageCheckboxes.forEach(cb => { cb.checked = false; });
+        } else {
+            languageCheckboxes.forEach(cb => {
+                const cbValue = (cb.value || '').toLowerCase();
+                if (value === 'en') {
+                    cb.checked = (cbValue === 'en' || cbValue === 'en-us');
+                } else {
+                    cb.checked = (cbValue === value);
+                }
+            });
+        }
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateFilterBarUI();
+        this.updateHeroBadges();
+        this.debouncedLoadContent();
+    }
+
+    updateLanguageDropdownState() {
+        if (!this.languageDropdownMenu) return;
+
+        const languageFilters = (this.currentFilters && this.currentFilters.language) || [];
+        const allOptions = this.languageDropdownMenu.querySelectorAll('.language-option');
+
+        allOptions.forEach(btn => {
+            const check = btn.querySelector('.language-check');
+            if (check) check.classList.add('hidden');
+        });
+
+        if (languageFilters.length === 0) {
+            if (this.languageDropdownLabel) this.languageDropdownLabel.textContent = 'All';
+            const allBtn = this.languageDropdownMenu.querySelector('[data-language="all"]');
+            if (allBtn) {
+                const check = allBtn.querySelector('.language-check');
+                if (check) check.classList.remove('hidden');
+            }
+        } else if (languageFilters.length === 1) {
+            const selectedLang = languageFilters[0].toLowerCase();
+            const displayLabel = (selectedLang === 'en' || selectedLang === 'en-us') ? 'English' : languageFilters[0];
+            if (this.languageDropdownLabel) this.languageDropdownLabel.textContent = displayLabel;
+            allOptions.forEach(btn => {
+                const btnLang = btn.dataset.language;
+                if (btnLang === 'en' && (selectedLang === 'en' || selectedLang === 'en-us')) {
+                    const check = btn.querySelector('.language-check');
+                    if (check) check.classList.remove('hidden');
+                } else if (btnLang === selectedLang) {
+                    const check = btn.querySelector('.language-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        } else {
+            if (this.languageDropdownLabel) this.languageDropdownLabel.textContent = `${languageFilters.length} selected`;
+            allOptions.forEach(btn => {
+                const btnLang = btn.dataset.language;
+                if (languageFilters.some(f => f.toLowerCase() === btnLang)) {
+                    const check = btn.querySelector('.language-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        }
+    }
+
+    populateFilterBarPopover() {
+        // Populate content types
+        if (this.filterBarContentTypes) {
+            const ctContainer = document.getElementById('contentTypeFilters');
+            if (ctContainer) {
+                const items = this.extractFilterItemsFromContainer(ctContainer, 'content_type');
+                this.renderFilterBarSection(items, this.filterBarContentTypes, 'content_type');
+            }
+        }
+
+        // Populate summary types
+        if (this.filterBarSummaryTypes) {
+            const stContainer = document.getElementById('summaryTypeFilters');
+            if (stContainer) {
+                const items = this.extractFilterItemsFromContainer(stContainer, 'summary_type');
+                this.renderFilterBarSection(items, this.filterBarSummaryTypes, 'summary_type');
+            }
+        }
+    }
+
+    extractFilterItemsFromContainer(container, filterType) {
+        const items = [];
+        if (!container) return items;
+        const checkboxes = container.querySelectorAll(`input[data-filter="${filterType}"]`);
+        checkboxes.forEach(cb => {
+            items.push({
+                value: cb.value,
+                label: cb.parentElement?.querySelector('span')?.textContent?.trim() || cb.value,
+                checked: cb.checked
+            });
+        });
+        return items;
+    }
+
+    renderFilterBarSection(items, container, filterType) {
+        if (!container || !items || items.length === 0) {
+            if (container) container.innerHTML = '<p class="text-xs text-slate-400">No options</p>';
+            return;
+        }
+
+        let html = '';
+        items.slice(0, 10).forEach(item => {
+            const checked = item.checked ? 'checked' : '';
+            html += `<label class="flex items-center gap-2 py-1 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-1">
+                <input type="checkbox" data-filter="${filterType}" value="${this.escapeHtml(item.value)}" ${checked}
+                    class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
+                <span class="text-sm text-slate-700 dark:text-slate-200 truncate">${this.escapeHtml(item.label)}</span>
+            </label>`;
+        });
+
+        if (items.length > 10) {
+            html += `<p class="text-xs text-slate-400 mt-1">+${items.length - 10} more</p>`;
+        }
+
+        container.innerHTML = html;
+    }
+
+    applyPendingFilters() {
+        const filterBarInputs = this.filterPopover?.querySelectorAll('input[data-filter]') || [];
+        filterBarInputs.forEach(input => {
+            const sidebarInput = document.querySelector(`#sidebar input[data-filter="${input.dataset.filter}"][value="${input.value}"]`);
+            if (sidebarInput) sidebarInput.checked = input.checked;
+        });
+
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateFilterBarUI();
+        this.updateHeroBadges();
+        this.closeFilterPopover();
+        this.debouncedLoadContent();
+    }
+
+    clearAllFiltersBar() {
+        document.querySelectorAll('#sidebar input[data-filter]').forEach(cb => cb.checked = false);
+        document.querySelectorAll('#filterPopover input[data-filter]').forEach(cb => cb.checked = false);
+
+        this.currentFilters = {};
+        this.updateFilterBarUI();
+        this.updateHeroBadges();
+        this.closeFilterPopover();
+        this.debouncedLoadContent();
+    }
+
+    updateFilterBarUI() {
+        this.updateSourceDropdownState();
+        this.updateCategoryDropdownState();
+        this.updateChannelDropdownState();
+        this.updateLanguageDropdownState();
+        this.updateFilterCountBadge();
+        this.updateActiveFilterChips();
+        this.syncFilterBarPopoverState();
+    }
+
+    updateFilterCountBadge() {
+        if (!this.filterCountBadge) return;
+
+        const filters = this.currentFilters || {};
+        let count = 0;
+        Object.keys(filters).forEach(key => {
+            if (key !== 'source' && filters[key] && filters[key].length > 0) {
+                count += filters[key].length;
+            }
+        });
+
+        if (count > 0) {
+            this.filterCountBadge.textContent = count;
+            this.filterCountBadge.classList.remove('hidden');
+        } else {
+            this.filterCountBadge.classList.add('hidden');
+        }
+    }
+
+    updateActiveFilterChips() {
+        if (!this.activeFilterChips) return;
+
+        const filters = this.currentFilters || {};
+        const chips = [];
+
+        const typeLabels = {
+            'source': 'Source',
+            'category': 'Category',
+            'subcategory': 'Category',
+            'channel': 'Channel',
+            'content_type': 'Type',
+            'complexity': 'Complexity',
+            'language': 'Language',
+            'summary_type': 'Summary'
+        };
+
+        // Create one chip per filter type (not per value)
+        Object.keys(filters).forEach(type => {
+            const values = filters[type] || [];
+            if (values.length === 0) return;
+
+            const label = typeLabels[type] || type;
+            const displayText = values.length === 1
+                ? `${label}: ${values[0]}`
+                : `${values.length} ${label.toLowerCase()}${values.length > 1 ? 's' : ''}`;
+
+            chips.push({
+                type,
+                values,  // Store all values so we can clear them all
+                label: displayText
+            });
+        });
+
+        if (chips.length > 0) {
+            let html = chips.map(chip => `
+                <button class="filter-chip inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-audio-100 dark:bg-audio-900/30 text-audio-700 dark:text-audio-300 hover:bg-audio-200 dark:hover:bg-audio-900/50 transition-colors"
+                    data-chip-type="${chip.type}">
+                    ${this.escapeHtml(chip.label)}
+                    <svg class="w-3 h-3 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            `).join('');
+
+            html += `<button id="clearAllChips" class="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 ml-2">Clear all</button>`;
+
+            this.activeFilterChips.innerHTML = html;
+            this.activeFilterChips.classList.remove('hidden');
+        } else {
+            this.activeFilterChips.innerHTML = '';
+            this.activeFilterChips.classList.add('hidden');
+        }
+    }
+
+    removeFilterChip(type) {
+        // Clear all checkboxes of this filter type
+        document.querySelectorAll(`input[data-filter="${type}"]`).forEach(cb => {
+            cb.checked = false;
+        });
+
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateFilterBarUI();
+        this.updateHeroBadges();
+        this.debouncedLoadContent();
+    }
+
+    syncFilterBarPopoverState() {
+        if (!this.filterPopover) return;
+
+        const filters = this.currentFilters || {};
+        this.filterPopover.querySelectorAll('input[data-filter]').forEach(cb => {
+            const type = cb.dataset.filter;
+            const value = cb.value;
+            cb.checked = filters[type] && filters[type].includes(value);
+        });
+    }
+
+    debouncedLoadContent() {
+        if (this._loadTimeout) clearTimeout(this._loadTimeout);
+        this._loadTimeout = setTimeout(() => {
+            this.loadContent();
+        }, 200);
     }
 }
 
 // Initialize the dashboard when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.audioDashboard = new AudioDashboard();
-    
+
     // Optional: Enable fetch interceptor for debugging (per OpenAI recommendation)
     // Uncomment the lines below to see all API requests in console
     /*

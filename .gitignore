@@ -136,6 +136,9 @@ dmypy.json
 downloads/
 exports/
 logs/
+back_Fill_logs*.md
+data/*.sql
+data/chromadb/
 cache/
 .cache/
 temp/
@@ -179,3 +182,5 @@ docker-compose.cloudflare.yml
 setup-cloudflare.shytv2_content.db
 ytv2_content.db
 ytv2_content_local_backup.db
+.playwright-cli/
+.playwright-cli/

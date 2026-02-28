@@ -6,3 +6,6 @@ markupsafe>=2.1
 bleach>=6.1
 psycopg2-binary>=2.9.0
 google-auth>=2.16.0
+pyjwt>=2.9.0
+cryptography>=41.0.0
+chromadb>=0.4.0

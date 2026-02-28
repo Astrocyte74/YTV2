@@ -66,13 +66,57 @@
             <span id="themeText">Theme</span>
           </button>
         </div>
-        <a href="{{ youtube_url }}" target="_blank" rel="noopener"
+        {% set open_url = source_url or youtube_url or '' %}
+        {% if not open_url and video_id %}
+          {% set open_url = "https://www.youtube.com/watch?v=" ~ video_id %}
+        {% endif %}
+        {% set open_label = source_label or '' %}
+        {% set open_kind = (content_source or '') %}
+        {% if not open_kind %}
+          {% set u = (open_url|string)|lower %}
+          {% if 'reddit.com' in u %}
+            {% set open_kind = 'reddit' %}
+          {% elif 'youtube.com' in u or 'youtu.be' in u %}
+            {% set open_kind = 'youtube' %}
+          {% else %}
+            {% set open_kind = 'source' %}
+          {% endif %}
+        {% endif %}
+        {% if not open_label %}
+          {% if open_kind == 'youtube' %}
+            {% set open_label = 'YouTube' %}
+          {% elif open_kind == 'reddit' %}
+            {% set open_label = 'Reddit' %}
+          {% else %}
+            {% set open_label = 'Source' %}
+          {% endif %}
+        {% endif %}
+        {% if open_url %}
+          <a href="{{ open_url }}" target="_blank" rel="noopener"
+             class="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">
+            {% if open_kind == 'youtube' %}
+              <svg class="size-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+              </svg>
+            {% else %}
+              <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H19m0 0v5.5M19 6l-7 7"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M10 7H7.5A2.5 2.5 0 0 0 5 9.5v7A2.5 2.5 0 0 0 7.5 19h7A2.5 2.5 0 0 0 17 16.5V14"/>
+              </svg>
+            {% endif %}
+            {{ open_label }}
+          </a>
+        {% endif %}
+        {% if video_id %}
+        <button id="reprocessBtn"
+           data-video-id="{{ video_id }}"
            class="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">
-          <svg class="size-4" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+          <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v6h6M20 20v-6h-6M5 19a9 9 0 0114-7M19 5a9 9 0 01-14 7"/>
           </svg>
-          YouTube
-        </a>
+          Reprocess
+        </button>
+        {% endif %}
         <button id="copyLinkBtn"
            class="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">
           <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -179,45 +223,72 @@
             </div>
             {% endif %}
             
-            {% if categories and categories|length > 0 %}
-            <div class="flex items-center gap-2 lg:col-span-2">
-              <span class="text-slate-400">🏷️</span>
-              <span class="text-slate-600 dark:text-slate-400">Categories</span>
-              <div class="flex flex-wrap gap-1">
-                {% for category in categories %}
-                  <span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                    {{ category }}
-                  </span>
-                {% endfor %}
-              </div>
-            </div>
-            {% endif %}
-            
-            {% if subcategory_pairs and subcategory_pairs|length > 0 %}
-            <div class="flex items-center gap-2 lg:col-span-2">
-              <span class="text-slate-400">📋</span>
-              <span class="text-slate-600 dark:text-slate-400">Subcategories</span>
-              <div class="flex flex-wrap gap-1">
-                {% for pair in subcategory_pairs %}
-                  <span class="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-800 dark:bg-purple-900 dark:text-purple-200">
-                    {{ pair[1] }}
-                  </span>
-                {% endfor %}
-              </div>
-            </div>
-            {% endif %}
-            
-            {% if key_topics and key_topics|length > 0 %}
-            <div class="flex items-center gap-2 lg:col-span-2">
-              <span class="text-slate-400">🔖</span>
-              <span class="text-slate-600 dark:text-slate-400">Key Topics</span>
-              <div class="flex flex-wrap gap-1">
-                {% for topic in key_topics %}
-                  <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900 dark:text-green-200">
-                    {{ topic }}
-                  </span>
-                {% endfor %}
-              </div>
+            {% set has_taxonomy = (categories and categories|length > 0) or (subcategory_pairs and subcategory_pairs|length > 0) or (key_topics and key_topics|length > 0) %}
+            {% if has_taxonomy %}
+            <div class="lg:col-span-2">
+              <details class="group rounded-lg border border-slate-200 bg-white/70 p-2.5 dark:border-slate-700 dark:bg-slate-900/60" data-report-meta>
+                <summary class="flex cursor-pointer items-center justify-between gap-2 text-sm font-medium text-slate-800 dark:text-slate-100">
+                  <span>Filters & Taxonomy</span>
+                  <span class="text-slate-500 transition-transform group-open:rotate-180">▾</span>
+                </summary>
+                <div class="mt-2.5 space-y-2.5">
+                  <div class="flex flex-wrap gap-1.5" role="tablist" aria-label="Metadata filters">
+                    <button type="button" class="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200" data-report-meta-tab="overview" aria-pressed="true">Overview</button>
+                    {% if categories and categories|length > 0 %}
+                    <button type="button" class="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300" data-report-meta-tab="categories" aria-pressed="false">Categories ({{ categories|length }})</button>
+                    {% endif %}
+                    {% if subcategory_pairs and subcategory_pairs|length > 0 %}
+                    <button type="button" class="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300" data-report-meta-tab="subcategories" aria-pressed="false">Subcategories ({{ subcategory_pairs|length }})</button>
+                    {% endif %}
+                    {% if key_topics and key_topics|length > 0 %}
+                    <button type="button" class="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300" data-report-meta-tab="topics" aria-pressed="false">Topics ({{ key_topics|length }})</button>
+                    {% endif %}
+                  </div>
+
+                  <section data-report-meta-panel="overview" class="space-y-2">
+                    <div class="flex flex-wrap gap-1.5">
+                      <a href="/?channel={{ channel|urlencode }}" class="inline-flex items-center rounded-full border border-cyan-300 bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-900 transition-colors hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-100 dark:hover:bg-cyan-900/60">📺 {{ channel }}</a>
+                      {% if video_duration_str %}
+                      <span class="inline-flex items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">🎬 {{ video_duration_str }}</span>
+                      {% endif %}
+                      {% if audio_dur_pretty %}
+                      <span class="inline-flex items-center rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">🎵 {{ audio_dur_pretty }}</span>
+                      {% endif %}
+                    </div>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">Open each chip to jump back to the dashboard with that filter pre-applied.</p>
+                  </section>
+
+                  {% if categories and categories|length > 0 %}
+                  <section data-report-meta-panel="categories" class="hidden">
+                    <div class="flex flex-wrap gap-1.5">
+                      {% for category in categories %}
+                      <a href="/?category={{ category|urlencode }}" class="inline-flex items-center rounded-full border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-900 transition-colors hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-900/40 dark:text-blue-100 dark:hover:bg-blue-900/60">{{ category }}</a>
+                      {% endfor %}
+                    </div>
+                  </section>
+                  {% endif %}
+
+                  {% if subcategory_pairs and subcategory_pairs|length > 0 %}
+                  <section data-report-meta-panel="subcategories" class="hidden">
+                    <div class="flex flex-wrap gap-1.5">
+                      {% for pair in subcategory_pairs %}
+                      <a href="/?category={{ pair[0]|urlencode }}&subcategory={{ pair[1]|urlencode }}" class="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-900 transition-colors hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-100 dark:hover:bg-emerald-900/60">{{ pair[1] }}</a>
+                      {% endfor %}
+                    </div>
+                  </section>
+                  {% endif %}
+
+                  {% if key_topics and key_topics|length > 0 %}
+                  <section data-report-meta-panel="topics" class="hidden">
+                    <div class="flex flex-wrap gap-1.5">
+                      {% for topic in key_topics %}
+                      <a href="/?q={{ topic|urlencode }}" class="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100 dark:hover:bg-amber-900/60">#{{ topic }}</a>
+                      {% endfor %}
+                    </div>
+                  </section>
+                  {% endif %}
+                </div>
+              </details>
             </div>
             {% endif %}
             
@@ -331,6 +402,72 @@
     window.SUMMARY_VARIANT_DATA = {{ summary_variants | tojson | safe }};
     window.SUMMARY_DEFAULT_VARIANT = {{ summary_variant_default | tojson | safe }};
   </script>
-  <script src="/static/v2/report_v2.js?v={{ cache_bust }}"></script>
+
+  <!-- Reprocess modal (report page) -->
+  <div id="reportReprocessModal" class="fixed inset-0 z-[80] hidden items-center justify-center p-4">
+    <div class="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" data-report-reprocess-close></div>
+    <div class="relative w-full max-w-[720px] rounded-2xl border border-white/10 bg-gradient-to-b from-slate-950/90 to-slate-900/80 p-5 text-slate-100 shadow-2xl">
+      <div class="flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <h2 class="text-xl font-semibold">Reprocess Summary</h2>
+          <p id="reportReprocessText" class="mt-1 text-sm text-slate-300"></p>
+        </div>
+        <button type="button" class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10" data-report-reprocess-close>
+          ✕
+        </button>
+      </div>
+
+      <div class="mt-4">
+        <p class="text-sm text-slate-300">Choose the outputs to regenerate:</p>
+        <div id="reportReprocessVariantGrid" class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2"></div>
+
+        <div id="reportReprocessLanguageLevel" class="mt-3 hidden rounded-xl border border-white/10 bg-white/5 p-3"></div>
+
+        <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div class="text-xs text-slate-400">
+            Using token saved locally. Change token to update.
+          </div>
+          <button type="button" id="reportReprocessTokenToggle" class="text-xs font-medium text-sky-300 hover:text-sky-200">
+            Change token
+          </button>
+        </div>
+
+        <div id="reportReprocessTokenRow" class="mt-2 hidden rounded-xl border border-white/10 bg-white/5 p-3">
+          <label class="block text-xs font-medium text-slate-200">Admin token</label>
+          <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input id="reportReprocessTokenInput" type="password" autocomplete="off"
+                   class="w-full rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                   placeholder="Paste DEBUG_TOKEN" />
+            <div class="flex items-center gap-2">
+              <button id="reportReprocessTokenSave" type="button"
+                      class="rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-500">
+                Save
+              </button>
+              <button id="reportReprocessTokenClear" type="button"
+                      class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10">
+                Clear
+              </button>
+            </div>
+          </div>
+          <p id="reportReprocessTokenStatus" class="mt-2 text-xs text-slate-400"></p>
+        </div>
+
+        <p id="reportReprocessStatus" class="mt-3 text-sm text-rose-200"></p>
+
+        <div class="mt-5 flex items-center justify-end gap-2">
+          <button id="reportReprocessCancel" type="button"
+                  class="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10">
+            Cancel
+          </button>
+          <button id="reportReprocessStart" type="button"
+                  class="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-300">
+            Start reprocess
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/v2/report_v2.js?v={{ deployment_commit }}-{{ cache_bust }}-meta01"></script>
 </body>
 </html>

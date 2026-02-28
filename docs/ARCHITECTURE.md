@@ -2,6 +2,28 @@
 
 The dashboard is a small HTTP server with a Postgres-backed content index and a static frontend.
 
+## ⚠️ OFF-LIMITS FOLDERS (DO NOT TOUCH)
+
+**These folders are NOT part of the active codebase. Any agent working on this project must NOT modify these:**
+
+| Folder | Why It Exists | Status |
+|--------|---------------|--------|
+| `DO_NOT_TOUCH_render_backup_old/` | Old Render deployment backup | **READ ONLY** |
+| `archive/` | Historical/planning docs | **READ ONLY** |
+| `archive_render/` | Old render code | **READ ONLY** |
+
+**If you find yourself editing files in these folders, STOP. You are in the wrong place.**
+
+## Active Code Locations
+
+| What | Where |
+|------|-------|
+| Dashboard server | `dashboard16/server.py` |
+| Frontend JS | `dashboard16/static/dashboard_v3.js` |
+| CSS | `dashboard16/static/dashboard.css` |
+| HTML template | `dashboard16/dashboard_v3_template.html` |
+| Backend (separate repo) | `backend/` (ports 6452-6453) |
+
 ## Components
 - `server.py`: runs the HTTP server (routes, static files, API endpoints).
 - `modules/postgres_content_index.py`: Postgres queries and mapping to the UI’s data model.

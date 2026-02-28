@@ -28,6 +28,7 @@ import socket
 import mimetypes
 import requests
 from requests.exceptions import RequestException
+import base64
 from bs4 import BeautifulSoup
 try:
     from google.oauth2 import id_token as google_id_token
@@ -276,6 +277,253 @@ def verify_google_bearer(auth_header: str) -> dict:
             last_err = e
             continue
     raise PermissionError('Invalid token')
+
+# ============================================
+# Clerk JWT Verification for Jeop3 Auth
+# ============================================
+
+# Approved emails for game creation (comma-separated in env, or this default set)
+CLERK_APPROVED_EMAILS = set(_parse_csv_env(os.getenv('CLERK_APPROVED_EMAILS', '')))
+# Add default approved email if env is empty
+if not CLERK_APPROVED_EMAILS:
+    CLERK_APPROVED_EMAILS = {'your@email.com'}  # Default - change this!
+
+def verify_clerk_bearer(auth_header: str) -> dict:
+    """
+    Verify a Clerk JWT token and return user info.
+
+    Args:
+        auth_header: The Authorization header value (e.g., "Bearer <token>")
+
+    Returns:
+        dict with user info including 'sub' (user_id) and 'email'
+
+    Raises:
+        PermissionError: If token is invalid or email not approved
+    """
+    # Development mode: skip auth if SKIP_AUTH=true
+    # SAFETY CHECK: Only allow skipping auth on localhost
+    skip_auth = os.getenv('SKIP_AUTH', '').lower() == 'true'
+    is_production = os.getenv('RENDER', '') != ''  # Render sets this automatically
+
+    if skip_auth and not is_production:
+        logger.warning("⚠️ AUTHENTICATION DISABLED - Development mode (SKIP_AUTH=true)")
+        return {
+            'user_id': 'dev_user',
+            'email': 'dev@localhost',
+            'iss': 'development',
+            'exp': float('inf')
+        }
+
+    if skip_auth and is_production:
+        logger.error("🚨 SECURITY ALERT: SKIP_AUTH=true detected on production! Ignoring.")
+        # Fall through to normal auth check
+
+    if not auth_header or not auth_header.startswith('Bearer '):
+        raise PermissionError('Missing bearer token')
+
+    token = auth_header.split(' ', 1)[1].strip()
+
+    # Check cache first
+    cached = _TOKEN_CACHE.get(token)
+    if cached and cached.get('exp', 0) > _now():
+        return cached
+
+    # Get Clerk JWKS URL from env or use default
+    clerk_secret_key = os.getenv('CLERK_SECRET_KEY', '')
+    if not clerk_secret_key:
+        raise PermissionError('Clerk not configured on server')
+
+    # Extract the Clerk domain from the secret key to build JWKS URL
+    # Secret key format: sk_test_XXXXXXXXXXXXX
+    # We need to get the issuer URL from the token
+    import jwt
+    import json
+
+    try:
+        # Decode without verification first to get the issuer (kid is in header)
+        headers = jwt.get_unverified_header(token)
+        kid = headers.get('kid')
+        if not kid:
+            raise PermissionError('Invalid token: missing kid')
+
+        # Get the issuer from the token
+        unverified = jwt.decode(token, options={"verify_signature": False})
+        iss = unverified.get('iss')
+        if not iss:
+            raise PermissionError('Invalid token: missing iss')
+
+        # Build JWKS URL
+        jwks_url = f"{iss}/.well-known/jwks.json"
+
+        # Try using PyJWT's PyJWKClient first (available in PyJWT 2.0+)
+        try:
+            jwks_client = jwt.PyJWKClient(jwks_url)
+            signing_key = jwks_client.get_signing_key(kid)
+            pem_key = signing_key.key
+        except (AttributeError, TypeError) as e:
+            # Fallback: manual JWK to PEM conversion using cryptography library
+            logger.info(f"PyJWKClient not available ({e}), using manual JWK conversion")
+
+            # Fetch JWKS
+            response = requests.get(jwks_url, timeout=5)
+            response.raise_for_status()
+            jwks = response.json()
+
+            # Find the matching key
+            jwk_key = None
+            for key in jwks.get('keys', []):
+                if key.get('kid') == kid:
+                    jwk_key = key
+                    break
+
+            if not jwk_key:
+                raise PermissionError('Invalid token: key not found')
+
+            # Manual JWK to PEM conversion
+            def base64url_decode(data: str) -> bytes:
+                padding = 4 - len(data) % 4
+                if padding != 4:
+                    data += '=' * padding
+                return base64.urlsafe_b64decode(data.encode())
+
+            n = int.from_bytes(base64url_decode(jwk_key['n']), 'big')
+            e = int.from_bytes(base64url_decode(jwk_key['e']), 'big')
+
+            # Try to use cryptography library
+            try:
+                from cryptography.hazmat.primitives.asymmetric import rsa
+                from cryptography.hazmat.backends import default_backend
+                from cryptography.hazmat.primitives import serialization
+
+                public_key = rsa.RSAPublicNumbers(e, n).public_key(default_backend())
+                pem_key = public_key.public_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo
+                )
+            except ImportError:
+                # Ultimate fallback: manual DER encoding (no dependencies)
+                logger.warning("cryptography not available, using manual DER encoding")
+
+                def encode_int(value: int) -> bytes:
+                    byte_repr = value.to_bytes((value.bit_length() + 7) // 8, 'big')
+                    if byte_repr[0] & 0x80:
+                        byte_repr = b'\x00' + byte_repr
+                    length = len(byte_repr)
+                    if length < 128:
+                        return bytes([0x02, length]) + byte_repr
+                    else:
+                        length_bytes = length.to_bytes((length.bit_length() + 7) // 8, 'big')
+                        return bytes([0x02, 0x80 | len(length_bytes)]) + length_bytes + byte_repr
+
+                n_der = encode_int(n)
+                e_der = encode_int(e)
+                total_length = len(n_der) + len(e_der)
+                if total_length < 128:
+                    seq_length_bytes = bytes([total_length])
+                else:
+                    len_len = (total_length.bit_length() + 7) // 8
+                    seq_length_bytes = bytes([0x80 | len_len]) + total_length.to_bytes(len_len, 'big')
+
+                der_bytes = bytes([0x30]) + seq_length_bytes + n_der + e_der
+                pem_b64 = base64.b64encode(der_bytes).decode('ascii')
+                pem_key = f'-----BEGIN PUBLIC KEY-----\n{pem_b64}\n-----END PUBLIC KEY-----'
+
+        # Verify the token
+        decoded = jwt.decode(
+            token,
+            pem_key,
+            algorithms=['RS256'],
+            issuer=iss,
+            options={'verify_aud': False}  # Clerk tokens don't always have aud
+        )
+
+        # Log decoded token for debugging
+        logger.info(f"✅ JWT decoded successfully. Claims: {list(decoded.keys())}")
+        logger.info(f"📝 Full token payload: {json.dumps({k: v for k, v in decoded.items() if k not in ['exp', 'iat', 'nbf']}, indent=2)}")
+
+        # Clerk JWT doesn't include email by default - fetch from Clerk API
+        user_id = decoded.get('sub')
+        if not user_id:
+            raise PermissionError('Token missing sub claim')
+
+        # Get email from Clerk Backend API using the secret key
+        clerk_secret_key = os.getenv('CLERK_SECRET_KEY')
+        if not clerk_secret_key:
+            raise PermissionError('Clerk not configured on server')
+
+        # Check cache first
+        cache_key = f"clerk_user_{user_id}"
+        cached_user = _TOKEN_CACHE.get(cache_key)
+        if cached_user and cached_user.get('exp', 0) > _now():
+            email = cached_user.get('email')
+            logger.info(f"✅ Using cached email for user {user_id}: {email}")
+        else:
+            # Fetch user from Clerk Backend API
+            # Note: Clerk Backend API uses api.clerk.com, not the accounts domain
+            clerk_api_url = f"https://api.clerk.com/v1/users/{user_id}"
+            try:
+                response = requests.get(
+                    clerk_api_url,
+                    headers={
+                        'Authorization': f'Bearer {clerk_secret_key}',
+                        'Content-Type': 'application/json'
+                    },
+                    timeout=10
+                )
+                response.raise_for_status()
+                user_data = response.json()
+
+                # Extract primary email address
+                email = None
+                if user_data.get('email_addresses'):
+                    for addr in user_data['email_addresses']:
+                        if addr.get('id') == user_data.get('primary_email_address_id'):
+                            email = addr.get('email_address')
+                            break
+                    # Fallback to first email if primary not found
+                    if not email and user_data['email_addresses']:
+                        email = user_data['email_addresses'][0].get('email_address')
+
+                if not email:
+                    raise PermissionError(f'User {user_id} has no email address')
+
+                # Cache for 1 hour
+                _TOKEN_CACHE[cache_key] = {
+                    'email': email,
+                    'user_id': user_id,
+                    'exp': _now() + 3600
+                }
+                logger.info(f"✅ Fetched email for user {user_id}: {email}")
+
+            except requests.RequestException as e:
+                logger.warning(f"Failed to fetch user from Clerk API: {e}")
+                raise PermissionError('Failed to verify user email')
+
+        # Check if email is approved
+        if email not in CLERK_APPROVED_EMAILS:
+            logger.warning(f"Unauthorized email attempt: {email}")
+            raise PermissionError('Email not authorized for game creation')
+
+        # Return user info
+        exp_ts = float(decoded.get('exp', 0))
+        user = {
+            'user_id': decoded.get('sub'),
+            'email': email,
+            'iss': iss,
+            'exp': exp_ts
+        }
+
+        # Cache the token
+        _TOKEN_CACHE[token] = user
+
+        return user
+
+    except jwt.InvalidTokenError as e:
+        raise PermissionError(f'Invalid token: {e}')
+    except Exception as e:
+        logger.warning(f"Clerk auth error: {e}")
+        raise PermissionError('Failed to verify token')
 
 class SSEClient:
     """Lightweight holder for per-connection event queues."""
@@ -686,9 +934,40 @@ def extract_html_report_metadata(file_path: Path) -> Dict:
         raise
 
 
+def _get_exports_path() -> Path:
+    """Get the exports directory path, supporting both Docker and local development.
+
+    Returns:
+        Path to the exports directory.
+    """
+    # Docker container path
+    docker_path = Path("/app/data/exports")
+    if docker_path.exists():
+        return docker_path.resolve()
+
+    # Local development path (relative to this file)
+    local_path = Path(__file__).parent / "data" / "exports"
+    if local_path.exists():
+        return local_path.resolve()
+
+    # Fallback to ./data/exports (current working directory)
+    fallback_path = Path("./data/exports")
+    logger.info(f"Using exports path: {fallback_path} (Docker: {docker_path.exists()}, Local: {local_path.exists()})")
+    return fallback_path.resolve()
+
+
 class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     """HTTP request handler with modern template system"""
-    
+
+    def log_message(self, format, *args):
+        """Override to suppress logging for static asset requests."""
+        # Skip logging for static exports (images, audio) to reduce noise
+        if args and len(args) >= 1:
+            path = str(args[0]) if args[0] else ""
+            if path.startswith("GET /exports/") or path.startswith("HEAD /exports/"):
+                return
+        super().log_message(format, *args)
+
     def _debug_auth_ok(self) -> bool:
         """Verify debug token for admin-only endpoints.
 
@@ -707,6 +986,22 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             if isinstance(val, str) and val.strip() == token:
                 return True
         return False
+
+    def _reprocess_auth_ok(self) -> bool:
+        """Verify DEBUG_TOKEN for reprocess actions.
+
+        Accepts:
+          - X-Reprocess-Token: <DEBUG_TOKEN>
+          - Authorization: Bearer <DEBUG_TOKEN>
+        """
+        token = (os.getenv('DEBUG_TOKEN') or '').strip()
+        if not token:
+            return False
+        supplied = (self.headers.get('X-Reprocess-Token') or '').strip()
+        if supplied and supplied == token:
+            return True
+        auth = (self.headers.get('Authorization', '') or '').strip()
+        return auth.startswith('Bearer ') and auth[7:] == token
     
     @staticmethod
     def _maybe_parse_dict_string(value):
@@ -1211,6 +1506,20 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         if not chosen_default:
             chosen_default = hinted or ('comprehensive' if 'comprehensive' in avail_ids else ('bullet-points' if 'bullet-points' in avail_ids else (next(iter(avail_ids)) if avail_ids else 'comprehensive')))
 
+        source_url = video.get("url") or report_data.get("url") or report_data.get("canonical_url", "")
+        canonical_url = report_data.get("canonical_url", "") or ""
+        content_source = (report_data.get("content_source") or report_data.get("source") or "").strip().lower()
+        try:
+            url_for_infer = (canonical_url or source_url or "").lower()
+            if not content_source:
+                if "reddit.com" in url_for_infer:
+                    content_source = "reddit"
+                elif "youtube.com" in url_for_infer or "youtu.be" in url_for_infer:
+                    content_source = "youtube"
+        except Exception:
+            pass
+        source_label = "YouTube" if content_source == "youtube" else ("Reddit" if content_source == "reddit" else "Source")
+
         return {
             "title": title,
             "thumbnail": thumbnail,
@@ -1233,7 +1542,15 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             "summary_html": summary_html,
             "vocabulary": vocabulary,
             "back_url": "/",
-            "youtube_url": video.get("url") or report_data.get("url") or report_data.get("canonical_url", ""),
+            # Back-compat: historically misnamed; this is the "open source" URL (YouTube, Reddit, etc.)
+            "youtube_url": source_url,
+            "source_url": source_url,
+            "source_label": source_label,
+            "content_source": content_source,
+            "canonical_url": canonical_url,
+            "video_id": video_id,
+            "report_id": report_data.get('file_stem') or report_data.get('id') or video_id,
+            "deployment_commit": COMMIT_SHA,
             "cache_bust": cache_bust,
             "summary_variants": report_data.get('summary_variants') or summary.get('variants') or [],
             "summary_variant_default": chosen_default
@@ -1320,6 +1637,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_select_image_variant()
         elif self.path == '/api/set-image-display-mode':
             self.handle_set_image_display_mode()
+        elif self.path == '/api/reprocess':
+            self.handle_reprocess_request()
         # New ingest endpoints for NAS sync (T-Y020C)
         elif self.path == '/ingest/report':
             self.handle_ingest_report()
@@ -1329,6 +1648,16 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_debug_content()
         elif self.path == '/api/fetch-article':
             self.handle_fetch_article()
+        elif self.path == '/api/ai/generate':
+            # Jeop3 AI generation endpoint
+            if not check_ip_minute(self):
+                self.send_response(429)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Rate limit exceeded"}).encode())
+                return
+            self.handle_jeop3_generate()
         elif self.path == '/api/generate-quiz':
             # Per-IP rate limit for public generation
             if not check_ip_minute(self):
@@ -1577,6 +1906,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 template_content = load_template('dashboard_template.html')
             
             if template_content:
+                # Note: SSE is now proxied through dashboard, so base_url not needed for SSE
+                # Keep for backwards compatibility with other NAS bridge features
                 nas_config = {
                     "base_url": os.getenv('NGROK_BASE_URL') or os.getenv('NGROK_URL') or '',
                     "basic_user": os.getenv('NGROK_BASIC_USER', ''),
@@ -1590,9 +1921,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 dashboard_html = template_content.replace(
                     '{reports_data}', json.dumps(reports_data, ensure_ascii=False)
                 ).replace(
-                    '{nas_config}', json.dumps(nas_config)
+                    '{ nas_config }', json.dumps(nas_config)
                 ).replace(
-                    '{dashboard_config}', json.dumps(dashboard_config)
+                    '{ dashboard_config }', json.dumps(dashboard_config)
                 )
                 
                 self.send_response(200)
@@ -2187,7 +2518,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(404, "Not found")
                 return
 
-            root = Path("/app/data/exports").resolve()
+            root = _get_exports_path()
 
             # strip leading prefix and build filesystem path
             rel = request_path[len("/exports/"):].lstrip("/")  # "audio/<file>.mp3" or "<file>.mp3"
@@ -2254,8 +2585,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             clean_id = video_id.replace('yt:', '').replace(':', '')
 
             # Search for candidate files in common locations
-            search_dirs = [Path('/app/data/exports')]
-            audio_subdir = Path('/app/data/exports/audio')
+            exports_path = _get_exports_path()
+            search_dirs = [exports_path]
+            audio_subdir = exports_path / "audio"
             if audio_subdir.exists():
                 search_dirs.append(audio_subdir)
             patterns = [
@@ -2595,7 +2927,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             elif path.startswith('/api/reports/'):
                 self.serve_api_report_detail()
             elif path == '/api/health':
-                self.serve_api_health()
+                self.serve_jeop3_health()
             elif path == '/api/health/auth':
                 self.serve_api_health_auth()
             elif path == '/api/config':
@@ -2604,10 +2936,18 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_refresh()
             elif path == '/api/backup':
                 self.send_error(410, "Endpoint removed")
+            elif path == '/api/backup/exports':
+                self.serve_api_backup_exports()
+            elif path == '/api/backup/exports/list':
+                self.serve_api_backup_exports_list()
             elif path == '/api/report-events':
                 self.serve_api_report_events()
             elif path == '/api/metrics':
                 self.serve_api_metrics()
+            elif path == '/api/llm-models':
+                self.serve_api_llm_models()
+            elif path == '/api/semantic-search':
+                self.serve_api_semantic_search(query_params)
             elif path == '/api/version':
                 self.serve_api_version()
             elif path.startswith('/api/backup/'):
@@ -2629,7 +2969,51 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(500, "API error")
 
     def serve_api_report_events(self):
-        """Stream report ingest events to the frontend via Server-Sent Events."""
+        """Stream report ingest events to the frontend via Server-Sent Events.
+
+        If BACKEND_API_URL is configured, proxy SSE from the backend to avoid
+        browser CORS issues with direct localhost connections.
+        """
+        import urllib.request
+        import urllib.error
+
+        backend_url = os.getenv('BACKEND_API_URL', '').rstrip('/')
+        if backend_url:
+            # Proxy SSE from backend to avoid browser CORS issues
+            try:
+                sse_url = f"{backend_url}/api/report-events"
+                req = urllib.request.Request(sse_url)
+                req.add_header('Accept', 'text/event-stream')
+
+                with urllib.request.urlopen(req, timeout=30) as response:
+                    # Send headers to client
+                    self.send_response(200)
+                    self.send_header('Content-type', 'text/event-stream')
+                    self.send_header('Cache-Control', 'no-cache')
+                    self.send_header('Connection', 'keep-alive')
+                    self.send_header('X-Accel-Buffering', 'no')
+                    self.end_headers()
+                    self.close_connection = False
+
+                    # Stream SSE from backend to client
+                    while True:
+                        try:
+                            chunk = response.read(1024)
+                            if not chunk:
+                                break
+                            self.wfile.write(chunk)
+                            self.wfile.flush()
+                        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                            break
+            except Exception as e:
+                logger.error(f"SSE proxy error: {e}")
+                self.send_response(502)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "SSE proxy failed"}).encode())
+            return
+
+        # Fallback: local SSE (won't receive backend events)
         self.send_response(200)
         self.send_header('Content-type', 'text/event-stream')
         self.send_header('Cache-Control', 'no-cache')
@@ -2667,6 +3051,125 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         finally:
             report_event_stream.unregister(client)
             self.close_connection = True
+
+    def serve_api_llm_models(self):
+        """Proxy LLM models list from backend to avoid browser CORS issues."""
+        import urllib.request
+        import urllib.error
+
+        backend_url = os.getenv('BACKEND_API_URL', '').rstrip('/')
+        if not backend_url:
+            self.send_response(404)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "backend not configured"}).encode())
+            return
+
+        try:
+            target = f"{backend_url}/api/llm-models"
+            req = urllib.request.Request(target)
+            req.add_header('Accept', 'application/json')
+
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = response.read()
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.send_header('Cache-Control', 'max-age=60')
+                self.end_headers()
+                self.wfile.write(data)
+        except Exception as e:
+            logger.error(f"LLM models proxy error: {e}")
+            self.send_response(502)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "proxy failed"}).encode())
+
+    def serve_api_semantic_search(self, query_params):
+        """
+        AI-powered search using ChromaDB vector embeddings.
+
+        Supports three modes:
+        - semantic: Pure vector similarity search
+        - keyword: PostgreSQL ILIKE pattern matching
+        - hybrid: RRF fusion of semantic + keyword (default)
+        """
+        try:
+            from modules.semantic_search import (
+                search, keyword_search, hybrid_search,
+                is_available, get_indexed_count
+            )
+
+            # Get query params
+            query = query_params.get('q', [''])[0] or query_params.get('query', [''])[0]
+            topk = int(query_params.get('topk', ['20'])[0])
+            mode = query_params.get('mode', ['hybrid'])[0].lower()
+
+            if not query:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Missing query parameter 'q'"}).encode())
+                return
+
+            # Check availability for semantic modes
+            semantic_available = is_available()
+
+            # Choose search method based on mode
+            if mode == 'keyword':
+                results = keyword_search(query, topk=topk)
+                search_type = 'keyword'
+            elif mode == 'semantic':
+                if not semantic_available:
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "results": [],
+                        "indexed_count": 0,
+                        "available": False,
+                        "error": "ChromaDB not initialized"
+                    }).encode())
+                    return
+                results = search(query, topk=topk)
+                search_type = 'semantic'
+            else:  # hybrid (default)
+                if not semantic_available:
+                    # Fall back to keyword if ChromaDB not available
+                    results = keyword_search(query, topk=topk)
+                    search_type = 'keyword (fallback)'
+                else:
+                    results = hybrid_search(query, topk=topk)
+                    search_type = 'hybrid'
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "query": query,
+                "mode": mode,
+                "search_type": search_type,
+                "results": results,
+                "indexed_count": get_indexed_count() if semantic_available else 0,
+                "available": semantic_available or mode == 'keyword'
+            }).encode())
+
+        except ImportError as e:
+            logger.error(f"Semantic search import error: {e}")
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "results": [],
+                "indexed_count": 0,
+                "available": False,
+                "error": "chromadb not installed"
+            }).encode())
+        except Exception as e:
+            logger.error(f"Semantic search error: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
 
     def serve_api_metrics(self):
         """Proxy NAS metrics to avoid browser CORS issues."""
@@ -2848,7 +3351,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     filters['has_audio'] = True
                 elif has_audio_str in ['false', '0', 'no']:
                     filters['has_audio'] = False
-            
+
+            # Fetch by IDs (for semantic search results)
+            if 'ids' in query_params:
+                ids_param = query_params['ids'][0]
+                filters['ids'] = [id.strip()[:100] for id in ids_param.split(',')[:100] if id.strip()]
+
             # Date range filters
             if 'date_from' in query_params:
                 filters['date_from'] = query_params['date_from'][0]
@@ -3322,22 +3830,33 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             errors.append(f"JSON cleanup error: {e}")
 
         # Remove generated summary images if present
+        # Modern image filenames are based on the bare video_id (no source prefix)
+        # e.g. 7GnRsYHwNIU_20251119_071657_neon_network384.png and
+        #       AI2_7GnRsYHwNIU_20251119_071804_minimal_vector384.png
         try:
             img_dirs = [
                 Path('/app/data/exports/images'),
                 Path('./exports/images')
             ]
+            # Derive a generic base id for filenames (strip yt:/reddit:/web: prefixes)
+            base_id = (report_id or '').split(':', 1)[-1]
             for idir in img_dirs:
                 if not idir.exists():
                     continue
                 for ext in ('.png', '.jpg', '.jpeg', '.webp'):
-                    for p in idir.glob(f"{report_id}_*{ext}"):
-                        try:
-                            p.unlink()
-                            deleted_files.append(str(p))
-                            logger.info("Deleted summary image: %s", p)
-                        except Exception as e:
-                            errors.append(f"Failed to delete image {p}: {e}")
+                    patterns = [
+                        f"{base_id}_*{ext}",           # AI1 / legacy pattern
+                        f"AI2_{base_id}_*{ext}",       # AI2 pattern
+                        f"{report_id}_*{ext}",         # older prefix pattern
+                    ]
+                    for pattern in patterns:
+                        for p in idir.glob(pattern):
+                            try:
+                                p.unlink()
+                                deleted_files.append(str(p))
+                                logger.info("Deleted summary image: %s", p)
+                            except Exception as e:
+                                errors.append(f"Failed to delete image {p}: {e}")
         except Exception as e:
             errors.append(f"Image cleanup error: {e}")
 
@@ -4286,6 +4805,52 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 if summaries and hasattr(content_index, 'upsert_summaries'):
                     summaries_upserted = content_index.upsert_summaries(video_id, summaries)
 
+                # Update ChromaDB index for semantic search (incremental update)
+                chroma_updated = False
+                try:
+                    from modules.semantic_search import upsert_document as chroma_upsert
+
+                    # Extract summary text - try multiple sources
+                    summary_text = ""
+                    analysis_json = payload.get("analysis_json") or {}
+
+                    # First try summary_variants (preferred - has actual text)
+                    if summaries:
+                        for s in summaries:
+                            if isinstance(s, dict) and s.get('text'):
+                                summary_text = s.get('text', '')
+                                break
+
+                    # Fallback to analysis_json.summary
+                    if not summary_text and isinstance(analysis_json, dict):
+                        summary_text = analysis_json.get('summary', '')
+
+                    if summary_text:
+                        # Determine source from payload
+                        canonical_url = payload.get("canonical_url", "") or ""
+                        vid = video_id or ""
+                        if "youtube.com" in canonical_url or "youtu.be" in canonical_url:
+                            content_source = "youtube"
+                        elif "reddit.com" in canonical_url or vid.startswith("reddit:"):
+                            content_source = "reddit"
+                        elif "wikipedia.org" in canonical_url:
+                            content_source = "wikipedia"
+                        else:
+                            content_source = payload.get("content_source") or "web"
+
+                        chroma_updated = chroma_upsert(
+                            video_id=video_id,
+                            title=payload.get("title", ""),
+                            summary=summary_text,
+                            channel=payload.get("channel_name", ""),
+                            source=content_source
+                        )
+                        if chroma_updated:
+                            logger.info(f"Updated ChromaDB index for {video_id}")
+                except Exception as chroma_err:
+                    # Don't fail the ingest if ChromaDB update fails
+                    logger.warning(f"ChromaDB update failed for {video_id}: {chroma_err}")
+
                 # Prepare realtime event broadcast before responding
                 summary_types: List[str] = []
                 for summary in summaries or []:
@@ -4319,6 +4884,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 response = {
                     "upserted": int(bool(upserted)),
                     "summaries_upserted": summaries_upserted,
+                    "chroma_updated": chroma_updated,
                     "verify_row": verify_row  # TEMP: remove once stable
                 }
                 self.wfile.write(json.dumps(response).encode())
@@ -4781,6 +5347,113 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"error": str(e)}).encode())
 
+    def handle_reprocess_request(self):
+        """POST /api/reprocess — admin-only. Proxy to NAS if configured.
+
+        The dashboard UI uses this to request a re-run of summarization for a video.
+        This service does not run the summarizer itself; it forwards the request to
+        the NAS service (NGROK_BASE_URL / NGROK_URL) when configured.
+
+        Body: { video_id, regenerate_audio?: bool, summary_types?: [..] }
+        Auth: X-Reprocess-Token == DEBUG_TOKEN (or Bearer DEBUG_TOKEN).
+        """
+        try:
+            auth_ok = self._reprocess_auth_ok()
+            if not auth_ok:
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            length = int(self.headers.get('Content-Length', 0))
+            raw = self.rfile.read(length) if length else b'{}'
+            try:
+                data = json.loads(raw.decode('utf-8') or '{}')
+            except Exception as e:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "invalid_json", "message": str(e)}).encode())
+                return
+
+            video_id = (data.get('video_id') or '').strip()
+            if not video_id:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id required"}).encode())
+                return
+
+            # BACKEND_API_URL points to the summarizer backend (same machine or remote)
+            # - Same machine (Docker): http://host.docker.internal:6452
+            # - Same machine (native): http://localhost:6453
+            # - Remote via Tailscale: http://100.xxx.xxx.xxx:6453
+            # Legacy: NGROK_BASE_URL or NGROK_URL (for backwards compatibility)
+            base_url = (os.getenv('BACKEND_API_URL') or os.getenv('NGROK_BASE_URL') or os.getenv('NGROK_URL') or '').strip()
+            if not base_url:
+                self.send_response(503)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "backend_not_configured",
+                    "message": "Regenerate requires BACKEND_API_URL. Set it to the backend API endpoint (e.g., http://host.docker.internal:6452 for same-machine Docker, or Tailscale URL for remote)."
+                }).encode())
+                return
+
+            target = base_url.rstrip('/') + '/api/reprocess'
+            headers = {
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true'
+            }
+            tok = (self.headers.get('X-Reprocess-Token') or '').strip()
+            if tok:
+                headers['X-Reprocess-Token'] = tok
+
+            user = os.getenv('NGROK_BASIC_USER', '')
+            pwd = os.getenv('NGROK_BASIC_PASS', '')
+            auth = (user, pwd) if (user or pwd) else None
+
+            try:
+                resp = requests.post(target, headers=headers, json=data, auth=auth, timeout=15)
+            except RequestException as e:
+                logger.warning(f"Reprocess proxy request failed: {e}")
+                self.send_response(502)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "reprocess_upstream_unavailable"}).encode())
+                return
+
+            self.send_response(resp.status_code)
+            self.set_cors_headers()
+            self.send_header('Content-type', resp.headers.get('Content-Type', 'application/json'))
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(resp.content)
+
+            # Best-effort local SSE hint
+            if resp.status_code in (200, 202):
+                try:
+                    report_event_stream.broadcast('reprocess-scheduled', {
+                        "video_id": video_id,
+                        "summary_types": data.get("summary_types") if isinstance(data.get("summary_types"), list) else [],
+                        "timestamp": datetime.utcnow().isoformat() + "Z"
+                    })
+                except Exception:
+                    logger.exception("Failed to broadcast reprocess-scheduled for %s", video_id)
+        except Exception as e:
+            logger.exception("handle_reprocess_request failed")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "reprocess_proxy_error", "message": str(e)}).encode())
+
     def handle_backfill_original_prompts(self):
         """POST /api/admin/backfill-original-prompts — admin-only (DEBUG_TOKEN).
 
@@ -5040,6 +5713,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
         # Start with env-configured allowlist
         origins = set(ALLOWED_ORIGINS_CFG)
+        # Explicitly allow Quizzernator frontend
+        origins.add('https://quizzernator.onrender.com')
         # Also include self render url if provided
         render_url = os.getenv('RENDER_DASHBOARD_URL', '').rstrip('/')
         if render_url:
@@ -5094,6 +5769,55 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({'status': 'error'}).encode())
 
+    def serve_jeop3_health(self):
+        """
+        GET /api/health - Jeop3 compatibility endpoint
+
+        Returns models in Jeop3 format:
+        {
+          "status": "ok",
+          "models": [
+            {"id": "or:google/gemini-2.5-flash-lite", "name": "google/gemini-2.5-flash-lite", "provider": "openrouter"},
+            ...
+          ]
+        }
+        """
+        try:
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+
+            # Get models from environment or use defaults
+            or_models = os.getenv('OR_MODELS', 'google/gemini-2.5-flash-lite,google/gemini-2.5-flash')
+            ollama_models = os.getenv('OLLAMA_MODELS', '')
+
+            models = []
+            for model in or_models.split(','):
+                model = model.strip()
+                if model:
+                    models.append({
+                        "id": f"or:{model}",
+                        "name": model,
+                        "provider": "openrouter"
+                    })
+
+            self.wfile.write(json.dumps({
+                'status': 'ok',
+                'models': models,
+                'providers': {
+                    'openrouter': [m['name'] for m in models if m['provider'] == 'openrouter'],
+                    'ollama': ollama_models.split(',') if ollama_models else []
+                }
+            }).encode())
+        except Exception as e:
+            logger.error(f"Error serving /api/health for Jeop3: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'status': 'error'}).encode())
+
     def serve_api_health_auth(self):
         """GET /api/health/auth - requires valid Google bearer token"""
         try:
@@ -5121,9 +5845,153 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({'success': False, 'error': 'Internal error'}).encode())
 
-    def handle_fetch_article(self):
-        """Handle POST /api/fetch-article - Fetch external article content"""
+    def serve_api_backup_exports(self):
+        """GET /api/backup/exports - Download all exports files as a zip archive
+
+        Admin-only endpoint (requires DEBUG_TOKEN). Creates a zip file of the entire
+        exports directory (audio and images) and streams it to the client.
+        """
         try:
+            # Verify DEBUG_TOKEN for admin access
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Unauthorized: DEBUG_TOKEN required'}).encode())
+                logger.warning("Unauthorized attempt to access /api/backup/exports")
+                return
+
+            # Determine exports directory
+            exports_root = Path('/app/data/exports') if Path('/app/data').exists() else Path('./exports')
+
+            if not exports_root.exists():
+                self.send_response(404)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Exports directory not found'}).encode())
+                return
+
+            import zipfile
+            import io
+
+            # Create zip file in memory
+            logger.info(f"Creating backup of exports directory: {exports_root}")
+            zip_buffer = io.BytesIO()
+
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for file_path in exports_root.rglob('*'):
+                    if file_path.is_file():
+                        # Add file to zip with relative path
+                        arcname = file_path.relative_to(exports_root)
+                        zipf.write(file_path, arcname)
+                        logger.debug(f"Added to backup: {arcname}")
+
+            zip_buffer.seek(0)
+            zip_size = len(zip_buffer.getvalue())
+
+            # Send zip file
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-Type', 'application/zip')
+            self.send_header('Content-Disposition', 'attachment; filename="ytv2_exports_backup.zip"')
+            self.send_header('Content-Length', str(zip_size))
+            self.end_headers()
+
+            self.wfile.write(zip_buffer.getvalue())
+
+            logger.info(f"✅ Exports backup completed: {zip_size} bytes")
+
+        except Exception as e:
+            logger.error(f"Exports backup error: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': f'Backup failed: {str(e)}'}).encode())
+
+    def serve_api_backup_exports_list(self):
+        """GET /api/backup/exports/list - List all files in exports directory
+
+        Admin-only endpoint (requires DEBUG_TOKEN). Returns a list of all files
+        in the exports directory with their sizes, so we can download them in batches.
+        """
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Unauthorized: DEBUG_TOKEN required'}).encode())
+                logger.warning("Unauthorized attempt to access /api/backup/exports/list")
+                return
+
+            # Determine exports directory
+            exports_root = Path('/app/data/exports') if Path('/app/data').exists() else Path('./exports')
+
+            if not exports_root.exists():
+                self.send_response(404)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Exports directory not found'}).encode())
+                return
+
+            # List all files
+            files = []
+            for file_path in exports_root.rglob('*'):
+                if file_path.is_file():
+                    files.append({
+                        'path': str(file_path.relative_to(exports_root)),
+                        'size': file_path.stat().st_size,
+                        'name': file_path.name
+                    })
+
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+
+            result = {
+                'exports_root': str(exports_root),
+                'total_files': len(files),
+                'total_size': sum(f['size'] for f in files),
+                'files': files
+            }
+
+            self.wfile.write(json.dumps(result, indent=2).encode())
+
+            logger.info(f"✅ Listed {len(files)} files in exports directory")
+
+        except Exception as e:
+            logger.error(f"Exports list error: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': f'List failed: {str(e)}'}).encode())
+
+    def handle_fetch_article(self):
+        """Handle POST /api/fetch-article - Fetch external article content
+
+        Authentication: Requires Clerk JWT with approved email
+        """
+        try:
+            # Verify Clerk JWT for article fetching
+            auth_header = self.headers.get('Authorization', '')
+            try:
+                user_info = verify_clerk_bearer(auth_header)
+                logger.info(f"✅ Clerk auth verified for fetch article: {user_info['email']}")
+            except PermissionError as e:
+                logger.warning(f"❌ Clerk auth failed for fetch article: {e}")
+                self.send_response(403)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode())
+                return
+
             origin = self.headers.get('Origin', 'unknown')
             logger.info(f"📰 Fetch article request from origin: {origin}")
 
@@ -5488,6 +6356,268 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"error": "Failed to generate quiz"}).encode())
+
+    def handle_jeop3_generate(self):
+        """
+        Handle POST /api/ai/generate - Jeop3 AI generation endpoint
+
+        Jeop3 format:
+        {
+            "promptType": "categories-generate" | "game-title" | etc.,
+            "context": { theme, difficulty, count, ... },
+            "difficulty": "easy" | "normal" | "hard",
+            "model": "or:google/gemini-2.5-flash-lite"  (optional)
+        }
+
+        Response format:
+        {
+            "result": "JSON string with generated content",
+            "model": "or:google/gemini-2.5-flash-lite"
+        }
+
+        Authentication: Requires Clerk JWT with approved email
+        """
+        try:
+            # Verify Clerk JWT for game creation
+            auth_header = self.headers.get('Authorization', '')
+            try:
+                user_info = verify_clerk_bearer(auth_header)
+                logger.info(f"✅ Clerk auth verified for {user_info['email']}")
+            except PermissionError as e:
+                logger.warning(f"❌ Clerk auth failed: {e}")
+                self.send_response(403)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode())
+                return
+
+            import jeop3_prompts
+
+            # Log for debugging
+            origin = self.headers.get('Origin', 'unknown')
+            logger.info(f"🎮 Jeop3 AI generation request from origin: {origin}")
+
+            # Get request body
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Request body is required"}).encode())
+                return
+
+            body = self.rfile.read(content_length).decode('utf-8')
+            logger.info(f"📥 Jeop3 request body: {body[:500]}...")  # Log first 500 chars
+
+            try:
+                request_data = json.loads(body)
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Invalid JSON in request body"}).encode())
+                return
+
+            # Extract Jeop3-specific parameters
+            prompt_type = request_data.get('promptType')
+            if not prompt_type:
+                logger.warning(f"❌ Jeop3 400: Missing promptType. Request data keys: {list(request_data.keys())}")
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "promptType is required",
+                    "allowed": list(jeop3_prompts.ALLOWED_PROMPT_TYPES)
+                }).encode())
+                return
+
+            context = request_data.get('context', {})
+            difficulty = request_data.get('difficulty', 'normal')
+            model_param = request_data.get('model', '')
+
+            # Validate prompt type
+            if prompt_type not in jeop3_prompts.ALLOWED_PROMPT_TYPES:
+                logger.warning(f"❌ Jeop3 400: Invalid promptType '{prompt_type}'. Allowed: {list(jeop3_prompts.ALLOWED_PROMPT_TYPES)}")
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "Invalid prompt type",
+                    "allowed": list(jeop3_prompts.ALLOWED_PROMPT_TYPES)
+                }).encode())
+                return
+
+            # Parse model parameter (format: "or:model-name" or "ollama:model-name")
+            logger.info(f"🤖 Model param from request: '{model_param}'")
+            if model_param:
+                parts = model_param.split(':', 1)
+                if len(parts) == 2:
+                    provider, model_name = parts
+                    if provider == 'or' or provider == 'openrouter':
+                        primary_model = model_name
+                    elif provider == 'ollama':
+                        # Ollama not supported yet, fall back to default
+                        primary_model = 'google/gemini-2.5-flash-lite'
+                    else:
+                        primary_model = 'google/gemini-2.5-flash-lite'
+                else:
+                    primary_model = 'google/gemini-2.5-flash-lite'
+            else:
+                primary_model = 'google/gemini-2.5-flash-lite'
+
+            logger.info(f"🎯 Using model: {primary_model}")
+
+            # Build Jeop3 prompt
+            logger.info(f"🔨 Building Jeop3 prompt: type={prompt_type}, context keys={list(context.keys())}, difficulty={difficulty}")
+            try:
+                prompts = jeop3_prompts.build_jeop3_prompt(prompt_type, context, difficulty)
+                logger.info(f"✅ Jeop3 prompt built successfully, system length: {len(prompts.get('system', ''))}, user length: {len(prompts.get('user', ''))}")
+            except ValueError as e:
+                logger.error(f"❌ Jeop3 400: ValueError from build_jeop3_prompt: {e}")
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode())
+                return
+
+            # Check for OpenRouter API key
+            openrouter_key = os.getenv('OPENROUTER_API_KEY')
+            if not openrouter_key:
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "OpenRouter API key not configured"}).encode())
+                return
+
+            # Prepare OpenRouter request
+            payload = {
+                "model": primary_model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": prompts['system']
+                    },
+                    {
+                        "role": "user",
+                        "content": prompts['user']
+                    }
+                ],
+                "max_tokens": self._get_jeop3_max_tokens(prompt_type),
+                "response_format": {"type": "json_object"}
+            }
+
+            # Call OpenRouter
+            request_obj = Request(
+                'https://openrouter.ai/api/v1/chat/completions',
+                data=json.dumps(payload).encode('utf-8'),
+                headers={
+                    'Authorization': f'Bearer {openrouter_key}',
+                    'Content-Type': 'application/json',
+                    'HTTP-Referer': 'https://quizzernator.onrender.com',
+                    'X-Title': 'Jeop3 Generator'
+                }
+            )
+
+            try:
+                with urlopen(request_obj, timeout=45) as response:
+                    raw_payload = response.read().decode('utf-8')
+                    try:
+                        response_data = json.loads(raw_payload)
+                    except json.JSONDecodeError:
+                        logger.error("OpenRouter response was not valid JSON: %s", raw_payload[:500])
+                        self.send_response(502)
+                        self.set_cors_headers()
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            "error": "OpenRouter returned unreadable response",
+                            "raw": raw_payload[:500]
+                        }).encode())
+                        return
+
+                    choices = response_data.get('choices', [])
+                    if not choices:
+                        logger.error("OpenRouter returned no choices: %s", raw_payload[:500])
+                        self.send_response(502)
+                        self.set_cors_headers()
+                        self.send_header('Content-type', 'application/json')
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            "error": "OpenRouter returned no choices"
+                        }).encode())
+                        return
+
+                    content = choices[0].get('message', {}).get('content', '')
+
+                    # Log success
+                    model_used = response_data.get('model', primary_model)
+                    logger.info(f"✅ Jeop3 generation success: {model_used} | Type: {prompt_type} | Length: {len(content)} chars")
+
+                    # Return in Jeop3 format
+                    self.send_response(200)
+                    self.set_cors_headers()
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "result": content,
+                        "model": f"or:{model_used}"
+                    }).encode())
+
+            except HTTPError as e:
+                logger.error(f"OpenRouter HTTP error: {e.code} - {e.reason}")
+                self.send_response(e.code)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "OpenRouter service error",
+                    "status": e.code,
+                    "message": str(e.reason)
+                }).encode())
+            except Exception as e:
+                logger.exception("OpenRouter request failed")
+                self.send_response(502)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "OpenRouter request failed",
+                    "message": str(e)
+                }).encode())
+
+        except Exception as e:
+            logger.exception(f"❌ Jeop3 generation failed with unexpected error: {e}")
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "error": "AI generation failed",
+                "message": str(e)
+            }).encode())
+
+    def _get_jeop3_max_tokens(self, prompt_type: str) -> int:
+        """Get max tokens based on Jeop3 prompt type"""
+        token_limits = {
+            'categories-generate': 8000,
+            'categories-generate-from-content': 8000,
+            'category-replace-all': 4000,
+            'questions-generate-five': 3000,
+            'category-generate-clues': 3000,
+            'game-title': 500,
+            'category-title-generate': 300,
+            'team-name-random': 200,
+            'team-name-enhance': 200,
+            'default': 2000,
+        }
+        return token_limits.get(prompt_type, token_limits['default'])
 
     def _get_quiz_storage_path(self):
         """Get the quiz storage directory path"""

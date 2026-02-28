@@ -1,6 +1,8 @@
-# NAS Integration (PostgreSQL Ingest)
+# Local Integration (PostgreSQL Ingest)
 
-This describes how the NAS backend syncs content, audio, and images to the Render‑hosted dashboard. The legacy SQLite sync endpoints are removed.
+This describes how the backend syncs content, audio, and images to the dashboard. Both services run locally on i9 Mac in separate Docker containers.
+
+> **Note:** This was previously NAS_INTEGRATION.md for Render deployment. The system now runs locally.
 
 ## Overview
 - Database: PostgreSQL only (`DATABASE_URL_POSTGRES_NEW` on the dashboard)
@@ -13,18 +15,48 @@ This describes how the NAS backend syncs content, audio, and images to the Rende
   - Legacy compatibility (uploads only): `Authorization: Bearer <SYNC_SECRET>`
 - Public read endpoints (unchanged): `/api/reports`, `/api/filters`
 
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                           i9 Mac                                │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                    Docker Containers                     │   │
+│  │  ┌─────────────────┐  ┌─────────────────────────────┐   │   │
+│  │  │ Backend Bot     │  │ Dashboard                   │   │   │
+│  │  │ Port 6452/6453  │  │ Port 10000                  │   │   │
+│  │  │ - Telegram Bot  │──│ - Web Interface             │   │   │
+│  │  │ - /api/reprocess│  │ - BACKEND_API_URL ──────────┘   │   │
+│  │  └────────┬────────┘  │   (points to 6452)              │   │
+│  │           │           └──────────────────────────────────┘   │
+│  │           │                          │                        │
+│  │           └────────────┬─────────────┘                        │
+│  │                        │                                      │
+│  │              host.docker.internal                             │
+│  └────────────────────────┼─────────────────────────────────────┘
+│                           │                                      │
+│  ┌────────────────────────┴────────────────────────────────────┐│
+│  │              PostgreSQL (Homebrew)                          ││
+│  │              Port 5432                                      ││
+│  └─────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────┘
+```
+
 ## Environment Variables
 
-Dashboard (Render):
-- `DATABASE_URL_POSTGRES_NEW` – required
-- `INGEST_TOKEN` – required for NAS sync (private ingest)
-- Optional legacy: `SYNC_SECRET` (legacy upload endpoints also accepted)
+Dashboard (.env):
+- `DATABASE_URL_POSTGRES_NEW` – PostgreSQL connection
+- `INGEST_TOKEN` – for backend sync (private ingest)
+- `SYNC_SECRET` – shared secret for uploads
+- `BACKEND_API_URL=http://host.docker.internal:6452` – for regenerate proxy
+- `DEBUG_TOKEN` – auth for regenerate endpoint
 
-NAS (backend):
-- `RENDER_DASHBOARD_URL=https://<your-render-app>.onrender.com`
-- `INGEST_TOKEN=<same-as-Render>`
-- Optional: `DASHBOARD_URL` for building “Open summary” links
-- Optional: `DATABASE_URL_POSTGRES_NEW` if the NAS also writes directly to Postgres (not required for ingest)
+Backend (.env.nas):
+- `DATABASE_URL=postgresql://ytv2:pass@host.docker.internal:5432/ytv2`
+- `DASHBOARD_URL=http://marks-macbook-pro-2.tail9e123c.ts.net:10000`
+- `SYNC_SECRET` – must match dashboard
+- `REPROCESS_AUTH_TOKEN` – must match dashboard's `DEBUG_TOKEN`
 
 ## Endpoints
 

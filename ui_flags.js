@@ -16,4 +16,8 @@ window.UI_FLAGS = Object.assign({}, window.UI_FLAGS || {}, {
   wallFlipEnabled: true,
   // Experimental: in-grid 2x2 mega-card span with flip (v4 branch)
   wallMegaSpanEnabled: true,
+  // Wall docked reader behavior
+  wallDockedReaderEnabled: true,
+  wallKaleidoPreferred: false,
+  wallDockAutoOpenFirst: true,
 });

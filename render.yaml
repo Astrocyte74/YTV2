@@ -31,7 +31,11 @@ services:
           property: url
       - key: SYNC_SECRET
         sync: false  # Set this in Render dashboard for NAS sync security
-      
+
+      # Admin/debug token for backup endpoints
+      - key: DEBUG_TOKEN
+        value: "ytv2_admin_backup_token_2024"
+
       # Leave Telegram token empty for dashboard-only mode
       - key: TELEGRAM_BOT_TOKEN
         value: ""

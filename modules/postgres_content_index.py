@@ -630,6 +630,20 @@ class PostgreSQLContentIndex:
                     where_conditions.append(f"c.channel_name IN ({channel_placeholders})")
                     params.extend(channels)
 
+                # IDs filter (for semantic search results)
+                if 'ids' in filters and filters['ids']:
+                    ids = filters['ids'] if isinstance(filters['ids'], list) else [filters['ids']]
+                    # Normalize IDs - strip yt: prefix from semantic search results
+                    normalized_ids = []
+                    for id_val in ids[:100]:
+                        if id_val.startswith('yt:'):
+                            normalized_ids.append(id_val[3:])
+                        else:
+                            normalized_ids.append(id_val)
+                    id_placeholders = ','.join(['%s'] * len(normalized_ids))
+                    where_conditions.append(f"c.video_id IN ({id_placeholders})")
+                    params.extend(normalized_ids)
+
                 # Content type filters - REMOVED (column doesn't exist in PostgreSQL schema)
                 # if 'content_type' in filters and filters['content_type']:
                 #     content_types = filters['content_type'] if isinstance(filters['content_type'], list) else [filters['content_type']]
