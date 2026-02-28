@@ -1165,21 +1165,93 @@ class PostgreSQLContentIndex:
         return reverse_mapping.get(user_friendly_name, user_friendly_name.lower())
 
     def get_filters(self, active_filters: Optional[Dict[str, Any]] = None) -> Dict[str, List[Dict[str, Any]]]:
-        """Build filter payload matching legacy SQLite structure."""
+        """Build filter payload matching legacy SQLite structure.
+
+        Args:
+            active_filters: Optional filters to apply when calculating facet counts.
+                           When provided, counts reflect only matching content.
+        """
         conn = self._get_connection()
         try:
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             source_case = self._source_case_expression('c', conn)
 
-            # Aggregate sources using normalized slug expression
+            # Build WHERE clause from active_filters (same logic as get_reports)
+            where_conditions: List[str] = []
+            params: List[Any] = []
+
+            if active_filters:
+                # Category filters
+                if 'category' in active_filters and active_filters['category']:
+                    categories = active_filters['category'] if isinstance(active_filters['category'], list) else [active_filters['category']]
+                    cat_conditions = []
+                    for cat in categories:
+                        cat_conditions.append("""(
+                            (c.subcategories_json IS NOT NULL AND
+                             c.subcategories_json->'categories' @> %s::jsonb) OR
+                            (c.analysis_json->'categories' IS NOT NULL AND
+                             c.analysis_json->'categories' @> %s::jsonb)
+                        )""")
+                        cat_json = json.dumps([{"category": cat}])
+                        params.extend([cat_json, cat_json])
+                    if cat_conditions:
+                        where_conditions.append(f"({' OR '.join(cat_conditions)})")
+
+                # Source filters
+                if 'source' in active_filters and active_filters['source']:
+                    sources = active_filters['source'] if isinstance(active_filters['source'], list) else [active_filters['source']]
+                    normalized_sources = [str(s).strip().lower() for s in sources if str(s).strip()]
+                    if normalized_sources:
+                        placeholders = ','.join(['%s'] * len(normalized_sources))
+                        where_conditions.append(f"({source_case}) IN ({placeholders})")
+                        params.extend(normalized_sources)
+
+                # Channel filters
+                if 'channel' in active_filters and active_filters['channel']:
+                    channels = active_filters['channel'] if isinstance(active_filters['channel'], list) else [active_filters['channel']]
+                    # Filter out empty strings
+                    channels = [ch for ch in channels if ch and str(ch).strip()]
+                    if channels:
+                        channel_placeholders = ','.join(['%s'] * len(channels))
+                        where_conditions.append(f"c.channel_name IN ({channel_placeholders})")
+                        params.extend(channels)
+
+                # Language filters
+                if 'language' in active_filters and active_filters['language']:
+                    languages = active_filters['language'] if isinstance(active_filters['language'], list) else [active_filters['language']]
+                    lang_placeholders = ','.join(['%s'] * len(languages))
+                    where_conditions.append(f"c.language IN ({lang_placeholders})")
+                    params.extend(languages)
+
+                # Summary type filter
+                if 'summary_type' in active_filters and active_filters['summary_type']:
+                    summary_types = active_filters['summary_type'] if isinstance(active_filters['summary_type'], list) else [active_filters['summary_type']]
+                    database_variants = [self._get_database_variant(st) for st in summary_types]
+                    where_conditions.append("COALESCE(ls.variant, 'unknown') = ANY(%s)")
+                    params.append(database_variants)
+
+            where_clause = ""
+            if where_conditions:
+                where_clause = " WHERE ls.html IS NOT NULL AND " + " AND ".join(where_conditions)
+            else:
+                where_clause = " WHERE ls.html IS NOT NULL"
+
+            # Aggregate sources using normalized slug expression (with optional filter)
             try:
                 cursor.execute(
                     f"""
                     SELECT {source_case} AS slug, COUNT(*) AS count
                     FROM content c
+                    LEFT JOIN LATERAL (
+                        SELECT s.variant, s.html FROM summaries s
+                        WHERE s.video_id = c.video_id
+                        ORDER BY s.created_at DESC LIMIT 1
+                    ) ls ON true
+                    {where_clause}
                     GROUP BY slug
                     ORDER BY COUNT(*) DESC
-                    """
+                    """,
+                    params
                 )
                 source_rows = cursor.fetchall()
             except Exception:
@@ -1198,25 +1270,43 @@ class PostgreSQLContentIndex:
                     'count': count
                 })
 
-            # Optimized SQL query for summary_type facet counts
-            cursor.execute("""
+            # Optimized SQL query for summary_type facet counts (with optional filter)
+            cursor.execute(
+                f"""
                 SELECT COALESCE(ls.variant, 'unknown') AS t, COUNT(*) AS c
                 FROM content c
-                LEFT JOIN v_latest_summaries ls ON c.video_id = ls.video_id
+                LEFT JOIN LATERAL (
+                    SELECT s.variant, s.html FROM summaries s
+                    WHERE s.video_id = c.video_id
+                    ORDER BY s.created_at DESC LIMIT 1
+                ) ls ON true
+                {where_clause}
                 GROUP BY 1
                 ORDER BY COUNT(*) DESC
-            """)
+                """,
+                params
+            )
             summary_type_rows = cursor.fetchall()
 
-            cursor.execute("""
-                SELECT channel_name,
-                       COALESCE(has_audio, FALSE) AS has_audio,
-                       analysis_json,
-                       subcategories_json,
-                       canonical_url,
-                       video_id
-                FROM content
-            """)
+            # Main content query for in-memory counting (with optional filter)
+            cursor.execute(
+                f"""
+                SELECT c.channel_name,
+                       COALESCE(c.has_audio, FALSE) AS has_audio,
+                       c.analysis_json,
+                       c.subcategories_json,
+                       c.canonical_url,
+                       c.video_id
+                FROM content c
+                LEFT JOIN LATERAL (
+                    SELECT s.variant, s.html FROM summaries s
+                    WHERE s.video_id = c.video_id
+                    ORDER BY s.created_at DESC LIMIT 1
+                ) ls ON true
+                {where_clause}
+                """,
+                params
+            )
             rows = cursor.fetchall()
 
             language_counter: Counter[str] = Counter()

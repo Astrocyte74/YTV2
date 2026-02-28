@@ -2650,10 +2650,28 @@ class AudioDashboard {
         });
     }
 
-    async loadFilters() {
+    async loadFilters(activeFilters = null) {
         try {
-            const response = await fetch('/api/filters');
+            // Build query string from active filters for faceted counts
+            let url = '/api/filters';
+            if (activeFilters && Object.keys(activeFilters).length > 0) {
+                const params = new URLSearchParams();
+                Object.entries(activeFilters).forEach(([key, values]) => {
+                    if (Array.isArray(values) && values.length > 0) {
+                        values.forEach(v => params.append(key, v));
+                    }
+                });
+                const queryString = params.toString();
+                if (queryString) {
+                    url += '?' + queryString;
+                }
+            }
+
+            const response = await fetch(url);
             const filters = await response.json();
+
+            // Preserve current selections before re-rendering
+            const savedSelections = this.currentFilters || {};
 
             const sourceItems = (filters.content_source || filters.source || []).map(item => {
                 const raw = (item.value ?? '').toString();
@@ -2671,6 +2689,9 @@ class AudioDashboard {
             this.renderLanguageFilters(filters.languages || []);
             this.renderFilterSection(filters.summary_type, this.summaryTypeFilters, 'summary_type');
 
+            // Restore saved selections after re-rendering
+            this.restoreFilterSelections(savedSelections);
+
             // Populate filter bar dropdowns
             this.populateSourceDropdown(sourceItems);
             this.populateCategoryDropdown(filters.categories || []);
@@ -2681,8 +2702,7 @@ class AudioDashboard {
             // Bind show more toggles after content is loaded
             this.bindShowMoreToggles();
 
-            // Fix 1: Initialize currentFilters after filters render
-            // This ensures visual state (checkboxes) matches internal state
+            // Compute filters from DOM (now with restored selections)
             this.currentFilters = this.computeFiltersFromDOM();
             this.updateHeroBadges();
             console.log('Initialized currentFilters after render:', this.currentFilters);
@@ -2691,6 +2711,52 @@ class AudioDashboard {
         } catch (error) {
             console.error('Failed to load filters:', error);
         }
+    }
+
+    async refreshFacetCounts(excludeDimension = null) {
+        // Refresh facet counts from server based on current filters
+        // excludeDimension: don't apply filter for this dimension (so options remain visible)
+        try {
+            const effectiveFilters = this.getEffectiveFiltersForFacets(excludeDimension);
+            await this.loadFilters(effectiveFilters);
+        } catch (error) {
+            console.error('Failed to refresh facet counts:', error);
+        }
+    }
+
+    getEffectiveFiltersForFacets(excludeDimension = null) {
+        // Get filters to apply when calculating facet counts
+        // Exclude the specified dimension so users can see all options in that dropdown
+        const filters = { ...this.currentFilters };
+        if (excludeDimension) {
+            delete filters[excludeDimension];
+        }
+        return filters;
+    }
+
+    debouncedRefreshFacets() {
+        // Debounced facet refresh - wait 1 second after last filter change
+        // This prevents rapid API calls while user is multi-selecting
+        if (this._facetRefreshTimer) {
+            clearTimeout(this._facetRefreshTimer);
+        }
+        this._facetRefreshTimer = setTimeout(() => {
+            this.refreshFacetCounts();
+        }, 1000);
+    }
+
+    restoreFilterSelections(savedSelections) {
+        // Restore checkbox selections after filter sections are re-rendered
+        if (!savedSelections || Object.keys(savedSelections).length === 0) return;
+
+        Object.entries(savedSelections).forEach(([filterType, values]) => {
+            if (Array.isArray(values)) {
+                values.forEach(value => {
+                    const cb = document.querySelector(`input[data-filter="${filterType}"][value="${CSS.escape(value)}"]`);
+                    if (cb) cb.checked = true;
+                });
+            }
+        });
     }
 
     augmentSourceFiltersFromItems(items = []) {
@@ -3361,6 +3427,11 @@ class AudioDashboard {
                 this.showNowPlayingPlaceholder();
             }
             this.renderQueue();
+
+            // Refresh facet counts after a delay (debounced)
+            // This updates counts based on current filters without disrupting multi-select
+            this.debouncedRefreshFacets();
+
         } catch (error) {
             console.error('Failed to load content:', error);
             this.showError('Failed to load content');
@@ -13420,10 +13491,10 @@ class AudioDashboard {
             });
             this.sourceDropdownMenu.addEventListener('click', (e) => {
                 const btn = e.target.closest('.source-option');
-                if (btn) {
+                if (btn && !btn.disabled) {
                     const sourceValue = btn.dataset.source;
                     this.applySourceFilter(sourceValue);
-                    this.closeAllDropdowns();
+                    // Don't close dropdown for multi-select
                 }
             });
         }
@@ -13436,10 +13507,10 @@ class AudioDashboard {
             });
             this.categoryDropdownMenu.addEventListener('click', (e) => {
                 const btn = e.target.closest('.category-option');
-                if (btn) {
+                if (btn && !btn.disabled) {
                     const value = btn.dataset.category;
                     this.applyCategoryFilter(value);
-                    this.closeAllDropdowns();
+                    // Don't close dropdown for multi-select
                 }
             });
         }
@@ -13452,10 +13523,10 @@ class AudioDashboard {
             });
             this.channelDropdownMenu.addEventListener('click', (e) => {
                 const btn = e.target.closest('.channel-option');
-                if (btn) {
+                if (btn && !btn.disabled) {
                     const value = btn.dataset.channel;
                     this.applyChannelFilter(value);
-                    this.closeAllDropdowns();
+                    // Don't close dropdown for multi-select
                 }
             });
         }
@@ -13468,10 +13539,10 @@ class AudioDashboard {
             });
             this.languageDropdownMenu.addEventListener('click', (e) => {
                 const btn = e.target.closest('.language-option');
-                if (btn) {
+                if (btn && !btn.disabled) {
                     const value = btn.dataset.language;
                     this.applyLanguageFilter(value);
-                    this.closeAllDropdowns();
+                    // Don't close dropdown for multi-select
                 }
             });
         }
@@ -13515,7 +13586,7 @@ class AudioDashboard {
                 const chip = e.target.closest('.filter-chip');
                 if (chip) {
                     e.stopPropagation();
-                    this.removeFilterChip(chip.dataset.chipType);
+                    this.removeFilterChip(chip.dataset.chipType, chip.dataset.chipValue);
                     return;
                 }
                 const clearBtn = e.target.closest('#clearAllChips');
@@ -13615,9 +13686,16 @@ class AudioDashboard {
         items.forEach(item => {
             const value = item.value || item;
             const label = item.label || value;
-            html += `<button data-source="${this.escapeHtml(value)}" class="source-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+            const count = item.count || 0;
+            const isZero = count === 0;
+            const dimClass = isZero ? 'opacity-40 cursor-not-allowed' : '';
+            const disabledAttr = isZero ? 'disabled' : '';
+            const countHtml = count > 0 ? `<span class="text-xs text-slate-400 ml-auto">${count}</span>` : '';
+
+            html += `<button data-source="${this.escapeHtml(value)}" class="source-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 ${dimClass}" ${disabledAttr}>
                 <span class="w-4 h-4 flex items-center justify-center"><span class="source-check hidden">✓</span></span>
-                ${this.escapeHtml(label)}
+                <span class="flex-1">${this.escapeHtml(label)}</span>
+                ${countHtml}
             </button>`;
         });
 
@@ -13628,13 +13706,19 @@ class AudioDashboard {
     applySourceFilter(sourceValue) {
         const sourceCheckboxes = document.querySelectorAll('input[data-filter="source"]');
         if (sourceValue === 'all') {
+            // Clear all selections
             sourceCheckboxes.forEach(cb => { cb.checked = false; });
         } else {
-            sourceCheckboxes.forEach(cb => { cb.checked = cb.value === sourceValue; });
+            // Toggle the clicked value (multi-select)
+            const targetCb = document.querySelector(`input[data-filter="source"][value="${CSS.escape(sourceValue)}"]`);
+            if (targetCb) {
+                targetCb.checked = !targetCb.checked;
+            }
         }
         this.currentFilters = this.computeFiltersFromDOM();
         this.updateFilterBarUI();
         this.updateHeroBadges();
+        // Don't close dropdown for multi-select
         this.debouncedLoadContent();
     }
 
@@ -13680,15 +13764,22 @@ class AudioDashboard {
 
         let html = `<button data-category="all" class="category-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
             <span class="w-4 h-4 flex items-center justify-center"><span class="category-check hidden">✓</span></span>
-            All Categories
+            <span class="flex-1">All Categories</span>
         </button>`;
 
         items.slice(0, 15).forEach(item => {
             const value = item.value || item;
             const label = item.label || value;
-            html += `<button data-category="${this.escapeHtml(value)}" class="category-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+            const count = item.count || 0;
+            const isZero = count === 0;
+            const dimClass = isZero ? 'opacity-40 cursor-not-allowed' : '';
+            const disabledAttr = isZero ? 'disabled' : '';
+            const countHtml = count > 0 ? `<span class="text-xs text-slate-400 ml-auto">${count}</span>` : '';
+
+            html += `<button data-category="${this.escapeHtml(value)}" class="category-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 ${dimClass}" ${disabledAttr}>
                 <span class="w-4 h-4 flex items-center justify-center"><span class="category-check hidden">✓</span></span>
-                ${this.escapeHtml(label)}
+                <span class="flex-1">${this.escapeHtml(label)}</span>
+                ${countHtml}
             </button>`;
         });
 
@@ -13703,9 +13794,14 @@ class AudioDashboard {
     applyCategoryFilter(value) {
         const categoryCheckboxes = document.querySelectorAll('input[data-filter="category"]');
         if (value === 'all') {
+            // Clear all selections
             categoryCheckboxes.forEach(cb => { cb.checked = false; });
         } else {
-            categoryCheckboxes.forEach(cb => { cb.checked = cb.value === value; });
+            // Toggle the clicked value (multi-select)
+            const targetCb = document.querySelector(`input[data-filter="category"][value="${CSS.escape(value)}"]`);
+            if (targetCb) {
+                targetCb.checked = !targetCb.checked;
+            }
         }
         this.currentFilters = this.computeFiltersFromDOM();
         this.updateFilterBarUI();
@@ -13755,15 +13851,22 @@ class AudioDashboard {
 
         let html = `<button data-channel="all" class="channel-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
             <span class="w-4 h-4 flex items-center justify-center"><span class="channel-check hidden">✓</span></span>
-            All Channels
+            <span class="flex-1">All Channels</span>
         </button>`;
 
         items.slice(0, 15).forEach(item => {
             const value = item.value || item;
             const label = item.label || value;
-            html += `<button data-channel="${this.escapeHtml(value)}" class="channel-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+            const count = item.count || 0;
+            const isZero = count === 0;
+            const dimClass = isZero ? 'opacity-40 cursor-not-allowed' : '';
+            const disabledAttr = isZero ? 'disabled' : '';
+            const countHtml = count > 0 ? `<span class="text-xs text-slate-400 ml-auto">${count}</span>` : '';
+
+            html += `<button data-channel="${this.escapeHtml(value)}" class="channel-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 ${dimClass}" ${disabledAttr}>
                 <span class="w-4 h-4 flex items-center justify-center"><span class="channel-check hidden">✓</span></span>
-                ${this.escapeHtml(label)}
+                <span class="flex-1">${this.escapeHtml(label)}</span>
+                ${countHtml}
             </button>`;
         });
 
@@ -13778,9 +13881,14 @@ class AudioDashboard {
     applyChannelFilter(value) {
         const channelCheckboxes = document.querySelectorAll('input[data-filter="channel"]');
         if (value === 'all') {
+            // Clear all selections
             channelCheckboxes.forEach(cb => { cb.checked = false; });
         } else {
-            channelCheckboxes.forEach(cb => { cb.checked = cb.value === value; });
+            // Toggle the clicked value (multi-select)
+            const targetCb = document.querySelector(`input[data-filter="channel"][value="${CSS.escape(value)}"]`);
+            if (targetCb) {
+                targetCb.checked = !targetCb.checked;
+            }
         }
         this.currentFilters = this.computeFiltersFromDOM();
         this.updateFilterBarUI();
@@ -13854,13 +13962,20 @@ class AudioDashboard {
 
         let html = `<button data-language="all" class="language-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
             <span class="w-4 h-4 flex items-center justify-center"><span class="language-check hidden">✓</span></span>
-            All Languages
+            <span class="flex-1">All Languages</span>
         </button>`;
 
         normalizedItems.forEach(item => {
-            html += `<button data-language="${this.escapeHtml(item.value)}" class="language-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+            const count = item.count || 0;
+            const isZero = count === 0;
+            const dimClass = isZero ? 'opacity-40 cursor-not-allowed' : '';
+            const disabledAttr = isZero ? 'disabled' : '';
+            const countHtml = count > 0 ? `<span class="text-xs text-slate-400 ml-auto">${count}</span>` : '';
+
+            html += `<button data-language="${this.escapeHtml(item.value)}" class="language-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2 ${dimClass}" ${disabledAttr}>
                 <span class="w-4 h-4 flex items-center justify-center"><span class="language-check hidden">✓</span></span>
-                ${this.escapeHtml(item.label)}
+                <span class="flex-1">${this.escapeHtml(item.label)}</span>
+                ${countHtml}
             </button>`;
         });
 
@@ -13871,14 +13986,18 @@ class AudioDashboard {
     applyLanguageFilter(value) {
         const languageCheckboxes = document.querySelectorAll('input[data-filter="language"]');
         if (value === 'all') {
+            // Clear all selections
             languageCheckboxes.forEach(cb => { cb.checked = false; });
         } else {
+            // Toggle the clicked value (multi-select)
+            // Find matching checkbox(es) - handle en/en-us normalization
             languageCheckboxes.forEach(cb => {
                 const cbValue = (cb.value || '').toLowerCase();
-                if (value === 'en') {
-                    cb.checked = (cbValue === 'en' || cbValue === 'en-us');
-                } else {
-                    cb.checked = (cbValue === value);
+                const matches = (value === 'en')
+                    ? (cbValue === 'en' || cbValue === 'en-us')
+                    : (cbValue === value.toLowerCase());
+                if (matches) {
+                    cb.checked = !cb.checked;
                 }
             });
         }
@@ -14060,27 +14179,24 @@ class AudioDashboard {
             'summary_type': 'Summary'
         };
 
-        // Create one chip per filter type (not per value)
+        // Create one chip per filter value (so each can be removed individually)
         Object.keys(filters).forEach(type => {
             const values = filters[type] || [];
-            if (values.length === 0) return;
-
             const label = typeLabels[type] || type;
-            const displayText = values.length === 1
-                ? `${label}: ${values[0]}`
-                : `${values.length} ${label.toLowerCase()}${values.length > 1 ? 's' : ''}`;
 
-            chips.push({
-                type,
-                values,  // Store all values so we can clear them all
-                label: displayText
+            values.forEach(value => {
+                chips.push({
+                    type,
+                    value,
+                    label: `${label}: ${value}`
+                });
             });
         });
 
         if (chips.length > 0) {
             let html = chips.map(chip => `
                 <button class="filter-chip inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-audio-100 dark:bg-audio-900/30 text-audio-700 dark:text-audio-300 hover:bg-audio-200 dark:hover:bg-audio-900/50 transition-colors"
-                    data-chip-type="${chip.type}">
+                    data-chip-type="${chip.type}" data-chip-value="${this.escapeHtml(chip.value)}">
                     ${this.escapeHtml(chip.label)}
                     <svg class="w-3 h-3 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -14098,11 +14214,10 @@ class AudioDashboard {
         }
     }
 
-    removeFilterChip(type) {
-        // Clear all checkboxes of this filter type
-        document.querySelectorAll(`input[data-filter="${type}"]`).forEach(cb => {
-            cb.checked = false;
-        });
+    removeFilterChip(type, value) {
+        // Remove just this specific filter value
+        const cb = document.querySelector(`input[data-filter="${type}"][value="${CSS.escape(value)}"]`);
+        if (cb) cb.checked = false;
 
         this.currentFilters = this.computeFiltersFromDOM();
         this.updateFilterBarUI();

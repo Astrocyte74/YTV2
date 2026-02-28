@@ -3276,7 +3276,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     active_filters['has_audio'] = True
                 elif has_audio_str in ['false', '0', 'no']:
                     active_filters['has_audio'] = False
-            
+            if 'summary_type' in query_params:
+                active_filters['summary_type'] = query_params['summary_type']
+
             # Get facets (with masked counts if filters are active)
             facets = content_index.get_facets(active_filters if active_filters else None)
             
