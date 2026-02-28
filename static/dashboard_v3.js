@@ -382,6 +382,33 @@ class AudioDashboard {
         this.adminTokenSetBtn = document.getElementById('adminTokenSetBtn');
         this.adminTokenClearBtn = document.getElementById('adminTokenClearBtn');
 
+        // Filter bar elements
+        this.filterBar = document.getElementById('filterBar');
+        this.sortDropdownBtn = document.getElementById('sortDropdownBtn');
+        this.sortDropdownMenu = document.getElementById('sortDropdownMenu');
+        this.sortDropdownLabel = document.getElementById('sortDropdownLabel');
+        this.sourceDropdownBtn = document.getElementById('sourceDropdownBtn');
+        this.sourceDropdownMenu = document.getElementById('sourceDropdownMenu');
+        this.sourceDropdownLabel = document.getElementById('sourceDropdownLabel');
+        this.categoryDropdownBtn = document.getElementById('categoryDropdownBtn');
+        this.categoryDropdownMenu = document.getElementById('categoryDropdownMenu');
+        this.categoryDropdownLabel = document.getElementById('categoryDropdownLabel');
+        this.channelDropdownBtn = document.getElementById('channelDropdownBtn');
+        this.channelDropdownMenu = document.getElementById('channelDropdownMenu');
+        this.channelDropdownLabel = document.getElementById('channelDropdownLabel');
+        this.languageDropdownBtn = document.getElementById('languageDropdownBtn');
+        this.languageDropdownMenu = document.getElementById('languageDropdownMenu');
+        this.languageDropdownLabel = document.getElementById('languageDropdownLabel');
+        this.filterPopoverBtn = document.getElementById('filterPopoverBtn');
+        this.filterPopover = document.getElementById('filterPopover');
+        this.filterPopoverClose = document.getElementById('filterPopoverClose');
+        this.activeFilterChips = document.getElementById('activeFilterChips');
+        this.filterCountBadge = document.getElementById('filterCountBadge');
+        this.filterBarClearAll = document.getElementById('filterBarClearAll');
+        this.filterBarApply = document.getElementById('filterBarApply');
+        this.filterBarContentTypes = document.getElementById('filterBarContentTypes');
+        this.filterBarSummaryTypes = document.getElementById('filterBarSummaryTypes');
+
         // Image mode and hover-switch state
         this.imageMode = localStorage.getItem('ytv2.imageMode') || 'thumbnail';
         this.hoverSwitchEnabled = localStorage.getItem('ytv2.hoverSwitch') === '1';
@@ -962,6 +989,9 @@ class AudioDashboard {
 
         window.addEventListener('beforeunload', () => this.shutdownRealtime());
         window.addEventListener('pagehide', () => this.shutdownRealtime());
+
+        // Filter bar events
+        this.initFilterBarEvents();
     }
 
     clearAllFilters() {
@@ -2007,6 +2037,13 @@ class AudioDashboard {
             this.renderLanguageFilters(filters.languages || []);
             this.renderFilterSection(filters.summary_type, this.summaryTypeFilters, 'summary_type');
 
+            // Populate filter bar dropdowns
+            this.populateSourceDropdown(sourceItems);
+            this.populateCategoryDropdown(filters.categories || []);
+            this.populateChannelDropdown(filters.channels || []);
+            this.populateLanguageDropdown(filters.languages || []);
+            this.populateFilterBarPopover();
+
             // Bind show more toggles after content is loaded
             this.bindShowMoreToggles();
 
@@ -2151,11 +2188,10 @@ class AudioDashboard {
             let html = `
                 <div class="category-group mb-2">
                     <div class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
-                        <input type="checkbox" 
-                               value="${this.escapeHtml(item.value)}" 
+                        <input type="checkbox"
+                               value="${this.escapeHtml(item.value)}"
                                data-filter="${filterType}"
                                data-category-parent="${this.escapeHtml(item.value)}"
-                               checked
                                class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                         ${hasSubcategories ? `
                             <button class="category-expand-btn text-slate-400 hover:text-slate-600 p-1" 
@@ -2176,11 +2212,10 @@ class AudioDashboard {
                         <div id="${categoryId}" class="subcategory-list ml-8 mt-1 hidden">
                             ${item.subcategories.map(sub => `
                                 <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
-                                    <input type="checkbox" 
-                                           value="${this.escapeHtml(sub.value)}" 
+                                    <input type="checkbox"
+                                           value="${this.escapeHtml(sub.value)}"
                                            data-filter="subcategory"
                                            data-parent-category="${this.escapeHtml(item.value)}"
-                                           checked
                                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                                     <span class="text-sm text-slate-600 dark:text-slate-300 flex-1">${this.escapeHtml(sub.label || sub.value || sub)}</span>
                                     <span class="text-xs text-slate-400 dark:text-slate-500 mr-2">${sub.count}</span>
@@ -2202,10 +2237,9 @@ class AudioDashboard {
         const createFilterHTML = (item) => `
             <div class="flex items-center space-x-2 hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
                 <label class="flex items-center space-x-2 cursor-pointer flex-1">
-                    <input type="checkbox" 
-                           value="${this.escapeHtml(item.value)}" 
+                    <input type="checkbox"
+                           value="${this.escapeHtml(item.value)}"
                            data-filter="${filterType}"
-                           checked
                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                     <span class="text-sm text-slate-700 dark:text-slate-200">${this.escapeHtml(item.label || item.value)}</span>
                     <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
@@ -2331,13 +2365,12 @@ class AudioDashboard {
         const mainLanguages = languages.slice(0, 3);
         const additionalLanguages = languages.slice(3);
 
-        // Render main languages (preserve the showMoreLanguages structure) - default all to checked
+        // Render main languages (preserve the showMoreLanguages structure)
         const mainHTML = mainLanguages.map(item => `
             <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
-                <input type="checkbox" 
-                       value="${this.escapeHtml(item.value)}" 
+                <input type="checkbox"
+                       value="${this.escapeHtml(item.value)}"
                        data-filter="language"
-                       checked
                        class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                 <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.label || item.value)}</span>
                 <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
@@ -2357,10 +2390,9 @@ class AudioDashboard {
         if (additionalLanguages.length > 0 && showMoreContainer) {
             showMoreContainer.innerHTML = additionalLanguages.map(item => `
                 <label class="flex items-center space-x-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-2 py-1 transition-colors">
-                    <input type="checkbox" 
-                           value="${this.escapeHtml(item.value)}" 
+                    <input type="checkbox"
+                           value="${this.escapeHtml(item.value)}"
                            data-filter="language"
-                           checked
                            class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
                     <span class="text-sm text-slate-700 dark:text-slate-200 flex-1">${this.escapeHtml(item.label || item.value)}</span>
                     <span class="text-xs text-slate-400 dark:text-slate-500">${item.count}</span>
@@ -2470,53 +2502,7 @@ class AudioDashboard {
         const noneSelected = (filters) =>
             !anySelected(filters);
 
-        // REQUIRE Category selection (original logic)
-        if (!this.searchQuery && (!facet.categories || facet.categories.length === 0)) {
-            this.currentItems = [];
-            this.renderContent([]);
-            this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
-            this.updateResultsInfo({ page: 1, size: 12, total_count: 0, total_pages: 0 });
-            this.contentGrid.innerHTML = `
-                <div class="text-center py-12 text-slate-400">
-                    <div class="text-lg mb-2">Choose one or more categories</div>
-                    <div class="text-sm">Clear Categories = no categories selected → no results</div>
-                </div>`;
-            return;
-        }
-
-        // REQUIRE Channel selection when any channels exist but none selected
-        const hasChannelSelection = this.currentFilters.channel && this.currentFilters.channel.length > 0;
-        const hasChannelOptions = document.querySelectorAll('input[data-filter="channel"]').length > 0;
-        if (!this.searchQuery && hasChannelOptions && !hasChannelSelection) {
-            this.currentItems = [];
-            this.renderContent([]);
-            this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
-            this.updateResultsInfo({ page: 1, size: 12, total_count: 0, total_pages: 0 });
-            this.contentGrid.innerHTML = `
-                <div class="text-center py-12 text-slate-400">
-                    <div class="text-lg mb-2">Choose one or more channels</div>
-                    <div class="text-sm">Clear Channels = no channels selected → no results</div>
-                </div>`;
-            return;
-        }
-
-        // REQUIRE Source selection when any sources exist but none selected
-        const hasSourceSelection = this.currentFilters.source && this.currentFilters.source.length > 0;
-        const hasSourceOptions = document.querySelectorAll('input[data-filter="source"]').length > 0;
-        if (!this.searchQuery && hasSourceOptions && !hasSourceSelection) {
-            this.currentItems = [];
-            this.renderContent([]);
-            this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
-            this.updateResultsInfo({ page: 1, size: 12, total_count: 0, total_pages: 0 });
-            this.contentGrid.innerHTML = `
-                <div class="text-center py-12 text-slate-400">
-                    <div class="text-lg mb-2">Choose one or more sources</div>
-                    <div class="text-sm">Clear Sources = no sources selected → no results</div>
-                </div>`;
-            return;
-        }
-
-        // Build effectiveFilters by treating "ALL selected" as no filter for that type
+        // Build effectiveFilters by treating "none selected" as "show all" (no filter for that type)
         const effectiveFilters = {};
         Object.entries(this.currentFilters).forEach(([filterType, selectedValues]) => {
             const allValues = getAllOptions(filterType);
@@ -2545,22 +2531,6 @@ class AudioDashboard {
         // Quick sanity logs (temporarily)
         console.debug('DOM->currentFilters:', this.currentFilters);
         console.debug('effectiveFilters:', effectiveFilters);
-
-        // ✅ Require selection model:
-        // none selected across ALL types → show nothing and stop
-        if (noneSelected(this.currentFilters) && !this.searchQuery) {
-            console.debug('Hit empty state: no filters selected');
-            this.currentItems = [];
-            this.renderContent([]);
-            this.renderPagination({ page: 1, size: 12, total_count: 0, total_pages: 0, has_next: false, has_prev: false });
-            this.updateResultsInfo({ page: 1, size: 12, total_count: 0, total_pages: 0 });
-            this.contentGrid.innerHTML = `
-                <div class="text-center py-12 text-slate-400">
-                    <div class="text-lg mb-2">Choose one or more filters</div>
-                    <div class="text-sm">Clear All = nothing selected → no results</div>
-                </div>`;
-            return;
-        }
 
         // Helper function to normalize parameter values (per OpenAI recommendation)
         const normalizeLabel = (label) => {
@@ -12786,6 +12756,742 @@ class AudioDashboard {
         // Initial position
         const clientX = event.clientX || (event.touches && event.touches[0] ? event.touches[0].clientX : 0);
         onMove(clientX);
+    }
+
+    // ========================================
+    // Filter Bar Methods
+    // ========================================
+
+    initFilterBarEvents() {
+        // Sort dropdown
+        if (this.sortDropdownBtn && this.sortDropdownMenu) {
+            this.sortDropdownBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleDropdown('sort');
+            });
+            this.sortDropdownMenu.querySelectorAll('.sort-option').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const sortValue = btn.dataset.sort;
+                    this.applySort(sortValue);
+                    this.closeAllDropdowns();
+                });
+            });
+        }
+
+        // Source dropdown
+        if (this.sourceDropdownBtn && this.sourceDropdownMenu) {
+            this.sourceDropdownBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleDropdown('source');
+            });
+            this.sourceDropdownMenu.addEventListener('click', (e) => {
+                const btn = e.target.closest('.source-option');
+                if (btn) {
+                    const sourceValue = btn.dataset.source;
+                    this.applySourceFilter(sourceValue);
+                    this.closeAllDropdowns();
+                }
+            });
+        }
+
+        // Category dropdown
+        if (this.categoryDropdownBtn && this.categoryDropdownMenu) {
+            this.categoryDropdownBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleDropdown('category');
+            });
+            this.categoryDropdownMenu.addEventListener('click', (e) => {
+                const btn = e.target.closest('.category-option');
+                if (btn) {
+                    const value = btn.dataset.category;
+                    this.applyCategoryFilter(value);
+                    this.closeAllDropdowns();
+                }
+            });
+        }
+
+        // Channel dropdown
+        if (this.channelDropdownBtn && this.channelDropdownMenu) {
+            this.channelDropdownBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleDropdown('channel');
+            });
+            this.channelDropdownMenu.addEventListener('click', (e) => {
+                const btn = e.target.closest('.channel-option');
+                if (btn) {
+                    const value = btn.dataset.channel;
+                    this.applyChannelFilter(value);
+                    this.closeAllDropdowns();
+                }
+            });
+        }
+
+        // Language dropdown
+        if (this.languageDropdownBtn && this.languageDropdownMenu) {
+            this.languageDropdownBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleDropdown('language');
+            });
+            this.languageDropdownMenu.addEventListener('click', (e) => {
+                const btn = e.target.closest('.language-option');
+                if (btn) {
+                    const value = btn.dataset.language;
+                    this.applyLanguageFilter(value);
+                    this.closeAllDropdowns();
+                }
+            });
+        }
+
+        // Filter popover
+        if (this.filterPopoverBtn && this.filterPopover) {
+            this.filterPopoverBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleFilterPopover();
+            });
+        }
+        if (this.filterPopoverClose) {
+            this.filterPopoverClose.addEventListener('click', () => this.closeFilterPopover());
+        }
+        if (this.filterBarApply) {
+            this.filterBarApply.addEventListener('click', () => this.applyPendingFilters());
+        }
+        if (this.filterBarClearAll) {
+            this.filterBarClearAll.addEventListener('click', () => this.clearAllFiltersBar());
+        }
+
+        // Delegated change handler for filter popover checkboxes
+        if (this.filterPopover) {
+            this.filterPopover.addEventListener('change', (e) => {
+                const cb = e.target;
+                if (cb.matches('input[data-filter]')) {
+                    const filterType = cb.dataset.filter;
+                    const value = cb.value;
+                    const sidebarCb = document.querySelector(`#sidebar input[data-filter="${filterType}"][value="${value}"]`);
+                    if (sidebarCb) sidebarCb.checked = cb.checked;
+                    this.currentFilters = this.computeFiltersFromDOM();
+                    this.updateFilterBarUI();
+                    this.debouncedLoadContent();
+                }
+            });
+        }
+
+        // Delegated click handler for filter chips
+        if (this.activeFilterChips) {
+            this.activeFilterChips.addEventListener('click', (e) => {
+                const chip = e.target.closest('.filter-chip');
+                if (chip) {
+                    e.stopPropagation();
+                    this.removeFilterChip(chip.dataset.chipType);
+                    return;
+                }
+                const clearBtn = e.target.closest('#clearAllChips');
+                if (clearBtn) {
+                    this.clearAllFiltersBar();
+                }
+            });
+        }
+
+        // Close dropdowns on outside click
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#sortDropdownContainer') &&
+                !e.target.closest('#sourceDropdownContainer') &&
+                !e.target.closest('#categoryDropdownContainer') &&
+                !e.target.closest('#channelDropdownContainer') &&
+                !e.target.closest('#languageDropdownContainer') &&
+                !e.target.closest('#filterPopoverContainer')) {
+                this.closeAllDropdowns();
+            }
+        });
+    }
+
+    toggleDropdown(type) {
+        let menu;
+        if (type === 'sort') menu = this.sortDropdownMenu;
+        else if (type === 'source') menu = this.sourceDropdownMenu;
+        else if (type === 'category') menu = this.categoryDropdownMenu;
+        else if (type === 'channel') menu = this.channelDropdownMenu;
+        else if (type === 'language') menu = this.languageDropdownMenu;
+
+        if (!menu) return;
+
+        const isHidden = menu.classList.contains('hidden');
+        this.closeAllDropdowns();
+        if (isHidden) {
+            menu.classList.remove('hidden');
+        }
+    }
+
+    toggleFilterPopover() {
+        if (!this.filterPopover) return;
+        const isHidden = this.filterPopover.classList.contains('hidden');
+        this.closeAllDropdowns();
+        if (isHidden) {
+            this.filterPopover.classList.remove('hidden');
+        }
+    }
+
+    closeFilterPopover() {
+        if (this.filterPopover) {
+            this.filterPopover.classList.add('hidden');
+        }
+    }
+
+    closeAllDropdowns() {
+        if (this.sortDropdownMenu) this.sortDropdownMenu.classList.add('hidden');
+        if (this.sourceDropdownMenu) this.sourceDropdownMenu.classList.add('hidden');
+        if (this.categoryDropdownMenu) this.categoryDropdownMenu.classList.add('hidden');
+        if (this.channelDropdownMenu) this.channelDropdownMenu.classList.add('hidden');
+        if (this.languageDropdownMenu) this.languageDropdownMenu.classList.add('hidden');
+        if (this.filterPopover) this.filterPopover.classList.add('hidden');
+    }
+
+    applySort(sortValue) {
+        this.currentSort = sortValue;
+        const labels = {
+            'added_desc': 'Recently Added',
+            'video_newest': 'Video Newest',
+            'video_oldest': 'Video Oldest',
+            'title_az': 'Title A→Z',
+            'title_za': 'Title Z→A',
+            'duration_desc': 'Longest First',
+            'duration_asc': 'Shortest First'
+        };
+        if (this.sortDropdownLabel) {
+            this.sortDropdownLabel.textContent = labels[sortValue] || sortValue;
+        }
+        if (this.sortDropdownMenu) {
+            this.sortDropdownMenu.querySelectorAll('.sort-option').forEach(btn => {
+                const check = btn.querySelector('.sort-check');
+                if (check) {
+                    check.classList.toggle('hidden', btn.dataset.sort !== sortValue);
+                }
+            });
+        }
+        this.debouncedLoadContent();
+    }
+
+    populateSourceDropdown(items) {
+        if (!this.sourceDropdownMenu || !items || items.length === 0) return;
+
+        let html = `<button data-source="all" class="source-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+            <span class="w-4 h-4 flex items-center justify-center"><span class="source-check hidden">✓</span></span>
+            All
+        </button>`;
+
+        items.forEach(item => {
+            const value = item.value || item;
+            const label = item.label || value;
+            html += `<button data-source="${this.escapeHtml(value)}" class="source-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                <span class="w-4 h-4 flex items-center justify-center"><span class="source-check hidden">✓</span></span>
+                ${this.escapeHtml(label)}
+            </button>`;
+        });
+
+        this.sourceDropdownMenu.innerHTML = html;
+        this.updateSourceDropdownState();
+    }
+
+    applySourceFilter(sourceValue) {
+        const sourceCheckboxes = document.querySelectorAll('input[data-filter="source"]');
+        if (sourceValue === 'all') {
+            sourceCheckboxes.forEach(cb => { cb.checked = false; });
+        } else {
+            sourceCheckboxes.forEach(cb => { cb.checked = cb.value === sourceValue; });
+        }
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateFilterBarUI();
+        this.updateHeroBadges();
+        this.debouncedLoadContent();
+    }
+
+    updateSourceDropdownState() {
+        if (!this.sourceDropdownMenu) return;
+
+        const sourceFilters = (this.currentFilters && this.currentFilters.source) || [];
+        const allSources = this.sourceDropdownMenu.querySelectorAll('.source-option');
+
+        allSources.forEach(btn => {
+            const check = btn.querySelector('.source-check');
+            if (check) check.classList.add('hidden');
+        });
+
+        if (sourceFilters.length === 0) {
+            if (this.sourceDropdownLabel) this.sourceDropdownLabel.textContent = 'All';
+            const allBtn = this.sourceDropdownMenu.querySelector('[data-source="all"]');
+            if (allBtn) {
+                const check = allBtn.querySelector('.source-check');
+                if (check) check.classList.remove('hidden');
+            }
+        } else if (sourceFilters.length === 1) {
+            if (this.sourceDropdownLabel) this.sourceDropdownLabel.textContent = sourceFilters[0];
+            allSources.forEach(btn => {
+                if (btn.dataset.source === sourceFilters[0]) {
+                    const check = btn.querySelector('.source-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        } else {
+            if (this.sourceDropdownLabel) this.sourceDropdownLabel.textContent = `${sourceFilters.length} selected`;
+            allSources.forEach(btn => {
+                if (sourceFilters.includes(btn.dataset.source)) {
+                    const check = btn.querySelector('.source-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        }
+    }
+
+    populateCategoryDropdown(items) {
+        if (!this.categoryDropdownMenu || !items || items.length === 0) return;
+
+        let html = `<button data-category="all" class="category-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+            <span class="w-4 h-4 flex items-center justify-center"><span class="category-check hidden">✓</span></span>
+            All Categories
+        </button>`;
+
+        items.slice(0, 15).forEach(item => {
+            const value = item.value || item;
+            const label = item.label || value;
+            html += `<button data-category="${this.escapeHtml(value)}" class="category-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                <span class="w-4 h-4 flex items-center justify-center"><span class="category-check hidden">✓</span></span>
+                ${this.escapeHtml(label)}
+            </button>`;
+        });
+
+        if (items.length > 15) {
+            html += `<div class="px-4 py-2 text-xs text-slate-400">+${items.length - 15} more in sidebar</div>`;
+        }
+
+        this.categoryDropdownMenu.innerHTML = html;
+        this.updateCategoryDropdownState();
+    }
+
+    applyCategoryFilter(value) {
+        const categoryCheckboxes = document.querySelectorAll('input[data-filter="category"]');
+        if (value === 'all') {
+            categoryCheckboxes.forEach(cb => { cb.checked = false; });
+        } else {
+            categoryCheckboxes.forEach(cb => { cb.checked = cb.value === value; });
+        }
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateFilterBarUI();
+        this.updateHeroBadges();
+        this.debouncedLoadContent();
+    }
+
+    updateCategoryDropdownState() {
+        if (!this.categoryDropdownMenu) return;
+
+        const categoryFilters = (this.currentFilters && this.currentFilters.category) || [];
+        const allOptions = this.categoryDropdownMenu.querySelectorAll('.category-option');
+
+        allOptions.forEach(btn => {
+            const check = btn.querySelector('.category-check');
+            if (check) check.classList.add('hidden');
+        });
+
+        if (categoryFilters.length === 0) {
+            if (this.categoryDropdownLabel) this.categoryDropdownLabel.textContent = 'All';
+            const allBtn = this.categoryDropdownMenu.querySelector('[data-category="all"]');
+            if (allBtn) {
+                const check = allBtn.querySelector('.category-check');
+                if (check) check.classList.remove('hidden');
+            }
+        } else if (categoryFilters.length === 1) {
+            if (this.categoryDropdownLabel) this.categoryDropdownLabel.textContent = categoryFilters[0];
+            allOptions.forEach(btn => {
+                if (btn.dataset.category === categoryFilters[0]) {
+                    const check = btn.querySelector('.category-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        } else {
+            if (this.categoryDropdownLabel) this.categoryDropdownLabel.textContent = `${categoryFilters.length} selected`;
+            allOptions.forEach(btn => {
+                if (categoryFilters.includes(btn.dataset.category)) {
+                    const check = btn.querySelector('.category-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        }
+    }
+
+    populateChannelDropdown(items) {
+        if (!this.channelDropdownMenu || !items || items.length === 0) return;
+
+        let html = `<button data-channel="all" class="channel-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+            <span class="w-4 h-4 flex items-center justify-center"><span class="channel-check hidden">✓</span></span>
+            All Channels
+        </button>`;
+
+        items.slice(0, 15).forEach(item => {
+            const value = item.value || item;
+            const label = item.label || value;
+            html += `<button data-channel="${this.escapeHtml(value)}" class="channel-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                <span class="w-4 h-4 flex items-center justify-center"><span class="channel-check hidden">✓</span></span>
+                ${this.escapeHtml(label)}
+            </button>`;
+        });
+
+        if (items.length > 15) {
+            html += `<div class="px-4 py-2 text-xs text-slate-400">+${items.length - 15} more in sidebar</div>`;
+        }
+
+        this.channelDropdownMenu.innerHTML = html;
+        this.updateChannelDropdownState();
+    }
+
+    applyChannelFilter(value) {
+        const channelCheckboxes = document.querySelectorAll('input[data-filter="channel"]');
+        if (value === 'all') {
+            channelCheckboxes.forEach(cb => { cb.checked = false; });
+        } else {
+            channelCheckboxes.forEach(cb => { cb.checked = cb.value === value; });
+        }
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateFilterBarUI();
+        this.updateHeroBadges();
+        this.debouncedLoadContent();
+    }
+
+    updateChannelDropdownState() {
+        if (!this.channelDropdownMenu) return;
+
+        const channelFilters = (this.currentFilters && this.currentFilters.channel) || [];
+        const allOptions = this.channelDropdownMenu.querySelectorAll('.channel-option');
+
+        allOptions.forEach(btn => {
+            const check = btn.querySelector('.channel-check');
+            if (check) check.classList.add('hidden');
+        });
+
+        if (channelFilters.length === 0) {
+            if (this.channelDropdownLabel) this.channelDropdownLabel.textContent = 'All';
+            const allBtn = this.channelDropdownMenu.querySelector('[data-channel="all"]');
+            if (allBtn) {
+                const check = allBtn.querySelector('.channel-check');
+                if (check) check.classList.remove('hidden');
+            }
+        } else if (channelFilters.length === 1) {
+            if (this.channelDropdownLabel) this.channelDropdownLabel.textContent = channelFilters[0];
+            allOptions.forEach(btn => {
+                if (btn.dataset.channel === channelFilters[0]) {
+                    const check = btn.querySelector('.channel-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        } else {
+            if (this.channelDropdownLabel) this.channelDropdownLabel.textContent = `${channelFilters.length} selected`;
+            allOptions.forEach(btn => {
+                if (channelFilters.includes(btn.dataset.channel)) {
+                    const check = btn.querySelector('.channel-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        }
+    }
+
+    populateLanguageDropdown(items) {
+        if (!this.languageDropdownMenu || !items || items.length === 0) return;
+
+        // Normalize language codes
+        const normalizedItems = [];
+        const seenLanguages = new Set();
+
+        items.forEach(item => {
+            const value = (item.value || item || '').toLowerCase();
+            const label = item.label || value;
+
+            if (value === 'en' || value === 'en-us') {
+                if (!seenLanguages.has('en')) {
+                    seenLanguages.add('en');
+                    normalizedItems.push({ value: 'en', label: 'English', count: (item.count || 0) });
+                } else {
+                    const existing = normalizedItems.find(i => i.value === 'en');
+                    if (existing && item.count) existing.count += item.count;
+                }
+            } else {
+                if (!seenLanguages.has(value)) {
+                    seenLanguages.add(value);
+                    normalizedItems.push({ value: value, label: label, count: (item.count || 0) });
+                }
+            }
+        });
+
+        let html = `<button data-language="all" class="language-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+            <span class="w-4 h-4 flex items-center justify-center"><span class="language-check hidden">✓</span></span>
+            All Languages
+        </button>`;
+
+        normalizedItems.forEach(item => {
+            html += `<button data-language="${this.escapeHtml(item.value)}" class="language-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                <span class="w-4 h-4 flex items-center justify-center"><span class="language-check hidden">✓</span></span>
+                ${this.escapeHtml(item.label)}
+            </button>`;
+        });
+
+        this.languageDropdownMenu.innerHTML = html;
+        this.updateLanguageDropdownState();
+    }
+
+    applyLanguageFilter(value) {
+        const languageCheckboxes = document.querySelectorAll('input[data-filter="language"]');
+        if (value === 'all') {
+            languageCheckboxes.forEach(cb => { cb.checked = false; });
+        } else {
+            languageCheckboxes.forEach(cb => {
+                const cbValue = (cb.value || '').toLowerCase();
+                if (value === 'en') {
+                    cb.checked = (cbValue === 'en' || cbValue === 'en-us');
+                } else {
+                    cb.checked = (cbValue === value);
+                }
+            });
+        }
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateFilterBarUI();
+        this.updateHeroBadges();
+        this.debouncedLoadContent();
+    }
+
+    updateLanguageDropdownState() {
+        if (!this.languageDropdownMenu) return;
+
+        const languageFilters = (this.currentFilters && this.currentFilters.language) || [];
+        const allOptions = this.languageDropdownMenu.querySelectorAll('.language-option');
+
+        allOptions.forEach(btn => {
+            const check = btn.querySelector('.language-check');
+            if (check) check.classList.add('hidden');
+        });
+
+        if (languageFilters.length === 0) {
+            if (this.languageDropdownLabel) this.languageDropdownLabel.textContent = 'All';
+            const allBtn = this.languageDropdownMenu.querySelector('[data-language="all"]');
+            if (allBtn) {
+                const check = allBtn.querySelector('.language-check');
+                if (check) check.classList.remove('hidden');
+            }
+        } else if (languageFilters.length === 1) {
+            const selectedLang = languageFilters[0].toLowerCase();
+            const displayLabel = (selectedLang === 'en' || selectedLang === 'en-us') ? 'English' : languageFilters[0];
+            if (this.languageDropdownLabel) this.languageDropdownLabel.textContent = displayLabel;
+            allOptions.forEach(btn => {
+                const btnLang = btn.dataset.language;
+                if (btnLang === 'en' && (selectedLang === 'en' || selectedLang === 'en-us')) {
+                    const check = btn.querySelector('.language-check');
+                    if (check) check.classList.remove('hidden');
+                } else if (btnLang === selectedLang) {
+                    const check = btn.querySelector('.language-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        } else {
+            if (this.languageDropdownLabel) this.languageDropdownLabel.textContent = `${languageFilters.length} selected`;
+            allOptions.forEach(btn => {
+                const btnLang = btn.dataset.language;
+                if (languageFilters.some(f => f.toLowerCase() === btnLang)) {
+                    const check = btn.querySelector('.language-check');
+                    if (check) check.classList.remove('hidden');
+                }
+            });
+        }
+    }
+
+    populateFilterBarPopover() {
+        // Populate content types
+        if (this.filterBarContentTypes) {
+            const ctContainer = document.getElementById('contentTypeFilters');
+            if (ctContainer) {
+                const items = this.extractFilterItemsFromContainer(ctContainer, 'content_type');
+                this.renderFilterBarSection(items, this.filterBarContentTypes, 'content_type');
+            }
+        }
+
+        // Populate summary types
+        if (this.filterBarSummaryTypes) {
+            const stContainer = document.getElementById('summaryTypeFilters');
+            if (stContainer) {
+                const items = this.extractFilterItemsFromContainer(stContainer, 'summary_type');
+                this.renderFilterBarSection(items, this.filterBarSummaryTypes, 'summary_type');
+            }
+        }
+    }
+
+    extractFilterItemsFromContainer(container, filterType) {
+        const items = [];
+        if (!container) return items;
+        const checkboxes = container.querySelectorAll(`input[data-filter="${filterType}"]`);
+        checkboxes.forEach(cb => {
+            items.push({
+                value: cb.value,
+                label: cb.parentElement?.querySelector('span')?.textContent?.trim() || cb.value,
+                checked: cb.checked
+            });
+        });
+        return items;
+    }
+
+    renderFilterBarSection(items, container, filterType) {
+        if (!container || !items || items.length === 0) {
+            if (container) container.innerHTML = '<p class="text-xs text-slate-400">No options</p>';
+            return;
+        }
+
+        let html = '';
+        items.slice(0, 10).forEach(item => {
+            const checked = item.checked ? 'checked' : '';
+            html += `<label class="flex items-center gap-2 py-1 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-1">
+                <input type="checkbox" data-filter="${filterType}" value="${this.escapeHtml(item.value)}" ${checked}
+                    class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
+                <span class="text-sm text-slate-700 dark:text-slate-200 truncate">${this.escapeHtml(item.label)}</span>
+            </label>`;
+        });
+
+        if (items.length > 10) {
+            html += `<p class="text-xs text-slate-400 mt-1">+${items.length - 10} more</p>`;
+        }
+
+        container.innerHTML = html;
+    }
+
+    applyPendingFilters() {
+        const filterBarInputs = this.filterPopover?.querySelectorAll('input[data-filter]') || [];
+        filterBarInputs.forEach(input => {
+            const sidebarInput = document.querySelector(`#sidebar input[data-filter="${input.dataset.filter}"][value="${input.value}"]`);
+            if (sidebarInput) sidebarInput.checked = input.checked;
+        });
+
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateFilterBarUI();
+        this.updateHeroBadges();
+        this.closeFilterPopover();
+        this.debouncedLoadContent();
+    }
+
+    clearAllFiltersBar() {
+        document.querySelectorAll('#sidebar input[data-filter]').forEach(cb => cb.checked = false);
+        document.querySelectorAll('#filterPopover input[data-filter]').forEach(cb => cb.checked = false);
+
+        this.currentFilters = {};
+        this.updateFilterBarUI();
+        this.updateHeroBadges();
+        this.closeFilterPopover();
+        this.debouncedLoadContent();
+    }
+
+    updateFilterBarUI() {
+        this.updateSourceDropdownState();
+        this.updateCategoryDropdownState();
+        this.updateChannelDropdownState();
+        this.updateLanguageDropdownState();
+        this.updateFilterCountBadge();
+        this.updateActiveFilterChips();
+        this.syncFilterBarPopoverState();
+    }
+
+    updateFilterCountBadge() {
+        if (!this.filterCountBadge) return;
+
+        const filters = this.currentFilters || {};
+        let count = 0;
+        Object.keys(filters).forEach(key => {
+            if (key !== 'source' && filters[key] && filters[key].length > 0) {
+                count += filters[key].length;
+            }
+        });
+
+        if (count > 0) {
+            this.filterCountBadge.textContent = count;
+            this.filterCountBadge.classList.remove('hidden');
+        } else {
+            this.filterCountBadge.classList.add('hidden');
+        }
+    }
+
+    updateActiveFilterChips() {
+        if (!this.activeFilterChips) return;
+
+        const filters = this.currentFilters || {};
+        const chips = [];
+
+        const typeLabels = {
+            'source': 'Source',
+            'category': 'Category',
+            'subcategory': 'Category',
+            'channel': 'Channel',
+            'content_type': 'Type',
+            'complexity': 'Complexity',
+            'language': 'Language',
+            'summary_type': 'Summary'
+        };
+
+        // Create one chip per filter type (not per value)
+        Object.keys(filters).forEach(type => {
+            const values = filters[type] || [];
+            if (values.length === 0) return;
+
+            const label = typeLabels[type] || type;
+            const displayText = values.length === 1
+                ? `${label}: ${values[0]}`
+                : `${values.length} ${label.toLowerCase()}${values.length > 1 ? 's' : ''}`;
+
+            chips.push({
+                type,
+                values,  // Store all values so we can clear them all
+                label: displayText
+            });
+        });
+
+        if (chips.length > 0) {
+            let html = chips.map(chip => `
+                <button class="filter-chip inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-audio-100 dark:bg-audio-900/30 text-audio-700 dark:text-audio-300 hover:bg-audio-200 dark:hover:bg-audio-900/50 transition-colors"
+                    data-chip-type="${chip.type}">
+                    ${this.escapeHtml(chip.label)}
+                    <svg class="w-3 h-3 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            `).join('');
+
+            html += `<button id="clearAllChips" class="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 ml-2">Clear all</button>`;
+
+            this.activeFilterChips.innerHTML = html;
+            this.activeFilterChips.classList.remove('hidden');
+        } else {
+            this.activeFilterChips.innerHTML = '';
+            this.activeFilterChips.classList.add('hidden');
+        }
+    }
+
+    removeFilterChip(type) {
+        // Clear all checkboxes of this filter type
+        document.querySelectorAll(`input[data-filter="${type}"]`).forEach(cb => {
+            cb.checked = false;
+        });
+
+        this.currentFilters = this.computeFiltersFromDOM();
+        this.updateFilterBarUI();
+        this.updateHeroBadges();
+        this.debouncedLoadContent();
+    }
+
+    syncFilterBarPopoverState() {
+        if (!this.filterPopover) return;
+
+        const filters = this.currentFilters || {};
+        this.filterPopover.querySelectorAll('input[data-filter]').forEach(cb => {
+            const type = cb.dataset.filter;
+            const value = cb.value;
+            cb.checked = filters[type] && filters[type].includes(value);
+        });
+    }
+
+    debouncedLoadContent() {
+        if (this._loadTimeout) clearTimeout(this._loadTimeout);
+        this._loadTimeout = setTimeout(() => {
+            this.loadContent();
+        }, 200);
     }
 }
 

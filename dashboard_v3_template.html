@@ -607,13 +607,175 @@
             </div>
         </header>
 
+        <!-- NEW: Horizontal Filter Bar (replaces sidebar for filtering) -->
+        <div id="filterBar" class="hidden lg:block border-b border-slate-200/50 dark:border-slate-700/50 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm relative z-40">
+            <!-- Row 1: Filter Controls -->
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 py-2 flex items-center gap-4 flex-wrap">
+                <!-- Sort Dropdown -->
+                <div class="relative z-50" id="sortDropdownContainer">
+                    <button id="sortDropdownBtn" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                        <span>Sort:</span>
+                        <span id="sortDropdownLabel">Recently Added</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    <div id="sortDropdownMenu" class="hidden absolute left-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 z-[60] py-1">
+                        <button data-sort="added_desc" class="sort-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                            <span class="w-4 h-4 flex items-center justify-center"><span class="sort-check hidden">✓</span></span>
+                            Recently Added
+                        </button>
+                        <button data-sort="video_newest" class="sort-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                            <span class="w-4 h-4 flex items-center justify-center"><span class="sort-check hidden">✓</span></span>
+                            Video Newest
+                        </button>
+                        <button data-sort="video_oldest" class="sort-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                            <span class="w-4 h-4 flex items-center justify-center"><span class="sort-check hidden">✓</span></span>
+                            Video Oldest
+                        </button>
+                        <button data-sort="title_az" class="sort-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                            <span class="w-4 h-4 flex items-center justify-center"><span class="sort-check hidden">✓</span></span>
+                            Title A→Z
+                        </button>
+                        <button data-sort="title_za" class="sort-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                            <span class="w-4 h-4 flex items-center justify-center"><span class="sort-check hidden">✓</span></span>
+                            Title Z→A
+                        </button>
+                        <button data-sort="duration_desc" class="sort-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                            <span class="w-4 h-4 flex items-center justify-center"><span class="sort-check hidden">✓</span></span>
+                            Longest First
+                        </button>
+                        <button data-sort="duration_asc" class="sort-option w-full text-left px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2">
+                            <span class="w-4 h-4 flex items-center justify-center"><span class="sort-check hidden">✓</span></span>
+                            Shortest First
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Source Dropdown -->
+                <div class="relative z-50" id="sourceDropdownContainer">
+                    <button id="sourceDropdownBtn" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                        <span>Source:</span>
+                        <span id="sourceDropdownLabel">All</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    <div id="sourceDropdownMenu" class="hidden absolute left-0 top-full mt-1 w-40 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 z-[60] py-1 max-h-64 overflow-y-auto">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Categories Dropdown -->
+                <div class="relative z-50" id="categoryDropdownContainer">
+                    <button id="categoryDropdownBtn" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                        <span>Category:</span>
+                        <span id="categoryDropdownLabel">All</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    <div id="categoryDropdownMenu" class="hidden absolute left-0 top-full mt-1 w-48 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 z-[60] py-1 max-h-64 overflow-y-auto">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Channels Dropdown -->
+                <div class="relative z-50" id="channelDropdownContainer">
+                    <button id="channelDropdownBtn" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                        <span>Channel:</span>
+                        <span id="channelDropdownLabel">All</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    <div id="channelDropdownMenu" class="hidden absolute left-0 top-full mt-1 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 z-[60] py-1 max-h-64 overflow-y-auto">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Language Dropdown -->
+                <div class="relative z-50" id="languageDropdownContainer">
+                    <button id="languageDropdownBtn" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                        <span>Language:</span>
+                        <span id="languageDropdownLabel">All</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    <div id="languageDropdownMenu" class="hidden absolute left-0 top-full mt-1 w-40 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 z-[60] py-1">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Filter Button (opens popover) -->
+                <div class="relative z-50" id="filterPopoverContainer">
+                    <button id="filterPopoverBtn" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                        </svg>
+                        <span>Filter</span>
+                        <span id="filterCountBadge" class="hidden bg-audio-500 text-white text-xs px-1.5 py-0.5 rounded-full">0</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    <!-- Filter Popover (wide) -->
+                    <div id="filterPopover" class="hidden absolute left-0 top-full mt-1 w-[600px] max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-[60]">
+                        <div class="p-4">
+                            <!-- Popover Header -->
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="font-semibold text-slate-800 dark:text-slate-100">Filters</h3>
+                                <button id="filterPopoverClose" class="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <!-- Filter Grid (2 columns - Categories, Channels, Language now separate dropdowns) -->
+                            <div class="grid grid-cols-2 gap-6">
+                                <!-- Content Type -->
+                                <div>
+                                    <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Content Type</h4>
+                                    <div id="filterBarContentTypes" class="space-y-1">
+                                        <!-- Populated dynamically -->
+                                    </div>
+                                </div>
+                                <!-- Summary Type -->
+                                <div>
+                                    <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Summary Type</h4>
+                                    <div id="filterBarSummaryTypes" class="space-y-1">
+                                        <!-- Populated dynamically -->
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Popover Footer -->
+                            <div class="flex items-center justify-between mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                                <button id="filterBarClearAll" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200">
+                                    Clear all
+                                </button>
+                                <button id="filterBarApply" class="px-4 py-2 bg-audio-500 text-white text-sm font-medium rounded-lg hover:bg-audio-600 transition-colors">
+                                    Apply filters
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Row 2: Active Filter Chips -->
+            <div id="activeFilterChips" class="hidden max-w-7xl mx-auto px-4 sm:px-6 pb-2 flex items-center gap-2 flex-wrap">
+                <!-- Chips and Clear all button inserted here dynamically -->
+            </div>
+        </div>
+
         <!-- Main Content Area -->
         <div class="flex-1 flex">
 
-            <!-- Search & Filters Sidebar -->
+            <!-- Search & Filters Sidebar (HIDDEN on desktop - filtering moved to horizontal bar) -->
             <aside id="sidebar"
-                class="hidden lg:block lg:w-80 lg:bg-white/40 lg:dark:bg-slate-900/40 lg:backdrop-blur lg:border-r lg:border-white/30 lg:dark:border-slate-800/60 lg:overflow-y-auto lg:sticky lg:top-16 lg:self-start
-                                     fixed inset-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur lg:relative lg:inset-auto lg:z-auto overflow-y-auto"
+                class="lg:hidden fixed inset-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur overflow-y-auto"
                 style="height: calc(100vh - 4rem)">
                 <div
                     class="sidebar-inner p-6 space-y-6 bg-gradient-to-b from-white/30 via-white/10 to-transparent dark:from-white/5 dark:via-white/5 dark:to-transparent rounded-3xl border border-white/30 dark:border-white/10 shadow-lg shadow-slate-900/10">
