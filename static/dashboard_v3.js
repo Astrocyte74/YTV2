@@ -372,6 +372,7 @@ class AudioDashboard {
         this.wallArrangeHybridSettingBtn = document.getElementById('wallArrangeHybridSettingBtn');
         this.wallArrangeCategorySettingBtn = document.getElementById('wallArrangeCategorySettingBtn');
         this.wallArrangeKeywordsSettingBtn = document.getElementById('wallArrangeKeywordsSettingBtn');
+        this.wallArrangeSemanticSettingBtn = document.getElementById('wallArrangeSemanticSettingBtn');
         this.wallArrangeNewestSettingBtn = document.getElementById('wallArrangeNewestSettingBtn');
         this.imgModeThumbSettingBtn = document.getElementById('imgModeThumbSettingBtn');
         this.imgModeAiSettingBtn = document.getElementById('imgModeAiSettingBtn');
@@ -495,6 +496,7 @@ class AudioDashboard {
         if (this.wallArrangeHybridSettingBtn) this.wallArrangeHybridSettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('hybrid'));
         if (this.wallArrangeCategorySettingBtn) this.wallArrangeCategorySettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('category'));
         if (this.wallArrangeKeywordsSettingBtn) this.wallArrangeKeywordsSettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('keywords'));
+        if (this.wallArrangeSemanticSettingBtn) this.wallArrangeSemanticSettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('semantic'));
         if (this.wallArrangeNewestSettingBtn) this.wallArrangeNewestSettingBtn.addEventListener('click', () => this.applyWallArrangeModeFromSettings('newest'));
         if (this.imgModeThumbSettingBtn) this.imgModeThumbSettingBtn.addEventListener('click', () => this.setImageMode('thumbnail'));
         if (this.imgModeAiSettingBtn) this.imgModeAiSettingBtn.addEventListener('click', () => this.setImageMode('ai'));
@@ -6597,7 +6599,7 @@ class AudioDashboard {
 
     normalizeWallDockArrangeMode(mode) {
         const raw = String(mode || '').toLowerCase();
-        if (raw === 'category' || raw === 'keywords' || raw === 'newest' || raw === 'hybrid') return raw;
+        if (raw === 'category' || raw === 'keywords' || raw === 'semantic' || raw === 'newest' || raw === 'hybrid') return raw;
         return 'hybrid';
     }
 
@@ -6620,6 +6622,7 @@ class AudioDashboard {
             hybrid: this.wallArrangeHybridSettingBtn,
             category: this.wallArrangeCategorySettingBtn,
             keywords: this.wallArrangeKeywordsSettingBtn,
+            semantic: this.wallArrangeSemanticSettingBtn,
             newest: this.wallArrangeNewestSettingBtn
         };
         const activeMode = this.normalizeWallDockArrangeMode(this.wallDockArrangeMode || this.flags?.wallDockArrangeModeDefault || 'hybrid');
@@ -6694,6 +6697,29 @@ class AudioDashboard {
 
         const arrange = this.normalizeWallDockArrangeMode(mode);
         const fallbackOrder = list.filter(cid => cid !== id);
+
+        // Semantic mode: use cached similarity results if available
+        if (arrange === 'semantic') {
+            const cacheKey = `${id}:${list.length}`;
+            const cached = this._semanticSimilarityCache && this._semanticSimilarityCache[cacheKey];
+            if (cached) {
+                // Use cached semantic scores
+                const scored = fallbackOrder.map((cid, index) => {
+                    const semanticScore = cached[cid] || 0;
+                    const item = itemMap.get(cid);
+                    const ts = item ? this.getWallItemTimestampMs(item) : 0;
+                    return { id: cid, index, score: semanticScore, ts };
+                });
+                scored.sort((a, b) => {
+                    if (b.score !== a.score) return b.score - a.score;
+                    if (b.ts !== a.ts) return b.ts - a.ts;
+                    return a.index - b.index;
+                });
+                return scored.map(r => r.id);
+            }
+            // Fall back to hybrid if no cache
+        }
+
         const baseMeta = this.extractCatsAndSubcats(base);
         const baseCatSet = new Set(baseMeta.categories || []);
         const basePairSet = new Set((baseMeta.subcatPairs || []).map(p => `${p[0]}>${p[1]}`));
@@ -6736,6 +6762,47 @@ class AudioDashboard {
             return a.index - b.index;
         });
         return scored.map(r => r.id);
+    }
+
+    async fetchSemanticSimilarity(selectedId, candidateIds) {
+        // Fetch semantic similarity scores from API
+        try {
+            const response = await fetch(`/api/semantic-similar?id=${encodeURIComponent(selectedId)}&topk=${candidateIds.length}`);
+            const data = await response.json();
+
+            if (!data.available || !data.results) {
+                console.warn('Semantic similarity not available, falling back to hybrid');
+                return null;
+            }
+
+            // Build cache with LRU eviction (max 50 entries)
+            const cacheKey = `${selectedId}:${candidateIds.length}`;
+            this._semanticSimilarityCache = this._semanticSimilarityCache || {};
+            this._semanticCacheKeys = this._semanticCacheKeys || [];
+
+            // LRU eviction
+            if (this._semanticCacheKeys.length >= 50) {
+                const oldestKey = this._semanticCacheKeys.shift();
+                delete this._semanticSimilarityCache[oldestKey];
+            }
+
+            // Update LRU order
+            const existingIndex = this._semanticCacheKeys.indexOf(cacheKey);
+            if (existingIndex >= 0) {
+                this._semanticCacheKeys.splice(existingIndex, 1);
+            }
+            this._semanticCacheKeys.push(cacheKey);
+
+            this._semanticSimilarityCache[cacheKey] = {};
+            data.results.forEach(r => {
+                this._semanticSimilarityCache[cacheKey][r.id] = r.score;
+            });
+
+            return this._semanticSimilarityCache[cacheKey];
+        } catch (error) {
+            console.warn('Failed to fetch semantic similarity:', error);
+            return null;
+        }
     }
 
     buildWallDockAroundPositions(anchor, count) {
@@ -6793,7 +6860,7 @@ class AudioDashboard {
         });
     }
 
-    applyWallDockArrangement(selectedId, mode, { scrollSelected = false } = {}) {
+    async applyWallDockArrangement(selectedId, mode, { scrollSelected = false } = {}) {
         const workspace = this.contentGrid && this.contentGrid.querySelector('[data-wall-workspace]');
         const grid = workspace ? workspace.querySelector('.wall-grid') : null;
         if (!grid) return;
@@ -6803,6 +6870,16 @@ class AudioDashboard {
         if (!cardIds.includes(selectedId)) return;
 
         const arrange = this.setWallDockArrangeMode(mode || this.wallDockArrangeMode);
+
+        // For semantic mode, fetch similarity data first
+        if (arrange === 'semantic') {
+            const cacheKey = `${selectedId}:${cardIds.length}`;
+            const cached = this._semanticSimilarityCache && this._semanticSimilarityCache[cacheKey];
+            if (!cached) {
+                await this.fetchSemanticSimilarity(selectedId, cardIds);
+            }
+        }
+
         this.setWallDockWidth(workspace, grid);
         const beforeRects = new Map(cards.map((card) => {
             const cid = card.getAttribute('data-report-id');

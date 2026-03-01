@@ -2948,6 +2948,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_llm_models()
             elif path == '/api/semantic-search':
                 self.serve_api_semantic_search(query_params)
+            elif path == '/api/semantic-similar':
+                self.serve_api_semantic_similar(query_params)
             elif path == '/api/version':
                 self.serve_api_version()
             elif path.startswith('/api/backup/'):
@@ -3166,6 +3168,60 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             }).encode())
         except Exception as e:
             logger.error(f"Semantic search error: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+
+    def serve_api_semantic_similar(self, query_params):
+        """Find semantically similar documents by content ID (for card arrangement)."""
+        try:
+            from modules.semantic_search import find_similar, is_available
+
+            content_id = query_params.get('id', [''])[0]
+            topk = int(query_params.get('topk', ['20'])[0])
+
+            if not content_id:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Missing 'id' parameter"}).encode())
+                return
+
+            if not is_available():
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "results": [],
+                    "available": False,
+                    "error": "ChromaDB not initialized"
+                }).encode())
+                return
+
+            results = find_similar(content_id, topk=topk)
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "source_id": content_id,
+                "results": results,
+                "count": len(results),
+                "available": True
+            }).encode())
+
+        except ImportError:
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "results": [],
+                "available": False,
+                "error": "chromadb not installed"
+            }).encode())
+        except Exception as e:
+            logger.error(f"Semantic similar error: {e}")
             self.send_response(500)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
