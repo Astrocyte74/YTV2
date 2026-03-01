@@ -3158,6 +3158,45 @@ class AudioDashboard {
         return { categories: Array.from(categories), subcats };
     }
 
+    /**
+     * Apply client-side subcategory narrowing to a batch of items
+     * Used for progressive rendering where each batch needs independent filtering
+     */
+    applySubcategoryNarrowing(items, facet) {
+        if (!items || !Array.isArray(items)) return items;
+
+        const restrictingParents = Object.entries(facet.subcats || {})
+            .filter(([parent, arr]) => {
+                const total = document.querySelectorAll(`input[data-filter="subcategory"][data-parent-category="${CSS.escape(parent)}"]`).length;
+                return Array.isArray(arr) && arr.length > 0 && arr.length < total;
+            })
+            .map(([parent]) => parent);
+
+        if (!restrictingParents.length) {
+            // No narrowing needed, return items as-is
+            return items;
+        }
+
+        const allowedByParent = new Map(Object.entries(facet.subcats));
+        return items.filter(it => {
+            const cats = Array.isArray(it.analysis?.category) ? it.analysis.category : [it.analysis?.category].filter(Boolean);
+            const sub = it.analysis?.subcategory || '';
+            // If item matches any restricting parent, it must satisfy its subcat list
+            for (const p of restrictingParents) {
+                if (cats.includes(p)) {
+                    const allowed = allowedByParent.get(p) || [];
+                    return allowed.includes(sub);
+                }
+            }
+            // Otherwise, if item belongs to a selected parent with no subcat restriction, allow
+            if (facet.categories && facet.categories.length) {
+                return cats.some(c => facet.categories.includes(c));
+            }
+            // If no parents selected (unlikely due to require-selection), keep as-is
+            return true;
+        });
+    }
+
     async loadContent() {
         // Show skeletons while fetching (only when we expect results)
         const showSkeletons = () => {
@@ -3245,7 +3284,7 @@ class AudioDashboard {
 
         // Check if server will handle subcategory filtering (to disable client-side narrowing)
         const hasServerSubcatFilter = Array.isArray(effectiveFilters.subcategory) && effectiveFilters.subcategory.length > 0;
-        console.log(`[YTV2] Server subcategory filtering: ${hasServerSubcatFilter}`);
+        console.debug(`[YTV2] Server subcategory filtering: ${hasServerSubcatFilter}`);
 
         // Build params with special handling for subcategories
         Object.entries(effectiveFilters).forEach(([key, values]) => {
@@ -3253,27 +3292,26 @@ class AudioDashboard {
                 // For subcategories, we need to send parentCategory instead of category
                 values.forEach(subcatValue => {
                     const normalizedSubcat = normalizeLabel(subcatValue);
-                    console.log(`[YTV2] Adding param: subcategory=${normalizedSubcat} (original: ${subcatValue})`);
                     params.append('subcategory', normalizedSubcat);
 
                     // Find the parent category for this subcategory
                     const subcatInput = document.querySelector(`input[data-filter="subcategory"][value="${CSS.escape(subcatValue)}"]`);
                     if (subcatInput && subcatInput.dataset.parentCategory) {
                         const normalizedParent = normalizeLabel(subcatInput.dataset.parentCategory);
-                        console.log(`[YTV2] Adding param: parentCategory=${normalizedParent} (for subcategory: ${subcatValue})`);
                         params.append('parentCategory', normalizedParent);
                     }
                 });
+                console.debug(`[YTV2] Filter params: ${values.length} subcategories`);
             } else if (key === 'category' && effectiveFilters.subcategory && effectiveFilters.subcategory.length > 0) {
                 // Skip category if we have subcategories (parentCategory will be used instead)
-                console.log(`[YTV2] Skipping category param because subcategories are present`);
+                // (silent - subcategories take precedence)
             } else {
                 // Handle all other filter types normally
                 values.forEach(v => {
                     const normalizedValue = normalizeLabel(v);
-                    console.log(`[YTV2] Adding param: ${key}=${normalizedValue} (original: ${v})`);
                     params.append(key, normalizedValue);
                 });
+                console.debug(`[YTV2] Filter params: ${key}=${values.length} values`);
             }
         });
 
@@ -3284,7 +3322,7 @@ class AudioDashboard {
                 const unique = [...new Set(all)];
                 params.delete(key);
                 unique.forEach(v => params.append(key, v));
-                console.log(`[YTV2] Deduplicated ${key}: ${all.length} -> ${unique.length} values`);
+                console.debug(`[YTV2] Deduplicated ${key}: ${all.length} -> ${unique.length}`);
             }
         };
         dedupeParam('parentCategory');
@@ -3316,75 +3354,98 @@ class AudioDashboard {
             }
 
             let items = data.reports || data.data || [];
-            console.log(`[YTV2] Items from server: ${items.length}`);
+            console.log(`[YTV2] Items from server (page 1): ${items.length}`);
 
             if (isWallMode) {
                 const totalPagesFromServer = data.pagination?.pages ?? data.pagination?.total_pages ?? 1;
+
+                // Progressive rendering: process and render first batch immediately
+                let firstBatch = items;
+
+                // Apply narrowing to first batch if needed
+                if (!hasServerSubcatFilter) {
+                    firstBatch = this.applySubcategoryNarrowing(firstBatch, facet);
+                }
+
+                // Store initial batch and render immediately
+                this.currentItems = firstBatch;
+                this.augmentSourceFiltersFromItems(firstBatch);
+                this.updateLatestIndexFromItems(firstBatch);
+
+                // Render first batch for instant feedback
+                this.renderContent(firstBatch);
+                this.renderPagination({ page: 1, size: firstBatch.length, total_count: firstBatch.length, has_next: false, has_prev: false });
+                this.updateResultsInfo({ page: 1, size: firstBatch.length, total_count: firstBatch.length });
+                const playableItems = this.rebuildPlaylist(firstBatch);
+                if (playableItems.length > 0 && this.currentAudio && firstBatch.includes(this.currentAudio.id)) {
+                    this.currentTrackIndex = firstBatch.indexOf(this.currentAudio.id);
+                    this.updatePlayerUI();
+                }
+
+                // Fire parallel requests for remaining pages
                 if (totalPagesFromServer > 1 && items.length < (data.pagination?.total ?? data.pagination?.total_count ?? Infinity)) {
-                    console.log(`[YTV2] Wall mode: fetching additional ${totalPagesFromServer - 1} pages`);
+                    console.log(`[YTV2] Wall mode: fetching ${totalPagesFromServer - 1} additional pages in background`);
+                    // Create all requests at once
+                    const extraPagePromises = [];
                     for (let page = 2; page <= totalPagesFromServer; page++) {
+                        const extraParams = new URLSearchParams(requestParams);
+                        extraParams.set('page', page.toString());
+                        const extraUrl = `/api/reports?${extraParams}`;
+                        extraPagePromises.push(
+                            fetch(extraUrl)
+                                .then(async resp => {
+                                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                                    const extraData = await resp.json();
+                                    return { page, items: extraData.reports || extraData.data || [] };
+                                })
+                                .catch(err => ({ page, error: err }))
+                        );
+                    }
+
+                    // Process pages as they complete (not waiting for all)
+                    let allItems = [...firstBatch];
+                    for (const promise of extraPagePromises) {
                         try {
-                            const extraParams = new URLSearchParams(requestParams);
-                            extraParams.set('page', page.toString());
-                            const extraUrl = `/api/reports?${extraParams}`;
-                            const extraResponse = await fetch(extraUrl);
-                            const extraData = await extraResponse.json();
-                            if (!extraResponse.ok) {
-                                console.warn(`Wall mode extra page ${page} failed`, extraData);
-                                break;
+                            const result = await promise;
+                            if (result.error) {
+                                console.warn(`[YTV2] Page ${result.page} failed:`, result.error);
+                                continue;
                             }
-                            const extraItems = extraData.reports || extraData.data || [];
-                            console.log(`[YTV2] Extra page ${page} returned ${extraItems.length} items`);
-                            items = items.concat(extraItems);
-                        } catch (extraErr) {
-                            console.warn(`Wall mode extra page ${page} fetch threw`, extraErr);
-                            break;
+                            const narrowedItems = !hasServerSubcatFilter
+                                ? this.applySubcategoryNarrowing(result.items, facet)
+                                : result.items;
+                            console.log(`[YTV2] Page ${result.page} fetched: ${narrowedItems.length} items, appending to grid`);
+                            const previousLength = allItems.length;
+                            allItems = allItems.concat(narrowedItems);
+                            this.currentItems = allItems;
+                            // Append only the new items (not re-rendering everything)
+                            this.appendContent(narrowedItems);
+                            this.updateResultsInfo({ page: 1, size: allItems.length, total_count: allItems.length });
+                        } catch (err) {
+                            console.warn(`[YTV2] Page processing error:`, err);
                         }
                     }
+                    console.log(`[YTV2] Progressive load complete: ${allItems.length} total items`);
+                    items = allItems;
+                } else {
+                    items = firstBatch;
                 }
             }
 
-            // 🚫 Skip client-side narrowing if server already filtered by subcategory
-            if (hasServerSubcatFilter) {
-                console.log(`[YTV2] Skipping client-side narrowing - server already filtered by subcategory`);
-            } else {
-                console.log(`[YTV2] Applying legacy client-side subcategory narrowing`);
-                // Client-side subcategory narrowing (per parent). Within a selected
-                // parent, if some-but-not-all subcats are checked, keep only those.
-                const restrictingParents = Object.entries(facet.subcats)
-                    .filter(([parent, arr]) => {
-                        const total = document.querySelectorAll(`input[data-filter="subcategory"][data-parent-category="${CSS.escape(parent)}"]`).length;
-                        return Array.isArray(arr) && arr.length > 0 && arr.length < total;
-                    })
-                    .map(([parent]) => parent);
-
-                if (restrictingParents.length) {
-                    const allowedByParent = new Map(Object.entries(facet.subcats));
-                    items = items.filter(it => {
-                        const cats = Array.isArray(it.analysis?.category) ? it.analysis.category : [it.analysis?.category].filter(Boolean);
-                        const sub = it.analysis?.subcategory || '';
-                        // If item matches any restricting parent, it must satisfy its subcat list
-                        for (const p of restrictingParents) {
-                            if (cats.includes(p)) {
-                                const allowed = allowedByParent.get(p) || [];
-                                return allowed.includes(sub);
-                            }
-                        }
-                        // Otherwise, if item belongs to a selected parent with no subcat restriction, allow
-                        if (facet.categories && facet.categories.length) {
-                            return cats.some(c => facet.categories.includes(c));
-                        }
-                        // If no parents selected (unlikely due to require-selection), keep as-is
-                        return true;
-                    });
+            // Client-side narrowing for non-wall modes (wall mode handles it during progressive rendering)
+            if (!isWallMode) {
+                if (!hasServerSubcatFilter) {
+                    console.debug(`[YTV2] Applying client-side subcategory narrowing`);
+                    items = this.applySubcategoryNarrowing(items, facet);
+                } else {
+                    console.debug(`[YTV2] Skipping client-side narrowing - server already filtered`);
                 }
+                console.debug(`[YTV2] Final items after narrowing: ${items.length}`);
+
+                this.currentItems = items;
+                this.augmentSourceFiltersFromItems(items);
+                this.updateLatestIndexFromItems(items);
             }
-            console.log(`[YTV2] Final items after narrowing: ${items.length}`);
-
-
-            this.currentItems = items;
-            this.augmentSourceFiltersFromItems(items);
-            this.updateLatestIndexFromItems(items);
 
             const paginationMeta = data.pagination || {
                 page: requestedPage,
@@ -3410,7 +3471,10 @@ class AudioDashboard {
                 }
             }
 
-            this.renderContent(this.currentItems);
+            // Skip re-render for wall mode (already progressively rendered)
+            if (!isWallMode) {
+                this.renderContent(this.currentItems);
+            }
             this.renderPagination(paginationMeta);
             this.updateResultsInfo(paginationMeta);
             const playableItems = this.rebuildPlaylist(this.currentItems);
@@ -3562,7 +3626,102 @@ class AudioDashboard {
         }
     }
 
+    /**
+     * Append new items to existing content (for progressive rendering)
+     * Only adds new cards without re-rendering existing ones
+     */
+    appendContent(newItems) {
+        if (!newItems || !Array.isArray(newItems) || newItems.length === 0) return;
+
+        console.log(`[YTV2] appendContent: ${newItems.length} new items, viewMode: ${this.viewMode}`);
+
+        if (this.viewMode === 'wall') {
+            // Find the wall-grid to append cards
+            const workspace = this.contentGrid?.querySelector('[data-wall-workspace]');
+            const grid = workspace?.querySelector('.wall-grid');
+            if (!grid) {
+                console.warn('[appendContent] Wall grid not found, falling back to full render');
+                this.renderContent(this.currentItems);
+                return;
+            }
+
+            // Generate HTML for just the new cards
+            const newCardsHtml = newItems.map(i => this.renderWallCardTW(i)).join('');
+            grid.insertAdjacentHTML('beforeend', newCardsHtml);
+
+            // Attach click handlers to only the new cards
+            const newCards = grid.querySelectorAll('.wall-card[data-report-id]:not([data-handlers-attached])');
+            console.debug(`[DEBUG] Attaching click handlers to ${newCards.length} new cards`);
+
+            newCards.forEach(card => {
+                card.addEventListener('click', (e) => {
+                    console.log('[DEBUG] New card clicked', { viewMode: this.viewMode, target: e.target.tagName });
+                    if (this._suppressOpen) { e.preventDefault(); e.stopPropagation(); return; }
+                    if (e.target.closest('[data-control]') || e.target.closest('[data-action]') || e.target.closest('[data-filter-chip]')) {
+                        return;
+                    }
+                    const id = card.getAttribute('data-report-id');
+                    if (id) { e.preventDefault(); e.stopPropagation(); this.handleWallRead(id, card); return; }
+                });
+                card.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        const id = card.getAttribute('data-report-id');
+                        if (id) { this.handleWallRead(id, card); }
+                    }
+                });
+                // Mark as having handlers attached
+                card.dataset.handlersAttached = 'true';
+            });
+
+            // Bind filter chip handlers for new cards
+            grid.querySelectorAll('[data-filter-chip]').forEach(chip => {
+                if (chip.dataset.bound) return;
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.handleFilterChipClick(chip);
+                });
+                chip.dataset.bound = 'true';
+            });
+
+            // Bind wall card tags button handlers for new cards
+            grid.querySelectorAll('.wall-card__tags-btn').forEach(btn => {
+                if (btn.dataset.bound) return;
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    try {
+                        const tagsData = JSON.parse(btn.dataset.tagsData || '{}');
+                        this.openTagsPopover(btn, document.body, tagsData);
+                    } catch (_) { }
+                });
+                btn.dataset.bound = 'true';
+            });
+
+            // Decorate only the new cards
+            this.decorateCards(newItems);
+
+            // Apply image mode and wire error handlers for new cards
+            newCards.forEach(card => {
+                try {
+                    this.applyImageModeToCard(card, this.currentItems.length - newItems.length);
+                    this.wireImageErrorHandlers(card);
+                } catch (_) { }
+            });
+
+            // Update playing card highlight in case current audio is in new items
+            this.updatePlayingCard();
+        } else {
+            // For non-wall modes, fall back to full render (less common case)
+            console.debug('[appendContent] Non-wall mode, doing full render');
+            this.renderContent(this.currentItems);
+        }
+    }
+
     autoOpenWallDockIfConfigured() {
+        // Disabled: auto-open first summary on load
+        return;
+
         if (this.viewMode !== 'wall') return;
         if (!this.flags || this.flags.wallDockAutoOpenFirst !== true) return;
         if (this._wallDockAutoOpenedOnce) return;
