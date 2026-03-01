@@ -3597,7 +3597,7 @@ class AudioDashboard {
         return `
             <section class="wall-workspace" data-wall-workspace>
                 <div class="wall-grid">${items.map(i => this.renderWallCardTW(i)).join('')}</div>
-                <aside id="wallDockReader" class="wall-dock hidden" aria-hidden="true" aria-label="Summary reader">
+                <aside id="wallDockReader" class="wall-dock hidden" aria-hidden="true" aria-label="Summary reader" data-video-id="${video_id}">
                     <button type="button" class="wall-dock__return hidden" data-action="wall-dock-return" aria-hidden="true">↑ Back to active card</button>
                     <div class="wall-dock__chrome">
                         <div class="wall-dock__topline">
@@ -3715,8 +3715,17 @@ class AudioDashboard {
                             <section class="wall-dock__menu-section" data-wall-menu-section="actions">
                                 <p class="wall-dock__menu-label">Actions</p>
                                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-reprocess">Regenerate…</button>
-                                <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="wall-reader-delete">Delete…</button>
+                                <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
                             </section>
+                        </div>
+                    </div>
+                    <div class="summary-card__popover hidden" data-delete-popover>
+                        <div class="summary-card__popover-panel">
+                            <p>Delete this summary?</p>
+                            <div class="summary-card__popover-actions">
+                                <button type="button" data-action="cancel-delete">Cancel</button>
+                                <button type="button" data-action="confirm-delete">Delete</button>
+                            </div>
                         </div>
                     </div>
                     <div id="wallDockBody" class="wall-dock__body prose prose-sm dark:prose-invert max-w-none"></div>
@@ -7340,17 +7349,6 @@ class AudioDashboard {
             });
         }
 
-        // Delete button handler
-        const deleteBtn = dock.querySelector('[data-action="wall-reader-delete"]');
-        if (deleteBtn) {
-            on(deleteBtn, 'click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                this.handleDelete(id, card || dock);
-                if (menu && menuBtn) this.toggleKebabMenu(dock, false, menuBtn);
-            });
-        }
-
         if (menuBtn && menu) {
             menu.classList.add('hidden');
             on(menuBtn, 'click', (e) => {
@@ -7820,16 +7818,6 @@ class AudioDashboard {
 		                    e.stopPropagation();
 		                    if (!canYoutube) return;
 		                    this.openReprocessModal(id, card || modal, item);
-		                });
-		            }
-
-		            // Delete button handler for modal
-		            const deleteBtn = modal.querySelector('[data-action="wall-reader-delete"]');
-		            if (deleteBtn) {
-		                on(deleteBtn, 'click', (e) => {
-		                    e.preventDefault();
-		                    e.stopPropagation();
-		                    this.handleDelete(id, card || modal);
 		                });
 		            }
 		            if (displayBtn) {
