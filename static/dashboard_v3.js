@@ -2699,7 +2699,7 @@ class AudioDashboard {
             this.populateCategoryDropdown(filters.categories || []);
             this.populateChannelDropdown(filters.channels || []);
             this.populateLanguageDropdown(filters.languages || []);
-            this.populateFilterBarPopover();
+            this.populateFilterBarPopover(filters);
 
             // Bind show more toggles after content is loaded
             this.bindShowMoreToggles();
@@ -3430,9 +3430,8 @@ class AudioDashboard {
             }
             this.renderQueue();
 
-            // Refresh facet counts after a delay (debounced)
-            // This updates counts based on current filters without disrupting multi-select
-            this.debouncedRefreshFacets();
+            // Note: Facet counts are NOT refreshed after filter changes to prevent
+            // dropdown options from disappearing. Counts refresh only on page load.
 
         } catch (error) {
             console.error('Failed to load content:', error);
@@ -3716,6 +3715,7 @@ class AudioDashboard {
                             <section class="wall-dock__menu-section" data-wall-menu-section="actions">
                                 <p class="wall-dock__menu-label">Actions</p>
                                 <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-reprocess">Regenerate…</button>
+                                <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="wall-reader-delete">Delete…</button>
                             </section>
                         </div>
                     </div>
@@ -7340,6 +7340,17 @@ class AudioDashboard {
             });
         }
 
+        // Delete button handler
+        const deleteBtn = dock.querySelector('[data-action="wall-reader-delete"]');
+        if (deleteBtn) {
+            on(deleteBtn, 'click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.handleDelete(id, card || dock);
+                if (menu && menuBtn) this.toggleKebabMenu(dock, false, menuBtn);
+            });
+        }
+
         if (menuBtn && menu) {
             menu.classList.add('hidden');
             on(menuBtn, 'click', (e) => {
@@ -7809,6 +7820,16 @@ class AudioDashboard {
 		                    e.stopPropagation();
 		                    if (!canYoutube) return;
 		                    this.openReprocessModal(id, card || modal, item);
+		                });
+		            }
+
+		            // Delete button handler for modal
+		            const deleteBtn = modal.querySelector('[data-action="wall-reader-delete"]');
+		            if (deleteBtn) {
+		                on(deleteBtn, 'click', (e) => {
+		                    e.preventDefault();
+		                    e.stopPropagation();
+		                    this.handleDelete(id, card || modal);
 		                });
 		            }
 		            if (displayBtn) {
@@ -14128,23 +14149,25 @@ class AudioDashboard {
         }
     }
 
-    populateFilterBarPopover() {
-        // Populate content types
+    populateFilterBarPopover(filters = {}) {
+        // Populate content types with counts from API
         if (this.filterBarContentTypes) {
-            const ctContainer = document.getElementById('contentTypeFilters');
-            if (ctContainer) {
-                const items = this.extractFilterItemsFromContainer(ctContainer, 'content_type');
-                this.renderFilterBarSection(items, this.filterBarContentTypes, 'content_type');
-            }
+            const items = (filters.content_type || []).map(item => ({
+                value: item.value,
+                label: item.label || item.value,
+                count: item.count || 0
+            }));
+            this.renderFilterBarSection(items, this.filterBarContentTypes, 'content_type');
         }
 
-        // Populate summary types
+        // Populate summary types with counts from API
         if (this.filterBarSummaryTypes) {
-            const stContainer = document.getElementById('summaryTypeFilters');
-            if (stContainer) {
-                const items = this.extractFilterItemsFromContainer(stContainer, 'summary_type');
-                this.renderFilterBarSection(items, this.filterBarSummaryTypes, 'summary_type');
-            }
+            const items = (filters.summary_type || []).map(item => ({
+                value: item.value,
+                label: item.label || item.value,
+                count: item.count || 0
+            }));
+            this.renderFilterBarSection(items, this.filterBarSummaryTypes, 'summary_type');
         }
     }
 
@@ -14171,10 +14194,15 @@ class AudioDashboard {
         let html = '';
         items.slice(0, 10).forEach(item => {
             const checked = item.checked ? 'checked' : '';
-            html += `<label class="flex items-center gap-2 py-1 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-1">
+            const count = item.count || 0;
+            const countHtml = count > 0 ? `<span class="text-xs text-slate-400 ml-auto">${count}</span>` : '';
+            const dimClass = count === 0 ? 'opacity-40' : '';
+
+            html += `<label class="flex items-center gap-2 py-1 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 rounded px-1 ${dimClass}">
                 <input type="checkbox" data-filter="${filterType}" value="${this.escapeHtml(item.value)}" ${checked}
                     class="rounded border-slate-300 dark:border-slate-600 text-audio-500 focus:ring-audio-500 focus:ring-offset-0">
-                <span class="text-sm text-slate-700 dark:text-slate-200 truncate">${this.escapeHtml(item.label)}</span>
+                <span class="text-sm text-slate-700 dark:text-slate-200 truncate flex-1">${this.escapeHtml(item.label)}</span>
+                ${countHtml}
             </label>`;
         });
 

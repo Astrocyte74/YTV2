@@ -37,6 +37,17 @@ class PostgreSQLContentIndex:
         'language'
     ]
 
+    # All valid summary variants for SQL queries (includes Audio-Fr levels not in priority order)
+    SQL_SUMMARY_VARIANTS: List[str] = [
+        'comprehensive', 'key-points', 'bullet-points',
+        'executive', 'key-insights', 'audio', 'audio-fr', 'audio-es',
+        'audio-fr:intermediate', 'audio-fr:advanced'
+    ]
+
+    # SQL fragment for IN clauses - use in queries
+    SQL_VARIANT_IN_CLAUSE = "'" + "','".join(SQL_SUMMARY_VARIANTS) + "'"
+    SQL_VARIANT_ARRAY = "ARRAY[" + ",".join(f"'{v}'" for v in SQL_SUMMARY_VARIANTS) + "]::text[]"
+
     SOURCE_LABELS = {
         'youtube': 'YouTube',
         'reddit': 'Reddit',
@@ -44,6 +55,47 @@ class PostgreSQLContentIndex:
         'lds': 'Gospel Library',
         'web': 'Web',
         'other': 'Other'
+    }
+
+    LANGUAGE_LABELS = {
+        'en': 'English',
+        'fr': 'French',
+        'es': 'Spanish',
+        'de': 'German',
+        'pt': 'Portuguese',
+        'it': 'Italian',
+        'ja': 'Japanese',
+        'ko': 'Korean',
+        'zh': 'Chinese',
+        'ru': 'Russian',
+        'ar': 'Arabic',
+        'hi': 'Hindi',
+        'nl': 'Dutch',
+        'pl': 'Polish',
+        'tr': 'Turkish',
+    }
+
+    # Language code normalization mapping (variants -> canonical code)
+    LANGUAGE_NORMALIZATION: Dict[str, str] = {
+        # English variants
+        'en': 'en', 'en-us': 'en', 'en-gb': 'en', 'en-ca': 'en',
+        'en-au': 'en', 'en-in': 'en', 'en-nz': 'en', 'en-za': 'en', 'english': 'en',
+        # French variants
+        'fr': 'fr', 'fr-fr': 'fr', 'fr-ca': 'fr', 'french': 'fr',
+        # Spanish variants
+        'es': 'es', 'es-es': 'es', 'es-mx': 'es', 'spanish': 'es',
+        # German variants
+        'de': 'de', 'de-de': 'de', 'german': 'de',
+        # Portuguese variants
+        'pt': 'pt', 'pt-br': 'pt', 'pt-pt': 'pt', 'portuguese': 'pt',
+        # Italian
+        'it': 'it', 'italian': 'it',
+        # Japanese
+        'ja': 'ja', 'japanese': 'ja',
+        # Korean
+        'ko': 'ko', 'korean': 'ko',
+        # Chinese variants
+        'zh': 'zh', 'zh-cn': 'zh', 'zh-tw': 'zh', 'chinese': 'zh',
     }
 
     @classmethod
@@ -343,6 +395,7 @@ class PostgreSQLContentIndex:
 
         # Summary metadata (only attached for detailed view, but we pass through here)
         summary_variant = row.get('summary_variant') or 'comprehensive'
+        summary_type_latest = row.get('summary_type_latest') or summary_variant
         summary_text = row.get('summary_text')
         summary_html = row.get('summary_html')
 
@@ -433,6 +486,7 @@ class PostgreSQLContentIndex:
             content_dict['summary_text'] = summary_text or ''
             content_dict['summary_html'] = summary_html or ''
             content_dict['summary_variant'] = summary_variant
+            content_dict['summary_type_latest'] = summary_type_latest
 
         summary_variants_raw = row.get('summary_variants')
         parsed_variants = self._parse_json_field(summary_variants_raw)
@@ -537,6 +591,7 @@ class PostgreSQLContentIndex:
                     c.*,
                     {source_case} AS normalized_source,
                     ls.variant as summary_variant,
+                    ls.variant as summary_type_latest,
                     ls.text as summary_text,
                     ls.html as summary_html,
                     ls.revision as summary_revision,
@@ -547,15 +602,9 @@ class PostgreSQLContentIndex:
                     SELECT s.*
                     FROM v_latest_summaries s
                     WHERE s.video_id = c.video_id
-                      AND s.variant IN (
-                        'comprehensive','key-points','bullet-points',
-                        'executive','key-insights','audio','audio-fr','audio-es'
-                      )
+                      AND s.variant IN ({self.SQL_VARIANT_IN_CLAUSE})
                     ORDER BY array_position(
-                      ARRAY[
-                        'comprehensive','key-points','bullet-points',
-                        'executive','key-insights','audio','audio-fr','audio-es'
-                      ]::text[],
+                      {self.SQL_VARIANT_ARRAY},
                       s.variant
                     )
                     LIMIT 1
@@ -644,12 +693,12 @@ class PostgreSQLContentIndex:
                     where_conditions.append(f"c.video_id IN ({id_placeholders})")
                     params.extend(normalized_ids)
 
-                # Content type filters - REMOVED (column doesn't exist in PostgreSQL schema)
-                # if 'content_type' in filters and filters['content_type']:
-                #     content_types = filters['content_type'] if isinstance(filters['content_type'], list) else [filters['content_type']]
-                #     type_placeholders = ','.join(['%s'] * len(content_types))
-                #     where_conditions.append(f"c.content_type IN ({type_placeholders})")
-                #     params.extend(content_types)
+                # Content type filters - using analysis_json column
+                if 'content_type' in filters and filters['content_type']:
+                    content_types = filters['content_type'] if isinstance(filters['content_type'], list) else [filters['content_type']]
+                    type_placeholders = ','.join(['%s'] * len(content_types))
+                    where_conditions.append(f"c.analysis_json->>'content_type' IN ({type_placeholders})")
+                    params.extend(content_types)
 
                 # Complexity filters - REMOVED (complexity_level column doesn't exist in PostgreSQL schema)
                 # if 'complexity' in filters and filters['complexity']:
@@ -670,34 +719,33 @@ class PostgreSQLContentIndex:
                     where_conditions.append("c.has_audio = %s")
                     params.append(filters['has_audio'])
 
-                # Summary type filter - convert user-friendly names to database variants
+                # Summary type filter - check if ANY summary matches (not just the selected one)
                 if 'summary_type' in filters and filters['summary_type']:
                     summary_types = filters['summary_type'] if isinstance(filters['summary_type'], list) else [filters['summary_type']]
                     # Convert user-friendly names to database variants
                     database_variants = [self._get_database_variant(st) for st in summary_types]
-                    where_conditions.append("COALESCE(ls.variant, 'unknown') = ANY(%s)")
+                    # Use EXISTS to check if the video has ANY summary with the matching variant
+                    where_conditions.append("""EXISTS (
+                        SELECT 1 FROM summaries s2
+                        WHERE s2.video_id = c.video_id
+                        AND s2.variant = ANY(%s)
+                    )""")
                     params.append(database_variants)
 
             where_clause = ""
             if where_conditions:
                 where_clause = " AND " + " AND ".join(where_conditions)
 
-            base_count_query = """
+            base_count_query = f"""
                 SELECT COUNT(*) as total
                 FROM content c
                 LEFT JOIN LATERAL (
                     SELECT s.*
                     FROM v_latest_summaries s
                     WHERE s.video_id = c.video_id
-                      AND s.variant IN (
-                        'comprehensive','key-points','bullet-points',
-                        'executive','key-insights','audio','audio-fr','audio-es'
-                      )
+                      AND s.variant IN ({self.SQL_VARIANT_IN_CLAUSE})
                     ORDER BY array_position(
-                      ARRAY[
-                        'comprehensive','key-points','bullet-points',
-                        'executive','key-insights','audio','audio-fr','audio-es'
-                      ]::text[],
+                      {self.SQL_VARIANT_ARRAY},
                       s.variant
                     )
                     LIMIT 1
@@ -805,15 +853,9 @@ class PostgreSQLContentIndex:
                     SELECT s.*
                     FROM v_latest_summaries s
                     WHERE s.video_id = c.video_id
-                      AND s.variant IN (
-                        'comprehensive','key-points','bullet-points',
-                        'executive','key-insights','audio','audio-fr','audio-es'
-                      )
+                      AND s.variant IN ({self.SQL_VARIANT_IN_CLAUSE})
                     ORDER BY array_position(
-                      ARRAY[
-                        'comprehensive','key-points','bullet-points',
-                        'executive','key-insights','audio','audio-fr','audio-es'
-                      ]::text[],
+                      {self.SQL_VARIANT_ARRAY},
                       s.variant
                     )
                     LIMIT 1
@@ -835,6 +877,7 @@ class PostgreSQLContentIndex:
                 SELECT
                     c.*,
                     ls.variant as summary_variant,
+                    ls.variant as summary_type_latest,
                     ls.text as summary_text,
                     ls.html as summary_html,
                     ls.revision as summary_revision,
@@ -845,15 +888,9 @@ class PostgreSQLContentIndex:
                     SELECT s.*
                     FROM v_latest_summaries s
                     WHERE s.video_id = c.video_id
-                      AND s.variant IN (
-                        'comprehensive','key-points','bullet-points',
-                        'executive','key-insights','audio','audio-fr','audio-es'
-                      )
+                      AND s.variant IN ({self.SQL_VARIANT_IN_CLAUSE})
                     ORDER BY array_position(
-                      ARRAY[
-                        'comprehensive','key-points','bullet-points',
-                        'executive','key-insights','audio','audio-fr','audio-es'
-                      ]::text[],
+                      {self.SQL_VARIANT_ARRAY},
                       s.variant
                     )
                     LIMIT 1
@@ -949,6 +986,7 @@ class PostgreSQLContentIndex:
                     c.*,
                     {source_case} AS normalized_source,
                     ls.variant as summary_variant,
+                    ls.variant as summary_type_latest,
                     ls.text as summary_text,
                     ls.html as summary_html,
                     ls.revision as summary_revision,
@@ -959,15 +997,9 @@ class PostgreSQLContentIndex:
                     SELECT s.*
                     FROM v_latest_summaries s
                     WHERE s.video_id = c.video_id
-                      AND s.variant IN (
-                        'comprehensive','key-points','bullet-points',
-                        'executive','key-insights','audio','audio-fr','audio-es'
-                      )
+                      AND s.variant IN ({self.SQL_VARIANT_IN_CLAUSE})
                     ORDER BY array_position(
-                      ARRAY[
-                        'comprehensive','key-points','bullet-points',
-                        'executive','key-insights','audio','audio-fr','audio-es'
-                      ]::text[],
+                      {self.SQL_VARIANT_ARRAY},
                       s.variant
                     )
                     LIMIT 1
@@ -1037,6 +1069,12 @@ class PostgreSQLContentIndex:
                     where_conditions.append(f"c.language IN ({lang_placeholders})")
                     params.extend(languages)
 
+                if 'content_type' in filters and filters['content_type']:
+                    content_types = filters['content_type'] if isinstance(filters['content_type'], list) else [filters['content_type']]
+                    type_placeholders = ','.join(['%s'] * len(content_types))
+                    where_conditions.append(f"c.analysis_json->>'content_type' IN ({type_placeholders})")
+                    params.extend(content_types)
+
                 if 'has_audio' in filters:
                     where_conditions.append("c.has_audio = %s")
                     params.append(filters['has_audio'])
@@ -1044,7 +1082,12 @@ class PostgreSQLContentIndex:
                 if 'summary_type' in filters and filters['summary_type']:
                     summary_types = filters['summary_type'] if isinstance(filters['summary_type'], list) else [filters['summary_type']]
                     database_variants = [self._get_database_variant(st) for st in summary_types]
-                    where_conditions.append("COALESCE(ls.variant, 'unknown') = ANY(%s)")
+                    # Use EXISTS to check if the video has ANY summary with the matching variant
+                    where_conditions.append("""EXISTS (
+                        SELECT 1 FROM summaries s2
+                        WHERE s2.video_id = c.video_id
+                        AND s2.variant = ANY(%s)
+                    )""")
                     params.append(database_variants)
 
             if where_conditions:
@@ -1058,15 +1101,9 @@ class PostgreSQLContentIndex:
                     SELECT s.*
                     FROM v_latest_summaries s
                     WHERE s.video_id = c.video_id
-                      AND s.variant IN (
-                        'comprehensive','key-points','bullet-points',
-                        'executive','key-insights','audio','audio-fr','audio-es'
-                      )
+                      AND s.variant IN ({self.SQL_VARIANT_IN_CLAUSE})
                     ORDER BY array_position(
-                      ARRAY[
-                        'comprehensive','key-points','bullet-points',
-                        'executive','key-insights','audio','audio-fr','audio-es'
-                      ]::text[],
+                      {self.SQL_VARIANT_ARRAY},
                       s.variant
                     )
                     LIMIT 1
@@ -1160,7 +1197,10 @@ class PostgreSQLContentIndex:
             'Comprehensive': 'comprehensive',
             'Executive Summary': 'executive',
             'Insights': 'key-insights',
-            'Unknown': 'unknown'
+            'Unknown': 'unknown',
+            # Audio-Fr variants - stored lowercase in DB
+            'Audio-Fr:Intermediate': 'audio-fr:intermediate',
+            'Audio-Fr:Advanced': 'audio-fr:advanced',
         }
         return reverse_mapping.get(user_friendly_name, user_friendly_name.lower())
 
@@ -1223,11 +1263,15 @@ class PostgreSQLContentIndex:
                     where_conditions.append(f"c.language IN ({lang_placeholders})")
                     params.extend(languages)
 
-                # Summary type filter
+                # Summary type filter - use EXISTS to match ANY summary variant
                 if 'summary_type' in active_filters and active_filters['summary_type']:
                     summary_types = active_filters['summary_type'] if isinstance(active_filters['summary_type'], list) else [active_filters['summary_type']]
                     database_variants = [self._get_database_variant(st) for st in summary_types]
-                    where_conditions.append("COALESCE(ls.variant, 'unknown') = ANY(%s)")
+                    where_conditions.append("""EXISTS (
+                        SELECT 1 FROM summaries s2
+                        WHERE s2.video_id = c.video_id
+                        AND s2.variant = ANY(%s)
+                    )""")
                     params.append(database_variants)
 
             where_clause = ""
@@ -1327,7 +1371,10 @@ class PostgreSQLContentIndex:
 
                 language = analysis_json.get('language')
                 if language:
-                    language_counter[language] += 1
+                    # Normalize language variants using class mapping
+                    lang_lower = str(language).lower().strip()
+                    normalized = self.LANGUAGE_NORMALIZATION.get(lang_lower, lang_lower)
+                    language_counter[normalized] += 1
 
                 content_type = analysis_json.get('content_type')
                 if content_type:
@@ -1409,8 +1456,9 @@ class PostgreSQLContentIndex:
                 }]
             filters['content_source'] = filters['source']
 
-            filters['languages'] = [  # Changed to plural for JS compatibility
-                {'value': lang, 'count': count}
+            # Use class constant LANGUAGE_LABELS for display
+            filters['languages'] = [
+                {'value': lang, 'label': self.LANGUAGE_LABELS.get(lang, lang.upper()), 'count': count}
                 for lang, count in language_counter.most_common()
             ]
 
