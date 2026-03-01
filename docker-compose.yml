@@ -42,9 +42,10 @@ services:
       # Optional: Mount cache directory for performance
       - dashboard-cache:/app/cache
 
-    # Network connection to PostgreSQL
+    # Network connection to PostgreSQL and backend
     networks:
       - ytv2-network
+      - ytv2-backend_ytv2-network
 
     # Health check
     healthcheck:
@@ -82,3 +83,6 @@ networks:
   ytv2-network:
     driver: bridge
     name: ytv2-network
+  ytv2-backend_ytv2-network:
+    external: true
+    name: ytv2-backend_ytv2-network

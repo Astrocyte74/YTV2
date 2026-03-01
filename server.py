@@ -3007,13 +3007,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                             self.wfile.flush()
                         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
                             break
+                return  # Proxy completed, don't fall through to local SSE
             except Exception as e:
-                logger.error(f"SSE proxy error: {e}")
-                self.send_response(502)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "SSE proxy failed"}).encode())
-            return
+                logger.warning(f"SSE proxy to backend failed, falling back to local SSE: {e}")
+                # Fall through to local SSE below
 
         # Fallback: local SSE (won't receive backend events)
         self.send_response(200)
@@ -3061,10 +3058,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
         backend_url = os.getenv('BACKEND_API_URL', '').rstrip('/')
         if not backend_url:
-            self.send_response(404)
+            # No backend configured; return empty list
+            self.send_response(200)
             self.send_header('Content-type', 'application/json')
+            self.send_header('Cache-Control', 'max-age=60')
             self.end_headers()
-            self.wfile.write(json.dumps({"error": "backend not configured"}).encode())
+            self.wfile.write(json.dumps({"models": []}).encode())
             return
 
         try:
@@ -3080,11 +3079,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(data)
         except Exception as e:
-            logger.error(f"LLM models proxy error: {e}")
-            self.send_response(502)
+            logger.warning(f"LLM models proxy error: {e}")
+            # Return empty list on error
+            self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(json.dumps({"error": "proxy failed"}).encode())
+            self.wfile.write(json.dumps({"models": []}).encode())
 
     def serve_api_semantic_search(self, query_params):
         """
@@ -3228,18 +3228,40 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": str(e)}).encode())
 
     def serve_api_metrics(self):
-        """Proxy NAS metrics to avoid browser CORS issues."""
+        """Proxy metrics from backend to avoid browser CORS issues."""
         try:
+            # Try backend first (for local development)
+            backend_url = os.getenv('BACKEND_API_URL', '').rstrip('/')
+            if backend_url:
+                try:
+                    target = f"{backend_url}/api/metrics"
+                    resp = requests.get(target, timeout=5)
+                    self.send_response(resp.status_code)
+                    self.send_header('Content-type', 'application/json')
+                    self.send_header('Cache-Control', 'no-cache')
+                    self.end_headers()
+                    self.wfile.write(resp.content)
+                    return
+                except RequestException as e:
+                    logger.warning(f"Metrics proxy to backend failed: {e}")
+                    # Fall through to NAS below
+
+            # Fallback to NAS (for remote deployment)
             base_url = os.getenv('NGROK_BASE_URL') or os.getenv('NGROK_URL') or ''
             if not base_url:
-                # No NAS configured; hide metrics panel
-                self.send_response(404)
+                # No backend or NAS configured; return empty metrics
+                self.send_response(200)
                 self.send_header('Content-type', 'application/json')
+                self.send_header('Cache-Control', 'no-cache')
                 self.end_headers()
-                self.wfile.write(json.dumps({"error": "nas not configured"}).encode())
+                self.wfile.write(json.dumps({
+                    "counters": {},
+                    "sse_clients_current": 0,
+                    "generated_at": datetime.utcnow().isoformat() + "Z"
+                }).encode())
                 return
 
-            # Compose target URL
+            # Compose target URL for NAS
             target = base_url.rstrip('/') + '/api/metrics'
 
             headers = {

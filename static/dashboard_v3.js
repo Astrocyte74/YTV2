@@ -3597,7 +3597,7 @@ class AudioDashboard {
         return `
             <section class="wall-workspace" data-wall-workspace>
                 <div class="wall-grid">${items.map(i => this.renderWallCardTW(i)).join('')}</div>
-                <aside id="wallDockReader" class="wall-dock hidden" aria-hidden="true" aria-label="Summary reader" data-video-id="${video_id}">
+                <aside id="wallDockReader" class="wall-dock hidden" aria-hidden="true" aria-label="Summary reader">
                     <button type="button" class="wall-dock__return hidden" data-action="wall-dock-return" aria-hidden="true">↑ Back to active card</button>
                     <div class="wall-dock__chrome">
                         <div class="wall-dock__topline">
@@ -7373,8 +7373,71 @@ class AudioDashboard {
                     this.toggleKebabMenu(dock, false, menuBtn);
                     return;
                 }
+                if (action === 'delete') {
+                    this.toggleDeletePopover(dock, true);
+                    this.toggleKebabMenu(dock, false, menuBtn);
+                    return;
+                }
             });
         }
+
+        // Handle delete popover buttons (which are outside the menu)
+        // This handler is attached to dock directly to catch popover button clicks
+        on(dock, 'click', (e) => {
+            const actionEl = e.target.closest('[data-action]');
+            if (!actionEl) return;
+            const action = actionEl.getAttribute('data-action');
+            if (action === 'confirm-delete') {
+                // Wall-dock specific delete: use item.video_id, remove card from grid, close dock
+                (async () => {
+                    try {
+                        const pop = dock.querySelector('[data-delete-popover]');
+                        if (pop) pop.classList.add('pointer-events-none', 'opacity-60');
+
+                        const videoId = item.video_id;
+                        if (!videoId) {
+                            throw new Error('No video ID found on item');
+                        }
+
+                        const res = await fetch(`/api/delete/${encodeURIComponent(videoId)}`, {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+
+                        if (!res.ok) {
+                            const errorText = await res.text();
+                            throw new Error(`HTTP ${res.status}: ${errorText}`);
+                        }
+
+                        // Find and remove the card from the grid
+                        const cardEl = grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`);
+                        if (cardEl) {
+                            cardEl.classList.add('transition', 'duration-200', 'ease-out', 'opacity-0', 'scale-95');
+                            setTimeout(() => {
+                                cardEl.remove();
+                            }, 200);
+                        }
+
+                        // Close the dock
+                        this.closeWallDockReader();
+
+                        this.showToast('Deleted successfully', 'success');
+                        fetch('/api/refresh').catch(() => { });
+                    } catch (err) {
+                        console.error('Delete failed', err);
+                        this.showToast(`Delete failed: ${err.message}`, 'error');
+                    } finally {
+                        this.toggleDeletePopover(dock, false);
+                    }
+                })();
+                this.sendTelemetry('cta_delete', { id });
+                return;
+            }
+            if (action === 'cancel-delete') {
+                this.toggleDeletePopover(dock, false);
+                return;
+            }
+        });
 
         const getSelectedCardEl = () => {
             const selectedId = this._wallDockSelectedId || id;
