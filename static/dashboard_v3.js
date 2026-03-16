@@ -71,6 +71,7 @@ const REPROCESS_VARIANTS = [
     { id: 'comprehensive', label: 'Comprehensive', icon: '📝', kind: 'text' },
     { id: 'bullet-points', label: 'Key Points', icon: '🎯', kind: 'text' },
     { id: 'key-insights', label: 'Insights', icon: '💡', kind: 'text' },
+    { id: 'deep-research', label: 'Deep Research', icon: '🔎', kind: 'research' },
     { id: 'audio', label: 'Audio (EN)', icon: '🎙️', kind: 'audio' },
     { id: 'audio-fr', label: 'Audio français', icon: '🎙️🇫🇷', kind: 'audio', language: 'fr', proficiency: true },
     { id: 'audio-es', label: 'Audio español', icon: '🎙️🇪🇸', kind: 'audio', language: 'es', proficiency: true }
@@ -9416,6 +9417,7 @@ class AudioDashboard {
     // Normalize NAS HTML variants at render time to ensure headings/lists styles apply
     enhanceSummaryHtml(root) {
         if (!root) return;
+        if (root.querySelector('[data-research-report]')) return;
         try {
             const paras = Array.from(root.querySelectorAll('p'));
             paras.forEach((p) => {

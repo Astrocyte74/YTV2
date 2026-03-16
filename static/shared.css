@@ -1,4 +1,4 @@
-/* 
+/*
  * YTV2 Dashboard Shared Styles
  * Styles used across both main dashboard and individual report pages
  */
@@ -54,4 +54,351 @@
     font-weight: 600;
 }
 
-/* Future shared styles can be added here */
+/* ============================================
+   ENHANCED SUMMARY STYLING
+   Better typography, visual hierarchy, bullets
+   Works across: dashboard, wall-dock, report page
+   NOTE: Uses !important to override Tailwind prose classes
+   ============================================ */
+
+/* Styled headings - remove markdown heading hashes and add style */
+.prose h2,
+[data-summary-body] h2,
+#summaryBody h2,
+article[data-summary-body] h2 {
+    font-size: 1.5em !important;
+    font-weight: 700 !important;
+    margin-top: 1.5em !important;
+    margin-bottom: 0.75em !important;
+    padding-bottom: 0.3em !important;
+    border-bottom: 2px solid #3b82f6 !important;
+    color: inherit !important;
+}
+
+.prose h3,
+[data-summary-body] h3,
+#summaryBody h3,
+article[data-summary-body] h3 {
+    font-size: 1.25em !important;
+    font-weight: 600 !important;
+    margin-top: 1.2em !important;
+    margin-bottom: 0.6em !important;
+    color: inherit !important;
+}
+
+.dark .prose h2,
+.dark [data-summary-body] h2,
+.dark #summaryBody h2 {
+    border-bottom-color: #60a5fa !important;
+}
+
+/* Styled bullets - replace plain text bullets */
+.prose ul,
+[data-summary-body] ul,
+#summaryBody ul,
+article[data-summary-body] ul {
+    list-style: none !important;
+    padding-left: 0 !important;
+    margin: 0.85em 0 !important;
+}
+
+.prose ul li,
+[data-summary-body] ul li,
+#summaryBody ul li,
+article[data-summary-body] ul li {
+    position: relative !important;
+    padding-left: 1.6em !important;
+    margin-bottom: 0.5em !important;
+    line-height: 1.65 !important;
+    /* Hide the original text bullet by indenting it out of view */
+    text-indent: -1.2em !important;
+}
+
+.prose ul li::before,
+[data-summary-body] ul li::before,
+#summaryBody ul li::before,
+article[data-summary-body] ul li::before {
+    content: "•" !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0.05em !important;
+    font-size: 1.2em !important;
+    line-height: 1 !important;
+    color: #3b82f6 !important;
+}
+
+/* Dark theme bullet color */
+.dark .prose ul li::before,
+.dark [data-summary-body] ul li::before,
+.dark #summaryBody ul li::before {
+    color: #60a5fa !important;
+}
+
+/* Better paragraph spacing */
+.prose p,
+[data-summary-body] p,
+#summaryBody p,
+article[data-summary-body] p {
+    margin-bottom: 0.85em !important;
+    max-width: 65ch;
+}
+
+/* "Bottom line" callout box */
+.prose p:has(strong:nth-child(1)),
+[data-summary-body] p:has(strong:nth-child(1)),
+#summaryBody p:has(strong:nth-child(1)),
+article[data-summary-body] p:has(strong:nth-child(1)) {
+    margin-top: 1.2em !important;
+    padding: 0.75em 1em !important;
+    border-left: 3px solid #3b82f6 !important;
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.08), transparent) !important;
+    border-radius: 0 0.5rem 0.5rem 0 !important;
+}
+
+.dark .prose p:has(strong:nth-child(1)),
+.dark [data-summary-body] p:has(strong:nth-child(1)),
+.dark #summaryBody p:has(strong:nth-child(1)) {
+    border-left-color: #60a5fa !important;
+    background: linear-gradient(90deg, rgba(96, 165, 250, 0.12), transparent) !important;
+}
+
+/* ============================================
+   DEEP RESEARCH VIEW
+   Canonical follow-up research rendering
+   ============================================ */
+
+.deep-research-view {
+    --deep-research-border: rgba(148, 163, 184, 0.28);
+    --deep-research-surface: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.98));
+    --deep-research-surface-strong: rgba(255, 255, 255, 0.92);
+    --deep-research-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+    --deep-research-title: rgba(15, 23, 42, 0.98);
+    --deep-research-text: rgba(30, 41, 59, 0.96);
+    --deep-research-muted: rgba(71, 85, 105, 0.9);
+    --deep-research-accent: rgba(3, 105, 161, 0.95);
+    --deep-research-accent-soft: rgba(14, 116, 144, 0.1);
+    --deep-research-line: rgba(203, 213, 225, 0.9);
+    --deep-research-chip-bg: rgba(241, 245, 249, 0.96);
+    --deep-research-chip-border: rgba(148, 163, 184, 0.22);
+    --deep-research-code-bg: rgba(15, 23, 42, 0.96);
+    --deep-research-code-text: rgba(226, 232, 240, 0.96);
+    display: grid;
+    gap: 1rem;
+    padding: 1.1rem;
+    border: 1px solid var(--deep-research-border);
+    border-radius: 1rem;
+    background: var(--deep-research-surface);
+    box-shadow: var(--deep-research-shadow);
+    color: var(--deep-research-text);
+}
+
+.dark .deep-research-view,
+.reader-theme--dark .deep-research-view {
+    --deep-research-border: rgba(71, 85, 105, 0.56);
+    --deep-research-surface: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(2, 6, 23, 0.96));
+    --deep-research-surface-strong: rgba(15, 23, 42, 0.9);
+    --deep-research-shadow: 0 18px 48px rgba(2, 6, 23, 0.4);
+    --deep-research-title: rgba(248, 250, 252, 0.98);
+    --deep-research-text: rgba(226, 232, 240, 0.96);
+    --deep-research-muted: rgba(148, 163, 184, 0.92);
+    --deep-research-accent: rgba(125, 211, 252, 0.98);
+    --deep-research-accent-soft: rgba(14, 165, 233, 0.12);
+    --deep-research-line: rgba(51, 65, 85, 0.95);
+    --deep-research-chip-bg: rgba(15, 23, 42, 0.72);
+    --deep-research-chip-border: rgba(71, 85, 105, 0.72);
+}
+
+.deep-research__header {
+    display: grid;
+    gap: 0.6rem;
+    padding-bottom: 0.95rem;
+    border-bottom: 1px solid var(--deep-research-line);
+}
+
+.deep-research__eyebrow,
+.deep-research__section-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--deep-research-accent);
+}
+
+.deep-research__title {
+    margin: 0;
+    font-size: 1.45rem !important;
+    line-height: 1.18;
+    color: var(--deep-research-title) !important;
+}
+
+.deep-research__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+}
+
+.deep-research__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--deep-research-chip-border);
+    border-radius: 999px;
+    background: var(--deep-research-chip-bg);
+    line-height: 1.2;
+}
+
+.deep-research__chip-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--deep-research-muted);
+}
+
+.deep-research__chip-value {
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: var(--deep-research-title);
+}
+
+.deep-research__notice,
+.deep-research__section {
+    display: grid;
+    gap: 0.72rem;
+    padding: 0.95rem 1rem;
+    border: 1px solid var(--deep-research-line);
+    border-radius: 0.95rem;
+    background: var(--deep-research-surface-strong);
+}
+
+.deep-research__notice {
+    border-color: rgba(245, 158, 11, 0.35);
+    background: linear-gradient(180deg, rgba(254, 243, 199, 0.72), rgba(255, 255, 255, 0.86));
+}
+
+.dark .deep-research__notice,
+.reader-theme--dark .deep-research__notice {
+    background: linear-gradient(180deg, rgba(120, 53, 15, 0.24), rgba(15, 23, 42, 0.82));
+}
+
+.deep-research__lede,
+.deep-research__paragraph {
+    margin: 0 !important;
+    max-width: none !important;
+    font-size: 1rem;
+    line-height: 1.78;
+    color: var(--deep-research-text);
+}
+
+.deep-research__heading {
+    margin: 0 !important;
+    color: var(--deep-research-title) !important;
+    font-weight: 700 !important;
+}
+
+.deep-research__heading--h2 {
+    font-size: 1.18rem !important;
+}
+
+.deep-research__heading--h3,
+.deep-research__heading--h4 {
+    font-size: 1rem !important;
+}
+
+.deep-research__list,
+.deep-research__olist,
+.deep-research__sources {
+    margin: 0 !important;
+    padding-left: 1.25rem !important;
+    display: grid;
+    gap: 0.55rem;
+}
+
+.deep-research__olist--questions {
+    padding-left: 1.35rem !important;
+}
+
+.deep-research__quote {
+    margin: 0 !important;
+    padding: 0.35rem 0 0.35rem 0.95rem;
+    border-left: 3px solid var(--deep-research-accent);
+    color: var(--deep-research-muted);
+}
+
+.deep-research__divider {
+    border: 0;
+    border-top: 1px solid var(--deep-research-line);
+    margin: 0.2rem 0;
+}
+
+.deep-research__link,
+.deep-research__source-link {
+    color: var(--deep-research-accent);
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
+}
+
+.deep-research__source-link {
+    display: grid;
+    gap: 0.12rem;
+}
+
+.deep-research__source-label {
+    font-weight: 600;
+}
+
+.deep-research__source-url {
+    font-size: 0.82rem;
+    color: var(--deep-research-muted);
+    word-break: break-word;
+}
+
+.deep-research__table-wrap {
+    overflow-x: auto;
+}
+
+.deep-research__table {
+    width: 100%;
+    min-width: 380px;
+    border-collapse: collapse;
+    border: 1px solid var(--deep-research-line);
+    border-radius: 0.85rem;
+    overflow: hidden;
+}
+
+.deep-research__table th,
+.deep-research__table td {
+    padding: 0.55rem 0.7rem;
+    border-right: 1px solid var(--deep-research-line);
+    border-bottom: 1px solid var(--deep-research-line);
+    text-align: left;
+    vertical-align: top;
+}
+
+.deep-research__table th:last-child,
+.deep-research__table td:last-child {
+    border-right: 0;
+}
+
+.deep-research__table thead th {
+    background: var(--deep-research-accent-soft);
+    color: var(--deep-research-title);
+    font-size: 0.84rem;
+    font-weight: 700;
+}
+
+.deep-research__code {
+    margin: 0 !important;
+    padding: 0.8rem 0.9rem;
+    border-radius: 0.85rem;
+    background: var(--deep-research-code-bg);
+    color: var(--deep-research-code-text);
+    overflow-x: auto;
+}
+
+.deep-research__code code,
+.deep-research__paragraph code,
+.deep-research__list code,
+.deep-research__olist code {
+    font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+}

@@ -8,6 +8,8 @@ Designed for parallel PostgreSQL system with variant fallback support.
 import os
 import json
 import logging
+import html
+import re
 from collections import defaultdict, Counter
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, timezone
@@ -31,6 +33,7 @@ class PostgreSQLContentIndex:
         'comprehensive',
         'key-points',
         'executive',
+        'deep-research',
         'audio',
         'audio-fr',
         'audio-es',
@@ -98,6 +101,9 @@ class PostgreSQLContentIndex:
         'zh': 'zh', 'zh-cn': 'zh', 'zh-tw': 'zh', 'chinese': 'zh',
     }
 
+    SOURCE_FILTER_NOTICE_FRAGMENT = 'filtered out because stronger sources were available'
+    URL_RE = re.compile(r"https?://[^\s)>\]]+")
+
     @classmethod
     def _variant_order_expression(cls, alias: str = 'vs') -> str:
         clauses = []
@@ -159,6 +165,34 @@ class PostgreSQLContentIndex:
                     conn.close()
         return bool(self._content_source_column_present)
 
+    def _has_follow_up_research_table(self, conn=None) -> bool:
+        """Detect whether follow-up research persistence is available in this database."""
+        close_conn = False
+        cursor = None
+        try:
+            if conn is None:
+                conn = self._get_connection()
+                close_conn = True
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_name = %s
+                LIMIT 1
+                """,
+                ('follow_up_research_runs',),
+            )
+            return cursor.fetchone() is not None
+        except Exception:
+            logger.exception("Failed to detect follow_up_research_runs table")
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+            if close_conn and conn:
+                conn.close()
+
     def _source_case_expression(self, alias: str = 'c', conn=None) -> str:
         """Build SQL CASE expression that normalizes source slugs without schema assumptions."""
         clauses = ["CASE"]
@@ -194,6 +228,64 @@ class PostgreSQLContentIndex:
         clauses.append("ELSE 'web'")
         clauses.append("END")
         return " ".join(clauses)
+
+    def _build_summary_variants_lateral_sql(self, conn, content_alias: str = 'c') -> str:
+        """Build the JSON aggregation query for summary variants with optional deep-research enrichment."""
+        variant_order_sql = self._variant_order_expression('vs')
+        follow_up_join = ""
+        follow_up_fields = ""
+
+        if self._has_follow_up_research_table(conn):
+            follow_up_join = """
+                    LEFT JOIN LATERAL (
+                        SELECT
+                            fur.id,
+                            fur.research_response,
+                            fur.research_meta
+                        FROM follow_up_research_runs fur
+                        WHERE LOWER(TRIM(vs.variant)) = 'deep-research'
+                          AND fur.video_id = vs.video_id
+                        ORDER BY
+                          CASE
+                            WHEN fur.research_meta->>'summary_variant_revision' = COALESCE(vs.revision, 1)::text THEN 0
+                            ELSE 1
+                          END,
+                          fur.created_at DESC,
+                          fur.id DESC
+                        LIMIT 1
+                    ) fur ON true
+            """
+            follow_up_fields = """
+                            'follow_up_run_id', fur.id,
+                            'research_response', fur.research_response,
+                            'research_meta', fur.research_meta,
+            """
+
+        return f"""
+                    SELECT json_agg(
+                        json_build_object(
+                            'variant', lower(trim(vs.variant)),
+                            'summary_type', lower(trim(vs.variant)),
+                            'text', vs.text,
+                            'html', vs.html,
+                            'revision', COALESCE(vs.revision, 1),
+                            'generated_at', vs.created_at,
+{follow_up_fields}                            'kind', CASE WHEN vs.variant LIKE 'audio%%' THEN 'audio' ELSE 'text' END,
+                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END,
+                            'audio_url', CASE WHEN vs.variant LIKE 'audio%%'
+                                              THEN COALESCE({content_alias}.media->>'audio_url', {content_alias}.analysis_json->>'audio_url')
+                                              ELSE NULL END,
+                            'duration', CASE WHEN vs.variant LIKE 'audio%%'
+                                             THEN NULLIF(({content_alias}.media_metadata->>'mp3_duration_seconds'), '')::int
+                                             ELSE NULL END
+                        )
+                        ORDER BY {variant_order_sql}, vs.created_at DESC
+                    ) AS summary_variants
+                    FROM v_latest_summaries vs
+{follow_up_join}                    WHERE vs.video_id = {content_alias}.video_id
+                      AND (vs.text IS NOT NULL OR vs.html IS NOT NULL)
+                      AND vs.variant <> 'language'
+        """
 
     # ------------------------------------------------------------------
     # Helper utilities (parity with legacy SQLite implementation)
@@ -277,6 +369,441 @@ class PostgreSQLContentIndex:
                 })
 
         return results
+
+    @staticmethod
+    def _escape_html(value: Any) -> str:
+        return html.escape(str(value or ""), quote=True)
+
+    @classmethod
+    def _is_sources_heading(cls, line: str) -> bool:
+        normalized = (
+            str(line or "")
+            .strip()
+            .lstrip("#")
+            .replace("*", "")
+            .replace("_", "")
+            .replace("`", "")
+            .strip()
+            .rstrip(":")
+            .strip()
+            .lower()
+        )
+        return normalized in {"sources", "source attribution"}
+
+    @classmethod
+    def _strip_markdown_inline(cls, text: str) -> str:
+        return (
+            str(text or "")
+            .strip()
+            .lstrip("#")
+            .replace("**", "")
+            .replace("__", "")
+            .replace("`", "")
+            .replace("*", " ")
+            .replace("_", " ")
+            .replace(">", " ")
+            .replace("|", " ")
+        ).strip()
+
+    @classmethod
+    def _is_low_signal_summary(cls, text: str) -> bool:
+        normalized = cls._strip_markdown_inline(text).rstrip(":.").strip().lower()
+        return normalized in {"answer", "short answer", "executive summary"}
+
+    @classmethod
+    def _looks_like_structural_line(cls, line: str, next_line: str = "") -> bool:
+        trimmed = str(line or "").strip()
+        next_trimmed = str(next_line or "").strip()
+        if not trimmed:
+            return False
+        if re.match(r"^#{1,6}\s+", trimmed):
+            return True
+        if re.match(r"^\s*[-*+]\s+", trimmed):
+            return True
+        if re.match(r"^\s*\d+\.\s+", trimmed):
+            return True
+        if trimmed.startswith("```"):
+            return True
+        if trimmed in {"---", "***"}:
+            return True
+        if "|" in trimmed and next_trimmed and re.match(r"^\s*\|?[\s:-]+\|[\s|:-]*$", next_trimmed):
+            return True
+        return False
+
+    @classmethod
+    def _normalize_source_url(cls, url: str) -> str:
+        return re.sub(r"[.,);]+$", "", str(url or ""))
+
+    @classmethod
+    def _source_items_from_meta(cls, research_meta: dict[str, Any]) -> List[dict[str, str]]:
+        stored = research_meta.get("stored_sources") or []
+        if not isinstance(stored, list):
+            return []
+
+        items: List[dict[str, str]] = []
+        seen: set[str] = set()
+        for source in stored:
+            if not isinstance(source, dict):
+                continue
+            url = cls._normalize_source_url(source.get("url") or "")
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            domain = str(source.get("domain") or "").strip().lower()
+            if not domain:
+                try:
+                    domain = urlparse(url).netloc.replace("www.", "").lower()
+                except Exception:
+                    domain = url
+            items.append({
+                "url": url,
+                "domain": domain or url,
+                "label": domain or url,
+            })
+        return items
+
+    @classmethod
+    def _source_items_from_markdown(cls, content: str) -> List[dict[str, str]]:
+        items: List[dict[str, str]] = []
+        seen: set[str] = set()
+        for match in cls.URL_RE.findall(str(content or "")):
+            url = cls._normalize_source_url(match)
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            try:
+                domain = urlparse(url).netloc.replace("www.", "").lower()
+            except Exception:
+                domain = url
+            items.append({"url": url, "domain": domain or url, "label": domain or url})
+        return items
+
+    @classmethod
+    def _extract_research_report(cls, content: str, fallback_title: str) -> dict[str, Any]:
+        raw_lines = str(content or "").splitlines()
+        if not raw_lines:
+            return {
+                "title": fallback_title or "Deep Research",
+                "notice": "",
+                "summary": "",
+                "body_markdown": "",
+                "source_items": [],
+            }
+
+        in_sources = False
+        notice = ""
+        title_line = ""
+        body_lines: List[str] = []
+        source_lines: List[str] = []
+
+        for line in raw_lines:
+            trimmed = line.strip()
+            if not notice and trimmed.lower().startswith("note:"):
+                notice = trimmed[5:].strip()
+                continue
+            if cls._is_sources_heading(trimmed):
+                in_sources = True
+                continue
+            if in_sources:
+                source_lines.append(line)
+                continue
+            if not title_line:
+                stripped = cls._strip_markdown_inline(trimmed)
+                if stripped and 16 <= len(stripped) <= 140 and not cls._looks_like_structural_line(trimmed):
+                    title_line = stripped
+                    continue
+            body_lines.append(line)
+
+        filtered_body = list(body_lines)
+        while filtered_body and not filtered_body[0].strip():
+            filtered_body.pop(0)
+
+        summary_lines: List[str] = []
+        while filtered_body:
+            current = filtered_body[0]
+            next_line = filtered_body[1] if len(filtered_body) > 1 else ""
+            if not current.strip():
+                filtered_body.pop(0)
+                if summary_lines:
+                    break
+                continue
+            if cls._looks_like_structural_line(current, next_line):
+                break
+            summary_lines.append(filtered_body.pop(0))
+
+        summary = " ".join(line.strip() for line in summary_lines).strip()
+        if cls._is_low_signal_summary(summary):
+            summary = ""
+
+        body_markdown = "\n".join(filtered_body).strip()
+        source_items = cls._source_items_from_markdown("\n".join(source_lines))
+
+        return {
+            "title": title_line or cls._strip_markdown_inline(fallback_title) or "Deep Research",
+            "notice": notice,
+            "summary": summary,
+            "body_markdown": body_markdown,
+            "source_items": source_items,
+        }
+
+    @classmethod
+    def _render_inline_markdown(cls, text: str) -> str:
+        rendered = cls._escape_html(text)
+        rendered = re.sub(
+            r"\[([^\]]+)\]\((https?://[^)\s]+)\)",
+            lambda m: (
+                f'<a class="deep-research__link" href="{cls._escape_html(m.group(2))}" '
+                f'target="_blank" rel="noopener">{m.group(1)}</a>'
+            ),
+            rendered,
+        )
+        rendered = re.sub(r"`([^`]+)`", r"<code>\1</code>", rendered)
+        rendered = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", rendered)
+        rendered = re.sub(r"__([^_]+)__", r"<strong>\1</strong>", rendered)
+        rendered = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", rendered)
+        rendered = re.sub(r"(?<!_)_([^_]+)_(?!_)", r"<em>\1</em>", rendered)
+        return rendered
+
+    @classmethod
+    def _render_markdown_table(cls, rows: List[str]) -> str:
+        def parse_row(raw: str) -> List[str]:
+            trimmed = raw.strip().strip("|")
+            return [cell.strip() for cell in trimmed.split("|")]
+
+        if len(rows) < 2:
+            return ""
+
+        header_cells = parse_row(rows[0])
+        body_rows = [parse_row(row) for row in rows[2:] if row.strip()]
+        if not header_cells:
+            return ""
+
+        thead = "".join(f"<th>{cls._render_inline_markdown(cell)}</th>" for cell in header_cells)
+        tbody = "".join(
+            "<tr>" + "".join(f"<td>{cls._render_inline_markdown(cell)}</td>" for cell in row) + "</tr>"
+            for row in body_rows
+        )
+        return (
+            '<div class="deep-research__table-wrap">'
+            '<table class="deep-research__table">'
+            f"<thead><tr>{thead}</tr></thead>"
+            f"<tbody>{tbody}</tbody>"
+            "</table></div>"
+        )
+
+    @classmethod
+    def _render_markdown_html(cls, markdown_text: str) -> str:
+        lines = str(markdown_text or "").splitlines()
+        blocks: List[str] = []
+        i = 0
+
+        while i < len(lines):
+            raw_line = lines[i]
+            stripped = raw_line.strip()
+            if not stripped:
+                i += 1
+                continue
+
+            if stripped.startswith("```"):
+                code_lines: List[str] = []
+                i += 1
+                while i < len(lines) and not lines[i].strip().startswith("```"):
+                    code_lines.append(lines[i])
+                    i += 1
+                i += 1
+                blocks.append(
+                    '<pre class="deep-research__code"><code>'
+                    f"{cls._escape_html(chr(10).join(code_lines))}"
+                    "</code></pre>"
+                )
+                continue
+
+            if (
+                "|" in stripped
+                and i + 1 < len(lines)
+                and re.match(r"^\s*\|?[\s:-]+\|[\s|:-]*$", lines[i + 1].strip())
+            ):
+                table_lines = [raw_line, lines[i + 1]]
+                i += 2
+                while i < len(lines) and "|" in lines[i].strip():
+                    table_lines.append(lines[i])
+                    i += 1
+                blocks.append(cls._render_markdown_table(table_lines))
+                continue
+
+            heading_match = re.match(r"^(#{1,6})\s+(.*)$", stripped)
+            if heading_match:
+                level = min(len(heading_match.group(1)) + 1, 4)
+                blocks.append(
+                    f"<h{level} class=\"deep-research__heading deep-research__heading--h{level}\">"
+                    f"{cls._render_inline_markdown(heading_match.group(2).strip())}"
+                    f"</h{level}>"
+                )
+                i += 1
+                continue
+
+            if stripped in {"---", "***"}:
+                blocks.append('<hr class="deep-research__divider">')
+                i += 1
+                continue
+
+            if re.match(r"^\s*[-*+]\s+", raw_line):
+                items: List[str] = []
+                while i < len(lines) and re.match(r"^\s*[-*+]\s+", lines[i]):
+                    item_text = re.sub(r"^\s*[-*+]\s+", "", lines[i]).strip()
+                    items.append(f"<li>{cls._render_inline_markdown(item_text)}</li>")
+                    i += 1
+                blocks.append(f"<ul class=\"deep-research__list\">{''.join(items)}</ul>")
+                continue
+
+            if re.match(r"^\s*\d+\.\s+", raw_line):
+                items = []
+                while i < len(lines) and re.match(r"^\s*\d+\.\s+", lines[i]):
+                    item_text = re.sub(r"^\s*\d+\.\s+", "", lines[i]).strip()
+                    items.append(f"<li>{cls._render_inline_markdown(item_text)}</li>")
+                    i += 1
+                blocks.append(f"<ol class=\"deep-research__olist\">{''.join(items)}</ol>")
+                continue
+
+            if stripped.startswith(">"):
+                quotes: List[str] = []
+                while i < len(lines) and lines[i].strip().startswith(">"):
+                    quotes.append(lines[i].strip()[1:].strip())
+                    i += 1
+                quote_html = "<br>".join(cls._render_inline_markdown(item) for item in quotes if item)
+                blocks.append(f"<blockquote class=\"deep-research__quote\">{quote_html}</blockquote>")
+                continue
+
+            paragraph_lines = [stripped]
+            i += 1
+            while i < len(lines):
+                candidate = lines[i].strip()
+                next_line = lines[i + 1] if i + 1 < len(lines) else ""
+                if not candidate or cls._looks_like_structural_line(candidate, next_line):
+                    break
+                paragraph_lines.append(candidate)
+                i += 1
+            paragraph_html = " ".join(cls._render_inline_markdown(line) for line in paragraph_lines if line)
+            blocks.append(f"<p class=\"deep-research__paragraph\">{paragraph_html}</p>")
+
+        return "\n".join(blocks)
+
+    @classmethod
+    def _render_meta_chip(cls, label: str, value: Any) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        return (
+            '<span class="deep-research__chip">'
+            f'<span class="deep-research__chip-label">{cls._escape_html(label)}</span>'
+            f'<span class="deep-research__chip-value">{cls._escape_html(text)}</span>'
+            '</span>'
+        )
+
+    @classmethod
+    def _render_questions_html(cls, research_meta: dict[str, Any]) -> str:
+        questions = research_meta.get("approved_questions") or []
+        if not isinstance(questions, list) or not questions:
+            return ""
+        items = "".join(
+            f"<li>{cls._render_inline_markdown(str(question).strip())}</li>"
+            for question in questions
+            if str(question).strip()
+        )
+        if not items:
+            return ""
+        return (
+            '<section class="deep-research__section">'
+            '<div class="deep-research__section-label">Research questions</div>'
+            f'<ol class="deep-research__olist deep-research__olist--questions">{items}</ol>'
+            '</section>'
+        )
+
+    @classmethod
+    def _render_sources_html(cls, source_items: List[dict[str, str]]) -> str:
+        if not source_items:
+            return ""
+        links = "".join(
+            '<li>'
+            f'<a class="deep-research__source-link" href="{cls._escape_html(item["url"])}" target="_blank" rel="noopener">'
+            f'<span class="deep-research__source-label">{cls._escape_html(item["label"])}</span>'
+            f'<span class="deep-research__source-url">{cls._escape_html(item["url"])}</span>'
+            '</a>'
+            '</li>'
+            for item in source_items
+        )
+        return (
+            '<section class="deep-research__section deep-research__section--sources">'
+            '<div class="deep-research__section-label">Sources</div>'
+            f'<ul class="deep-research__sources">{links}</ul>'
+            '</section>'
+        )
+
+    @classmethod
+    def _render_deep_research_html(
+        cls,
+        *,
+        report_title: str,
+        research_response: str,
+        research_meta: dict[str, Any],
+        generated_at: str = "",
+    ) -> str:
+        report = cls._extract_research_report(research_response, report_title)
+        source_items = cls._source_items_from_meta(research_meta) or report["source_items"]
+        meta_chips = [
+            cls._render_meta_chip("Depth", research_meta.get("depth")),
+            cls._render_meta_chip("Providers", " / ".join(research_meta.get("provider_chain") or [])),
+            cls._render_meta_chip("Sources", research_meta.get("source_count")),
+            cls._render_meta_chip("Results", research_meta.get("result_count")),
+            cls._render_meta_chip(
+                "Planner",
+                " ".join(
+                    part
+                    for part in [research_meta.get("planner_llm_provider"), research_meta.get("planner_llm_model")]
+                    if part
+                ),
+            ),
+            cls._render_meta_chip(
+                "Writer",
+                " ".join(
+                    part
+                    for part in [research_meta.get("synth_llm_provider"), research_meta.get("synth_llm_model")]
+                    if part
+                ),
+            ),
+            cls._render_meta_chip("Generated", generated_at),
+        ]
+        meta_html = "".join(chip for chip in meta_chips if chip)
+        notice = report.get("notice") or research_meta.get("user_notice") or ""
+        notice_html = (
+            '<aside class="deep-research__notice">'
+            f"{cls._render_inline_markdown(str(notice))}"
+            '</aside>'
+        ) if notice else ""
+        summary_html = (
+            '<section class="deep-research__section deep-research__section--summary">'
+            '<div class="deep-research__section-label">Summary</div>'
+            f'<p class="deep-research__lede">{cls._render_inline_markdown(report["summary"])}</p>'
+            '</section>'
+        ) if report.get("summary") else ""
+
+        return (
+            '<section class="deep-research-view" data-research-report="1">'
+            '<header class="deep-research__header">'
+            '<div class="deep-research__eyebrow">Deep Research</div>'
+            f'<h2 class="deep-research__title">{cls._escape_html(report.get("title") or report_title or "Deep Research")}</h2>'
+            f'<div class="deep-research__meta">{meta_html}</div>'
+            '</header>'
+            f'{notice_html}'
+            f'{summary_html}'
+            f'{cls._render_questions_html(research_meta)}'
+            '<section class="deep-research__section deep-research__section--body">'
+            '<div class="deep-research__section-label">Report</div>'
+            f'{cls._render_markdown_html(report.get("body_markdown") or research_response)}'
+            '</section>'
+            f'{cls._render_sources_html(source_items)}'
+            '</section>'
+        )
 
     @staticmethod
     def _generate_file_stem(video_id: Optional[str], title: Optional[str]) -> str:
@@ -513,6 +1040,20 @@ class PostgreSQLContentIndex:
 
                 kind_value = item.get('kind') or ('audio' if variant_id.startswith('audio') else 'text')
                 generated_at_value = self._normalize_datetime(item.get('generated_at')) if item.get('generated_at') else ''
+                research_response = str(item.get('research_response') or '').strip()
+                research_meta_value = self._parse_json_field(item.get('research_meta'))
+                if not isinstance(research_meta_value, dict):
+                    research_meta_value = {}
+
+                if variant_id == 'deep-research' and research_response:
+                    html_value = self._render_deep_research_html(
+                        report_title=row.get('title') or 'Deep Research',
+                        research_response=research_response,
+                        research_meta=research_meta_value,
+                        generated_at=generated_at_value,
+                    )
+                    text_value = research_response
+                    kind_value = 'research'
 
                 cleaned_entry: Dict[str, Any] = {
                     'variant': variant_id,
@@ -529,9 +1070,20 @@ class PostgreSQLContentIndex:
                 if language_value:
                     cleaned_entry['language'] = str(language_value)
 
+                revision_value = item.get('revision')
+                if isinstance(revision_value, (int, float)) or (isinstance(revision_value, str) and str(revision_value).isdigit()):
+                    cleaned_entry['revision'] = int(revision_value)
+
                 headline_value = item.get('headline')
                 if headline_value:
                     cleaned_entry['headline'] = str(headline_value)
+
+                follow_up_run_id = item.get('follow_up_run_id')
+                if follow_up_run_id:
+                    cleaned_entry['follow_up_run_id'] = int(follow_up_run_id)
+
+                if research_meta_value:
+                    cleaned_entry['research_meta'] = research_meta_value
 
                 # Pass through audio enrichment when present on the source item
                 try:
@@ -582,8 +1134,8 @@ class PostgreSQLContentIndex:
 
         conn = self._get_connection()
         try:
-            variant_order_sql = self._variant_order_expression('vs')
             source_case = self._source_case_expression('c', conn)
+            summary_variants_sql = self._build_summary_variants_lateral_sql(conn, 'c')
 
             # Build base query with summary fallback plus variant aggregation
             query = f"""
@@ -610,29 +1162,7 @@ class PostgreSQLContentIndex:
                     LIMIT 1
                 ) ls ON true
                 LEFT JOIN LATERAL (
-                    SELECT json_agg(
-                        json_build_object(
-                            'variant', lower(trim(vs.variant)),
-                            'summary_type', lower(trim(vs.variant)),
-                            'text', vs.text,
-                            'html', vs.html,
-                            'generated_at', vs.created_at,
-                            'kind', CASE WHEN vs.variant LIKE 'audio%%' THEN 'audio' ELSE 'text' END,
-                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END,
-                            -- Surface audio_url and duration alongside audio variants using content JSONB
-                            'audio_url', CASE WHEN vs.variant LIKE 'audio%%'
-                                              THEN COALESCE(c.media->>'audio_url', c.analysis_json->>'audio_url')
-                                              ELSE NULL END,
-                            'duration', CASE WHEN vs.variant LIKE 'audio%%'
-                                             THEN NULLIF((c.media_metadata->>'mp3_duration_seconds'), '')::int
-                                             ELSE NULL END
-                        )
-                        ORDER BY {variant_order_sql}, vs.created_at DESC
-                    ) AS summary_variants
-                    FROM v_latest_summaries vs
-                    WHERE vs.video_id = c.video_id
-                      AND (vs.text IS NOT NULL OR vs.html IS NOT NULL)
-                      AND vs.variant <> 'language'
+{summary_variants_sql}
                 ) variants ON true
                 WHERE ls.html IS NOT NULL
             """
@@ -871,7 +1401,7 @@ class PostgreSQLContentIndex:
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
-            variant_order_sql = self._variant_order_expression('vs')
+            summary_variants_sql = self._build_summary_variants_lateral_sql(conn, 'c')
             cursor.execute(
                 f"""
                 SELECT
@@ -896,28 +1426,7 @@ class PostgreSQLContentIndex:
                     LIMIT 1
                 ) ls ON true
                 LEFT JOIN LATERAL (
-                    SELECT json_agg(
-                        json_build_object(
-                            'variant', lower(trim(vs.variant)),
-                            'summary_type', lower(trim(vs.variant)),
-                            'text', vs.text,
-                            'html', vs.html,
-                            'generated_at', vs.created_at,
-                            'kind', CASE WHEN vs.variant LIKE 'audio%%' THEN 'audio' ELSE 'text' END,
-                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END,
-                            'audio_url', CASE WHEN vs.variant LIKE 'audio%%'
-                                              THEN COALESCE(c.media->>'audio_url', c.analysis_json->>'audio_url')
-                                              ELSE NULL END,
-                            'duration', CASE WHEN vs.variant LIKE 'audio%%'
-                                             THEN NULLIF((c.media_metadata->>'mp3_duration_seconds'), '')::int
-                                             ELSE NULL END
-                        )
-                        ORDER BY {variant_order_sql}, vs.created_at DESC
-                    ) AS summary_variants
-                    FROM v_latest_summaries vs
-                    WHERE vs.video_id = c.video_id
-                      AND (vs.text IS NOT NULL OR vs.html IS NOT NULL)
-                      AND vs.variant <> 'language'
+{summary_variants_sql}
                 ) variants ON true
                 WHERE (c.video_id = %s OR c.id = %s) AND ls.html IS NOT NULL
                 """,
@@ -979,8 +1488,8 @@ class PostgreSQLContentIndex:
             search_term = f"%{query.strip()}%"
 
             # Search in titles and summaries with variant fallback
-            variant_order_sql = self._variant_order_expression('vs')
             source_case = self._source_case_expression('c', conn)
+            summary_variants_sql = self._build_summary_variants_lateral_sql(conn, 'c')
             base_query = f"""
                 SELECT
                     c.*,
@@ -1005,22 +1514,7 @@ class PostgreSQLContentIndex:
                     LIMIT 1
                 ) ls ON true
                 LEFT JOIN LATERAL (
-                    SELECT json_agg(
-                        json_build_object(
-                            'variant', lower(trim(vs.variant)),
-                            'summary_type', lower(trim(vs.variant)),
-                            'text', vs.text,
-                            'html', vs.html,
-                            'generated_at', vs.created_at,
-                            'kind', CASE WHEN vs.variant LIKE 'audio%%' THEN 'audio' ELSE 'text' END,
-                            'language', CASE WHEN vs.variant LIKE 'audio-%%' THEN split_part(vs.variant, '-', 2) ELSE NULL END
-                        )
-                        ORDER BY {variant_order_sql}, vs.created_at DESC
-                    ) AS summary_variants
-                    FROM v_latest_summaries vs
-                    WHERE vs.video_id = c.video_id
-                      AND (vs.text IS NOT NULL OR vs.html IS NOT NULL)
-                      AND vs.variant <> 'language'
+{summary_variants_sql}
                 ) variants ON true
                 WHERE ls.html IS NOT NULL
                   AND (c.title ILIKE %s OR ls.text ILIKE %s)
