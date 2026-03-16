@@ -1438,41 +1438,64 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         # Get summary HTML using new normalization method with dict-as-string support
         summary_html = ""
         summary_type = summary.get('type', '') if isinstance(summary, dict) else ""
-        
-        # Handle dict-as-string format from chunked processing
-        summary_payload = summary
-        if isinstance(summary, dict):
-            if 'content' in summary:
-                summary_payload = summary['content']
-            elif 'text' in summary:
-                summary_payload = summary['text']
-        
-        # Parse dict-as-string at nested levels
-        if isinstance(summary_payload, dict) and 'summary' in summary_payload:
-            summary_payload['summary'] = ModernDashboardHTTPRequestHandler._maybe_parse_dict_string(
-                summary_payload['summary']
+
+        # Try to get pre-formatted HTML from summary_variants first
+        summary_html = None
+        summary_variants = report_data.get('summary_variants') or summary.get('variants') or []
+        use_variant_html = False  # Track if we're using pre-formatted variant HTML
+
+        if summary_variants and isinstance(summary_variants, list):
+            # Find the best variant matching the summary_type or use default preference
+            for pref in DEFAULT_VARIANT_PREF + [summary_type, 'comprehensive', 'bullet-points', 'key-insights']:
+                pref_normalized = pref.lower().replace('-', '').replace('_', '')
+                for variant in summary_variants:
+                    if not isinstance(variant, dict):
+                        continue
+                    variant_id = str(variant.get('variant') or variant.get('summary_type') or '').strip().lower().replace('-', '').replace('_', '')
+                    if variant_id == pref_normalized and variant.get('html'):
+                        summary_html = variant['html']
+                        use_variant_html = True
+                        break
+                if summary_html:
+                    break
+
+        # Fallback to old text extraction method if no HTML found
+        if not summary_html:
+            # Handle dict-as-string format from chunked processing
+            summary_payload = summary
+            if isinstance(summary, dict):
+                if 'content' in summary:
+                    summary_payload = summary['content']
+                elif 'text' in summary:
+                    summary_payload = summary['text']
+
+            # Parse dict-as-string at nested levels
+            if isinstance(summary_payload, dict) and 'summary' in summary_payload:
+                summary_payload['summary'] = ModernDashboardHTTPRequestHandler._maybe_parse_dict_string(
+                    summary_payload['summary']
+                )
+            summary_payload = ModernDashboardHTTPRequestHandler._maybe_parse_dict_string(summary_payload)
+
+            # Normalize to the best text field
+            summary_html = ModernDashboardHTTPRequestHandler.normalize_summary_content(
+                summary_payload, summary_type
             )
-        summary_payload = ModernDashboardHTTPRequestHandler._maybe_parse_dict_string(summary_payload)
-        
-        # Normalize to the best text field
-        summary_html = ModernDashboardHTTPRequestHandler.normalize_summary_content(
-            summary_payload, summary_type
-        )
         
         # Unescape escaped newlines so formatter can see bullets/headers
         if isinstance(summary_html, str) and '\\n' in summary_html and '\n' not in summary_html:
             summary_html = summary_html.replace('\\n', '\n')
-        
+
         # Debug logging to help diagnose normalization issues
         logger.info(f"Summary after normalization: len={len(summary_html or '')}, preview={repr((summary_html or '')[:120])}")
-        
+
         # Format summary for better readability using Key Points formatter
         if summary_html and not summary_html.startswith('<'):
             # Use the new Key Points formatter for structured content
             summary_html = ModernDashboardHTTPRequestHandler.format_key_points(summary_html)
-        
-        # Sanitize HTML for security (only if bleach is available)
-        if BLEACH_AVAILABLE and summary_html:
+
+        # Sanitize HTML for security (only if bleach is available and not using variant HTML)
+        # Skip sanitization for pre-formatted variant HTML since it's already safe
+        if BLEACH_AVAILABLE and summary_html and not use_variant_html:
             summary_html = bleach.clean(summary_html, tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, strip=True)
         
         # Create AI model string
@@ -1541,6 +1564,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             "audio_mp3": audio_url,
             "summary_html": summary_html,
             "vocabulary": vocabulary,
+            # Debug: log what's being passed to template
+            "_debug_summary_html_len": len(summary_html) if isinstance(summary_html, str) else 0,
+            "_debug_summary_html_preview": (summary_html[:100] if isinstance(summary_html, str) and len(summary_html) > 100 else summary_html) if isinstance(summary_html, str) else summary_html,
             "back_url": "/",
             # Back-compat: historically misnamed; this is the "open source" URL (YouTube, Reddit, etc.)
             "youtube_url": source_url,
@@ -1639,6 +1665,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_set_image_display_mode()
         elif self.path == '/api/reprocess':
             self.handle_reprocess_request()
+        elif self.path == '/api/research/follow-up/suggestions':
+            self.handle_follow_up_suggestions_request()
+        elif self.path == '/api/research/follow-up/run':
+            self.handle_follow_up_run_request()
         # New ingest endpoints for NAS sync (T-Y020C)
         elif self.path == '/ingest/report':
             self.handle_ingest_report()
@@ -2209,17 +2239,26 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         'channel': report_data.get('channel_name', ''),
                         'url': report_data.get('canonical_url', '')
                     }
-                    # Get the context and format the summary_text for proper display
+                    # Get the context with summary HTML from summary_variants
                     ctx = self.to_report_v2_dict(transformed_data, audio_url)
-                    # Format the raw summary_text instead of using pre-formatted HTML
-                    raw_summary = report_data.get('summary_text', '')
-                    if raw_summary and not raw_summary.startswith('<'):
-                        ctx['summary_html'] = ModernDashboardHTTPRequestHandler.format_key_points(raw_summary)
-                    else:
-                        ctx['summary_html'] = report_data.get('summary_html', '')
+                    # ⚠️ WARNING: Only override summary_html if to_report_v2_dict didn't provide HTML from summary_variants
+                    # to_report_v2_dict() extracts pre-formatted HTML from summary_variants[].html
+                    # If we override it here, we lose that HTML and revert to markdown-in-<p> tags
+                    if not ctx.get('summary_html') or not ctx['summary_html'].startswith('<'):
+                        # Fallback: format the raw summary_text for proper display
+                        raw_summary = report_data.get('summary_text', '')
+                        if raw_summary and not raw_summary.startswith('<'):
+                            ctx['summary_html'] = ModernDashboardHTTPRequestHandler.format_key_points(raw_summary)
+                        else:
+                            ctx['summary_html'] = report_data.get('summary_html', '')
                 else:
                     # SQLite format - use as-is
                     ctx = self.to_report_v2_dict(report_data, audio_url)
+
+                # DEBUG: Log final summary_html being passed to template (to catch silent overwrites)
+                summary_preview = (ctx.get('summary_html', '') or '')[:100]
+                logger.info(f"[TEMPLATE] Passing summary_html to template (preview): {repr(summary_preview)}")
+
                 template = jinja_env.get_template("report_v2.html")
                 html_content = template.render(**ctx)
                 
@@ -5533,6 +5572,156 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"error": "reprocess_proxy_error", "message": str(e)}).encode())
+
+    def _get_follow_up_api_base_url(self) -> str:
+        """Resolve the follow-up API base URL, preferring the FastAPI port."""
+        direct = (os.getenv('YTV2_API_URL') or '').strip()
+        if direct:
+            return direct.rstrip('/')
+
+        base_url = (os.getenv('BACKEND_API_URL') or os.getenv('NGROK_BASE_URL') or os.getenv('NGROK_URL') or '').strip()
+        if not base_url:
+            return ''
+
+        parsed = urlparse(base_url)
+        if parsed.scheme and parsed.netloc:
+            netloc = parsed.netloc
+            if parsed.port == 6452:
+                host = parsed.hostname or ''
+                if host:
+                    auth = ''
+                    if parsed.username:
+                        auth = parsed.username
+                        if parsed.password:
+                            auth += f':{parsed.password}'
+                        auth += '@'
+                    replacement = f"{auth}{host}:6453"
+                    return parsed._replace(netloc=replacement).geturl().rstrip('/')
+        return base_url.rstrip('/')
+
+    def _get_follow_up_api_secret(self) -> str:
+        """Resolve backend API auth token for follow-up calls."""
+        secret = (os.getenv('YTV2_API_SECRET') or '').strip()
+        if secret:
+            return secret
+
+        env_candidates = [
+            Path('/app/.env'),
+            Path(__file__).resolve().with_name('.env'),
+        ]
+        for candidate in env_candidates:
+            try:
+                if not candidate.exists():
+                    continue
+                for raw_line in candidate.read_text(encoding='utf-8').splitlines():
+                    line = raw_line.strip()
+                    if not line or line.startswith('#') or '=' not in line:
+                        continue
+                    key, value = line.split('=', 1)
+                    if key.strip() != 'YTV2_API_SECRET':
+                        continue
+                    return value.strip().strip('"').strip("'")
+            except Exception:
+                logger.exception("Failed to read YTV2_API_SECRET from %s", candidate)
+        return ''
+
+    def _read_json_body(self) -> Optional[Dict[str, Any]]:
+        """Read and parse a JSON request body, returning None on invalid JSON."""
+        length = int(self.headers.get('Content-Length', 0))
+        raw = self.rfile.read(length) if length else b'{}'
+        try:
+            data = json.loads(raw.decode('utf-8') or '{}')
+        except Exception:
+            return None
+        return data if isinstance(data, dict) else {}
+
+    def _proxy_follow_up_request(self, endpoint_path: str):
+        """Proxy a follow-up research request to the backend FastAPI service."""
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            data = self._read_json_body()
+            if data is None:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "invalid_json"}).encode())
+                return
+
+            video_id = str(data.get('video_id') or '').strip()
+            if not video_id:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id required"}).encode())
+                return
+
+            base_url = self._get_follow_up_api_base_url()
+            if not base_url:
+                self.send_response(503)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "backend_not_configured",
+                    "message": "Deep Research requires YTV2_API_URL or BACKEND_API_URL."
+                }).encode())
+                return
+
+            target = base_url.rstrip('/') + endpoint_path
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
+            }
+            secret = self._get_follow_up_api_secret()
+            if secret:
+                headers['Authorization'] = f'Bearer {secret}'
+
+            user = os.getenv('NGROK_BASIC_USER', '')
+            pwd = os.getenv('NGROK_BASIC_PASS', '')
+            auth = (user, pwd) if (user or pwd) else None
+
+            try:
+                resp = requests.post(target, headers=headers, json=data, auth=auth, timeout=90)
+            except RequestException as e:
+                logger.warning("Follow-up proxy request failed for %s: %s", endpoint_path, e)
+                self.send_response(502)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "follow_up_upstream_unavailable"}).encode())
+                return
+
+            self.send_response(resp.status_code)
+            self.set_cors_headers()
+            self.send_header('Content-type', resp.headers.get('Content-Type', 'application/json'))
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(resp.content)
+        except Exception as e:
+            logger.exception("Follow-up proxy failed for %s", endpoint_path)
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "follow_up_proxy_error", "message": str(e)}).encode())
+
+    def handle_follow_up_suggestions_request(self):
+        """POST /api/research/follow-up/suggestions — admin-only dashboard proxy."""
+        self._proxy_follow_up_request('/api/research/follow-up/suggestions')
+
+    def handle_follow_up_run_request(self):
+        """POST /api/research/follow-up/run — admin-only dashboard proxy."""
+        self._proxy_follow_up_request('/api/research/follow-up/run')
 
     def handle_backfill_original_prompts(self):
         """POST /api/admin/backfill-original-prompts — admin-only (DEBUG_TOKEN).

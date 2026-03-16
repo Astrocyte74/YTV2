@@ -9,6 +9,7 @@
     'comprehensive': { label: 'Comprehensive', icon: '📝', kind: 'text' },
     'bullet-points': { label: 'Key Points', icon: '🎯', kind: 'text' },
     'key-insights': { label: 'Insights', icon: '💡', kind: 'text' },
+    'deep-research': { label: 'Deep Research', icon: '🔎', kind: 'research' },
     'audio': { label: 'Audio (EN)', icon: '🎙️', kind: 'audio' },
     'audio-fr': { label: 'Audio (FR)', icon: '🎙️🇫🇷', kind: 'audio' },
     'audio-es': { label: 'Audio (ES)', icon: '🎙️🇪🇸', kind: 'audio' }
@@ -41,6 +42,12 @@
       return `<ul>${htmlLines.join('')}</ul>`;
     }
     return htmlLines.join('\n');
+  };
+
+  const escapeHtml = (value) => {
+    const div = document.createElement('div');
+    div.textContent = value == null ? '' : String(value);
+    return div.innerHTML;
   };
 
   const initReportMetaTabs = () => {
@@ -180,6 +187,11 @@
 
       controls.dataset.currentVariant = variantId;
       refreshAudioVariantState();
+      try {
+        window.dispatchEvent(new CustomEvent('ytv2:report-variant-changed', {
+          detail: { variantId, kind: variant.kind || 'text' }
+        }));
+      } catch (_) {}
     };
 
     controls.querySelectorAll('[data-variant]').forEach((btn) => {
@@ -192,6 +204,329 @@
 
     const initialVariant = variants.has(defaultVariant) ? defaultVariant : variants.keys().next().value;
     setActive(initialVariant);
+  };
+
+  const REPORT_CONTEXT = (window.REPORT_CONTEXT && typeof window.REPORT_CONTEXT === 'object') ? window.REPORT_CONTEXT : {};
+
+  const getReportVideoId = () => {
+    const explicit = String(REPORT_CONTEXT.video_id || '').trim();
+    if (explicit) return explicit;
+    return String(reprocessBtn?.dataset.videoId || '').trim();
+  };
+
+  const getActiveReportVariantId = () => {
+    const controls = $('summaryVariantControls');
+    return String(controls?.dataset.currentVariant || window.SUMMARY_DEFAULT_VARIANT || 'comprehensive').trim().toLowerCase();
+  };
+
+  const getActiveReportVariantKind = () => {
+    const current = getActiveReportVariantId();
+    return VARIANT_META[current]?.kind || 'text';
+  };
+
+  const htmlToPlainText = (html) => {
+    if (!html) return '';
+    const div = document.createElement('div');
+    div.innerHTML = String(html);
+    div.querySelectorAll('[data-deep-research-launcher]').forEach((node) => node.remove());
+    return (div.textContent || '')
+      .replace(/\r\n?/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]+\n/g, '\n')
+      .trim();
+  };
+
+  const getCurrentSummaryTextForResearch = () => {
+    const summaryBody = $('summaryBody');
+    if (!summaryBody) return '';
+    const clone = summaryBody.cloneNode(true);
+    clone.querySelectorAll('[data-deep-research-launcher]').forEach((node) => node.remove());
+    return (clone.textContent || '')
+      .replace(/\r\n?/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]+\n/g, '\n')
+      .trim();
+  };
+
+  const buildReportSourceContext = () => {
+    const videoId = getReportVideoId();
+    const sourceUrl = String(REPORT_CONTEXT.source_url || '').trim();
+    const sourceType = String(REPORT_CONTEXT.content_source || '').trim().toLowerCase() || (videoId ? 'youtube' : 'web');
+    const title = String(REPORT_CONTEXT.title || document.querySelector('h1')?.textContent || document.title || '').trim();
+    const context = {
+      title,
+      type: sourceType || 'web',
+    };
+    if (sourceUrl) context.url = sourceUrl;
+    else if (videoId) context.url = `https://www.youtube.com/watch?v=${videoId}`;
+    return context;
+  };
+
+  const promptForReportAdminToken = () => {
+    const entered = window.prompt('Enter the dashboard admin token');
+    const trimmed = (entered || '').trim();
+    if (!trimmed) return '';
+    setReprocessToken(trimmed);
+    updateReprocessTokenUi();
+    return trimmed;
+  };
+
+  const buildDeepResearchReturnUrl = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('variant', 'deep-research');
+    const videoId = getReportVideoId();
+    if (videoId) url.searchParams.set('video_id', videoId);
+    return url.toString();
+  };
+
+  const updateReportDeepResearchLaunchers = () => {
+    const activeKind = getActiveReportVariantKind();
+    const shouldShow = activeKind === 'text';
+    document.querySelectorAll('[data-deep-research-launcher]').forEach((launcher) => {
+      launcher.classList.toggle('hidden', !shouldShow);
+    });
+  };
+
+  const openReportDeepResearchModal = async () => {
+    const videoId = getReportVideoId();
+    if (!videoId) {
+      window.alert('Deep Research is only available for persisted summaries.');
+      return;
+    }
+
+    let token = getReprocessToken();
+    if (!token) {
+      token = promptForReportAdminToken();
+    }
+    if (!token) return;
+
+    const summaryText = getCurrentSummaryTextForResearch();
+    if (!summaryText) {
+      window.alert('No summary text is available for Deep Research.');
+      return;
+    }
+
+    const sourceContext = buildReportSourceContext();
+    const overlay = document.createElement('div');
+    overlay.className = 'deep-research-modal';
+    overlay.innerHTML = `
+      <div class="deep-research-modal__backdrop" data-close></div>
+      <div class="deep-research-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="deepResearchTitle">
+        <div class="deep-research-modal__header">
+          <div>
+            <div class="deep-research-modal__eyebrow">Deep Research</div>
+            <h3 id="deepResearchTitle" class="deep-research-modal__title">Choose your research questions</h3>
+            <p class="deep-research-modal__subtitle">Pick up to 3 questions. You can use the suggestions, add your own custom question, or combine both.</p>
+          </div>
+          <button type="button" class="deep-research-modal__close" data-close aria-label="Close">✕</button>
+        </div>
+        <div class="deep-research-modal__body">
+          <div class="deep-research-modal__status" data-status>Loading suggested questions…</div>
+          <div class="deep-research-modal__suggestions" data-suggestions></div>
+          <label class="deep-research-modal__label" for="deepResearchCustomQuestion">Custom question</label>
+          <textarea id="deepResearchCustomQuestion" class="deep-research-modal__textarea" rows="3" placeholder="Ask your own follow-up question..."></textarea>
+          <div class="deep-research-modal__help">The run uses the current summary variant as context and stores the result as a Deep Research variant.</div>
+        </div>
+        <div class="deep-research-modal__footer">
+          <div class="deep-research-modal__error" data-error></div>
+          <div class="deep-research-modal__actions">
+            <button type="button" class="deep-research-modal__ghost" data-close>Cancel</button>
+            <button type="button" class="deep-research-modal__primary" data-run disabled>Run Deep Research</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const suggestionsHost = overlay.querySelector('[data-suggestions]');
+    const statusEl = overlay.querySelector('[data-status]');
+    const errorEl = overlay.querySelector('[data-error]');
+    const runBtn = overlay.querySelector('[data-run]');
+    const customInput = overlay.querySelector('#deepResearchCustomQuestion');
+    const close = () => {
+      try { document.body.removeChild(overlay); } catch (_) {}
+    };
+
+    const state = {
+      suggestions: [],
+      selected: new Set(),
+      loading: true,
+      running: false,
+    };
+
+    const sync = () => {
+      const customQuestion = String(customInput?.value || '').trim();
+      const totalSelected = state.selected.size + (customQuestion ? 1 : 0);
+      if (errorEl && totalSelected <= 3 && state.running === false) {
+        errorEl.textContent = '';
+      }
+      if (runBtn) {
+        runBtn.disabled = state.loading || state.running || totalSelected === 0 || totalSelected > 3;
+      }
+    };
+
+    const renderSuggestions = () => {
+      if (!suggestionsHost) return;
+      if (!state.suggestions.length) {
+        suggestionsHost.innerHTML = `
+          <div class="deep-research-modal__empty">
+            No suggested questions were available for this summary. You can still run Deep Research with your own custom question below.
+          </div>
+        `;
+        return;
+      }
+      suggestionsHost.innerHTML = state.suggestions.map((suggestion) => {
+        const checked = state.selected.has(suggestion.id) ? 'checked' : '';
+        return `
+          <label class="deep-research-modal__option">
+            <input type="checkbox" class="deep-research-modal__checkbox" data-suggestion-id="${escapeHtml(suggestion.id)}" ${checked}>
+            <span class="deep-research-modal__option-copy">
+              <span class="deep-research-modal__option-question">${escapeHtml(suggestion.question || suggestion.label || '')}</span>
+              <span class="deep-research-modal__option-reason">${escapeHtml(suggestion.reason || '')}</span>
+            </span>
+          </label>
+        `;
+      }).join('');
+      suggestionsHost.querySelectorAll('[data-suggestion-id]').forEach((input) => {
+        input.addEventListener('change', () => {
+          const suggestionId = String(input.getAttribute('data-suggestion-id') || '');
+          if (!suggestionId) return;
+          if (input.checked) state.selected.add(suggestionId);
+          else state.selected.delete(suggestionId);
+          sync();
+        });
+      });
+    };
+
+    overlay.querySelectorAll('[data-close]').forEach((btn) => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        close();
+      });
+    });
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) close();
+    });
+    overlay.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') close();
+    });
+    customInput?.addEventListener('input', sync);
+
+    try {
+      const resp = await fetch('/api/research/follow-up/suggestions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          video_id: videoId,
+          summary: summaryText,
+          source_context: sourceContext,
+          max_suggestions: 4,
+        }),
+      });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(payload?.detail || payload?.error || `Suggestions failed (${resp.status})`);
+      }
+      state.suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+      state.suggestions.filter((item) => item && item.default_selected).forEach((item) => state.selected.add(item.id));
+      if (statusEl) statusEl.textContent = state.suggestions.length
+        ? 'Suggested questions'
+        : 'No suggestions available';
+      state.loading = false;
+      renderSuggestions();
+      sync();
+    } catch (error) {
+      state.loading = false;
+      if (statusEl) statusEl.textContent = 'Suggested questions unavailable';
+      if (errorEl) errorEl.textContent = error?.message || 'Unable to load Deep Research suggestions.';
+      renderSuggestions();
+      sync();
+    }
+
+    runBtn?.addEventListener('click', async () => {
+      const selectedSuggestions = state.suggestions.filter((item) => state.selected.has(item.id));
+      const customQuestion = String(customInput?.value || '').trim();
+      const approvedQuestions = [];
+      const questionProvenance = [];
+
+      selectedSuggestions.forEach((item) => {
+        const question = String(item.question || item.label || '').trim();
+        if (!question) return;
+        approvedQuestions.push(question);
+        questionProvenance.push(String(item.provenance || 'suggested'));
+      });
+      if (customQuestion) {
+        approvedQuestions.push(customQuestion);
+        questionProvenance.push('custom');
+      }
+
+      const dedupedQuestions = [];
+      const dedupedProvenance = [];
+      const seen = new Set();
+      approvedQuestions.forEach((question, index) => {
+        const key = question.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        dedupedQuestions.push(question);
+        dedupedProvenance.push(questionProvenance[index] || 'suggested');
+      });
+
+      if (!dedupedQuestions.length) {
+        if (errorEl) errorEl.textContent = 'Select a suggested question or enter a custom one.';
+        sync();
+        return;
+      }
+      if (dedupedQuestions.length > 3) {
+        if (errorEl) errorEl.textContent = 'Choose at most 3 questions total.';
+        sync();
+        return;
+      }
+
+      state.running = true;
+      if (runBtn) {
+        runBtn.disabled = true;
+        runBtn.textContent = 'Running…';
+      }
+      if (errorEl) errorEl.textContent = '';
+      if (statusEl) statusEl.textContent = 'Running Deep Research…';
+
+      try {
+        const resp = await fetch('/api/research/follow-up/run', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            video_id: videoId,
+            summary: summaryText,
+            source_context: sourceContext,
+            approved_questions: dedupedQuestions,
+            question_provenance: dedupedProvenance,
+            provider_mode: 'auto',
+            depth: 'balanced',
+          }),
+        });
+        const payload = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          throw new Error(payload?.detail || payload?.error || `Deep Research failed (${resp.status})`);
+        }
+        if (statusEl) statusEl.textContent = 'Deep Research ready. Opening report…';
+        window.location.assign(buildDeepResearchReturnUrl());
+      } catch (error) {
+        state.running = false;
+        if (runBtn) {
+          runBtn.disabled = false;
+          runBtn.textContent = 'Run Deep Research';
+        }
+        if (statusEl) statusEl.textContent = 'Deep Research failed';
+        if (errorEl) errorEl.textContent = error?.message || 'Unable to run Deep Research.';
+        sync();
+      }
+    });
   };
 
   const player = $("player");
@@ -845,6 +1180,15 @@
 	    });
 	  }
 
+  document.querySelectorAll('[data-deep-research-open]').forEach((btn) => {
+    btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openReportDeepResearchModal();
+    });
+  });
+  window.addEventListener('ytv2:report-variant-changed', updateReportDeepResearchLaunchers);
+
   // Theme toggle functionality
   const themeToggle = $("themeToggle");
   const themeIcon = $("themeIcon");
@@ -943,4 +1287,5 @@
   maybeShowSticky();
   initReportMetaTabs();
   initSummaryVariants();
+  updateReportDeepResearchLaunchers();
 })();

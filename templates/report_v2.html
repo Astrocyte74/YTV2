@@ -12,7 +12,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   
   <!-- Shared styles across dashboard and report pages -->
-  <link rel="stylesheet" href="/static/shared.css">
+  <link rel="stylesheet" href="/static/shared.css?v={{ deployment_commit }}-{{ cache_bust }}">
   <script>
     // optional: small token nudge for better dark contrast
     tailwind.config = {
@@ -361,12 +361,43 @@
         </div>
         <span class="text-slate-900 dark:text-slate-100">Summary</span>
       </h2>
+      {% if video_id %}
+      <div class="deep-research-launcher deep-research-launcher--report mb-4"
+           data-deep-research-launcher
+           data-deep-research-video-id="{{ video_id }}"
+           data-deep-research-report-id="{{ video_id }}"
+           data-deep-research-position="top">
+        <div class="deep-research-launcher__copy">
+          <div class="deep-research-launcher__eyebrow">Deep Research</div>
+          <div class="deep-research-launcher__title">Ask follow-up questions</div>
+          <p class="deep-research-launcher__text">Run a deeper web research pass with suggested questions or your own custom question.</p>
+        </div>
+        <button type="button" class="deep-research-launcher__button" data-deep-research-open>
+          Explore Deep Research
+        </button>
+      </div>
+      {% endif %}
       <div id="summaryVariantControls" class="mb-3 flex flex-wrap gap-2 text-xs"></div>
       <article class="prose prose-lg max-w-none prose-slate dark:prose-invert" data-summary-body>
         <div id="summaryBody" class="text-slate-700 dark:text-slate-300 leading-relaxed space-y-4">
           {{ summary_html | safe }}
         </div>
       </article>
+      {% if video_id %}
+      <div class="deep-research-launcher deep-research-launcher--report deep-research-launcher--footer mt-5"
+           data-deep-research-launcher
+           data-deep-research-video-id="{{ video_id }}"
+           data-deep-research-report-id="{{ video_id }}"
+           data-deep-research-position="bottom">
+        <div class="deep-research-launcher__copy">
+          <div class="deep-research-launcher__title">Want to go beyond the summary?</div>
+          <p class="deep-research-launcher__text">Pick a suggested line of inquiry or enter a custom question.</p>
+        </div>
+        <button type="button" class="deep-research-launcher__button" data-deep-research-open>
+          Open Deep Research
+        </button>
+      </div>
+      {% endif %}
     </section>
   </main>
 
@@ -401,6 +432,13 @@
   <script>
     window.SUMMARY_VARIANT_DATA = {{ summary_variants | tojson | safe }};
     window.SUMMARY_DEFAULT_VARIANT = {{ summary_variant_default | tojson | safe }};
+    window.REPORT_CONTEXT = {{ {
+      "video_id": video_id,
+      "title": title,
+      "source_url": source_url or youtube_url or '',
+      "source_label": source_label or '',
+      "content_source": content_source or ''
+    } | tojson | safe }};
   </script>
 
   <!-- Reprocess modal (report page) -->
@@ -425,7 +463,7 @@
 
         <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div class="text-xs text-slate-400">
-            Using token saved locally. Change token to update.
+            Using token saved locally. This must match the dashboard DEBUG_TOKEN.
           </div>
           <button type="button" id="reportReprocessTokenToggle" class="text-xs font-medium text-sky-300 hover:text-sky-200">
             Change token
@@ -437,7 +475,7 @@
           <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
             <input id="reportReprocessTokenInput" type="password" autocomplete="off"
                    class="w-full rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-400"
-                   placeholder="Paste DEBUG_TOKEN" />
+                   placeholder="Enter the dashboard admin token" />
             <div class="flex items-center gap-2">
               <button id="reportReprocessTokenSave" type="button"
                       class="rounded-lg bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-500">
@@ -449,7 +487,7 @@
               </button>
             </div>
           </div>
-          <p id="reportReprocessTokenStatus" class="mt-2 text-xs text-slate-400"></p>
+          <p id="reportReprocessTokenStatus" class="mt-2 text-xs text-slate-400">This is the same value as the server DEBUG_TOKEN.</p>
         </div>
 
         <p id="reportReprocessStatus" class="mt-3 text-sm text-rose-200"></p>

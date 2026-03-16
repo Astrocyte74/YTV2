@@ -71,10 +71,14 @@ const REPROCESS_VARIANTS = [
     { id: 'comprehensive', label: 'Comprehensive', icon: '📝', kind: 'text' },
     { id: 'bullet-points', label: 'Key Points', icon: '🎯', kind: 'text' },
     { id: 'key-insights', label: 'Insights', icon: '💡', kind: 'text' },
-    { id: 'deep-research', label: 'Deep Research', icon: '🔎', kind: 'research' },
     { id: 'audio', label: 'Audio (EN)', icon: '🎙️', kind: 'audio' },
     { id: 'audio-fr', label: 'Audio français', icon: '🎙️🇫🇷', kind: 'audio', language: 'fr', proficiency: true },
     { id: 'audio-es', label: 'Audio español', icon: '🎙️🇪🇸', kind: 'audio', language: 'es', proficiency: true }
+];
+
+const DISPLAY_VARIANTS = [
+    ...REPROCESS_VARIANTS,
+    { id: 'deep-research', label: 'Deep Research', icon: '🔎', kind: 'research' }
 ];
 
 const PROFICIENCY_LEVELS = [
@@ -83,12 +87,12 @@ const PROFICIENCY_LEVELS = [
     { level: 'advanced', icon: '🔵', labels: { default: 'Advanced', fr: 'Avancé', es: 'Avanzado' } }
 ];
 
-const VARIANT_META_MAP = REPROCESS_VARIANTS.reduce((map, variant) => {
+const VARIANT_META_MAP = DISPLAY_VARIANTS.reduce((map, variant) => {
     map[variant.id] = variant;
     return map;
 }, {});
 
-const TEXT_VARIANT_ORDER = REPROCESS_VARIANTS.filter((variant) => variant.kind === 'text').map((variant) => variant.id);
+const TEXT_VARIANT_ORDER = DISPLAY_VARIANTS.filter((variant) => variant.kind === 'text').map((variant) => variant.id);
 
 // Reader display preferences (MVP): size, line, family, theme
 const READER_SIZE_MAP = { s: 0.95, m: 1.0, l: 1.1, xl: 1.2, xxl: 1.3 };
@@ -4189,7 +4193,9 @@ class AudioDashboard {
             if (!ok || !data) throw new Error('No detail available');
             const expandedContent = this.renderExpandedContent(data);
             region.innerHTML = expandedContent.html;
+            region._expandedData = expandedContent.item || data;
             this.bindExpandedVariantControls(region, expandedContent.variantInfo, expandedContent.defaultVariant);
+            this.bindDeepResearchLaunchers(region, expandedContent.item || data, expandedContent.defaultVariant || '');
             // Ensure normalized HTML only; reader display options are handled in wall reader header
             try { const bodyEl = region.querySelector('[data-summary-body]'); this.enhanceSummaryHtml(bodyEl); } catch (_) { }
             // Focus expanded wrapper for a11y (title is sr-only)
@@ -4324,7 +4330,7 @@ class AudioDashboard {
             ${badges.length ? `<div class="flex items-center gap-2.5 text-slate-600 dark:text-slate-300 text-sm flex-wrap">${badges.join('')}</div>` : ''}
             ${controlsHtml}
             <h4 class="sr-only" data-expanded-title>Summary</h4>
-            <div class="prose prose-sm sm:prose-base prose-slate dark:prose-invert max-w-none w-full break-words" data-summary-body>${summaryHtml}</div>
+            <div class="prose prose-sm sm:prose-base prose-slate dark:prose-invert max-w-none w-full break-words" data-summary-body>${this.renderDeepResearchWrappedSummary(data, summaryHtml, defaultVariant || '', { compact: true })}</div>
             <div class="flex items-center justify-end">
               <button class="ybtn ybtn-ghost px-3 py-1.5 rounded-md" data-action="collapse">Collapse</button>
             </div>
@@ -4333,7 +4339,8 @@ class AudioDashboard {
         return {
             html,
             variantInfo,
-            defaultVariant
+            defaultVariant,
+            item: data
         };
     }
 
@@ -5586,6 +5593,11 @@ class AudioDashboard {
         const setActive = (variantId) => {
             if (!variantId || !variantInfo.map[variantId]) return;
             const entry = variantInfo.map[variantId];
+            const card = region.closest('[data-card]');
+            const reportId = card?.dataset.reportId || variantInfo.reportId || '';
+            const currentItem = (Array.isArray(this.currentItems)
+                ? this.currentItems.find((candidate) => String(candidate?.file_stem || candidate?.video_id || candidate?.id || '') === String(reportId))
+                : null) || region._expandedData || null;
             controls.querySelectorAll('[data-variant]').forEach((btn) => {
                 const isActive = btn.dataset.variant === variantId;
                 btn.classList.toggle('bg-audio-500', isActive);
@@ -5601,8 +5613,6 @@ class AudioDashboard {
             });
 
             if (entry.kind === 'audio') {
-                const card = region.closest('[data-card]');
-                const reportId = card?.dataset.reportId || variantInfo.reportId || '';
                 let audioSrc = entry.audioSrc || variantInfo.audioSrc || null;
                 if (!audioSrc && card) {
                     const videoId = card.dataset.videoId;
@@ -5612,7 +5622,13 @@ class AudioDashboard {
                 body.innerHTML = this.renderInlineAudioVariant(reportId, entry, audioSrc);
                 this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
             } else {
-                body.innerHTML = entry.html || '<p class="text-sm text-slate-500">No summary available for this variant.</p>';
+                body.innerHTML = this.renderDeepResearchWrappedSummary(
+                    currentItem,
+                    entry.html || '<p class="text-sm text-slate-500">No summary available for this variant.</p>',
+                    variantId,
+                    { compact: true }
+                );
+                this.bindDeepResearchLaunchers(body, currentItem, variantId);
             }
             controls.dataset.currentVariant = variantId;
             this.refreshAudioVariantBlocks();
@@ -7326,7 +7342,11 @@ class AudioDashboard {
                 return;
             }
 
-            body.innerHTML = this.renderReaderHeader(item) + variantTabsHtml + (entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>');
+            body.innerHTML = this.renderReaderHeader(item) + variantTabsHtml + this.renderDeepResearchWrappedSummary(
+                item,
+                entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>',
+                normalized
+            );
             body.querySelectorAll('[data-wall-dock-variant]').forEach((btn) => {
                 on(btn, 'click', (e) => {
                     e.preventDefault();
@@ -7337,6 +7357,7 @@ class AudioDashboard {
             bindVariantTabActions(body);
             this.bindReaderHeaderHandlers(body, on);
             this.bindReaderMetaInteractions(body, on);
+            this.bindDeepResearchLaunchers(body, item, normalized);
             try { this.applyReaderDisplayPrefs(dock, body); } catch (_) { }
             try { this.enhanceSummaryHtml(body); } catch (_) { }
         };
@@ -7356,9 +7377,14 @@ class AudioDashboard {
             const initialVariant = (requestedVariant && variantInfo.map[requestedVariant]) ? requestedVariant : (defaultVariant || variantInfo.order[0]);
             setActiveVariant(initialVariant);
         } else {
-            body.innerHTML = this.renderReaderHeader(item) + this.renderWallReaderSection(item);
+            body.innerHTML = this.renderReaderHeader(item) + this.renderDeepResearchWrappedSummary(
+                item,
+                this.renderWallReaderSection(item),
+                defaultVariant || ''
+            );
             this.bindReaderHeaderHandlers(body, on);
             this.bindReaderMetaInteractions(body, on);
+            this.bindDeepResearchLaunchers(body, item, defaultVariant || '');
             try { this.applyReaderDisplayPrefs(dock, body); } catch (_) { }
             try { this.enhanceSummaryHtml(body); } catch (_) { }
             try { this.setReadDeepLink(id, '', { replace: true, videoId: item?.video_id || '' }); } catch (_) { }
@@ -7905,9 +7931,14 @@ class AudioDashboard {
 		                return;
 		            }
 
-			            body.innerHTML = (entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>');
+			            body.innerHTML = this.renderDeepResearchWrappedSummary(
+                            item,
+                            entry.html || this.renderWallReaderSection(item) || '<p>No summary available.</p>',
+                            variantId
+                        );
                     this.bindReaderHeaderHandlers(body, on);
                     this.bindReaderMetaInteractions(body, on);
+		            this.bindDeepResearchLaunchers(body, item, variantId);
 		            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
 		            try { this.enhanceSummaryHtml(body); } catch (_) { }
 			        };
@@ -7947,8 +7978,13 @@ class AudioDashboard {
 		        } else if (variantInfo && Array.isArray(variantInfo.order) && variantInfo.order.length === 1) {
 		            setActiveVariant(variantInfo.order[0]);
 		        } else {
-		            body.innerHTML = this.renderWallReaderSection(item);
+		            body.innerHTML = this.renderDeepResearchWrappedSummary(
+                        item,
+                        this.renderWallReaderSection(item),
+                        defaultVariant || ''
+                    );
                     this.bindReaderMetaInteractions(body, on);
+		            this.bindDeepResearchLaunchers(body, item, defaultVariant || '');
 		            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
 		            try { this.enhanceSummaryHtml(body); } catch (_) { }
 		        }
@@ -8487,11 +8523,12 @@ class AudioDashboard {
                 </div>
             </div>
             ${this.renderReaderHeader(item)}
-            <div class="prose prose-sm dark:prose-invert max-w-none" data-summary-body>${this.renderWallReaderSection(item)}</div>
+            <div class="prose prose-sm dark:prose-invert max-w-none" data-summary-body>${this.renderDeepResearchWrappedSummary(item, this.renderWallReaderSection(item), defaultVariant || '', { compact: true })}</div>
         `;
         anchor.insertAdjacentElement('afterend', section);
         this.bindReaderHeaderHandlers(section);
         this.bindReaderMetaInteractions(section);
+        this.bindDeepResearchLaunchers(section, item, defaultVariant || '');
         try {
             const cur = (this.parseUrlParams && this.parseUrlParams().read) ? String(this.parseUrlParams().read) : '';
             const replace = cur === String(id);
@@ -12329,7 +12366,7 @@ class AudioDashboard {
 
             const panel = document.createElement('div');
             panel.className = 'w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl';
-            const hint = `Enter your admin token. This is saved locally in your browser.`;
+            const hint = `Enter your admin token. This is saved locally in your browser and must match the dashboard DEBUG_TOKEN on the server.`;
             const detected = (typeof window !== 'undefined' && window.REPROCESS_TOKEN) ? '<span class="text-xs text-emerald-600 dark:text-emerald-400">A server-provided token is available.</span>' : '';
             panel.innerHTML = `
               <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
@@ -12340,9 +12377,9 @@ class AudioDashboard {
                 <p class="text-sm text-slate-600 dark:text-slate-300">${hint}</p>
                 ${detected}
                 <label class="block text-sm text-slate-600 dark:text-slate-300 mb-1" for="adminTokenInput">Admin token</label>
-                <input id="adminTokenInput" type="text" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-audio-500" placeholder="Enter admin token" />
+                <input id="adminTokenInput" type="text" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-audio-500" placeholder="Enter the dashboard admin token" />
                 <p id="tokenError" class="text-xs text-red-500 dark:text-red-400 hidden">Invalid token. Please try again.</p>
-                <p class="text-xs text-slate-500 dark:text-slate-400">Tip: You can change or clear this later in Settings → Admin.</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Tip: This is the same value as the server DEBUG_TOKEN. You can change or clear it later in Settings → Admin.</p>
               </div>
               <div class="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex items-center justify-end gap-2">
                 <button type="button" data-cancel class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200">Cancel</button>
@@ -12452,6 +12489,345 @@ class AudioDashboard {
         else if (this.reprocessTokenSource === 'storage') label = 'Token source: saved in browser';
         else if (this.reprocessTokenSource === 'prompt') label = 'Token source: entered in session (saved)';
         this.adminTokenSourceLabel.textContent = label;
+    }
+
+    htmlToPlainText(html) {
+        if (!html) return '';
+        const div = document.createElement('div');
+        div.innerHTML = String(html);
+        div.querySelectorAll('[data-deep-research-launcher]').forEach((node) => node.remove());
+        return (div.textContent || '')
+            .replace(/\r\n?/g, '\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .replace(/[ \t]+\n/g, '\n')
+            .trim();
+    }
+
+    buildDeepResearchSourceContext(item) {
+        const videoId = String(item?.video_id || item?.videoId || '').trim();
+        const canonicalUrl = String(item?.canonical_url || '').trim();
+        const contentSource = String(item?.content_source || item?.source || '').trim().toLowerCase() || (videoId ? 'youtube' : 'web');
+        const context = {
+            title: String(item?.title || '').trim(),
+            type: contentSource || 'web'
+        };
+        if (canonicalUrl) context.url = canonicalUrl;
+        else if (videoId) context.url = `https://www.youtube.com/watch?v=${videoId}`;
+        return context;
+    }
+
+    getDeepResearchSummaryText(item, variantId = '') {
+        const fallbackSummary = this.computeFallbackSummaryHtml(item);
+        const variantInfo = this.extractVariantInfo(item, fallbackSummary);
+        const normalized = String(variantId || '').trim().toLowerCase();
+        const preferredEntry = (normalized && variantInfo?.map?.[normalized]) ? variantInfo.map[normalized] : null;
+        const entry = preferredEntry || variantInfo?.map?.[variantInfo?.defaultId] || (variantInfo?.order?.length ? variantInfo.map[variantInfo.order[0]] : null);
+        if (entry?.html) return this.htmlToPlainText(entry.html);
+        return this.htmlToPlainText(fallbackSummary);
+    }
+
+    renderDeepResearchLauncher(item, { position = 'top', compact = false } = {}) {
+        const videoId = this.escapeHtml(item?.video_id || item?.videoId || '');
+        const reportId = this.escapeHtml(item?.file_stem || item?.id || item?.video_id || '');
+        const title = compact ? 'Ask follow-up questions' : 'Go beyond the summary';
+        const text = compact
+            ? 'Pick a suggested question or add your own.'
+            : 'Launch Deep Research with suggested questions or a custom question.';
+        const button = compact ? 'Open Deep Research' : 'Explore Deep Research';
+        const footerClass = position === 'bottom' ? ' deep-research-launcher--footer' : '';
+        return `
+          <div class="deep-research-launcher${footerClass}"
+               data-deep-research-launcher
+               data-deep-research-video-id="${videoId}"
+               data-deep-research-report-id="${reportId}"
+               data-deep-research-position="${this.escapeHtml(position)}">
+            <div class="deep-research-launcher__copy">
+              <div class="deep-research-launcher__eyebrow">Deep Research</div>
+              <div class="deep-research-launcher__title">${this.escapeHtml(title)}</div>
+              <p class="deep-research-launcher__text">${this.escapeHtml(text)}</p>
+            </div>
+            <button type="button" class="deep-research-launcher__button" data-deep-research-open>
+              ${this.escapeHtml(button)}
+            </button>
+          </div>
+        `;
+    }
+
+    renderDeepResearchWrappedSummary(item, html, variantId, { compact = false } = {}) {
+        const kind = VARIANT_META_MAP[String(variantId || '').toLowerCase()]?.kind || 'text';
+        if (kind !== 'text') return html || '';
+        return `${this.renderDeepResearchLauncher(item, { position: 'top', compact })}${html || ''}${this.renderDeepResearchLauncher(item, { position: 'bottom', compact: true })}`;
+    }
+
+    async fetchUpdatedReportItem(item) {
+        const reportId = String(item?.file_stem || item?.video_id || item?.id || '').trim();
+        if (!reportId) return null;
+        const response = await fetch(`/api/reports?ids=${encodeURIComponent(reportId)}&size=1`, {
+            credentials: 'same-origin'
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to refresh report (${response.status})`);
+        }
+        const payload = await response.json().catch(() => ({}));
+        const reports = Array.isArray(payload?.reports) ? payload.reports : [];
+        const fresh = reports.find((entry) => String(entry?.file_stem || entry?.video_id || '').trim() === reportId) || reports[0];
+        if (!fresh) return null;
+        const items = Array.isArray(this.currentItems) ? this.currentItems : [];
+        const index = items.findIndex((entry) => String(entry?.file_stem || entry?.video_id || entry?.id || '').trim() === reportId);
+        if (index >= 0) {
+            items[index] = fresh;
+        }
+        return fresh;
+    }
+
+    async openDeepResearchModal(item, { variantId = '' } = {}) {
+        const token = await this.getReprocessToken();
+        if (!token) {
+            this.showToast('Admin token required', 'warn');
+            return;
+        }
+
+        const videoId = String(item?.video_id || item?.videoId || '').trim();
+        const reportId = String(item?.file_stem || item?.id || videoId || '').trim();
+        if (!videoId || !reportId) {
+            this.showToast('Deep Research needs a persisted summary', 'warn');
+            return;
+        }
+
+        const summaryText = this.getDeepResearchSummaryText(item, variantId);
+        if (!summaryText) {
+            this.showToast('No summary text available for Deep Research', 'warn');
+            return;
+        }
+
+        const sourceContext = this.buildDeepResearchSourceContext(item);
+        const overlay = document.createElement('div');
+        overlay.className = 'deep-research-modal';
+        overlay.innerHTML = `
+          <div class="deep-research-modal__backdrop" data-close></div>
+          <div class="deep-research-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="deepResearchDashboardTitle">
+            <div class="deep-research-modal__header">
+              <div>
+                <div class="deep-research-modal__eyebrow">Deep Research</div>
+                <h3 id="deepResearchDashboardTitle" class="deep-research-modal__title">Choose your research questions</h3>
+                <p class="deep-research-modal__subtitle">Select up to 3 questions. Suggested prompts are based on the current summary variant, and you can add your own custom question.</p>
+              </div>
+              <button type="button" class="deep-research-modal__close" data-close aria-label="Close">✕</button>
+            </div>
+            <div class="deep-research-modal__body">
+              <div class="deep-research-modal__status" data-status>Loading suggested questions…</div>
+              <div class="deep-research-modal__suggestions" data-suggestions></div>
+              <label class="deep-research-modal__label" for="dashboardDeepResearchCustomQuestion">Custom question</label>
+              <textarea id="dashboardDeepResearchCustomQuestion" class="deep-research-modal__textarea" rows="3" placeholder="Ask your own follow-up question..."></textarea>
+              <div class="deep-research-modal__help">The result is stored as the canonical Deep Research variant for this summary.</div>
+            </div>
+            <div class="deep-research-modal__footer">
+              <div class="deep-research-modal__error" data-error></div>
+              <div class="deep-research-modal__actions">
+                <button type="button" class="deep-research-modal__ghost" data-close>Cancel</button>
+                <button type="button" class="deep-research-modal__primary" data-run disabled>Run Deep Research</button>
+              </div>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const suggestionsHost = overlay.querySelector('[data-suggestions]');
+        const statusEl = overlay.querySelector('[data-status]');
+        const errorEl = overlay.querySelector('[data-error]');
+        const customInput = overlay.querySelector('#dashboardDeepResearchCustomQuestion');
+        const runBtn = overlay.querySelector('[data-run]');
+        const state = { suggestions: [], selected: new Set(), loading: true, running: false };
+
+        const close = () => {
+            try { document.body.removeChild(overlay); } catch (_) { }
+        };
+        const sync = () => {
+            const customQuestion = String(customInput?.value || '').trim();
+            const total = state.selected.size + (customQuestion ? 1 : 0);
+            if (runBtn) runBtn.disabled = state.loading || state.running || total === 0 || total > 3;
+            if (!state.running && total <= 3 && errorEl) errorEl.textContent = '';
+        };
+        const renderSuggestions = () => {
+            if (!suggestionsHost) return;
+            if (!state.suggestions.length) {
+                suggestionsHost.innerHTML = `<div class="deep-research-modal__empty">No suggested questions were available. You can still run Deep Research with a custom question.</div>`;
+                return;
+            }
+            suggestionsHost.innerHTML = state.suggestions.map((suggestion) => {
+                const checked = state.selected.has(suggestion.id) ? 'checked' : '';
+                return `
+                  <label class="deep-research-modal__option">
+                    <input type="checkbox" class="deep-research-modal__checkbox" data-suggestion-id="${this.escapeHtml(suggestion.id)}" ${checked}>
+                    <span class="deep-research-modal__option-copy">
+                      <span class="deep-research-modal__option-question">${this.escapeHtml(suggestion.question || suggestion.label || '')}</span>
+                      <span class="deep-research-modal__option-reason">${this.escapeHtml(suggestion.reason || '')}</span>
+                    </span>
+                  </label>
+                `;
+            }).join('');
+            suggestionsHost.querySelectorAll('[data-suggestion-id]').forEach((input) => {
+                input.addEventListener('change', () => {
+                    const suggestionId = String(input.getAttribute('data-suggestion-id') || '');
+                    if (!suggestionId) return;
+                    if (input.checked) state.selected.add(suggestionId);
+                    else state.selected.delete(suggestionId);
+                    sync();
+                });
+            });
+        };
+
+        overlay.querySelectorAll('[data-close]').forEach((btn) => {
+            btn.addEventListener('click', (event) => {
+                event.preventDefault();
+                close();
+            });
+        });
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) close();
+        });
+        customInput?.addEventListener('input', sync);
+
+        try {
+            const response = await fetch('/api/research/follow-up/suggestions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    video_id: videoId,
+                    summary: summaryText,
+                    source_context: sourceContext,
+                    max_suggestions: 4
+                })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload?.detail || payload?.error || `Suggestions failed (${response.status})`);
+            }
+            state.suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+            state.suggestions.filter((entry) => entry && entry.default_selected).forEach((entry) => state.selected.add(entry.id));
+            if (statusEl) statusEl.textContent = state.suggestions.length ? 'Suggested questions' : 'No suggestions available';
+            state.loading = false;
+            renderSuggestions();
+            sync();
+        } catch (error) {
+            state.loading = false;
+            if (statusEl) statusEl.textContent = 'Suggested questions unavailable';
+            if (errorEl) errorEl.textContent = error?.message || 'Unable to load Deep Research suggestions.';
+            renderSuggestions();
+            sync();
+        }
+
+        runBtn?.addEventListener('click', async () => {
+            const selectedSuggestions = state.suggestions.filter((entry) => state.selected.has(entry.id));
+            const customQuestion = String(customInput?.value || '').trim();
+            const questions = [];
+            const provenance = [];
+
+            selectedSuggestions.forEach((entry) => {
+                const question = String(entry.question || entry.label || '').trim();
+                if (!question) return;
+                questions.push(question);
+                provenance.push(String(entry.provenance || 'suggested'));
+            });
+            if (customQuestion) {
+                questions.push(customQuestion);
+                provenance.push('custom');
+            }
+
+            const dedupedQuestions = [];
+            const dedupedProvenance = [];
+            const seen = new Set();
+            questions.forEach((question, index) => {
+                const key = question.toLowerCase();
+                if (seen.has(key)) return;
+                seen.add(key);
+                dedupedQuestions.push(question);
+                dedupedProvenance.push(provenance[index] || 'suggested');
+            });
+
+            if (!dedupedQuestions.length) {
+                if (errorEl) errorEl.textContent = 'Select a suggested question or enter a custom one.';
+                sync();
+                return;
+            }
+            if (dedupedQuestions.length > 3) {
+                if (errorEl) errorEl.textContent = 'Choose at most 3 questions total.';
+                sync();
+                return;
+            }
+
+            state.running = true;
+            if (runBtn) {
+                runBtn.disabled = true;
+                runBtn.textContent = 'Running…';
+            }
+            if (statusEl) statusEl.textContent = 'Running Deep Research…';
+            if (errorEl) errorEl.textContent = '';
+
+            try {
+                const response = await fetch('/api/research/follow-up/run', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        video_id: videoId,
+                        summary: summaryText,
+                        source_context: sourceContext,
+                        approved_questions: dedupedQuestions,
+                        question_provenance: dedupedProvenance,
+                        provider_mode: 'auto',
+                        depth: 'balanced'
+                    })
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(payload?.detail || payload?.error || `Deep Research failed (${response.status})`);
+                }
+
+                const freshItem = await this.fetchUpdatedReportItem(item).catch(() => null);
+                const nextItem = freshItem || item;
+                close();
+                this.showToast('Deep Research ready', 'success');
+                this._pendingReadVariant = { id: reportId, variant: 'deep-research' };
+                if (this.viewMode === 'wall') {
+                    this.handleWallRead(reportId);
+                    return;
+                }
+                const redirect = new URL(`/${encodeURIComponent(reportId)}.json`, window.location.origin);
+                redirect.searchParams.set('v', '2');
+                redirect.searchParams.set('variant', 'deep-research');
+                if (nextItem?.video_id) redirect.searchParams.set('video_id', nextItem.video_id);
+                window.location.assign(redirect.toString());
+            } catch (error) {
+                state.running = false;
+                if (runBtn) {
+                    runBtn.disabled = false;
+                    runBtn.textContent = 'Run Deep Research';
+                }
+                if (statusEl) statusEl.textContent = 'Deep Research failed';
+                if (errorEl) errorEl.textContent = error?.message || 'Unable to run Deep Research.';
+                sync();
+            }
+        });
+    }
+
+    bindDeepResearchLaunchers(container, item, variantId = '') {
+        if (!container || !item) return;
+        container.querySelectorAll('[data-deep-research-open]').forEach((button) => {
+            button.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.openDeepResearchModal(item, { variantId }).catch((error) => {
+                    console.error('openDeepResearchModal failed', error);
+                    this.showToast('Unable to open Deep Research', 'error');
+                });
+            });
+        });
     }
 
     async handleCreateImagePrompt(reportId) {
