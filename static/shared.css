@@ -523,13 +523,13 @@ article[data-summary-body] p:has(strong:nth-child(1)) {
 .deep-research-launcher__title {
     font-size: 1rem;
     font-weight: 700;
-    color: rgba(15, 23, 42, 0.92);
+    color: #f8fafc;
 }
 
 .deep-research-launcher__text {
     margin: 0;
     font-size: 0.9rem;
-    color: rgba(51, 65, 85, 0.88);
+    color: #e2e8f0;
 }
 
 .dark .deep-research-launcher__title,
