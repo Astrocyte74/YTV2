@@ -572,6 +572,40 @@ article[data-summary-body] p:has(strong:nth-child(1)) {
     box-shadow: none;
 }
 
+/* Deep Research Table Styles */
+.deep-research-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.875rem;
+}
+
+.deep-research-table th,
+.deep-research-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.deep-research-table th {
+    font-weight: 700;
+    background: rgba(56, 189, 248, 0.1);
+    color: inherit;
+}
+
+.deep-research-table tbody tr:hover {
+    background: rgba(56, 189, 248, 0.05);
+}
+
+.dark .deep-research-table th {
+    background: rgba(56, 189, 248, 0.15);
+}
+
+.dark .deep-research-table th,
+.dark .deep-research-table td {
+    border-bottom-color: rgba(148, 163, 184, 0.2);
+}
+
 .deep-research-modal {
     position: fixed;
     inset: 0;

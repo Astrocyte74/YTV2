@@ -30,11 +30,90 @@
     if (!text || typeof text !== 'string') return '';
     const trimmed = text.replace(/\r\n?/g, '\n').trim();
     if (!trimmed) return '';
+
+    // Check for markdown tables
+    const tableRegex = /^\|.+\|[\r\n]+\|[-:| ]+\|[\r\n]+(\|.+\|[\r\n]*)+/gm;
+    if (tableRegex.test(trimmed)) {
+      return formatMarkdownWithTables(trimmed);
+    }
+
     // basic bullet detection
     const lines = trimmed.split(/\n+/);
     const htmlLines = lines.map((line) => {
       if (/^\s*[-*•]/.test(line)) {
         return `<li>${line.replace(/^\s*[-*•]\s*/, '')}</li>`;
+      }
+      return `<p>${line}</p>`;
+    });
+    if (htmlLines.every((line) => line.startsWith('<li>'))) {
+      return `<ul>${htmlLines.join('')}</ul>`;
+    }
+    return htmlLines.join('\n');
+  };
+
+  const formatMarkdownWithTables = (text) => {
+    // Split into table and non-table sections
+    const parts = [];
+    let lastIndex = 0;
+    const tableBlockRegex = /(\|.+\|[\r\n]+\|[-:| ]+\|[\r\n]+(?:\|.+\|[\r\n]*)+)/g;
+    let match;
+
+    while ((match = tableBlockRegex.exec(text)) !== null) {
+      // Add text before table
+      if (match.index > lastIndex) {
+        const before = text.slice(lastIndex, match.index).trim();
+        if (before) parts.push({ type: 'text', content: before });
+      }
+      // Add table
+      parts.push({ type: 'table', content: match[1].trim() });
+      lastIndex = match.index + match[0].length;
+    }
+    // Add remaining text
+    if (lastIndex < text.length) {
+      const after = text.slice(lastIndex).trim();
+      if (after) parts.push({ type: 'text', content: after });
+    }
+
+    return parts.map(part => {
+      if (part.type === 'table') {
+        return formatTable(part.content);
+      }
+      return formatTextBlock(part.content);
+    }).join('\n');
+  };
+
+  const formatTable = (tableText) => {
+    const lines = tableText.split(/[\r\n]+/).filter(l => l.trim());
+    if (lines.length < 2) return '';
+
+    const parseRow = (line) => {
+      return line.split('|')
+        .map(cell => cell.trim())
+        .filter((_, i, arr) => i > 0 && i < arr.length - 1); // Remove first/last empty cells
+    };
+
+    const headerCells = parseRow(lines[0]);
+    const bodyLines = lines.slice(2); // Skip header and separator
+
+    const headerHtml = headerCells.map(cell => `<th>${cell}</th>`).join('');
+    const bodyHtml = bodyLines.map(line => {
+      const cells = parseRow(line);
+      return `<tr>${cells.map(cell => `<td>${cell}</td>`).join('')}</tr>`;
+    }).join('');
+
+    return `<table class="deep-research-table"><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table>`;
+  };
+
+  const formatTextBlock = (text) => {
+    const lines = text.split(/\n+/);
+    const htmlLines = lines.map((line) => {
+      if (/^\s*[-*•]/.test(line)) {
+        return `<li>${line.replace(/^\s*[-*•]\s*/, '')}</li>`;
+      }
+      if (/^#{1,6}\s/.test(line)) {
+        const level = line.match(/^(#{1,6})\s/)[1].length;
+        const content = line.replace(/^#{1,6}\s+/, '');
+        return `<h${level}>${content}</h${level}>`;
       }
       return `<p>${line}</p>`;
     });
