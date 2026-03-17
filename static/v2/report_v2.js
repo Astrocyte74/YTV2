@@ -202,7 +202,10 @@
       });
     });
 
-    const initialVariant = variants.has(defaultVariant) ? defaultVariant : variants.keys().next().value;
+    const requestedVariant = getRequestedReportVariantId();
+    const initialVariant = variants.has(requestedVariant)
+      ? requestedVariant
+      : (variants.has(defaultVariant) ? defaultVariant : variants.keys().next().value);
     setActive(initialVariant);
   };
 
@@ -217,6 +220,15 @@
   const getActiveReportVariantId = () => {
     const controls = $('summaryVariantControls');
     return String(controls?.dataset.currentVariant || window.SUMMARY_DEFAULT_VARIANT || 'comprehensive').trim().toLowerCase();
+  };
+
+  const getRequestedReportVariantId = () => {
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      return normalizeVariantId(params.get('variant') || '');
+    } catch (_) {
+      return '';
+    }
   };
 
   const getActiveReportVariantKind = () => {
@@ -422,6 +434,7 @@
         body: JSON.stringify({
           video_id: videoId,
           summary: summaryText,
+          preferred_variant: getActiveReportVariantId(),
           source_context: sourceContext,
           max_suggestions: 4,
         }),
@@ -503,6 +516,7 @@
           body: JSON.stringify({
             video_id: videoId,
             summary: summaryText,
+            preferred_variant: getActiveReportVariantId(),
             source_context: sourceContext,
             approved_questions: dedupedQuestions,
             question_provenance: dedupedProvenance,
