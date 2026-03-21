@@ -1863,6 +1863,7 @@ body:not(.dark) .reader-display-popover {
 
 /* Reader CSS variables (scoped to reader body containers) */
 .wall-expander [data-summary-body],
+#wallDockBody,
 #wallReaderBody,
 .wall-card--mega .mega-body {
     --reader-font-size: 1rem;
@@ -1878,10 +1879,11 @@ body:not(.dark) .reader-display-popover {
 @media (min-width: 1024px) {
 
     .wall-expander [data-summary-body],
+    #wallDockBody,
     #wallReaderBody,
     .wall-card--mega .mega-body {
         /* Reader measure is adjustable via --reader-measure */
-        max-width: var(--reader-measure, 70ch);
+        max-width: var(--reader-measure, 82ch);
         margin-left: auto;
         margin-right: auto;
     }
@@ -1889,6 +1891,7 @@ body:not(.dark) .reader-display-popover {
 
 /* Hyphenation and improved wrapping for paragraphs in readers */
 .wall-expander [data-summary-body] p,
+#wallDockBody p,
 #wallReaderBody p,
 .wall-card--mega .mega-body p {
     hyphens: auto;
@@ -1929,6 +1932,8 @@ body:not(.dark) .reader-display-popover {
 /* Ensure prose children respect reader line-height */
 .wall-expander [data-summary-body] p,
 .wall-expander [data-summary-body] li,
+#wallDockBody p,
+#wallDockBody li,
 #wallReaderBody p,
 #wallReaderBody li,
 .wall-card--mega .mega-body p,
@@ -1980,6 +1985,181 @@ body:not(.dark) .reader-display-popover {
     color: #e2e8f0;
     border-radius: 0.5rem;
     padding: 0.5rem 0.75rem;
+}
+
+/* ============================================
+   ENHANCED SUMMARY STYLING
+   Better typography, visual hierarchy, bullets
+   Works across: dashboard, wall-dock, report page
+   ============================================ */
+
+/* Better paragraph spacing and rhythm */
+.wall-expander [data-summary-body] p,
+#wallReaderBody p,
+.wall-card--mega .mega-body p,
+article[data-summary-body] p,
+#summaryBody p {
+    margin-bottom: 0.85em;
+    max-width: 65ch;
+}
+
+/* Improve first paragraph visual weight */
+.wall-expander [data-summary-body] > p:first-of-type,
+#wallReaderBody > p:first-of-type,
+article[data-summary-body] > p:first-of-type,
+#summaryBody > p:first-of-type {
+    font-weight: 420;
+    font-size: 1.03em;
+    line-height: 1.7;
+    color: inherit;
+    opacity: 0.95;
+}
+
+/* Styled bullets - replace plain text bullets */
+.wall-expander [data-summary-body] ul,
+#wallReaderBody ul,
+.wall-card--mega .mega-body ul,
+article[data-summary-body] ul,
+#summaryBody ul {
+    list-style: none;
+    padding-left: 0;
+    margin: 0.85em 0;
+}
+
+.wall-expander [data-summary-body] ul li,
+#wallReaderBody ul li,
+.wall-card--mega .mega-body ul li,
+article[data-summary-body] ul li,
+#summaryBody ul li {
+    position: relative;
+    padding-left: 1.6em;
+    margin-bottom: 0.5em;
+    line-height: 1.65;
+    /* Hide the original text bullet by indenting it out of view */
+    text-indent: -1.2em;
+}
+
+.wall-expander [data-summary-body] ul li::before,
+#wallReaderBody ul li::before,
+.wall-card--mega .mega-body ul li::before,
+article[data-summary-body] ul li::before,
+#summaryBody ul li::before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    top: 0.05em;
+    font-size: 1.2em;
+    line-height: 1;
+    color: #3b82f6;
+}
+
+/* Dark theme bullet color */
+.reader-theme--dark [data-summary-body] ul li::before,
+.reader-theme--dark #wallReaderBody ul li::before,
+.dark #summaryBody ul li::before {
+    color: #60a5fa;
+}
+
+/* Sepia theme bullet color */
+.reader-theme--sepia [data-summary-body] ul li::before,
+.reader-theme--sepia #wallReaderBody ul li::before {
+    color: #d97706;
+}
+
+/* "Bottom line" callout box */
+.wall-expander [data-summary-body] p,
+#wallReaderBody p,
+article[data-summary-body] p,
+#summaryBody p {
+    position: relative;
+}
+
+.wall-expander [data-summary-body] p strong:first-child,
+#wallReaderBody p strong:first-child,
+article[data-summary-body] p strong:first-child,
+#summaryBody p strong:first-child {
+    font-weight: 600;
+}
+
+/* Highlight "Bottom line:" prefix */
+.wall-expander [data-summary-body] p:has(strong:nth-child(1)),
+#wallReaderBody p:has(strong:nth-child(1)),
+article[data-summary-body] p:has(strong:nth-child(1)),
+#summaryBody p:has(strong:nth-child(1)) {
+    margin-top: 1.2em;
+    padding: 0.75em 1em;
+    border-left: 3px solid #3b82f6;
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.08), transparent);
+    border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.reader-theme--dark [data-summary-body] p:has(strong:nth-child(1)),
+.reader-theme--dark #wallReaderBody p:has(strong:nth-child(1)),
+.dark #summaryBody p:has(strong:nth-child(1)) {
+    border-left-color: #60a5fa;
+    background: linear-gradient(90deg, rgba(96, 165, 250, 0.12), transparent);
+}
+
+.reader-theme--sepia [data-summary-body] p:has(strong:nth-child(1)),
+.reader-theme--sepia #wallReaderBody p:has(strong:nth-child(1)) {
+    border-left-color: #d97706;
+    background: linear-gradient(90deg, rgba(217, 119, 6, 0.1), transparent);
+}
+
+/* Section headings (short lines that look like headers) */
+.wall-expander [data-summary-body] p:has(+ ul),
+#wallReaderBody p:has(+ ul),
+article[data-summary-body] p:has(+ ul),
+#summaryBody p:has(+ ul) {
+    font-weight: 600;
+    font-size: 1.05em;
+    margin-top: 1.2em;
+    margin-bottom: 0.5em;
+    color: inherit;
+    opacity: 0.9;
+}
+
+.wall-expander [data-summary-body] p:has(+ ul)::after,
+#wallReaderBody p:has(+ ul)::after,
+article[data-summary-body] p:has(+ ul)::after,
+#summaryBody p:has(+ ul)::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -0.35em;
+    width: 2.5em;
+    height: 2px;
+    background: linear-gradient(90deg, rgba(59, 130, 246, 0.5), transparent);
+}
+
+.reader-theme--dark [data-summary-body] p:has(+ ul)::after,
+.reader-theme--dark #wallReaderBody p:has(+ ul)::after,
+.dark #summaryBody p:has(+ ul)::after {
+    background: linear-gradient(90deg, rgba(96, 165, 250, 0.4), transparent);
+}
+
+.reader-theme--sepia [data-summary-body] p:has(+ ul)::after,
+.reader-theme--sepia #wallReaderBody p:has(+ ul)::after {
+    background: linear-gradient(90deg, rgba(217, 119, 6, 0.4), transparent);
+}
+
+/* Smooth transition for theme changes */
+.wall-expander [data-summary-body],
+#wallReaderBody,
+.wall-card--mega .mega-body,
+article[data-summary-body],
+#summaryBody {
+    transition: color 0.2s ease, background 0.2s ease;
+}
+
+/* Executive summary sections (📊, 📋 prefixes) */
+.wall-expander [data-summary-body] p:has(strong:nth-child(1)):has(+ p),
+#wallReaderBody p:has(strong:nth-child(1)):has(+ p),
+article[data-summary-body] p:has(strong:nth-child(1)):has(+ p),
+#summaryBody p:has(strong:nth-child(1)):has(+ p) {
+    font-weight: 600;
+    margin-top: 1em;
+    padding: 0.4em 0;
 }
 
 .dark .wall-expander .summary-card__menu-btn {
@@ -2744,7 +2924,7 @@ body:not(.dark) .reader-display-popover {
         position: sticky;
         top: calc(4rem + 0.85rem + var(--wall-dock-scroll-shift, 0px));
         align-self: start;
-        max-height: calc(100vh - 5rem);
+        max-height: calc(100vh - 4rem - 0.85rem);
         border-radius: 0.95rem;
         border: 1px solid rgba(56, 189, 248, 0.35);
         background: linear-gradient(180deg, rgba(2, 6, 23, 0.94), rgba(2, 6, 23, 0.86));
@@ -3650,7 +3830,73 @@ body:not(.dark) .reader-display-popover {
     overflow-y: auto;
     min-height: 0;
     flex: 1;
+    max-height: calc(100vh - 4rem - 0.85rem - var(--wall-dock-scroll-shift, 0px) - 120px);
     border-radius: 0 0 0.95rem 0.95rem;
+}
+
+/* Enhanced summary styling within wall-dock */
+.wall-dock__body p {
+    margin-bottom: 0.85em;
+    max-width: min(100%, var(--reader-measure, 82ch));
+}
+
+.wall-dock__body > p:first-of-type {
+    font-weight: 420;
+    font-size: 1.03em;
+    line-height: 1.7;
+    opacity: 0.95;
+}
+
+.wall-dock__body ul {
+    list-style: none;
+    padding-left: 0;
+    margin: 0.85em 0;
+}
+
+.wall-dock__body ul li {
+    position: relative;
+    padding-left: 1.6em;
+    margin-bottom: 0.5em;
+    line-height: 1.65;
+    /* Hide the original text bullet by indenting it out of view */
+    text-indent: -1.2em;
+}
+
+.wall-dock__body ul li::before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    top: 0.05em;
+    font-size: 1.2em;
+    line-height: 1;
+    color: #38bdf8;
+}
+
+.wall-dock__body p:has(strong:nth-child(1)) {
+    margin-top: 1.2em;
+    padding: 0.75em 1em;
+    border-left: 3px solid #38bdf8;
+    background: linear-gradient(90deg, rgba(56, 189, 248, 0.12), transparent);
+    border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.wall-dock__body p:has(+ ul) {
+    font-weight: 600;
+    font-size: 1.05em;
+    margin-top: 1.2em;
+    margin-bottom: 0.5em;
+    opacity: 0.9;
+    position: relative;
+}
+
+.wall-dock__body p:has(+ ul)::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -0.35em;
+    width: 2.5em;
+    height: 2px;
+    background: linear-gradient(90deg, rgba(56, 189, 248, 0.6), transparent);
 }
 
 .wall-dock__variant-tabs {
