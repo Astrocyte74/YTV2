@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   dashboard:
     image: ytv2-dashboard:latest
@@ -26,20 +24,12 @@ services:
     ports:
       - "10000:6452"
 
-    # Volume mounts for data persistence
+    # Volume mounts for runtime data only.
+    # Application code/templates/static are baked into the image in production mode.
     volumes:
-      # Application data directories
       - ./data:/app/data
       - ./exports:/app/exports
-      # Backend data (for ChromaDB semantic search)
       - ../backend/data:/app/backend-data
-      # Static files (CSS/JS) for live development
-      - ./static:/app/static
-      # Template and server for live development
-      - ./dashboard_v3_template.html:/app/dashboard_v3_template.html
-      - ./server.py:/app/server.py
-      - ./modules:/app/modules
-      # Optional: Mount cache directory for performance
       - dashboard-cache:/app/cache
 
     # Network connection to PostgreSQL and backend

@@ -40,14 +40,36 @@ PORT=10000
 
 ## Run locally
 ```
-# Docker (recommended)
-docker-compose up -d
+# Docker (recommended, production-like)
+docker-compose up -d --build
 # open http://localhost:10000
+
+# Docker live-edit mode (bind mounts for code/templates/static)
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d dashboard
 
 # Or native
 pip install -r requirements.txt
 python server.py
 # open http://localhost:10000
+```
+
+## Docker modes
+- `docker-compose.yml`
+  - Production-safe default.
+  - App code, templates, and static assets are baked into the image.
+  - Use this on the Intel Mac for the real running dashboard.
+- `docker-compose.dev.yml`
+  - Development override for live editing.
+  - Bind-mounts `static/`, `templates/`, `server.py`, and `modules/`.
+  - Use only when you explicitly want a live-edit workflow.
+
+Recommended commands:
+```
+# Production-like rebuild/recreate
+docker-compose up -d --build --force-recreate dashboard
+
+# Live-edit development
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d dashboard
 ```
 
 ## Access via Tailscale
@@ -65,6 +87,8 @@ Integration guide: `docs/NAS_INTEGRATION.md`.
 ```
 YTV2-Dashboard/
 ├─ server.py                        # HTTP server (dashboard + API)
+├─ docker-compose.yml               # Production-safe container definition
+├─ docker-compose.dev.yml           # Live-edit bind-mount override
 ├─ modules/
 │  ├─ postgres_content_index.py     # Postgres queries and mapping
 ├─ static/
@@ -92,33 +116,31 @@ YTV2-Dashboard/
   - `cardV4`: enable Stream (List) and Mosaic (Grid) card renderers.
   - `cardExpandInline`: inline expand for card summaries.
   - `twRevamp`: experimental Tailwind‑first cards (V5) for List/Grid.
-- After changing flags, if you don’t see the effect, bump the script cache in `dashboard_v3_template.html` (e.g., `ui_flags.js?v=2`).
+- Asset versions are generated server-side from file mtimes plus commit SHA. If you don’t see a change, recreate the container or verify you are actually running the dev override.
 
-## Card Styling and Cache Busting
+## Card Styling and Assets
 - Structure/HTML: `static/dashboard_v3.js` (renderers)
   - V4: `renderStreamCardV4()` and `renderGridCardV4()`
 - Styling: `static/dashboard.css`
   - V4 classes: `.stream-card*` and `.mosaic-card*`
-- Cache bust:
-  - CSS: change `dashboard.css?v=...` in `dashboard_v3_template.html`
-  - JS: change `dashboard_v3.js?v=...` in `dashboard_v3_template.html`
- - Detailed tips: see `docs/CARD_STYLING_GUIDE.md`
+- Asset versions are computed in `server.py`; do not hand-edit `?v=` query params in templates.
+- Detailed tips: see `docs/CARD_STYLING_GUIDE.md`
 
 ## New Contributor Quick Start
 - Branch
   - Create a topic branch from `main` and point Render to it for preview.
 - Turn on features (optional)
-  - Edit `ui_flags.js` and set flags (e.g., `cardV4: true`). If flags don’t apply after deploy, bump the query param in the template (e.g., `ui_flags.js?v=2`).
+  - Edit `ui_flags.js` and set flags (e.g., `cardV4: true`).
 - Change cards
   - List view: edit `static/dashboard_v3.js` → `renderStreamCardV4()`
   - Grid view: edit `static/dashboard_v3.js` → `renderGridCardV4()`
   - Keep structure/HTML in JS; keep visual styles in `static/dashboard.css` (`.stream-card*`, `.mosaic-card*`).
 - Style
   - Add/adjust CSS in `static/dashboard.css`. Prefer extending the existing V4 classes rather than inline styles.
-- Cache‑bust
-  - Update `dashboard_v3_template.html` to bump `dashboard.css?v=...` and/or `dashboard_v3.js?v=...` so browsers pick up changes.
 - Deploy and verify
-  - Commit + push; wait for Render to deploy.
+  - For Docker on the Intel Mac, rebuild/recreate the production container.
+  - For local live-edit work, use the dev compose override.
+  - For Render, commit + push; wait for deploy.
   - Hard‑refresh in the browser. If needed, open DevTools → Network → “Disable cache” and refresh once.
 - Sanity checklist
   - Filters list and cards render; pagination and sort work.
@@ -126,6 +148,6 @@ YTV2-Dashboard/
   - Play/Pause, progress scrub, and expand/collapse work.
   - Keyboard basics: `L` (listen), `R` (read), `W` (watch) if present; arrow/tab navigation.
 - Troubleshooting
-  - Still seeing old UI? Confirm the `?v=` query params changed in `dashboard_v3_template.html` and the Render deploy completed.
+  - Still seeing old UI? Confirm you rebuilt/recreated the production container or that you are intentionally running the dev override.
   - Feature flags not applying? Confirm you edited root `ui_flags.js` (not `static/ui_flags.js`).
 # Trigger redeploy for pyjwt

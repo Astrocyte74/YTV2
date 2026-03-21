@@ -70,7 +70,7 @@ Debugging Tips
 
 Files Touched
 - `static/dashboard_v3.js`: image mode logic, Manage Images modal, mode-aware selection, rotate.
-- `dashboard_v3_template.html`: cache-buster, remove debug stamp, header layout.
+- `dashboard_v3_template.html`: dashboard shell/header layout and asset references.
 - `server.py`: mode-aware prompt/save endpoints + SSE payload includes mode.
 - `modules/postgres_content_index.py`: new setters for AI2 prompt/selection; pass-through fields.
 
@@ -84,6 +84,7 @@ Follow-Ups (optional)
 - Add a star/favorite for variants to influence Rotate ordering.
 - Add a global “Default” mode that honors `analysis.summary_image_display_mode` per card.
 
-Cache-Buster
-- Last pushed at `dashboard_v3.js?v=pg91` and later fixes through `pg90/pg91`. Always hard refresh after deploy while testing.
-
+Asset Refresh
+- Dashboard/report asset versions are now generated in `server.py` from commit SHA plus file mtimes.
+- In production compose, rebuild/recreate the container after code changes.
+- In dev compose, rely on bind mounts and refresh once before assuming a caching issue.

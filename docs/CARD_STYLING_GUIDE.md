@@ -5,7 +5,7 @@ A concise reference for updating the dashboard’s card UI and related styles. U
 ## Scope
 - Card renderers: V4 Stream (List) and V4 Mosaic (Grid)
 - Filter chevrons, section toggles, and small a11y details
-- Cache busting so your browser picks up CSS/JS changes
+- Asset refresh behavior so your browser picks up CSS/JS changes
 
 ## Where To Edit
 - Structure/HTML (renderers)
@@ -18,10 +18,9 @@ A concise reference for updating the dashboard’s card UI and related styles. U
   - `static/dashboard.css` → V4 classes prefixed with `.stream-card*` and `.mosaic-card*`
 - Feature flags (enable V4)
   - `ui_flags.js:1` → `cardV4: true`
-- Template cache‑bust (browsers are sticky)
-  - `dashboard_v3_template.html:742` → bump `ui_flags.js?v=...`
-  - `dashboard_v3_template.html:743` → bump `dashboard_v3.js?v=...`
-  - Also bump `dashboard.css?v=...` in the template when changing CSS
+- Runtime asset versioning
+  - `server.py` computes asset versions from commit SHA + file mtimes.
+  - `dashboard_v3_template.html` consumes the generated version for dashboard assets.
 
 ## Fast Path Changes (Common)
 - Title clamp lines (List)
@@ -67,10 +66,13 @@ A concise reference for updating the dashboard’s card UI and related styles. U
 - Avoid forcing sync layout in renderers; build strings and set `innerHTML` once per card (current approach).
 - Use image `loading="lazy"` on thumbnails (already enabled) to keep initial load fast.
 
-## Debugging & Cache Busting
-- If edits don’t appear in the browser after a Render deploy:
+## Debugging & Asset Refresh
+- If edits don’t appear in the browser after a deploy or Docker restart:
   - Hard refresh, then try DevTools → Network → “Disable cache”.
-  - Bump the `?v=` cache params in `dashboard_v3_template.html` for `dashboard.css`, `dashboard_v3.js`, and `ui_flags.js`.
+- If you are using production compose on the Intel Mac:
+  - rebuild/recreate the container so the image includes your code changes.
+- If you are using the dev override:
+  - confirm the bind mounts are active before assuming the browser is stale.
 - Confirm `ui_flags.js` at repo root is the one being loaded (not `static/ui_flags.js`, which is reference‑only).
 
 ## Sanity Checklist (Cards)
@@ -82,7 +84,7 @@ A concise reference for updating the dashboard’s card UI and related styles. U
 
 ## Do / Don’t
 - Do centralize visuals in `static/dashboard.css`; keep renderers focused on structure.
-- Do bump cache params when you change CSS/JS.
+- Do rely on server-generated asset versions instead of hand-editing template query strings.
 - Don’t duplicate flag definitions; edit the root `ui_flags.js` only.
 - Don’t introduce autoplay; keep audio user‑initiated.
 

@@ -3781,6 +3781,14 @@ class AudioDashboard {
                                 <div class="wall-dock__menu-wrap">
                                     <button type="button" class="wall-dock__btn wall-dock__btn--menu summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">•••</button>
                                 </div>
+                                <button type="button" class="wall-dock__focus" data-action="wall-reader-focus" aria-label="Open in Reader" title="Open in Reader">
+                                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M15 3h6v6"/>
+                                        <path d="M9 21H3v-6"/>
+                                        <path d="M21 3l-7 7"/>
+                                        <path d="M3 21l7-7"/>
+                                    </svg>
+                                </button>
                                 <button type="button" class="wall-dock__close" data-action="wall-dock-close" aria-label="Close">✕</button>
                             </div>
                         </div>
@@ -6882,9 +6890,13 @@ class AudioDashboard {
         const styles = window.getComputedStyle(grid);
         const gap = parseFloat(styles.columnGap || styles.gap || '16') || 16;
         const cardW = first ? first.getBoundingClientRect().width : 210;
-        const dockCols = (window.innerWidth || 0) >= 1680 ? 3 : 2;
-        const widthPx = (dockCols * cardW) + (Math.max(0, dockCols - 1) * gap) + 64;
-        const clamped = Math.max(380, Math.min(760, Math.round(widthPx)));
+        const viewport = window.innerWidth || 0;
+        const dockCols = viewport >= 1920 ? 4 : (viewport >= 1680 ? 3 : 2);
+        const chromeAllowance = viewport >= 1920 ? 88 : 64;
+        const maxWidth = viewport >= 1920 ? 940 : 760;
+        const minWidth = viewport >= 1920 ? 420 : 380;
+        const widthPx = (dockCols * cardW) + (Math.max(0, dockCols - 1) * gap) + chromeAllowance;
+        const clamped = Math.max(minWidth, Math.min(maxWidth, Math.round(widthPx)));
         workspace.style.setProperty('--wall-dock-w', `${clamped}px`);
     }
 
@@ -7477,6 +7489,7 @@ class AudioDashboard {
 
         const openBtn = dock.querySelector('[data-action="wall-reader-open-page"]');
         const copyBtn = dock.querySelector('[data-action="wall-reader-copy-link"]');
+        const focusBtn = dock.querySelector('[data-action="wall-reader-focus"]');
         // sourceBtn already declared above for header population
         const reprocessBtn = dock.querySelector('[data-action="wall-reader-reprocess"]');
         const displayInlineBtn = dock.querySelector('[data-action="reader-display-inline-toggle"]');
@@ -7502,6 +7515,12 @@ class AudioDashboard {
             e.stopPropagation();
             this.copyLink(card || dock, id);
             if (menu && menuBtn) this.toggleKebabMenu(dock, false, menuBtn);
+        });
+        if (focusBtn) on(focusBtn, 'click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (menu && menuBtn) this.toggleKebabMenu(dock, false, menuBtn);
+            this.openWallModalReader(id, getSelectedCardEl() || card || null);
         });
         const syncInlineDisplayPanel = (prefsInput = null) => {
             if (!displayPanel) return;
@@ -8505,8 +8524,17 @@ class AudioDashboard {
                 sheet.style.opacity = '0';
             }
             if (backdrop) backdrop.style.opacity = '0';
+            const keepWallReaderOpen = () => {
+                const workspace = this.contentGrid && this.contentGrid.querySelector('[data-wall-workspace]');
+                const gridEl = workspace ? workspace.querySelector('.wall-grid') : null;
+                const dockOpen = !!(workspace && workspace.classList.contains('wall-dock-open'));
+                const inlineOpen = !!(gridEl && gridEl.querySelector('[data-wall-reader]'));
+                return dockOpen || inlineOpen;
+            };
+
+            const preserveWallContext = keepWallReaderOpen();
             try { sheet.classList.remove('kaleido-scrolled'); } catch (_) { }
-            if (card) card.classList.remove('wall-card--selected');
+            if (card && !preserveWallContext) card.classList.remove('wall-card--selected');
             // Always clear similarity classes when closing the reader; otherwise the wall grid can stay dimmed.
             try { this.clearSimilarityView(grid); } catch (_) { }
             if (this._kaleidoTeardown) {
@@ -8515,7 +8543,10 @@ class AudioDashboard {
             }
             // Remove global "modal open" classes immediately (iOS bfcache can skip pending timeouts).
             try { document.body.classList.remove('kaleido-open'); } catch (_) { }
-            try { document.body.classList.remove('wall-reader-open'); } catch (_) { }
+            try {
+                if (preserveWallContext) document.body.classList.add('wall-reader-open');
+                else document.body.classList.remove('wall-reader-open');
+            } catch (_) { }
             setTimeout(() => {
                 modal.classList.add('hidden');
                 modal.classList.remove('kaleido-visible');

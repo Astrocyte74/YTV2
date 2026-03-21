@@ -9,7 +9,7 @@
     'comprehensive': { label: 'Comprehensive', icon: '📝', kind: 'text' },
     'bullet-points': { label: 'Key Points', icon: '🎯', kind: 'text' },
     'key-insights': { label: 'Insights', icon: '💡', kind: 'text' },
-    'deep-research': { label: 'Deep Research', icon: '🔎', kind: 'research' },
+    'deep-research': { label: 'Research', icon: '🔎', kind: 'research' },
     'audio': { label: 'Audio (EN)', icon: '🎙️', kind: 'audio' },
     'audio-fr': { label: 'Audio (FR)', icon: '🎙️🇫🇷', kind: 'audio' },
     'audio-es': { label: 'Audio (ES)', icon: '🎙️🇪🇸', kind: 'audio' }
@@ -175,6 +175,9 @@
     const variantData = Array.isArray(window.SUMMARY_VARIANT_DATA) ? window.SUMMARY_VARIANT_DATA : [];
     const defaultVariant = normalizeVariantId(window.SUMMARY_DEFAULT_VARIANT || 'comprehensive');
     const controls = $("summaryVariantControls");
+    const controlsDock = $("summaryVariantDock");
+    const stickyControlsClass = 'sticky top-[4.1rem] z-20 -mx-1 mb-4 flex flex-nowrap gap-2 overflow-x-auto rounded-2xl border border-slate-200/70 bg-white/88 p-3 pb-2 text-xs shadow-sm backdrop-blur dark:border-slate-800/80 dark:bg-slate-950/82 md:flex-wrap md:overflow-visible';
+    const nestedControlsClass = 'flex flex-nowrap gap-2 overflow-x-auto pb-1 text-xs md:flex-wrap md:overflow-visible';
     const summaryBody = $("summaryBody");
     if (!controls || !summaryBody) return;
 
@@ -208,7 +211,8 @@
         icon: meta.icon || '📝',
         kind,
         html: contentHtml,
-        audioSrc: kind === 'audio' ? (payload.audio_src || payload.audioUrl || audioSource) : null
+        audioSrc: kind === 'audio' ? (payload.audio_src || payload.audioUrl || audioSource) : null,
+        raw: payload
       });
     };
 
@@ -225,19 +229,32 @@
       addVariant({ id: defaultVariant || 'comprehensive', html: summaryBody.innerHTML });
     }
 
-    if (variants.size <= 1) {
+    const canResearch = Boolean(getReportVideoId());
+    const hasResearch = variants.has('deep-research');
+    const showResearchLauncher = canResearch && !hasResearch;
+
+    if ((variants.size + (showResearchLauncher ? 1 : 0)) <= 1) {
       controls.style.display = 'none';
+      if (controlsDock) controlsDock.style.display = 'none';
       return;
     }
 
+    controls.className = controlsDock ? nestedControlsClass : stickyControlsClass;
     controls.style.display = '';
+    if (controlsDock) controlsDock.style.display = '';
     controls.innerHTML = Array.from(variants.values()).map((variant) => {
       return `<button type="button" data-variant="${variant.id}"
                 class="inline-flex items-center gap-2 rounded-full border border-white/50 bg-white/80 px-3.5 py-1.5 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-white dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-200">
                 <span class="text-base">${variant.icon}</span>
                 <span>${variant.label}</span>
               </button>`;
-    }).join('');
+    }).join('') + (showResearchLauncher ? `
+      <button type="button" data-variant-action="research"
+              class="inline-flex items-center gap-2 rounded-full border border-white/50 bg-white/80 px-3.5 py-1.5 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-white dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-200">
+              <span class="text-base">${VARIANT_META['deep-research']?.icon || '🔎'}</span>
+              <span>${VARIANT_META['deep-research']?.label || 'Research'}</span>
+            </button>
+    ` : '');
 
     const setActive = (variantId) => {
       const variant = variants.get(variantId);
@@ -248,6 +265,13 @@
         attachReportAudioHandlers(summaryBody, variant);
       } else {
         summaryBody.innerHTML = variant.html;
+        if (variant.kind === 'research') {
+          hydrateReportDeepResearchThread(summaryBody, variant).catch((error) => {
+            console.warn('hydrateReportDeepResearchThread failed', error);
+          });
+        } else {
+          deepResearchThreadState.loadToken += 1;
+        }
       }
 
       controls.querySelectorAll('[data-variant]').forEach((btn) => {
@@ -278,6 +302,13 @@
         event.preventDefault();
         event.stopPropagation();
         setActive(btn.dataset.variant);
+      });
+    });
+    controls.querySelectorAll('[data-variant-action="research"]').forEach((btn) => {
+      btn.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await openReportDeepResearchModal();
       });
     });
 
@@ -315,6 +346,24 @@
     return VARIANT_META[current]?.kind || 'text';
   };
 
+  const getActiveReportVariantEntry = () => {
+    const current = getActiveReportVariantId();
+    const variantData = Array.isArray(window.SUMMARY_VARIANT_DATA) ? window.SUMMARY_VARIANT_DATA : [];
+    return variantData.find((item) => {
+      const variantId = normalizeVariantId(item?.id || item?.variant || item?.summary_type || item?.type);
+      return variantId === current;
+    }) || null;
+  };
+
+  const getActiveParentFollowUpRunId = () => {
+    const activeKind = getActiveReportVariantKind();
+    if (activeKind !== 'research') return null;
+    const entry = getActiveReportVariantEntry();
+    const raw = entry?.follow_up_run_id ?? entry?.research_meta?.follow_up_run_id;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
+
   const htmlToPlainText = (html) => {
     if (!html) return '';
     const div = document.createElement('div');
@@ -328,6 +377,11 @@
   };
 
   const getCurrentSummaryTextForResearch = () => {
+    const entry = getActiveReportVariantEntry();
+    const entryText = String(entry?.text || '').trim();
+    if (entryText) return entryText;
+    const entryHtml = String(entry?.html || '').trim();
+    if (entryHtml) return htmlToPlainText(entryHtml);
     const summaryBody = $('summaryBody');
     if (!summaryBody) return '';
     const clone = summaryBody.cloneNode(true);
@@ -370,6 +424,289 @@
     return url.toString();
   };
 
+  const deepResearchThreadState = {
+    loadToken: 0,
+  };
+
+  const getActiveResearchRunIdFromVariant = (variant) => {
+    const raw = variant?.raw || {};
+    const candidate = raw.follow_up_run_id ?? raw.research_meta?.follow_up_run_id;
+    const parsed = Number(candidate);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  };
+
+  const formatThreadTimestamp = (value) => {
+    if (!value) return '';
+    try {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '';
+      return date.toLocaleString([], {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+    } catch (_) {
+      return '';
+    }
+  };
+
+  const getDeepResearchLocalStorageKey = ({ rootRunId, currentRunId, videoId }) => {
+    const stableId = rootRunId || currentRunId || videoId || 'default';
+    return `ytv2.deepResearchChat.${stableId}`;
+  };
+
+  const loadDeepResearchLocalTurns = (storageKey) => {
+    if (!storageKey) return [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((turn) => turn && (turn.role === 'user' || turn.role === 'assistant') && turn.content);
+    } catch (_) {
+      return [];
+    }
+  };
+
+  const saveDeepResearchLocalTurns = (storageKey, turns) => {
+    if (!storageKey) return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(Array.isArray(turns) ? turns : []));
+    } catch (_) {}
+  };
+
+  const buildDeepResearchChatHistory = (localTurns) => {
+    if (!Array.isArray(localTurns)) return [];
+    return localTurns
+      .slice(-8)
+      .map((turn) => ({
+        role: turn.role === 'assistant' ? 'assistant' : 'user',
+        content: String(turn.content || '').trim(),
+      }))
+      .filter((turn) => turn.content);
+  };
+
+  const renderThreadUserBubble = (content, metaLabel = '') => `
+    <div class="flex justify-end">
+      <div class="max-w-[88%] rounded-2xl bg-slate-900 px-4 py-3 text-sm text-white shadow-sm dark:bg-slate-700">
+        ${metaLabel ? `<div class="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-300">${escapeHtml(metaLabel)}</div>` : ''}
+        <div class="whitespace-pre-wrap leading-relaxed">${escapeHtml(content)}</div>
+      </div>
+    </div>
+  `;
+
+  const renderThreadAssistantBubble = ({ title, bodyHtml, metaLabel = '', accent = 'report' }) => {
+    const accentClass = accent === 'chat'
+      ? 'border-cyan-200 bg-cyan-50/70 dark:border-cyan-900/70 dark:bg-cyan-950/30'
+      : 'border-slate-200 bg-slate-50/80 dark:border-slate-700 dark:bg-slate-900/70';
+    return `
+      <div class="flex justify-start">
+        <div class="max-w-[92%] rounded-2xl border px-4 py-3 shadow-sm ${accentClass}">
+          <div class="mb-2 flex flex-wrap items-center gap-2">
+            <div class="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">${escapeHtml(title || 'Deep Research')}</div>
+            ${metaLabel ? `<div class="text-[11px] text-slate-400 dark:text-slate-500">${escapeHtml(metaLabel)}</div>` : ''}
+          </div>
+          <div class="prose prose-sm max-w-none prose-slate dark:prose-invert">${bodyHtml}</div>
+        </div>
+      </div>
+    `;
+  };
+
+  const renderDeepResearchThreadView = ({ persistedTurns, localTurns, currentRunId, currentHtml }) => {
+    const messageParts = [];
+    const turns = Array.isArray(persistedTurns) ? persistedTurns : [];
+    turns.forEach((turn) => {
+      const approvedQuestions = Array.isArray(turn.approved_questions) ? turn.approved_questions.filter(Boolean) : [];
+      if (approvedQuestions.length) {
+        messageParts.push(renderThreadUserBubble(
+          approvedQuestions.join('\n'),
+          approvedQuestions.length > 1 ? 'Research Questions' : 'Research Question'
+        ));
+      }
+      const isCurrent = Number(turn.follow_up_run_id) === Number(currentRunId);
+      const createdLabel = formatThreadTimestamp(turn.created_at);
+      const sourcesCount = Array.isArray(turn.sources) ? turn.sources.length : 0;
+      const metaBits = [createdLabel, sourcesCount ? `${sourcesCount} sources` : ''].filter(Boolean).join(' • ');
+      messageParts.push(renderThreadAssistantBubble({
+        title: isCurrent ? 'Current Deep Research' : 'Earlier Deep Research',
+        metaLabel: metaBits,
+        bodyHtml: isCurrent && currentHtml ? currentHtml : formatSummaryText(String(turn.answer || '')),
+        accent: 'report',
+      }));
+    });
+
+    (Array.isArray(localTurns) ? localTurns : []).forEach((turn) => {
+      if (turn.role === 'user') {
+        messageParts.push(renderThreadUserBubble(String(turn.content || ''), 'Ask'));
+        return;
+      }
+      messageParts.push(renderThreadAssistantBubble({
+        title: 'Report Chat',
+        metaLabel: formatThreadTimestamp(turn.created_at),
+        bodyHtml: formatSummaryText(String(turn.content || '')),
+        accent: 'chat',
+      }));
+    });
+
+    return `
+      <section data-deep-research-thread class="space-y-4">
+        <div class="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-cyan-50/70 p-4 shadow-sm dark:border-slate-700 dark:from-slate-900 dark:via-slate-950 dark:to-cyan-950/20">
+          <div class="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-300">Deep Research Thread</div>
+          <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Ask about the current report, or branch into a fresh Deep Research run when you need new evidence.</p>
+        </div>
+        <div class="space-y-4" data-thread-messages>
+          ${messageParts.join('')}
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
+          <label for="deepResearchThreadComposer" class="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-100">Continue the conversation</label>
+          <textarea id="deepResearchThreadComposer" rows="3" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:bg-white dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-cyan-500" placeholder="Ask about this report, request clarification, or tee up another research run..."></textarea>
+          <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <div class="text-xs text-slate-500 dark:text-slate-400">Use <span class="font-semibold">Ask</span> for grounded chat over this report. Use <span class="font-semibold">Run Fresh Research</span> when you want new web evidence.</div>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" data-thread-ask class="inline-flex items-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-cyan-500 dark:text-slate-950 dark:hover:bg-cyan-400">Ask</button>
+              <button type="button" data-thread-research class="inline-flex items-center rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">Run Fresh Research</button>
+            </div>
+          </div>
+          <div class="mt-3 hidden rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200" data-thread-error></div>
+          <div class="mt-2 text-xs text-slate-500 dark:text-slate-400" data-thread-status></div>
+        </div>
+      </section>
+    `;
+  };
+
+  const fetchReportDeepResearchThread = async ({ variant, promptForToken = false } = {}) => {
+    const videoId = getReportVideoId();
+    const followUpRunId = getActiveResearchRunIdFromVariant(variant);
+    if (!videoId || !followUpRunId) return null;
+    let token = getReprocessToken();
+    if (!token && promptForToken) token = promptForReportAdminToken();
+    if (!token) return null;
+    const params = new URLSearchParams({
+      video_id: videoId,
+      follow_up_run_id: String(followUpRunId),
+    });
+    const resp = await fetch(`/api/research/follow-up/thread?${params.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      throw new Error(payload?.detail || `Thread lookup failed (${resp.status})`);
+    }
+    return payload;
+  };
+
+  const hydrateReportDeepResearchThread = async (summaryBody, variant) => {
+    if (!summaryBody || !variant || variant.kind !== 'research') return;
+    const currentRunId = getActiveResearchRunIdFromVariant(variant);
+    if (!currentRunId) return;
+    const loadToken = ++deepResearchThreadState.loadToken;
+    let threadData = null;
+    try {
+      threadData = await fetchReportDeepResearchThread({ variant, promptForToken: false });
+    } catch (error) {
+      console.warn('Deep Research thread unavailable', error);
+    }
+    if (loadToken !== deepResearchThreadState.loadToken) return;
+    if (getActiveReportVariantId() !== variant.id) return;
+
+    const persistedTurns = Array.isArray(threadData?.turns) && threadData.turns.length
+      ? threadData.turns
+      : [{
+          follow_up_run_id: currentRunId,
+          approved_questions: Array.isArray(variant.raw?.research_meta?.approved_questions) ? variant.raw.research_meta.approved_questions : [],
+          answer: htmlToPlainText(variant.html || ''),
+          created_at: variant.raw?.generated_at || '',
+          sources: Array.isArray(variant.raw?.research_meta?.stored_sources) ? variant.raw.research_meta.stored_sources : [],
+        }];
+    const rootRunId = Number(threadData?.root_follow_up_run_id) || Number(persistedTurns[0]?.follow_up_run_id) || currentRunId;
+    const storageKey = getDeepResearchLocalStorageKey({
+      rootRunId,
+      currentRunId,
+      videoId: getReportVideoId(),
+    });
+    const localTurns = loadDeepResearchLocalTurns(storageKey);
+    summaryBody.innerHTML = renderDeepResearchThreadView({
+      persistedTurns,
+      localTurns,
+      currentRunId,
+      currentHtml: variant.html || '',
+    });
+
+    const composer = summaryBody.querySelector('#deepResearchThreadComposer');
+    const askBtn = summaryBody.querySelector('[data-thread-ask]');
+    const researchBtn = summaryBody.querySelector('[data-thread-research]');
+    const errorEl = summaryBody.querySelector('[data-thread-error]');
+    const statusEl = summaryBody.querySelector('[data-thread-status]');
+    const setError = (message = '') => {
+      if (!errorEl) return;
+      errorEl.textContent = message;
+      errorEl.classList.toggle('hidden', !message);
+    };
+    const setBusy = (busy, label = '') => {
+      if (askBtn) {
+        askBtn.disabled = busy;
+        askBtn.textContent = busy ? 'Thinking…' : 'Ask';
+      }
+      if (researchBtn) researchBtn.disabled = busy;
+      if (composer) composer.disabled = busy;
+      if (statusEl) statusEl.textContent = label;
+    };
+
+    askBtn?.addEventListener('click', async () => {
+      const question = String(composer?.value || '').trim();
+      if (!question) {
+        setError('Enter a question to continue the thread.');
+        return;
+      }
+      let token = getReprocessToken();
+      if (!token) token = promptForReportAdminToken();
+      if (!token) return;
+      setError('');
+      setBusy(true, 'Answering from the current Deep Research report…');
+      try {
+        const resp = await fetch('/api/research/follow-up/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            video_id: getReportVideoId(),
+            follow_up_run_id: currentRunId,
+            preferred_variant: 'deep-research',
+            summary: getCurrentSummaryTextForResearch(),
+            source_context: buildReportSourceContext(),
+            question,
+            history: buildDeepResearchChatHistory(localTurns),
+          }),
+        });
+        const payload = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          throw new Error(payload?.detail || payload?.error || `Report chat failed (${resp.status})`);
+        }
+        const nextTurns = localTurns.concat([
+          { role: 'user', content: question, created_at: new Date().toISOString() },
+          { role: 'assistant', content: String(payload?.answer || '').trim(), created_at: new Date().toISOString() },
+        ]);
+        saveDeepResearchLocalTurns(storageKey, nextTurns);
+        if (composer) composer.value = '';
+        await hydrateReportDeepResearchThread(summaryBody, variant);
+      } catch (error) {
+        setError(error?.message || 'Unable to answer from the current report.');
+      } finally {
+        setBusy(false, '');
+      }
+    });
+
+    researchBtn?.addEventListener('click', async () => {
+      const initialCustomQuestion = String(composer?.value || '').trim();
+      setError('');
+      await openReportDeepResearchModal({ initialCustomQuestion });
+    });
+  };
+
   const updateReportDeepResearchLaunchers = () => {
     const activeKind = getActiveReportVariantKind();
     const shouldShow = activeKind === 'text';
@@ -378,7 +715,7 @@
     });
   };
 
-  const openReportDeepResearchModal = async () => {
+  const openReportDeepResearchModal = async ({ initialCustomQuestion = '' } = {}) => {
     const videoId = getReportVideoId();
     if (!videoId) {
       window.alert('Deep Research is only available for persisted summaries.');
@@ -398,6 +735,10 @@
     }
 
     const sourceContext = buildReportSourceContext();
+    const activeVariantId = getActiveReportVariantId();
+    const activeKind = getActiveReportVariantKind();
+    const parentFollowUpRunId = getActiveParentFollowUpRunId();
+    const isDeepResearchFollowUp = activeKind === 'research';
     const overlay = document.createElement('div');
     overlay.className = 'deep-research-modal';
     overlay.innerHTML = `
@@ -416,7 +757,9 @@
           <div class="deep-research-modal__suggestions" data-suggestions></div>
           <label class="deep-research-modal__label" for="deepResearchCustomQuestion">Custom question</label>
           <textarea id="deepResearchCustomQuestion" class="deep-research-modal__textarea" rows="3" placeholder="Ask your own follow-up question..."></textarea>
-          <div class="deep-research-modal__help">The run uses the current summary variant as context and stores the result as a Deep Research variant.</div>
+          <div class="deep-research-modal__help">${isDeepResearchFollowUp
+            ? 'This run follows up on the current Deep Research report and stores a new Deep Research revision.'
+            : 'The run uses the current summary variant as context and stores the result as a Deep Research variant.'}</div>
         </div>
         <div class="deep-research-modal__footer">
           <div class="deep-research-modal__error" data-error></div>
@@ -434,6 +777,7 @@
     const errorEl = overlay.querySelector('[data-error]');
     const runBtn = overlay.querySelector('[data-run]');
     const customInput = overlay.querySelector('#deepResearchCustomQuestion');
+    if (customInput && initialCustomQuestion) customInput.value = initialCustomQuestion;
     const close = () => {
       try { document.body.removeChild(overlay); } catch (_) {}
     };
@@ -513,7 +857,7 @@
         body: JSON.stringify({
           video_id: videoId,
           summary: summaryText,
-          preferred_variant: getActiveReportVariantId(),
+          preferred_variant: activeVariantId,
           source_context: sourceContext,
           max_suggestions: 4,
         }),
@@ -595,7 +939,8 @@
           body: JSON.stringify({
             video_id: videoId,
             summary: summaryText,
-            preferred_variant: getActiveReportVariantId(),
+            preferred_variant: activeVariantId,
+            parent_follow_up_run_id: parentFollowUpRunId,
             source_context: sourceContext,
             approved_questions: dedupedQuestions,
             question_provenance: dedupedProvenance,

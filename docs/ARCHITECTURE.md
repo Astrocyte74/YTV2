@@ -22,6 +22,7 @@ The dashboard is a small HTTP server with a Postgres-backed content index and a 
 | Frontend JS | `dashboard16/static/dashboard_v3.js` |
 | CSS | `dashboard16/static/dashboard.css` |
 | HTML template | `dashboard16/dashboard_v3_template.html` |
+| Report template | `dashboard16/templates/report_v2.html` |
 | Backend (separate repo) | `backend/` (ports 6452-6453) |
 
 ## Components
@@ -29,6 +30,24 @@ The dashboard is a small HTTP server with a Postgres-backed content index and a 
 - `modules/postgres_content_index.py`: Postgres queries and mapping to the UI’s data model.
 - `static/dashboard_v3.js`: filter UI, pagination, and rendering.
 - `ui_flags.js`: runtime feature flags loaded by the template (authoritative).
+- `templates/report_v2.html` + `static/v2/report_v2.js`: V2 report page shell and interactions.
+
+## Container modes
+- `docker-compose.yml`
+  - Production-safe default.
+  - Code/templates/static are baked into the image; only runtime data directories are mounted.
+- `docker-compose.dev.yml`
+  - Development override.
+  - Bind-mounts source files for live editing.
+
+Do not mix the two mental models. If the real dashboard on the Intel Mac is running the default compose file, code changes require a rebuild/recreate.
+
+## Asset versioning
+- Dashboard and report asset versions are generated in `server.py` from commit SHA plus source file mtimes/sizes.
+- Do not hand-bump query strings in templates as a normal workflow.
+- If the UI looks stale:
+  - production mode: rebuild/recreate the container
+  - dev mode: confirm the bind mounts are active and refresh once
 
 ## Source normalization
 We infer a `content_source` slug (e.g., youtube, reddit) using a SQL CASE expression over canonical_url/video_id with safe fallbacks. The same slug is returned in API items as `content_source` and human label `source_label`.
@@ -46,6 +65,4 @@ The UI may intentionally require at least one selection in certain groups (categ
 - Styling lives in `static/dashboard.css`:
   - Stream classes: `.stream-card`, `.stream-card__media`, `.stream-card__eq`, `.stream-card__progress`, `.stream-card__body`, etc.
   - Mosaic classes: `.mosaic-card`, `.mosaic-card__media`, `.mosaic-card__progress`, `.mosaic-card__body`, etc.
-- When changing CSS/JS, bump the query params in `dashboard_v3_template.html`:
-  - CSS: `dashboard.css?v=...`
-  - JS: `dashboard_v3.js?v=...`
+- CSS/JS changes are picked up through server-generated asset versions.

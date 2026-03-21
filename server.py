@@ -806,6 +806,21 @@ def load_template(template_name: str) -> Optional[str]:
         logger.error(f"Error loading template {template_name}: {e}")
         return None
 
+def compute_asset_version(*paths: str) -> str:
+    """Build a stable asset version from commit + file mtimes for cache busting."""
+    digest = hashlib.sha1()
+    digest.update(str(COMMIT_SHA or "dev").encode("utf-8"))
+    for raw_path in paths:
+        path = Path(raw_path)
+        digest.update(str(path).encode("utf-8"))
+        try:
+            stat = path.stat()
+            digest.update(str(stat.st_mtime_ns).encode("utf-8"))
+            digest.update(str(stat.st_size).encode("utf-8"))
+        except FileNotFoundError:
+            digest.update(b"missing")
+    return digest.hexdigest()[:12]
+
 # Extract report metadata utility
 def extract_report_metadata(file_path: Path) -> Dict:
     """Extract metadata from HTML or JSON report file"""
@@ -1542,6 +1557,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         except Exception:
             pass
         source_label = "YouTube" if content_source == "youtube" else ("Reddit" if content_source == "reddit" else "Source")
+        asset_version = compute_asset_version(
+            "templates/report_v2.html",
+            "static/shared.css",
+            "static/v2/report_v2.js",
+        )
 
         return {
             "title": title,
@@ -1578,6 +1598,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             "report_id": report_data.get('file_stem') or report_data.get('id') or video_id,
             "deployment_commit": COMMIT_SHA,
             "cache_bust": cache_bust,
+            "asset_version": asset_version,
             "summary_variants": report_data.get('summary_variants') or summary.get('variants') or [],
             "summary_variant_default": chosen_default
         }
@@ -1946,6 +1967,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 dashboard_config = {
                     "autoPlayOnLoad": bool(DASHBOARD_AUTOPLAY_ON_LOAD)
                 }
+                dashboard_asset_version = compute_asset_version(
+                    "dashboard_v3_template.html",
+                    "static/shared.css",
+                    "static/dashboard.css",
+                    "static/ui_flags.js",
+                    "static/dashboard_v3.js",
+                )
 
                 # Replace template placeholders (safe replacement for templates with {})
                 dashboard_html = template_content.replace(
@@ -1954,6 +1982,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     '{ nas_config }', json.dumps(nas_config)
                 ).replace(
                     '{ dashboard_config }', json.dumps(dashboard_config)
+                ).replace(
+                    '__DASHBOARD_ASSET_VERSION__', dashboard_asset_version
                 )
                 
                 self.send_response(200)

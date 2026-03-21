@@ -12,7 +12,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   
   <!-- Shared styles across dashboard and report pages -->
-  <link rel="stylesheet" href="/static/shared.css?v={{ deployment_commit }}-{{ cache_bust }}">
+  <link rel="stylesheet" href="/static/shared.css?v={{ asset_version }}">
   <script>
     // optional: small token nudge for better dark contrast
     tailwind.config = {
@@ -361,43 +361,16 @@
         </div>
         <span class="text-slate-900 dark:text-slate-100">Summary</span>
       </h2>
-      {% if video_id %}
-      <div class="deep-research-launcher deep-research-launcher--report mb-4"
-           data-deep-research-launcher
-           data-deep-research-video-id="{{ video_id }}"
-           data-deep-research-report-id="{{ video_id }}"
-           data-deep-research-position="top">
-        <div class="deep-research-launcher__copy">
-          <div class="deep-research-launcher__eyebrow">Deep Research</div>
-          <div class="deep-research-launcher__title">Ask follow-up questions</div>
-          <p class="deep-research-launcher__text">Run a deeper web research pass with suggested questions or your own custom question.</p>
+      <div id="summaryVariantDock" class="sticky top-[4.1rem] z-20 -mx-1 mb-4 px-1 py-2">
+        <div class="rounded-2xl border border-slate-200/70 bg-white/88 p-2 shadow-sm backdrop-blur dark:border-slate-800/80 dark:bg-slate-950/82">
+          <div id="summaryVariantControls" class="flex flex-nowrap gap-2 overflow-x-auto pb-1 text-xs md:flex-wrap md:overflow-visible"></div>
         </div>
-        <button type="button" class="deep-research-launcher__button" data-deep-research-open>
-          Explore Deep Research
-        </button>
       </div>
-      {% endif %}
-      <div id="summaryVariantControls" class="mb-3 flex flex-wrap gap-2 text-xs"></div>
       <article class="prose prose-lg max-w-none prose-slate dark:prose-invert" data-summary-body>
         <div id="summaryBody" class="text-slate-700 dark:text-slate-300 leading-relaxed space-y-4">
           {{ summary_html | safe }}
         </div>
       </article>
-      {% if video_id %}
-      <div class="deep-research-launcher deep-research-launcher--report deep-research-launcher--footer mt-5"
-           data-deep-research-launcher
-           data-deep-research-video-id="{{ video_id }}"
-           data-deep-research-report-id="{{ video_id }}"
-           data-deep-research-position="bottom">
-        <div class="deep-research-launcher__copy">
-          <div class="deep-research-launcher__title">Want to go beyond the summary?</div>
-          <p class="deep-research-launcher__text">Pick a suggested line of inquiry or enter a custom question.</p>
-        </div>
-        <button type="button" class="deep-research-launcher__button" data-deep-research-open>
-          Open Deep Research
-        </button>
-      </div>
-      {% endif %}
     </section>
   </main>
 
@@ -506,6 +479,6 @@
     </div>
   </div>
 
-  <script src="/static/v2/report_v2.js?v={{ deployment_commit }}-{{ cache_bust }}-meta01"></script>
+  <script src="/static/v2/report_v2.js?v={{ asset_version }}"></script>
 </body>
 </html>

@@ -1,0 +1,15 @@
+services:
+  dashboard:
+    # Development override: bind-mount source files for live iteration.
+    volumes:
+      - ./data:/app/data
+      - ./exports:/app/exports
+      - ../backend/data:/app/backend-data
+      - ./static:/app/static
+      - ./dashboard_v3_template.html:/app/dashboard_v3_template.html
+      - ./templates:/app/templates
+      - ./server.py:/app/server.py
+      - ./modules:/app/modules
+      - ./requirements-dashboard.txt:/app/requirements-dashboard.txt
+      - ./healthcheck.py:/app/healthcheck.py
+      - dashboard-cache:/app/cache
