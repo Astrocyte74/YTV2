@@ -689,15 +689,15 @@ class PostgreSQLContentIndex:
         return "\n".join(blocks)
 
     @classmethod
-    def _render_meta_chip(cls, label: str, value: Any) -> str:
+    def _render_meta_row(cls, label: str, value: Any) -> str:
         text = str(value or "").strip()
         if not text:
             return ""
         return (
-            '<span class="deep-research__chip">'
-            f'<span class="deep-research__chip-label">{cls._escape_html(label)}</span>'
-            f'<span class="deep-research__chip-value">{cls._escape_html(text)}</span>'
-            '</span>'
+            '<div class="deep-research__meta-row">'
+            f'<dt class="deep-research__meta-label">{cls._escape_html(label)}</dt>'
+            f'<dd class="deep-research__meta-value">{cls._escape_html(text)}</dd>'
+            '</div>'
         )
 
     @classmethod
@@ -705,17 +705,23 @@ class PostgreSQLContentIndex:
         questions = research_meta.get("approved_questions") or []
         if not isinstance(questions, list) or not questions:
             return ""
-        items = "".join(
-            f"<li>{cls._render_inline_markdown(str(question).strip())}</li>"
-            for question in questions
-            if str(question).strip()
-        )
-        if not items:
+        items = []
+        for question in questions:
+            clean = str(question).strip()
+            if not clean:
+                continue
+            items.append(
+                '<li>'
+                f"{cls._render_inline_markdown(clean)}"
+                '</li>'
+            )
+        items_html = "".join(items)
+        if not items_html:
             return ""
         return (
             '<section class="deep-research__section">'
             '<div class="deep-research__section-label">Research questions</div>'
-            f'<ol class="deep-research__olist deep-research__olist--questions">{items}</ol>'
+            f'<ol class="deep-research__olist deep-research__olist--questions">{items_html}</ol>'
             '</section>'
         )
 
@@ -733,10 +739,15 @@ class PostgreSQLContentIndex:
             for item in source_items
         )
         return (
+            '<details class="deep-research__details deep-research__details--sources">'
+            '<summary class="deep-research__details-summary">'
+            '<span class="deep-research__details-title">Sources</span>'
+            f'<span class="deep-research__details-meta">{len(source_items)} links</span>'
+            '</summary>'
             '<section class="deep-research__section deep-research__section--sources">'
-            '<div class="deep-research__section-label">Sources</div>'
             f'<ul class="deep-research__sources">{links}</ul>'
             '</section>'
+            '</details>'
         )
 
     @classmethod
@@ -750,12 +761,14 @@ class PostgreSQLContentIndex:
     ) -> str:
         report = cls._extract_research_report(research_response, report_title)
         source_items = cls._source_items_from_meta(research_meta) or report["source_items"]
-        meta_chips = [
-            cls._render_meta_chip("Depth", research_meta.get("depth")),
-            cls._render_meta_chip("Providers", " / ".join(research_meta.get("provider_chain") or [])),
-            cls._render_meta_chip("Sources", research_meta.get("source_count")),
-            cls._render_meta_chip("Results", research_meta.get("result_count")),
-            cls._render_meta_chip(
+        meta_rows = [
+            cls._render_meta_row("Source variant", research_meta.get("source_summary_variant")),
+            cls._render_meta_row("Parent run", research_meta.get("parent_follow_up_run_id")),
+            cls._render_meta_row("Depth", research_meta.get("depth")),
+            cls._render_meta_row("Providers", " / ".join(research_meta.get("provider_chain") or [])),
+            cls._render_meta_row("Sources", research_meta.get("source_count")),
+            cls._render_meta_row("Results", research_meta.get("result_count")),
+            cls._render_meta_row(
                 "Planner",
                 " ".join(
                     part
@@ -763,7 +776,7 @@ class PostgreSQLContentIndex:
                     if part
                 ),
             ),
-            cls._render_meta_chip(
+            cls._render_meta_row(
                 "Writer",
                 " ".join(
                     part
@@ -771,15 +784,27 @@ class PostgreSQLContentIndex:
                     if part
                 ),
             ),
-            cls._render_meta_chip("Generated", generated_at),
+            cls._render_meta_row("Generated", generated_at),
         ]
-        meta_html = "".join(chip for chip in meta_chips if chip)
+        meta_html = "".join(row for row in meta_rows if row)
         notice = report.get("notice") or research_meta.get("user_notice") or ""
-        notice_html = (
-            '<aside class="deep-research__notice">'
+        notice_block = (
+            '<div class="deep-research__notice">'
             f"{cls._render_inline_markdown(str(notice))}"
-            '</aside>'
+            '</div>'
         ) if notice else ""
+        details_html = (
+            '<details class="deep-research__details">'
+            '<summary class="deep-research__details-summary">'
+            '<span class="deep-research__details-title">Research details</span>'
+            '<span class="deep-research__details-meta">Models, filters, and provenance</span>'
+            '</summary>'
+            '<section class="deep-research__section deep-research__section--details">'
+            f'<dl class="deep-research__meta-list">{meta_html}</dl>'
+            f'{notice_block}'
+            + '</section>'
+            '</details>'
+        ) if meta_html or notice else ""
         summary_html = (
             '<section class="deep-research__section deep-research__section--summary">'
             '<div class="deep-research__section-label">Summary</div>'
@@ -792,9 +817,8 @@ class PostgreSQLContentIndex:
             '<header class="deep-research__header">'
             '<div class="deep-research__eyebrow">Deep Research</div>'
             f'<h2 class="deep-research__title">{cls._escape_html(report.get("title") or report_title or "Deep Research")}</h2>'
-            f'<div class="deep-research__meta">{meta_html}</div>'
             '</header>'
-            f'{notice_html}'
+            f'{details_html}'
             f'{summary_html}'
             f'{cls._render_questions_html(research_meta)}'
             '<section class="deep-research__section deep-research__section--body">'
