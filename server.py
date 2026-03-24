@@ -4023,6 +4023,60 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             errors=errors,
             label="queue job",
         )
+
+    def _delete_matching_ledger_entries(self, *, candidates: set[str], normalized_ids: set[str], deleted_files: list, errors: list) -> None:
+        ledger_paths = self._candidate_paths(
+            *(root / "ledger.json" for root in self._backend_data_roots()),
+            self._dashboard_root() / "data" / "ledger.json",
+        )
+        normalized_lower = {item.lower() for item in normalized_ids if item}
+        candidate_lower = {item.lower() for item in candidates if item}
+
+        for ledger_path in ledger_paths:
+            if not ledger_path.is_file():
+                continue
+            try:
+                with ledger_path.open("r", encoding="utf-8") as handle:
+                    ledger_data = json.load(handle)
+            except Exception as exc:
+                errors.append(f"Failed to read ledger {ledger_path}: {exc}")
+                continue
+
+            if not isinstance(ledger_data, dict):
+                continue
+
+            removed_keys = []
+            for key, entry in list(ledger_data.items()):
+                key_text = str(key or "").strip()
+                key_video = key_text.rsplit(":", 1)[0] if ":" in key_text else key_text
+                key_video_normalized = key_video.split(":", 1)[-1].strip().lower()
+                entry_json = ""
+                entry_stem = ""
+                if isinstance(entry, dict):
+                    entry_json = str(entry.get("json") or "").lower()
+                    entry_stem = str(entry.get("stem") or "").lower()
+
+                matches = (
+                    key_text.lower() in candidate_lower
+                    or key_video.lower() in candidate_lower
+                    or key_video_normalized in normalized_lower
+                    or any(normalized in entry_json or normalized in entry_stem for normalized in normalized_lower)
+                )
+                if matches:
+                    removed_keys.append(key_text)
+                    ledger_data.pop(key, None)
+
+            if not removed_keys:
+                continue
+
+            try:
+                with ledger_path.open("w", encoding="utf-8") as handle:
+                    json.dump(ledger_data, handle, indent=2)
+                    handle.write("\n")
+                deleted_files.append(f"Ledger: {ledger_path} ({len(removed_keys)} entries)")
+                logger.info("Deleted ledger entries from %s: %s", ledger_path, ", ".join(removed_keys))
+            except Exception as exc:
+                errors.append(f"Failed to write ledger {ledger_path}: {exc}")
     
     def _auth_ok(self) -> bool:
         """Check bearer token authentication for delete operations"""
@@ -4166,6 +4220,16 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             )
         except Exception as exc:
             errors.append(f"Queue cleanup error: {exc}")
+
+        try:
+            self._delete_matching_ledger_entries(
+                candidates=candidate_ids,
+                normalized_ids=normalized_ids,
+                deleted_files=deleted_files,
+                errors=errors,
+            )
+        except Exception as exc:
+            errors.append(f"Ledger cleanup error: {exc}")
 
         # (SQLite deletion removed in Postgres-only mode)
 
