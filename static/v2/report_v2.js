@@ -380,6 +380,44 @@
     return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&t=${start}s`;
   };
 
+  const sanitizeFilenamePart = (value) => String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80);
+
+  const getTranscriptFilenameBase = () => {
+    const titlePart = sanitizeFilenamePart(REPORT_CONTEXT.title || '');
+    const videoId = sanitizeFilenamePart(getReportVideoId());
+    return [titlePart || 'transcript', videoId].filter(Boolean).join('_');
+  };
+
+  const downloadBlob = (content, filename, mimeType) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+
+  const getPlainTranscriptText = () => {
+    const transcriptText = getTranscriptText();
+    if (transcriptText) return transcriptText;
+    return getTranscriptSegments().map((segment) => segment.text).join(' ').trim();
+  };
+
+  const buildTranscriptDownloadPayload = () => ({
+    title: String(REPORT_CONTEXT.title || '').trim(),
+    video_id: getReportVideoId(),
+    source_url: String(REPORT_CONTEXT.source_url || '').trim(),
+    transcript: getPlainTranscriptText(),
+    transcript_segments: getTranscriptSegments()
+  });
+
   const renderTranscriptFallback = (text, query) => {
     const transcript = String(text || '').trim();
     const needle = String(query || '').trim().toLowerCase();
@@ -399,6 +437,8 @@
     const status = $('transcriptStatus');
     const empty = $('transcriptEmpty');
     const openBtn = $('openTranscriptBtn');
+    const downloadJsonBtn = $('downloadTranscriptJsonBtn');
+    const downloadTextBtn = $('downloadTranscriptTextBtn');
     if (!section || !list) return;
 
     const transcriptText = getTranscriptText();
@@ -410,6 +450,23 @@
       openBtn?.classList.add('hidden');
       return;
     }
+
+    downloadJsonBtn?.addEventListener('click', () => {
+      const payload = buildTranscriptDownloadPayload();
+      downloadBlob(
+        `${JSON.stringify(payload, null, 2)}\n`,
+        `${getTranscriptFilenameBase()}.json`,
+        'application/json;charset=utf-8'
+      );
+    });
+
+    downloadTextBtn?.addEventListener('click', () => {
+      downloadBlob(
+        `${getPlainTranscriptText()}\n`,
+        `${getTranscriptFilenameBase()}.txt`,
+        'text/plain;charset=utf-8'
+      );
+    });
 
     const render = () => {
       const query = String(search?.value || '').trim();

@@ -5612,6 +5612,56 @@ class AudioDashboard {
         return `https://www.youtube.com/watch?v=${encodeURIComponent(normalizedVideoId)}&t=${start}s`;
     }
 
+    sanitizeFilenamePart(value) {
+        return String(value || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '')
+            .slice(0, 80);
+    }
+
+    getTranscriptFilenameBase(item) {
+        const titlePart = this.sanitizeFilenamePart(item?.title || '');
+        const reportIdPart = this.sanitizeFilenamePart(item?.file_stem || item?.report_id || item?.video_id || item?.id || '');
+        return [titlePart || 'transcript', reportIdPart].filter(Boolean).join('_');
+    }
+
+    downloadBlob(content, filename, mimeType) {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+
+    getPlainTranscriptText(item) {
+        const { transcriptText, transcriptSegments } = this.getTranscriptData(item);
+        if (transcriptText) return transcriptText;
+        return transcriptSegments.map((segment) => segment.text).join(' ').trim();
+    }
+
+    downloadTranscript(item, format = 'json') {
+        if (!item) return;
+        const payload = {
+            title: String(item?.title || '').trim(),
+            report_id: String(item?.file_stem || item?.report_id || item?.id || '').trim(),
+            video_id: String(item?.video_id || item?.videoId || '').trim(),
+            source_url: String(item?.canonical_url || item?.url || '').trim(),
+            transcript: this.getPlainTranscriptText(item),
+            transcript_segments: this.getTranscriptData(item).transcriptSegments
+        };
+        const base = this.getTranscriptFilenameBase(item);
+        if (String(format).toLowerCase() === 'txt') {
+            this.downloadBlob(`${payload.transcript || ''}\n`, `${base}.txt`, 'text/plain;charset=utf-8');
+            return;
+        }
+        this.downloadBlob(`${JSON.stringify(payload, null, 2)}\n`, `${base}.json`, 'application/json;charset=utf-8');
+    }
+
     renderTranscriptVariant(item, { compact = false } = {}) {
         const { transcriptText, transcriptSegments, hasTranscript } = this.getTranscriptData(item);
         const videoId = String(item?.video_id || item?.videoId || '').trim();
@@ -5669,7 +5719,21 @@ class AudioDashboard {
                         <h3 class="text-base font-semibold text-slate-900 dark:text-slate-100">Transcript</h3>
                         <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Search the transcript and jump to the matching point in YouTube.</p>
                     </div>
-                    <div class="flex flex-wrap items-center gap-2">${chips}</div>
+                    <div class="flex flex-col items-start gap-2 sm:items-end">
+                        <div class="flex flex-wrap items-center gap-2">${chips}</div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button type="button"
+                                    class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+                                    data-transcript-download="json">
+                                Download JSON
+                            </button>
+                            <button type="button"
+                                    class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+                                    data-transcript-download="txt">
+                                Download TXT
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <label class="sr-only">Search transcript</label>
@@ -5691,7 +5755,7 @@ class AudioDashboard {
         `;
     }
 
-    bindTranscriptVariant(container, onFn = null) {
+    bindTranscriptVariant(container, onFn = null, itemOverride = null) {
         if (!container || typeof container.querySelectorAll !== 'function') return;
         const bind = (el, type, handler, opts) => {
             if (!el || !handler) return;
@@ -5705,6 +5769,8 @@ class AudioDashboard {
             const empty = root.querySelector('[data-transcript-empty]');
             const rows = Array.from(root.querySelectorAll('[data-transcript-row]'));
             const fallback = root.querySelector('[data-transcript-fallback]');
+            const downloadButtons = Array.from(root.querySelectorAll('[data-transcript-download]'));
+            const transcriptItem = itemOverride;
 
             const render = () => {
                 const query = String(input?.value || '').trim();
@@ -5736,6 +5802,11 @@ class AudioDashboard {
                 }
             };
 
+            downloadButtons.forEach((button) => bind(button, 'click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.downloadTranscript(transcriptItem, button.getAttribute('data-transcript-download') || 'json');
+            }));
             bind(input, 'input', render);
             render();
         });
@@ -5902,7 +5973,7 @@ class AudioDashboard {
                 this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
             } else if (entry.kind === 'transcript') {
                 body.innerHTML = this.renderTranscriptVariant(currentItem, { compact: true });
-                this.bindTranscriptVariant(body);
+                this.bindTranscriptVariant(body, null, currentItem);
             } else {
                 body.innerHTML = this.renderDeepResearchWrappedSummary(
                     currentItem,
@@ -7579,7 +7650,7 @@ class AudioDashboard {
                 bindVariantTabActions(body);
                 this.bindReaderHeaderHandlers(body, on);
                 this.bindReaderMetaInteractions(body, on);
-                this.bindTranscriptVariant(body, on);
+                this.bindTranscriptVariant(body, on, item);
                 try { this.applyReaderDisplayPrefs(dock, body); } catch (_) { }
                 return;
             }
@@ -8200,7 +8271,7 @@ class AudioDashboard {
 			            body.innerHTML = this.renderTranscriptVariant(item, { compact: true });
                         this.bindReaderHeaderHandlers(body, on);
                         this.bindReaderMetaInteractions(body, on);
-                        this.bindTranscriptVariant(body, on);
+                        this.bindTranscriptVariant(body, on, item);
                         try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
                         resetReaderScroll();
                         return;

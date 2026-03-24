@@ -402,17 +402,29 @@
             Search the transcript and jump to the matching moment on YouTube.
           </p>
         </div>
-        <div class="flex flex-wrap items-center gap-2 text-xs">
-          {% if transcript_segments and transcript_segments|length > 0 %}
-          <span class="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
-            {{ transcript_segments|length }} segments
-          </span>
-          {% endif %}
-          {% if transcript_text %}
-          <span class="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
-            {{ transcript_text|length }} chars
-          </span>
-          {% endif %}
+        <div class="flex flex-col items-start gap-2 md:items-end">
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            {% if transcript_segments and transcript_segments|length > 0 %}
+            <span class="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
+              {{ transcript_segments|length }} segments
+            </span>
+            {% endif %}
+            {% if transcript_text %}
+            <span class="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
+              {{ transcript_text|length }} chars
+            </span>
+            {% endif %}
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="downloadTranscriptJsonBtn"
+                    class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900">
+              Download JSON
+            </button>
+            <button id="downloadTranscriptTextBtn"
+                    class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900">
+              Download TXT
+            </button>
+          </div>
         </div>
       </div>
       <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
