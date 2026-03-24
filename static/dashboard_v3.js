@@ -78,6 +78,7 @@ const REPROCESS_VARIANTS = [
 
 const DISPLAY_VARIANTS = [
     ...REPROCESS_VARIANTS,
+    { id: 'transcript', label: 'Transcript', icon: '🧾', kind: 'transcript' },
     { id: 'deep-research', label: 'Research', icon: '🔎', kind: 'research' }
 ];
 
@@ -102,6 +103,7 @@ const READER_FAMILY_MAP = {
     serif: "ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif"
 };
 const READER_THEMES = ['light', 'sepia', 'dark'];
+const READER_THEME_OPTIONS = ['system', ...READER_THEMES];
 const READER_PARA_STYLES = ['spaced', 'indented'];
 const READER_JUSTIFY = ['left', 'justify'];
 // Measure mapping: tuned per feedback
@@ -919,6 +921,65 @@ class AudioDashboard {
         // Delegated card actions
         if (this.contentGrid) {
             this.contentGrid.addEventListener('click', (e) => this.onClickCardAction(e));
+            this.contentGrid.addEventListener('touchstart', (e) => {
+                const card = e.target.closest('[data-card]');
+                if (!card) {
+                    this._pendingCardTouchTap = null;
+                    return;
+                }
+                if (e.target.closest('[data-control], [data-action], [data-filter-chip], [data-card-progress-container]')) {
+                    this._pendingCardTouchTap = null;
+                    return;
+                }
+                const t = e.touches && e.touches[0];
+                if (!t) return;
+                this._pendingCardTouchTap = {
+                    card,
+                    x: t.clientX,
+                    y: t.clientY
+                };
+            }, { passive: true });
+            this.contentGrid.addEventListener('touchmove', (e) => {
+                const pending = this._pendingCardTouchTap;
+                const t = e.touches && e.touches[0];
+                if (!pending || !t) return;
+                const dx = t.clientX - pending.x;
+                const dy = t.clientY - pending.y;
+                if (Math.abs(dx) > 12 || Math.abs(dy) > 12) {
+                    this._pendingCardTouchTap = null;
+                }
+            }, { passive: true });
+            this.contentGrid.addEventListener('touchend', (e) => {
+                const pending = this._pendingCardTouchTap;
+                this._pendingCardTouchTap = null;
+                if (!pending || this._suppressOpen) return;
+                const target = e.target;
+                if (target?.closest?.('[data-control], [data-action], [data-filter-chip], [data-card-progress-container]')) return;
+                const touch = e.changedTouches && e.changedTouches[0];
+                if (touch) {
+                    const dx = touch.clientX - pending.x;
+                    const dy = touch.clientY - pending.y;
+                    if (Math.abs(dx) > 12 || Math.abs(dy) > 12) return;
+                }
+                const card = pending.card;
+                if (!card || !this.contentGrid.contains(card)) return;
+                this._touchCardOpenUntil = Date.now() + 700;
+                e.preventDefault();
+                e.stopPropagation();
+                const isWallCard = this.viewMode === 'wall' || card.closest('.wall-grid') || card.classList.contains('wall-card');
+                if (isWallCard) {
+                    const id = card.getAttribute('data-report-id');
+                    if (id) {
+                        this.handleWallRead(id, card);
+                        return;
+                    }
+                }
+                const href = card.dataset.href;
+                if (href) window.location.href = href;
+            });
+            this.contentGrid.addEventListener('touchcancel', () => {
+                this._pendingCardTouchTap = null;
+            }, { passive: true });
             // Seek on thumbnail progress bar (subtle, bottom of thumbnail)
             this.contentGrid.addEventListener('click', (e) => {
                 const el = e.target.closest('[data-card-progress-container]');
@@ -3559,6 +3620,7 @@ class AudioDashboard {
         this.contentGrid.querySelectorAll('[data-card]').forEach(card => {
             card.addEventListener('click', (e) => {
                 console.log('[DEBUG] Card clicked', { viewMode: this.viewMode, target: e.target.tagName });
+                if (this._touchCardOpenUntil && Date.now() < this._touchCardOpenUntil) { e.preventDefault(); e.stopPropagation(); return; }
                 if (this._suppressOpen) { e.preventDefault(); e.stopPropagation(); console.log('[DEBUG] Suppressed'); return; }
                 // Ignore if click on a control, action, or filter chip
                 if (e.target.closest('[data-control]') || e.target.closest('[data-action]') || e.target.closest('[data-filter-chip]')) {
@@ -3661,6 +3723,7 @@ class AudioDashboard {
             newCards.forEach(card => {
                 card.addEventListener('click', (e) => {
                     console.log('[DEBUG] New card clicked', { viewMode: this.viewMode, target: e.target.tagName });
+                    if (this._touchCardOpenUntil && Date.now() < this._touchCardOpenUntil) { e.preventDefault(); e.stopPropagation(); return; }
                     if (this._suppressOpen) { e.preventDefault(); e.stopPropagation(); return; }
                     if (e.target.closest('[data-control]') || e.target.closest('[data-action]') || e.target.closest('[data-filter-chip]')) {
                         return;
@@ -3765,21 +3828,29 @@ class AudioDashboard {
                     <button type="button" class="wall-dock__return hidden" data-action="wall-dock-return" aria-hidden="true">↑ Back to active card</button>
                     <div class="wall-dock__chrome">
                         <div class="wall-dock__topline">
-                            <button type="button" id="wallDockSource" class="wall-dock__source-badge" data-action="wall-reader-open-source">
-                                <span id="wallDockSourceIcon"></span>
-                                <span id="wallDockDuration" class="wall-dock__duration"></span>
-                            </button>
-                            <button type="button" id="wallDockChannel" class="wall-dock__channel hidden"></button>
-                            <button type="button" id="wallDockTags" class="wall-dock__tags-btn hidden">
-                                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
-                                    <line x1="7" y1="7" x2="7.01" y2="7"/>
-                                </svg>
-                                <span id="wallDockTagsCount">0</span>
-                            </button>
+                            <div class="wall-dock__meta-row">
+                                <button type="button" id="wallDockSource" class="wall-dock__source-badge" data-action="wall-reader-open-source">
+                                    <span id="wallDockSourceIcon"></span>
+                                    <span id="wallDockDuration" class="wall-dock__duration"></span>
+                                </button>
+                                <button type="button" id="wallDockChannel" class="wall-dock__channel hidden"></button>
+                                <button type="button" id="wallDockTags" class="wall-dock__tags-btn hidden">
+                                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                                        <line x1="7" y1="7" x2="7.01" y2="7"/>
+                                    </svg>
+                                    <span id="wallDockTagsCount">0</span>
+                                </button>
+                            </div>
                             <div class="wall-dock__top-actions">
                                 <div class="wall-dock__menu-wrap">
                                     <button type="button" class="wall-dock__btn wall-dock__btn--menu summary-card__menu-btn" data-action="menu" aria-label="More options" aria-haspopup="menu" aria-expanded="false">•••</button>
+                                    <div class="summary-card__menu wall-dock__menu hidden" data-kebab-menu role="menu">
+                                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-open-page">Open full page</button>
+                                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-copy-link">Copy link</button>
+                                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-reprocess">Regenerate…</button>
+                                        <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
+                                    </div>
                                 </div>
                                 <button type="button" class="wall-dock__focus" data-action="wall-reader-focus" aria-label="Open in Reader" title="Open in Reader">
                                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -3793,103 +3864,6 @@ class AudioDashboard {
                             </div>
                         </div>
                         <h3 id="wallDockTitle" class="wall-dock__title">Summary</h3>
-                        <div class="summary-card__menu wall-dock__menu hidden" data-kebab-menu role="menu">
-                            <section class="wall-dock__menu-section" data-wall-menu-section="reader">
-                                <p class="wall-dock__menu-label">Reader</p>
-                                <button type="button" class="summary-card__menu-item wall-dock__display-toggle" role="menuitem" data-action="reader-display-inline-toggle" aria-expanded="false" aria-controls="wallDockDisplayPanel">
-                                    <span class="wall-dock__display-toggle-head">
-                                        <span class="wall-dock__display-toggle-icon" aria-hidden="true">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="11" cy="18" r="2"/></svg>
-                                        </span>
-                                        <span class="wall-dock__display-toggle-text">Display</span>
-                                    </span>
-                                    <span class="wall-dock__display-chevron" aria-hidden="true">⌄</span>
-                                </button>
-                                <div id="wallDockDisplayPanel" class="wall-dock__display-panel hidden" data-wall-display-panel>
-                                    <section class="wall-dock__display-group wall-dock__display-group--type">
-                                        <header class="wall-dock__display-group-head">
-                                            <span class="wall-dock__display-group-icon" aria-hidden="true">A</span>
-                                            <span class="wall-dock__display-group-title">Type</span>
-                                        </header>
-                                        <div class="wall-dock__display-row">
-                                            <span class="wall-dock__display-row-icon" aria-hidden="true">SZ</span>
-                                            <div class="wall-dock__display-seg wall-dock__display-seg--dense" role="group" aria-label="Text size">
-                                                <span role="button" data-reader-size-dec aria-pressed="false" title="Smaller text">-</span>
-                                                <span role="button" data-reader-size="s" aria-pressed="false" title="Small">S</span>
-                                                <span role="button" data-reader-size="m" aria-pressed="false" title="Medium">M</span>
-                                                <span role="button" data-reader-size="l" aria-pressed="false" title="Large">L</span>
-                                                <span role="button" data-reader-size-inc aria-pressed="false" title="Larger text">+</span>
-                                            </div>
-                                        </div>
-                                        <div class="wall-dock__display-row">
-                                            <span class="wall-dock__display-row-icon" aria-hidden="true">FN</span>
-                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Font family">
-                                                <span role="button" data-reader-family="sans" aria-pressed="false" title="Sans serif">Sans</span>
-                                                <span role="button" data-reader-family="serif" aria-pressed="false" title="Serif" style="font-family:Georgia,serif">Serif</span>
-                                            </div>
-                                        </div>
-                                        <div class="wall-dock__display-row">
-                                            <span class="wall-dock__display-row-icon" aria-hidden="true">LN</span>
-                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Line spacing">
-                                                <span role="button" data-reader-line="tight" aria-pressed="false" title="Tight spacing">T</span>
-                                                <span role="button" data-reader-line="normal" aria-pressed="false" title="Normal spacing">N</span>
-                                                <span role="button" data-reader-line="loose" aria-pressed="false" title="Loose spacing">L</span>
-                                            </div>
-                                        </div>
-                                    </section>
-                                    <section class="wall-dock__display-group wall-dock__display-group--layout">
-                                        <header class="wall-dock__display-group-head">
-                                            <span class="wall-dock__display-group-icon" aria-hidden="true">[]</span>
-                                            <span class="wall-dock__display-group-title">Layout</span>
-                                        </header>
-                                        <div class="wall-dock__display-row">
-                                            <span class="wall-dock__display-row-icon" aria-hidden="true">P</span>
-                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Paragraph style">
-                                                <span role="button" data-reader-para="spaced" aria-pressed="false" title="Spaced paragraphs">Sp</span>
-                                                <span role="button" data-reader-para="indented" aria-pressed="false" title="Indented paragraphs">In</span>
-                                            </div>
-                                        </div>
-                                        <div class="wall-dock__display-row">
-                                            <span class="wall-dock__display-row-icon" aria-hidden="true">J</span>
-                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Justification">
-                                                <span role="button" data-reader-justify="left" aria-pressed="false" title="Left aligned">Left</span>
-                                                <span role="button" data-reader-justify="justify" aria-pressed="false" title="Justified">Just</span>
-                                            </div>
-                                        </div>
-                                        <div class="wall-dock__display-row">
-                                            <span class="wall-dock__display-row-icon" aria-hidden="true">W</span>
-                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Reading width">
-                                                <span role="button" data-reader-measure="narrow" aria-pressed="false" title="Narrow">N</span>
-                                                <span role="button" data-reader-measure="medium" aria-pressed="false" title="Medium">M</span>
-                                                <span role="button" data-reader-measure="wide" aria-pressed="false" title="Wide">W</span>
-                                                <span role="button" data-reader-measure="full" aria-pressed="false" title="Full width">F</span>
-                                            </div>
-                                        </div>
-                                    </section>
-                                    <section class="wall-dock__display-group wall-dock__display-group--theme">
-                                        <header class="wall-dock__display-group-head">
-                                            <span class="wall-dock__display-group-icon" aria-hidden="true">O</span>
-                                            <span class="wall-dock__display-group-title">Tone</span>
-                                            <button type="button" class="wall-dock__display-reset" data-reader-reset-inline title="Reset reader settings">Reset</button>
-                                        </header>
-                                        <div class="wall-dock__display-row wall-dock__display-row--full">
-                                            <div class="wall-dock__display-seg wall-dock__display-seg--wide" role="radiogroup" aria-label="Reader theme">
-                                                <span role="button" data-reader-theme="light" aria-pressed="false" title="Light theme">Lt</span>
-                                                <span role="button" data-reader-theme="sepia" aria-pressed="false" title="Sepia theme">Se</span>
-                                                <span role="button" data-reader-theme="dark" aria-pressed="false" title="Dark theme">Dk</span>
-                                            </div>
-                                        </div>
-                                    </section>
-                                </div>
-                                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-copy-link">Copy link</button>
-                                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-open-page">Open report page</button>
-                            </section>
-                            <section class="wall-dock__menu-section" data-wall-menu-section="actions">
-                                <p class="wall-dock__menu-label">Actions</p>
-                                <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-reprocess">Regenerate…</button>
-                                <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
-                            </section>
-                        </div>
                     </div>
                     <div class="summary-card__popover hidden" data-delete-popover>
                         <div class="summary-card__popover-panel">
@@ -4949,12 +4923,62 @@ class AudioDashboard {
         return firstText || '';
     }
 
+    ensureResearchVariant(variantInfo, item, preferredVariantId = '') {
+        if (!variantInfo || !Array.isArray(variantInfo.order) || !variantInfo.map) return variantInfo;
+        const videoId = String(item?.video_id || item?.videoId || '').trim();
+        if (!videoId || variantInfo.map['deep-research']) return variantInfo;
+        const sourceVariantId = this.getPreferredResearchVariant(variantInfo, preferredVariantId);
+        return {
+            ...variantInfo,
+            map: {
+                ...variantInfo.map,
+                'deep-research': {
+                    id: 'deep-research',
+                    label: VARIANT_META_MAP['deep-research']?.label || 'Research',
+                    kind: 'research-launcher',
+                    html: '',
+                    sourceVariantId,
+                    raw: {
+                        text: '',
+                        source_variant_id: sourceVariantId
+                    }
+                }
+            },
+            order: variantInfo.order.includes('deep-research')
+                ? [...variantInfo.order]
+                : [...variantInfo.order, 'deep-research']
+        };
+    }
+
+    renderDeepResearchEmptyState(item, variantId = '') {
+        const sourceVariantId = this.getPreferredResearchVariant(
+            this.extractVariantInfo(item, this.computeFallbackSummaryHtml(item)),
+            variantId
+        );
+        return `
+          <section class="deep-research-empty-state" data-deep-research-empty-state>
+            <div class="deep-research-empty-state__copy">
+              <div class="deep-research-launcher__eyebrow">Research</div>
+              <h3 class="deep-research-empty-state__title">Deep Research hasn’t been generated yet</h3>
+              <p class="deep-research-empty-state__text">Deep Research turns this summary into a deeper follow-up report. You can start from suggested questions or add your own to dig further into claims, evidence, and context.</p>
+            </div>
+            <div class="deep-research-empty-state__actions">
+              <button type="button"
+                      class="deep-research-launcher__button"
+                      data-deep-research-open
+                      data-deep-research-variant-id="${this.escapeHtml(sourceVariantId || '')}">
+                Open Research Setup
+              </button>
+            </div>
+          </section>
+        `;
+    }
+
     renderWallDockVariantTabs(variantInfo, activeVariantId = '', options = {}) {
         if (!variantInfo || !Array.isArray(variantInfo.order)) return '';
         const active = String(activeVariantId || '').toLowerCase();
-        const { videoId, canRegenerate = false, canResearch = false, hasResearch = false, reportId = '' } = options;
-        const showResearchLauncher = canResearch && !hasResearch;
-        if ((variantInfo.order.length + (showResearchLauncher ? 1 : 0)) <= 1) return '';
+        const { videoId, canRegenerate = false, reportId = '' } = options;
+        if (variantInfo.order.length <= 1) return '';
         const tabs = variantInfo.order.map((variantId) => {
             const id = String(variantId || '').toLowerCase();
             const meta = variantInfo.map[id] || {};
@@ -4970,16 +4994,6 @@ class AudioDashboard {
                 </button>
             `;
         }).join('');
-        const researchLauncherTab = showResearchLauncher ? `
-            <button type="button"
-                    class="wall-dock__variant-tab"
-                    data-wall-action="research"
-                    role="tab"
-                    aria-selected="false">
-                ${this.escapeHtml(VARIANT_META_MAP['deep-research']?.label || 'Research')}
-            </button>
-        ` : '';
-
         // Action buttons (regenerate, display options)
         const actionButtons = `
             <div class="wall-dock__actions ml-auto flex items-center gap-2">
@@ -4999,7 +5013,9 @@ class AudioDashboard {
                 <button type="button"
                         class="wall-dock__action-btn"
                         data-wall-action="display"
-                        title="Display options">
+                        title="Display options"
+                        aria-haspopup="dialog"
+                        aria-expanded="false">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                     </svg>
@@ -5013,7 +5029,6 @@ class AudioDashboard {
                 <div class="wall-dock__variant-track flex items-center" role="tablist">
                     <div class="flex gap-1">
                         ${tabs}
-                        ${researchLauncherTab}
                     </div>
                     ${actionButtons}
                 </div>
@@ -5110,21 +5125,41 @@ class AudioDashboard {
         const btn = trigger || card.querySelector('[data-action="menu"]');
         if (!menu || !btn) return;
         const setExpanded = (val) => btn.setAttribute('aria-expanded', val ? 'true' : 'false');
+        const cleanupExisting = () => {
+            if (typeof this._menuCleanup === 'function') {
+                const fn = this._menuCleanup;
+                this._menuCleanup = null;
+                try { fn(); } catch (_) { }
+            }
+        };
         if (show) {
-            // Close any other open menus globally
-            try { document.querySelectorAll('[data-kebab-menu]:not(.hidden)').forEach(m => m.classList.add('hidden')); } catch (_) { }
+            cleanupExisting();
+            try {
+                document.querySelectorAll('[data-kebab-menu]:not(.hidden)').forEach((m) => {
+                    m.classList.add('hidden');
+                    const owner = m.closest('[data-card], [data-wall-reader], #wallDockReader, #wallReaderModal') || m.parentElement;
+                    const ownerBtn = owner ? owner.querySelector('[data-action="menu"]') : null;
+                    if (ownerBtn) ownerBtn.setAttribute('aria-expanded', 'false');
+                });
+            } catch (_) { }
             setExpanded(true);
             menu.classList.remove('hidden');
             menu.setAttribute('role', 'menu');
             this._lastMenuTrigger = btn;
             const first = menu.querySelector('[role="menuitem"],button');
             if (first) first.focus();
+            let closed = false;
             const close = () => {
+                if (closed) return;
+                closed = true;
                 menu.classList.add('hidden');
                 setExpanded(false);
                 document.removeEventListener('keydown', onKey, true);
                 document.removeEventListener('click', onClickAway, true);
                 btn.focus();
+                if (this._menuCleanup === close) {
+                    this._menuCleanup = null;
+                }
             };
             const onKey = (e) => { if (e.key === 'Escape') close(); };
             const onClickAway = (e) => {
@@ -5138,7 +5173,7 @@ class AudioDashboard {
         } else {
             menu.classList.add('hidden');
             setExpanded(false);
-            if (this._menuCleanup) this._menuCleanup();
+            cleanupExisting();
         }
     }
 
@@ -5523,6 +5558,189 @@ class AudioDashboard {
         return summaryRaw ? this.formatKeyPoints(summaryRaw) : '';
     }
 
+    normalizeTranscriptSegments(raw) {
+        if (!Array.isArray(raw)) return [];
+        return raw.map((segment) => ({
+            text: String(segment?.text || '').trim(),
+            start: Number(segment?.start),
+            duration: Number(segment?.duration)
+        })).filter((segment) => segment.text);
+    }
+
+    getTranscriptData(item) {
+        let transcriptText = item?.transcript_text ?? item?.transcript ?? '';
+        if (transcriptText != null && typeof transcriptText !== 'string') transcriptText = String(transcriptText);
+        transcriptText = String(transcriptText || '').trim();
+        const segments = this.normalizeTranscriptSegments(item?.transcript_segments);
+        return {
+            transcriptText,
+            transcriptSegments: segments,
+            hasTranscript: Boolean(transcriptText) || segments.length > 0
+        };
+    }
+
+    escapeRegExp(value) {
+        return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    highlightTranscriptText(text, query) {
+        const raw = text == null ? '' : String(text);
+        const needle = String(query || '').trim();
+        if (!needle) return this.escapeHtml(raw);
+        const matcher = new RegExp(`(${this.escapeRegExp(needle)})`, 'ig');
+        return raw.split(matcher).map((part) => {
+            if (part.toLowerCase() === needle.toLowerCase()) {
+                return `<mark class="rounded bg-amber-200 px-0.5 text-inherit dark:bg-amber-500/40">${this.escapeHtml(part)}</mark>`;
+            }
+            return this.escapeHtml(part);
+        }).join('');
+    }
+
+    formatTranscriptTimestamp(seconds) {
+        const totalSeconds = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const secs = totalSeconds % 60;
+        if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        return `${minutes}:${String(secs).padStart(2, '0')}`;
+    }
+
+    getTranscriptJumpUrl(videoId, seconds) {
+        const normalizedVideoId = String(videoId || '').trim();
+        if (!normalizedVideoId) return '';
+        const start = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+        return `https://www.youtube.com/watch?v=${encodeURIComponent(normalizedVideoId)}&t=${start}s`;
+    }
+
+    renderTranscriptVariant(item, { compact = false } = {}) {
+        const { transcriptText, transcriptSegments, hasTranscript } = this.getTranscriptData(item);
+        const videoId = String(item?.video_id || item?.videoId || '').trim();
+        const maxHeight = compact ? 'max-h-[22rem]' : 'max-h-[30rem]';
+
+        if (!hasTranscript) {
+            return `
+                <section class="not-prose rounded-xl border border-dashed border-slate-300 bg-slate-50/80 px-4 py-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
+                    Transcript unavailable for this item.
+                </section>
+            `;
+        }
+
+        const chips = [
+            transcriptSegments.length
+                ? `<span class="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">${transcriptSegments.length} segments</span>`
+                : '',
+            transcriptText
+                ? `<span class="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">${this.escapeHtml(String(transcriptText.length))} chars</span>`
+                : ''
+        ].filter(Boolean).join('');
+
+        const rowsHtml = transcriptSegments.length
+            ? transcriptSegments.map((segment) => {
+                const timestamp = this.formatTranscriptTimestamp(segment.start);
+                const jumpUrl = this.getTranscriptJumpUrl(videoId, segment.start);
+                const safeText = this.escapeHtml(segment.text);
+                const safeSearch = this.escapeHtml(segment.text.toLowerCase());
+                const timestampMarkup = jumpUrl
+                    ? `<a href="${jumpUrl}" target="_blank" rel="noopener noreferrer" class="inline-flex shrink-0 items-center rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700 transition hover:bg-blue-100 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/70">${this.escapeHtml(timestamp)}</a>`
+                    : `<span class="inline-flex shrink-0 items-center rounded-lg border border-slate-200 bg-slate-100 px-2.5 py-1 font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">${this.escapeHtml(timestamp)}</span>`;
+                return `
+                    <article class="rounded-xl border border-slate-200 bg-slate-50 p-3 transition hover:border-slate-300 dark:border-slate-700 dark:bg-slate-950/40 dark:hover:border-slate-600"
+                             data-transcript-row
+                             data-transcript-copy="${safeText}"
+                             data-transcript-search="${safeSearch}">
+                        <div class="flex items-start gap-3">
+                            ${timestampMarkup}
+                            <p class="min-w-0 text-sm leading-6 text-slate-700 dark:text-slate-300"
+                               data-transcript-text>${safeText}</p>
+                        </div>
+                    </article>
+                `;
+            }).join('')
+            : `
+                <article class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-700 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-300">
+                    <div data-transcript-fallback data-transcript-copy="${this.escapeHtml(transcriptText)}">${this.escapeHtml(transcriptText)}</div>
+                </article>
+            `;
+
+        return `
+            <section class="not-prose space-y-3" data-transcript-root>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div class="min-w-0">
+                        <h3 class="text-base font-semibold text-slate-900 dark:text-slate-100">Transcript</h3>
+                        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Search the transcript and jump to the matching point in YouTube.</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">${chips}</div>
+                </div>
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <label class="sr-only">Search transcript</label>
+                    <input type="search"
+                           aria-label="Search transcript"
+                           placeholder="Search transcript"
+                           class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-400 dark:focus:ring-blue-900/40"
+                           data-transcript-search-input />
+                    <div class="shrink-0 text-xs font-medium text-slate-500 dark:text-slate-400" data-transcript-status></div>
+                </div>
+                <div class="hidden rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-400"
+                     data-transcript-empty>
+                    No transcript matches that search.
+                </div>
+                <div class="space-y-2 overflow-y-auto pr-1 ${maxHeight}" data-transcript-list>
+                    ${rowsHtml}
+                </div>
+            </section>
+        `;
+    }
+
+    bindTranscriptVariant(container, onFn = null) {
+        if (!container || typeof container.querySelectorAll !== 'function') return;
+        const bind = (el, type, handler, opts) => {
+            if (!el || !handler) return;
+            if (typeof onFn === 'function') onFn(el, type, handler, opts);
+            else el.addEventListener(type, handler, opts);
+        };
+
+        container.querySelectorAll('[data-transcript-root]').forEach((root) => {
+            const input = root.querySelector('[data-transcript-search-input]');
+            const status = root.querySelector('[data-transcript-status]');
+            const empty = root.querySelector('[data-transcript-empty]');
+            const rows = Array.from(root.querySelectorAll('[data-transcript-row]'));
+            const fallback = root.querySelector('[data-transcript-fallback]');
+
+            const render = () => {
+                const query = String(input?.value || '').trim();
+                const normalizedQuery = query.toLowerCase();
+
+                if (rows.length) {
+                    let visibleCount = 0;
+                    rows.forEach((row) => {
+                        const searchText = String(row.getAttribute('data-transcript-search') || '');
+                        const rawText = String(row.getAttribute('data-transcript-copy') || '');
+                        const matches = !normalizedQuery || searchText.includes(normalizedQuery);
+                        row.classList.toggle('hidden', !matches);
+                        const textEl = row.querySelector('[data-transcript-text]');
+                        if (textEl) textEl.innerHTML = this.highlightTranscriptText(rawText, query);
+                        if (matches) visibleCount += 1;
+                    });
+                    if (status) status.textContent = `${visibleCount} of ${rows.length} segments`;
+                    if (empty) empty.classList.toggle('hidden', visibleCount > 0);
+                    return;
+                }
+
+                if (fallback) {
+                    const rawText = String(fallback.getAttribute('data-transcript-copy') || '');
+                    const matches = !normalizedQuery || rawText.toLowerCase().includes(normalizedQuery);
+                    fallback.parentElement?.classList.toggle('hidden', !matches);
+                    fallback.innerHTML = this.highlightTranscriptText(rawText, query);
+                    if (status) status.textContent = rawText ? `${rawText.length} chars` : '';
+                    if (empty) empty.classList.toggle('hidden', matches);
+                }
+            };
+
+            bind(input, 'input', render);
+            render();
+        });
+    }
+
     extractVariantInfo(data, fallbackHtml) {
         const audioSrcForData = this.getAudioSourceForItem(data);
         const inferredReportId = data?.file_stem || data?.report_id || data?.id || data?.video_id || '';
@@ -5629,6 +5847,19 @@ class AudioDashboard {
             }
         } catch (_) { }
 
+        try {
+            const { hasTranscript } = this.getTranscriptData(data);
+            if (hasTranscript && !result.map['transcript']) {
+                addVariant('transcript', {
+                    html: this.renderTranscriptVariant(data),
+                    raw: {
+                        transcript: data?.transcript ?? data?.transcript_text ?? '',
+                        transcript_segments: data?.transcript_segments ?? []
+                    }
+                });
+            }
+        } catch (_) { }
+
         return result;
     }
 
@@ -5669,6 +5900,9 @@ class AudioDashboard {
                 }
                 body.innerHTML = this.renderInlineAudioVariant(reportId, entry, audioSrc);
                 this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
+            } else if (entry.kind === 'transcript') {
+                body.innerHTML = this.renderTranscriptVariant(currentItem, { compact: true });
+                this.bindTranscriptVariant(body);
             } else {
                 body.innerHTML = this.renderDeepResearchWrappedSummary(
                     currentItem,
@@ -5704,50 +5938,85 @@ class AudioDashboard {
         return spaced.charAt(0).toUpperCase() + spaced.slice(1);
     }
 
-    // === Reader Display Options (MVP) ===
+    // === Reader Display Options ===
     readerPrefsKey() {
         try { return (window.innerWidth || 0) >= 1024 ? 'readerDisplayPrefsDesktop' : 'readerDisplayPrefsMobile'; } catch (_) { return 'readerDisplayPrefs'; }
+    }
+    detectSystemReaderTheme() {
+        try {
+            return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        } catch (_) {
+            return document.body && document.body.classList.contains('dark') ? 'dark' : 'light';
+        }
+    }
+    getDefaultReaderDisplayPrefs() {
+        const isDesktop = (typeof window !== 'undefined' && (window.innerWidth || 0) >= 1024);
+        return isDesktop
+            ? { size: 'm', line: 'normal', family: 'sans', theme: 'system', paraStyle: 'spaced', justify: 'left', measure: 'wide' }
+            : { size: 'l', line: 'loose', family: 'sans', theme: 'system', paraStyle: 'spaced', justify: 'left', measure: 'full' };
+    }
+    normalizeReaderDisplayPrefs(raw = {}) {
+        const defaults = this.getDefaultReaderDisplayPrefs();
+        const source = raw && typeof raw === 'object' ? raw : {};
+        let theme = String(source.theme || '').toLowerCase();
+        if (source.systemTheme === true) theme = 'system';
+        if (!READER_THEME_OPTIONS.includes(theme)) theme = defaults.theme;
+        return {
+            size: source.size && READER_SIZE_MAP[source.size] ? source.size : defaults.size,
+            line: source.line && READER_LINE_MAP[source.line] ? source.line : defaults.line,
+            family: source.family && READER_FAMILY_MAP[source.family] ? source.family : defaults.family,
+            theme,
+            paraStyle: READER_PARA_STYLES.includes(source.paraStyle) ? source.paraStyle : defaults.paraStyle,
+            justify: READER_JUSTIFY.includes(source.justify) ? source.justify : defaults.justify,
+            measure: source.measure && READER_MEASURE_MAP[source.measure] ? source.measure : defaults.measure
+        };
     }
     getReaderDisplayPrefs() {
         try {
             const raw = localStorage.getItem(this.readerPrefsKey()) || localStorage.getItem('readerDisplayPrefs');
-            if (!raw) {
-                const isDesktop = (typeof window !== 'undefined' && (window.innerWidth || 0) >= 1024);
-                return isDesktop
-                    ? { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'medium' }
-                    : { size: 'l', line: 'loose', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'full' };
-            }
-            const obj = JSON.parse(raw);
-            // Back-compat: remap older measures to new scale
-            let storedMeasure = obj.measure;
-            if (storedMeasure === 'medium') storedMeasure = 'narrow';
-            else if (storedMeasure === 'wide') storedMeasure = 'medium';
-            return {
-                size: obj.size && READER_SIZE_MAP[obj.size] ? obj.size : 'm',
-                line: obj.line && READER_LINE_MAP[obj.line] ? obj.line : 'normal',
-                family: obj.family && READER_FAMILY_MAP[obj.family] ? obj.family : 'sans',
-                theme: READER_THEMES.includes(obj.theme) ? obj.theme : 'light',
-                paraStyle: READER_PARA_STYLES.includes(obj.paraStyle) ? obj.paraStyle : 'spaced',
-                justify: READER_JUSTIFY.includes(obj.justify) ? obj.justify : 'left',
-                measure: (storedMeasure && READER_MEASURE_MAP[storedMeasure]) ? storedMeasure : 'medium'
-            };
+            if (!raw) return this.getDefaultReaderDisplayPrefs();
+            return this.normalizeReaderDisplayPrefs(JSON.parse(raw));
         } catch (_) {
-            const isDesktop = (typeof window !== 'undefined' && (window.innerWidth || 0) >= 1024);
-            return isDesktop
-                ? { size: 'm', line: 'normal', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'medium' }
-                : { size: 'l', line: 'loose', family: 'sans', theme: 'light', paraStyle: 'spaced', justify: 'left', measure: 'full' };
+            return this.getDefaultReaderDisplayPrefs();
         }
     }
     setReaderDisplayPrefs(next) {
         try {
-            const cur = this.getReaderDisplayPrefs();
-            const merged = { ...cur, ...next };
+            const merged = this.normalizeReaderDisplayPrefs({ ...this.getReaderDisplayPrefs(), ...(next || {}) });
             localStorage.setItem(this.readerPrefsKey(), JSON.stringify(merged));
             return merged;
-        } catch (_) { return this.getReaderDisplayPrefs(); }
+        } catch (_) {
+            return this.getReaderDisplayPrefs();
+        }
+    }
+    getEffectiveReaderTheme(prefsInput = null) {
+        const prefs = prefsInput ? this.normalizeReaderDisplayPrefs(prefsInput) : this.getReaderDisplayPrefs();
+        return prefs.theme === 'system' ? this.detectSystemReaderTheme() : prefs.theme;
+    }
+    advanceReaderSize(currentSize = 'm', delta = 0) {
+        const order = ['s', 'm', 'l', 'xl', 'xxl'];
+        let idx = Math.max(0, order.indexOf(currentSize));
+        idx = Math.min(order.length - 1, Math.max(0, idx + delta));
+        return order[idx];
+    }
+    getReaderDisplayMeasureValue(prefsInput = null, container = null) {
+        const prefs = prefsInput ? this.normalizeReaderDisplayPrefs(prefsInput) : this.getReaderDisplayPrefs();
+        const measureKey = prefs.measure || 'medium';
+        let mw = READER_MEASURE_MAP[measureKey] || READER_MEASURE_MAP.medium;
+        if (measureKey === 'auto') {
+            try {
+                const width = (container && container.getBoundingClientRect ? container.getBoundingClientRect().width : 760) || 760;
+                if (width < 520) mw = '54ch';
+                else if (width < 720) mw = '66ch';
+                else if (width < 900) mw = '78ch';
+                else mw = '92ch';
+            } catch (_) { }
+        }
+        return mw;
     }
     applyReaderDisplayPrefs(container, bodyEl) {
         const prefs = this.getReaderDisplayPrefs();
+        const effectiveTheme = this.getEffectiveReaderTheme(prefs);
         if (bodyEl) {
             const fs = READER_SIZE_MAP[prefs.size] || 1.0;
             const lh = READER_LINE_MAP[prefs.line] || 1.6;
@@ -5758,421 +6027,318 @@ class AudioDashboard {
         }
         if (container) {
             try { container.classList.remove('reader-theme--light', 'reader-theme--sepia', 'reader-theme--dark'); } catch (_) { }
-            const theme = this.getReaderDisplayPrefs().theme || 'light';
-            try { container.classList.add('reader-theme--' + theme); } catch (_) { }
-            // Paragraph style
-            const para = this.getReaderDisplayPrefs().paraStyle || 'spaced';
-            try { container.classList.toggle('reader-para--indented', para === 'indented'); } catch (_) { }
-            // Justification (CSS applies only on desktop)
-            const just = this.getReaderDisplayPrefs().justify || 'left';
-            try { container.classList.toggle('reader-justify--on', just === 'justify'); } catch (_) { }
-            // Measure (desktop-only cap; stored as variable used by CSS)
-            const measureKey = this.getReaderDisplayPrefs().measure || 'auto';
-            let mw = READER_MEASURE_MAP[measureKey] || '70ch';
-            if (measureKey === 'auto') {
-                try {
-                    const w = (container && container.getBoundingClientRect ? container.getBoundingClientRect().width : 700) || 700;
-                    if (w < 520) mw = '54ch';
-                    else if (w < 680) mw = '64ch';
-                    else if (w < 820) mw = '74ch';
-                    else mw = '86ch';
-                } catch (_) { }
-            }
-            try { container.style.setProperty('--reader-measure', mw); } catch (_) { }
+            try { container.classList.add('reader-theme--' + effectiveTheme); } catch (_) { }
+            try { container.dataset.readerThemeMode = prefs.theme; } catch (_) { }
+            try { container.classList.toggle('reader-para--indented', prefs.paraStyle === 'indented'); } catch (_) { }
+            try { container.classList.toggle('reader-justify--on', prefs.justify === 'justify'); } catch (_) { }
+            try { container.style.setProperty('--reader-measure', this.getReaderDisplayMeasureValue(prefs, container)); } catch (_) { }
         }
     }
+    getReaderDisplayPresetConfig(presetId, isMobile = false) {
+        const defaults = this.getDefaultReaderDisplayPrefs();
+        const map = {
+            default: defaults,
+            comfort: {
+                size: isMobile ? 'l' : 'l',
+                line: 'loose',
+                family: 'serif',
+                theme: 'system',
+                paraStyle: 'spaced',
+                justify: 'left',
+                measure: isMobile ? 'full' : 'wide'
+            },
+            dense: {
+                size: isMobile ? 'm' : 's',
+                line: 'normal',
+                family: 'sans',
+                theme: 'system',
+                paraStyle: 'spaced',
+                justify: 'left',
+                measure: isMobile ? 'full' : 'medium'
+            }
+        };
+        return this.normalizeReaderDisplayPrefs(map[presetId] || defaults);
+    }
+    isReaderPresetActive(prefsInput, presetId, isMobile = false) {
+        const prefs = this.normalizeReaderDisplayPrefs(prefsInput);
+        const preset = this.getReaderDisplayPresetConfig(presetId, isMobile);
+        return ['size', 'line', 'family', 'theme', 'paraStyle', 'justify', 'measure'].every((key) => prefs[key] === preset[key]);
+    }
+    syncReaderDisplayControls(root, prefsInput = null) {
+        if (!root) return;
+        const prefs = this.normalizeReaderDisplayPrefs(prefsInput || this.getReaderDisplayPrefs());
+        const keyMap = {
+            size: 'size',
+            line: 'line',
+            family: 'family',
+            theme: 'theme',
+            para: 'paraStyle',
+            justify: 'justify',
+            measure: 'measure'
+        };
+        Object.entries(keyMap).forEach(([dataKey, prefKey]) => {
+            root.querySelectorAll(`[data-reader-${dataKey}]`).forEach((el) => {
+                const value = el.getAttribute(`data-reader-${dataKey}`);
+                el.setAttribute('aria-pressed', value === prefs[prefKey] ? 'true' : 'false');
+            });
+        });
+        root.querySelectorAll('[data-reader-preset]').forEach((el) => {
+            const presetId = el.getAttribute('data-reader-preset') || 'default';
+            const isMobile = root.classList.contains('reader-sheet');
+            el.setAttribute('aria-pressed', this.isReaderPresetActive(prefs, presetId, isMobile) ? 'true' : 'false');
+        });
+        const sizeChip = root.querySelector('[data-size-chip]');
+        if (sizeChip) sizeChip.style.fontSize = `${READER_SIZE_MAP[prefs.size] || 1.0}rem`;
+    }
+    updateReaderDisplayPreview(root, prefsInput = null) {
+        if (!root) return;
+        const prefs = this.normalizeReaderDisplayPrefs(prefsInput || this.getReaderDisplayPrefs());
+        const preview = root.querySelector('#readerPreview');
+        if (!preview) return;
+        try {
+            preview.style.fontSize = `${READER_SIZE_MAP[prefs.size] || 1.0}rem`;
+            preview.style.lineHeight = String(READER_LINE_MAP[prefs.line] || 1.6);
+            preview.style.fontFamily = READER_FAMILY_MAP[prefs.family] || 'inherit';
+            preview.style.setProperty('--reader-preview-measure', this.getReaderDisplayMeasureValue(prefs));
+            preview.classList.remove('preview-theme--light', 'preview-theme--sepia', 'preview-theme--dark');
+            preview.classList.add(`preview-theme--${this.getEffectiveReaderTheme(prefs)}`);
+            preview.classList.toggle('reader-preview--indented', prefs.paraStyle === 'indented');
+            preview.classList.toggle('reader-preview--justify', prefs.justify === 'justify');
+        } catch (_) { }
+    }
+    buildReaderDisplayPopoverMarkup(prefsInput = null, options = {}) {
+        const prefs = this.normalizeReaderDisplayPrefs(prefsInput || this.getReaderDisplayPrefs());
+        const isMobile = !!options.mobile;
+        const segBtn = (attrs, label, pressed, extraClass = '') => (
+            `<button type="button" class="reader-segment__btn${extraClass ? ` ${extraClass}` : ''}" ${attrs} aria-pressed="${pressed ? 'true' : 'false'}">${label}</button>`
+        );
+        const presetBtn = (id, label) => (
+            `<button type="button" class="reader-preset-btn" data-reader-preset="${id}" aria-pressed="${this.isReaderPresetActive(prefs, id, isMobile) ? 'true' : 'false'}">${label}</button>`
+        );
+        return `
+          <div class="reader-popover-header${isMobile ? ' reader-popover-header--sheet' : ''}">
+            <div class="reader-popover-title-group">
+              <span class="reader-popover-eyebrow">Reader</span>
+              <span class="title">Display Options</span>
+            </div>
+            <div class="actions">
+              <button type="button" class="reader-reset" data-reader-reset>Reset</button>
+              <button type="button" class="reader-close" aria-label="Done" data-reader-close>×</button>
+            </div>
+          </div>
+          <div class="reader-presets" role="group" aria-label="Reader presets">
+            ${presetBtn('default', 'Default')}
+            ${presetBtn('comfort', 'Comfort')}
+            ${presetBtn('dense', 'Dense')}
+          </div>
+          <div class="reader-preview-shell">
+            <div class="reader-live-preview reader-live-preview--compact" id="readerPreview">
+              <p>The quick brown fox jumps over the lazy dog. The five boxing wizards jump quickly.</p>
+              <p>Pack my box with five dozen liquor jugs so you can gauge spacing, measure, and tone at a glance.</p>
+            </div>
+          </div>
+          <div class="reader-display-sections">
+            <section class="reader-section">
+              <div class="reader-section__head">
+                <h5>Text</h5>
+                <p>Typeface, size, and rhythm</p>
+              </div>
+              <div class="reader-field">
+                <div class="reader-field-label">Font Size</div>
+                <div class="reader-segment reader-segment--size" role="group" aria-label="Text size">
+                  ${segBtn('data-reader-size-dec', 'A−', false)}
+                  <span class="reader-size-chip" data-size-chip>A</span>
+                  ${segBtn('data-reader-size-inc', 'A+', false)}
+                </div>
+              </div>
+              <div class="reader-field">
+                <div class="reader-field-label">Font Family</div>
+                <div class="reader-segment reader-segment--split" role="radiogroup" aria-label="Font family">
+                  ${segBtn('data-reader-family="sans"', '<span class="reader-font-sample reader-font-sample--sans">Aa</span>', prefs.family === 'sans')}
+                  ${segBtn('data-reader-family="serif"', '<span class="reader-font-sample reader-font-sample--serif">Aa</span>', prefs.family === 'serif')}
+                </div>
+              </div>
+              <div class="reader-field">
+                <div class="reader-field-label">Line Spacing</div>
+                <div class="reader-segment reader-segment--grid3" role="radiogroup" aria-label="Line spacing">
+                  ${segBtn('data-reader-line="tight"', 'Tight', prefs.line === 'tight')}
+                  ${segBtn('data-reader-line="normal"', 'Normal', prefs.line === 'normal')}
+                  ${segBtn('data-reader-line="loose"', 'Loose', prefs.line === 'loose')}
+                </div>
+              </div>
+            </section>
+            <section class="reader-section">
+              <div class="reader-section__head">
+                <h5>Layout</h5>
+                <p>How the summary flows on the page</p>
+              </div>
+              <div class="reader-field">
+                <div class="reader-field-label">Reading Width</div>
+                <div class="reader-segment reader-segment--grid4" role="radiogroup" aria-label="Reading width">
+                  ${segBtn('data-reader-measure="narrow"', 'Narrow', prefs.measure === 'narrow')}
+                  ${segBtn('data-reader-measure="medium"', 'Medium', prefs.measure === 'medium')}
+                  ${segBtn('data-reader-measure="wide"', 'Wide', prefs.measure === 'wide')}
+                  ${segBtn('data-reader-measure="full"', 'Full', prefs.measure === 'full')}
+                </div>
+              </div>
+              <div class="reader-field">
+                <div class="reader-field-label">Paragraphs</div>
+                <div class="reader-segment reader-segment--split" role="radiogroup" aria-label="Paragraph style">
+                  ${segBtn('data-reader-para="spaced"', 'Spaced', prefs.paraStyle === 'spaced')}
+                  ${segBtn('data-reader-para="indented"', 'Indented', prefs.paraStyle === 'indented')}
+                </div>
+              </div>
+              <div class="reader-field">
+                <div class="reader-field-label">Alignment</div>
+                <div class="reader-segment reader-segment--split" role="radiogroup" aria-label="Text alignment">
+                  ${segBtn('data-reader-justify="left"', 'Left', prefs.justify === 'left')}
+                  ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify === 'justify')}
+                </div>
+              </div>
+            </section>
+            <section class="reader-section reader-section--theme">
+              <div class="reader-section__head">
+                <h5>Theme</h5>
+                <p>Follow the app or pin a reading surface</p>
+              </div>
+              <div class="reader-segment reader-segment--theme" role="radiogroup" aria-label="Reader theme">
+                ${segBtn('data-reader-theme="system"', 'System', prefs.theme === 'system')}
+                ${segBtn('data-reader-theme="light"', 'Light', prefs.theme === 'light')}
+                ${segBtn('data-reader-theme="sepia"', 'Sepia', prefs.theme === 'sepia')}
+                ${segBtn('data-reader-theme="dark"', 'Dark', prefs.theme === 'dark')}
+              </div>
+            </section>
+          </div>
+        `;
+    }
+    resolveReaderPreferencePatch(btn, currentPrefs = null) {
+        const prefs = this.normalizeReaderDisplayPrefs(currentPrefs || this.getReaderDisplayPrefs());
+        const size = btn.getAttribute('data-reader-size');
+        const line = btn.getAttribute('data-reader-line');
+        const family = btn.getAttribute('data-reader-family');
+        const theme = btn.getAttribute('data-reader-theme');
+        const para = btn.getAttribute('data-reader-para');
+        const justify = btn.getAttribute('data-reader-justify');
+        const measure = btn.getAttribute('data-reader-measure');
+        const inc = btn.hasAttribute('data-reader-size-inc');
+        const dec = btn.hasAttribute('data-reader-size-dec');
+        const patch = {};
+        if (size && READER_SIZE_MAP[size]) patch.size = size;
+        if (inc || dec) patch.size = this.advanceReaderSize(prefs.size, inc ? 1 : -1);
+        if (line && READER_LINE_MAP[line]) patch.line = line;
+        if (family && READER_FAMILY_MAP[family]) patch.family = family;
+        if (theme && READER_THEME_OPTIONS.includes(theme)) patch.theme = theme;
+        if (para && READER_PARA_STYLES.includes(para)) patch.paraStyle = para;
+        if (justify && READER_JUSTIFY.includes(justify)) patch.justify = justify;
+        if (measure && READER_MEASURE_MAP[measure]) patch.measure = measure;
+        return patch;
+    }
     openReaderDisplayPopover(container, bodyEl, anchorBtn) {
-        // Close any existing
-        try { document.querySelectorAll('.reader-display-popover').forEach(el => el.remove()); } catch (_) { }
-        const prefs = this.getReaderDisplayPrefs();
+        try {
+            if (typeof this._closeReaderDisplayPopover === 'function') this._closeReaderDisplayPopover();
+        } catch (_) { }
+        try {
+            document.querySelectorAll('.reader-display-popover, .reader-sheet-scrim').forEach((el) => el.remove());
+        } catch (_) { }
         const isMobile = (window.innerWidth || 0) <= 640;
         const pop = document.createElement('div');
         pop.className = 'reader-display-popover pop-animate';
         pop.setAttribute('role', 'dialog');
-        const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed ? 'true' : 'false'}" title="${String(label).replace(/<[^>]+>/g, '')}">${label}</span>`;
-        const sizeSeg = `
-          <div class="reader-segment" role="group" aria-label="Text size">
-            ${segBtn('data-reader-size-dec', 'A−', false)}
-            <span data-size-chip style="font-size:${(READER_SIZE_MAP[prefs.size] || 1.0)}rem; padding:0 .5rem;">A</span>
-            ${segBtn('data-reader-size-inc', 'A+', false)}
-          </div>`;
-        const lineSeg = `
-          <div class="reader-segment" role="radiogroup" aria-label="Line height">
-            ${segBtn('data-reader-line="tight"', 'Tight', prefs.line === 'tight')}
-            ${segBtn('data-reader-line="normal"', 'Normal', prefs.line === 'normal')}
-            ${segBtn('data-reader-line="loose"', 'Loose', prefs.line === 'loose')}
-          </div>`;
-        const familySeg = `
-          <div class="reader-segment" role="radiogroup" aria-label="Font family">
-            ${segBtn('data-reader-family="sans"', '<span style=\\"font-family:system-ui,sans-serif\\">Aa</span>', prefs.family === 'sans')}
-            ${segBtn('data-reader-family="serif"', '<span style=\\"font-family:Georgia,serif\\">Aa</span>', prefs.family === 'serif')}
-          </div>`;
-        const justifySeg = `
-          <div class="reader-segment" role="radiogroup" aria-label="Justification">
-            ${segBtn('data-reader-justify="left"', 'Left', prefs.justify === 'left')}
-            ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify === 'justify')}
-          </div>`;
-        const themeSeg = `
-          <div class="reader-segment" role="radiogroup" aria-label="Theme">
-            ${segBtn('data-reader-theme="light"', 'Light', prefs.theme === 'light')}
-            ${segBtn('data-reader-theme="sepia"', 'Sepia', prefs.theme === 'sepia')}
-            ${segBtn('data-reader-theme="dark"', 'Dark', prefs.theme === 'dark')}
-          </div>`;
-        const paraTile = (id, label) => `
-          <div class="reader-tile" data-reader-para="${id}" aria-pressed="${prefs.paraStyle === id ? 'true' : 'false'}" role="button" aria-label="${label}" title="${label}">
-            <div class="tile-preview">${id === 'indented' ? '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.6\\" stroke-linecap=\\"round\\"><path d=\\"M8 6h11\\"/><path d=\\"M5 10h14\\"/><path d=\\"M5 14h14\\"/><path d=\\"M5 18h14\\"/></svg>' : '<svg viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"1.4\\" stroke-linecap=\\"round\\"><rect x=\\"5\\" y=\\"5\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/><rect x=\\"5\\" y=\\"15\\" width=\\"14\\" height=\\"4\\" rx=\\"1.2\\"/></svg>'}</div>
-          </div>`;
-        const themeTile = (id, label) => `
-          <div class="reader-tile" data-reader-theme="${id}" aria-pressed="${prefs.theme === id ? 'true' : 'false'}" role="button" aria-label="${label}">
-            <div class="tile-preview"><div class="tile-preview-inner">${'<div class=\\"strip\\"></div>'.repeat(3)}</div></div>
-            <div class="tile-label">${label}</div>
-          </div>`;
-        const measureTile = (id, label) => {
-            let w = 6, x = 9;
-            if (id === 'medium') { w = 8; x = 8; }
-            if (id === 'wide') { w = 11; x = 6.5; }
-            if (id === 'full') { w = 14; x = 5; }
-            return `
-          <div class="reader-tile" data-reader-measure="${id}" aria-pressed="${prefs.measure === id ? 'true' : 'false'}" role="button" aria-label="${label}" title="${label}">
-            <div class="tile-preview"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.2\"><rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"3\"/><rect x=\"${x}\" y=\"7\" width=\"${w}\" height=\"10\" rx=\"1.2\" fill=\"currentColor\"/></svg></div>
-          </div>`;
-        };
-        const justifyMini = `
-          <div class="justify-mini"><span class="jline"></span><span class="jline"></span><span class="jline"></span></div>`;
-        if (isMobile) {
-            pop.innerHTML = `
-              <div class="reader-popover-header reader-popover-header--sheet">
-                <span class="title">Display</span>
-                <div class="actions">
-                  <button type="button" class="reader-reset" data-reader-reset>Reset</button>
-                  <button type="button" class="reader-close" aria-label="Close" data-reader-close>×</button>
-                </div>
-              </div>
-              <div class="reader-tabs" role="tablist" aria-label="Display options sections">
-                <button type="button" class="reader-tab" data-reader-tab="text" role="tab" aria-selected="true">Text</button>
-                <button type="button" class="reader-tab" data-reader-tab="layout" role="tab" aria-selected="false">Layout</button>
-                <button type="button" class="reader-tab" data-reader-tab="theme" role="tab" aria-selected="false">Theme</button>
-              </div>
-              <div class="reader-preview-row reader-preview-row--compact">
-                <div class="reader-live-preview reader-live-preview--compact" id="readerPreview">The quick brown fox jumps over the lazy dog. The five boxing wizards jump quickly. Pack my box with five dozen liquor jugs.</div>
-              </div>
-              <div class="reader-pane" data-reader-pane="text">
-                <div class="reader-group">
-                  <div class="reader-field">
-                    <div class="reader-field-label">Font Size</div>
-                    <div class="reader-display-row" data-row="size">${sizeSeg}</div>
-                  </div>
-                  <div class="reader-field">
-                    <div class="reader-field-label">Line Spacing</div>
-                    <div class="reader-display-row" data-row="line">${lineSeg}</div>
-                  </div>
-                  <div class="reader-field">
-                    <div class="reader-field-label">Font Family</div>
-                    <div class="reader-display-row" data-row="family">${familySeg}</div>
-                  </div>
-                </div>
-              </div>
-              <div class="reader-pane" data-reader-pane="layout" hidden>
-                <div class="reader-group">
-                  <div class="reader-field">
-                    <div class="reader-field-label">Paragraphs</div>
-                    <div class="reader-display-row" data-row="para">
-                      <div class="reader-segment" role="radiogroup" aria-label="Paragraph style">
-                        ${segBtn('data-reader-para=\"spaced\"', 'Spaced', prefs.paraStyle === 'spaced')}
-                        ${segBtn('data-reader-para=\"indented\"', 'Indented', prefs.paraStyle === 'indented')}
-                      </div>
-                    </div>
-                  </div>
-                  <div class="reader-field">
-                    <div class="reader-field-label">Justification</div>
-                    <div class="reader-display-row" data-row="justify" data-justify-state="${prefs.justify === 'justify' ? 'justify' : 'left'}">
-                      <div class="reader-segment" role="radiogroup" aria-label="Justification">
-                        ${segBtn('data-reader-justify=\"left\"', 'Left', prefs.justify === 'left')}
-                        ${segBtn('data-reader-justify=\"justify\"', 'Justified', prefs.justify === 'justify')}
-                      </div>
-                    </div>
-                  </div>
-                  <div class="reader-field">
-                    <div class="reader-field-label">Reading Width</div>
-                    <div class="reader-display-row" data-row="measure">
-                      <div class="reader-segment" role="radiogroup" aria-label="Reading width">
-                        ${segBtn('data-reader-measure=\"narrow\"', 'Narrow', prefs.measure === 'narrow')}
-                        ${segBtn('data-reader-measure=\"medium\"', 'Medium', prefs.measure === 'medium')}
-                        ${segBtn('data-reader-measure=\"wide\"', 'Wide', prefs.measure === 'wide')}
-                        ${segBtn('data-reader-measure=\"full\"', 'Full', prefs.measure === 'full')}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="reader-pane" data-reader-pane="theme" hidden>
-                <div class="reader-group">
-                  <div class="reader-field">
-                    <div class="reader-field-label">Theme</div>
-                    <div class="reader-display-row" data-row="theme">${themeSeg}</div>
-                    <label class="reader-system-toggle">
-                      <input type="checkbox" data-reader-system ${prefs.systemTheme ? 'checked' : ''} />
-                      <span>Match system</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            `;
-        } else {
-            pop.innerHTML = `
-              <div class="reader-popover-header">
-                <span class="title">Display Options</span>
-                <div class="actions">
-                  <button type="button" class="reader-reset" data-reader-reset>Reset to Defaults</button>
-                  <button type="button" class="reader-close" aria-label="Close" data-reader-close>×</button>
-                </div>
-              </div>
-              <div class="reader-preview-row">
-                <div class="reader-live-preview" id="readerPreview">The quick brown fox jumps over the lazy dog. The five boxing wizards jump quickly. A mad boxer shot a quick, gloved jab to the jaw of his dizzy opponent. Pack my box with five dozen liquor jugs.</div>
-              </div>
-              <div class="reader-panel reader-grid">
-                <div class="reader-col">
-                  <div class="reader-group">
-                    <h5>Typography</h5>
-                    <div class="reader-field">
-                      <div class="reader-field-label">Font Size</div>
-                      <div class="reader-display-row" data-row="size">${sizeSeg}</div>
-                    </div>
-                    <div class="reader-field">
-                      <div class="reader-field-label">Font Family</div>
-                      <div class="reader-display-row" data-row="family">${familySeg}</div>
-                    </div>
-                    <div class="reader-field">
-                      <div class="reader-field-label">Line Spacing</div>
-                      <div class="reader-display-row" data-row="line">${lineSeg}</div>
-                    </div>
-                  </div>
-                </div>
-                <div class="reader-col">
-                  <div class="reader-group">
-                    <h5>Layout</h5>
-                    <div class="reader-display-row" data-row="para"><div class="reader-segment" role="radiogroup" aria-label="Paragraph style">${segBtn('data-reader-para=\"spaced\"', 'Spaced', prefs.paraStyle === 'spaced')}${segBtn('data-reader-para=\"indented\"', 'Indented', prefs.paraStyle === 'indented')}</div></div>
-                    <div class="reader-display-row" data-row="justify"><div class="reader-segment" role="radiogroup" aria-label="Justification">${segBtn('data-reader-justify=\"left\"', 'Left', prefs.justify === 'left')}${segBtn('data-reader-justify=\"justify\"', 'Justified', prefs.justify === 'justify')}</div></div>
-                    <div class="reader-display-row" data-row="measure"><div class="reader-segment" role="radiogroup" aria-label="Reading width">${segBtn('data-reader-measure=\"narrow\"', 'Narrow', prefs.measure === 'narrow')}${segBtn('data-reader-measure=\"medium\"', 'Medium', prefs.measure === 'medium')}${segBtn('data-reader-measure=\"wide\"', 'Wide', prefs.measure === 'wide')}${segBtn('data-reader-measure=\"full\"', 'Full', prefs.measure === 'full')}</div></div>
-                    <div class="reader-field">
-                      <div class="reader-field-label">Theme</div>
-                      <div class="reader-display-row" data-row="theme">${themeSeg}</div>
-                      <div class="mt-2 flex items-center gap-2 text-sm">
-                        <label class="inline-flex items-center gap-2">
-                          <input type="checkbox" data-reader-system ${prefs.systemTheme ? 'checked' : ''} /> Match System Theme
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>`;
-        }
-        // Position relative to anchor (desktop) or as bottom sheet (mobile)
+        pop.setAttribute('aria-modal', 'true');
+        pop.innerHTML = this.buildReaderDisplayPopoverMarkup(this.getReaderDisplayPrefs(), { mobile: isMobile });
+
         let scrim = null;
         if (isMobile) {
-            try {
-                scrim = document.createElement('div');
-                scrim.className = 'reader-sheet-scrim';
-                document.body.appendChild(scrim);
-                pop.classList.add('reader-sheet');
-                pop.style.position = 'fixed';
-                pop.style.left = '0';
-                pop.style.right = '0';
-                pop.style.top = 'auto';
-                pop.style.bottom = '0';
-            } catch (_) { }
+            scrim = document.createElement('div');
+            scrim.className = 'reader-sheet-scrim';
+            document.body.appendChild(scrim);
+            pop.classList.add('reader-sheet');
         } else {
             const anchorRect = anchorBtn.getBoundingClientRect();
             pop.style.position = 'fixed';
-            // Default place below
-            let top = Math.round(anchorRect.bottom + 8);
-            let right = Math.round(Math.max(12, window.innerWidth - anchorRect.right));
-            document.body.appendChild(pop);
-            // Reposition if overflow bottom or off-right
+            pop.style.top = `${Math.round(anchorRect.bottom + 10)}px`;
+            pop.style.right = `${Math.round(Math.max(16, window.innerWidth - anchorRect.right))}px`;
+        }
+        document.body.appendChild(pop);
+        if (!isMobile) {
             try {
-                const pr = pop.getBoundingClientRect();
-                if (top + pr.height > (window.innerHeight - 12)) {
-                    top = Math.round(Math.max(12, anchorRect.top - pr.height - 8));
+                const anchorRect = anchorBtn.getBoundingClientRect();
+                const popRect = pop.getBoundingClientRect();
+                let top = Math.round(anchorRect.bottom + 10);
+                let right = Math.round(Math.max(16, window.innerWidth - anchorRect.right));
+                if (top + popRect.height > window.innerHeight - 16) {
+                    top = Math.round(Math.max(16, anchorRect.top - popRect.height - 10));
                 }
-                if (right < 12) right = 12;
-                // Also clamp if off left
-                let left = window.innerWidth - right - pr.width;
-                if (left < 12) { right = Math.round(Math.max(12, window.innerWidth - 12 - pr.width)); }
+                const left = window.innerWidth - right - popRect.width;
+                if (left < 16) right = Math.round(Math.max(16, window.innerWidth - 16 - popRect.width));
+                pop.style.top = `${top}px`;
+                pop.style.right = `${right}px`;
             } catch (_) { }
-            pop.style.top = top + 'px';
-            pop.style.right = right + 'px';
         }
-        if (!pop.parentElement) document.body.appendChild(pop);
-        // Initialize preview theme class
-        try {
-            const prev = pop.querySelector('#readerPreview');
-            if (prev) {
-                let baseTheme = 'light';
-                try {
-                    if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
-                    else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
-                } catch (_) { }
-                const effectiveTheme = (prefs.systemTheme ? baseTheme : (prefs.theme || baseTheme));
-                prev.classList.remove('preview-theme--light', 'preview-theme--sepia', 'preview-theme--dark');
-                prev.classList.add('preview-theme--' + effectiveTheme);
+
+        this.syncReaderDisplayControls(pop);
+        this.updateReaderDisplayPreview(pop);
+        try { anchorBtn.setAttribute('aria-expanded', 'true'); } catch (_) { }
+
+        const applyPrefs = (prefs) => {
+            this.applyReaderDisplayPrefs(container, bodyEl);
+            this.syncReaderDisplayControls(pop, prefs);
+            this.updateReaderDisplayPreview(pop, prefs);
+            try { this.sendTelemetry && this.sendTelemetry('reader_display_change', prefs); } catch (_) { }
+        };
+
+        const closeAll = () => {
+            try { pop.remove(); } catch (_) { }
+            if (scrim) {
+                try { scrim.remove(); } catch (_) { }
+                scrim = null;
             }
-        } catch (_) { }
-        const closeAll = () => { try { pop.remove(); } catch (_) { } if (scrim) { try { scrim.remove(); } catch (_) { } scrim = null; } window.removeEventListener('resize', onAway, true); document.removeEventListener('click', onAway, true); };
-        if (scrim) scrim.addEventListener('click', closeAll);
+            try { anchorBtn.setAttribute('aria-expanded', 'false'); } catch (_) { }
+            document.removeEventListener('click', onAway, true);
+            document.removeEventListener('keydown', onKeyDown, true);
+            window.removeEventListener('resize', onResize, true);
+            if (this._closeReaderDisplayPopover === closeAll) this._closeReaderDisplayPopover = null;
+        };
+        this._closeReaderDisplayPopover = closeAll;
         const onAway = (e) => { if (!pop.contains(e.target) && e.target !== anchorBtn) closeAll(); };
-        setTimeout(() => { document.addEventListener('click', onAway, true); window.addEventListener('resize', onAway, true); }, 0);
-        // Mobile tabs
-        if (isMobile) {
-            const tabs = Array.from(pop.querySelectorAll('[data-reader-tab]'));
-            const panes = Array.from(pop.querySelectorAll('[data-reader-pane]'));
-            const setTab = (name) => {
-                tabs.forEach(t => t.setAttribute('aria-selected', t.getAttribute('data-reader-tab') === name ? 'true' : 'false'));
-                panes.forEach(p => {
-                    const match = p.getAttribute('data-reader-pane') === name;
-                    if (match) p.removeAttribute('hidden'); else p.setAttribute('hidden', '');
-                });
-            };
-            tabs.forEach(t => {
-                t.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    setTab(t.getAttribute('data-reader-tab') || 'text');
-                });
-            });
-            setTab('text');
-        }
-        // Handlers
+        const onKeyDown = (e) => { if (e.key === 'Escape') closeAll(); };
+        const onResize = () => closeAll();
+        setTimeout(() => {
+            document.addEventListener('click', onAway, true);
+            document.addEventListener('keydown', onKeyDown, true);
+            window.addEventListener('resize', onResize, true);
+        }, 0);
+        if (scrim) scrim.addEventListener('click', closeAll);
+
         pop.addEventListener('click', (e) => {
+            const closeBtn = e.target.closest('[data-reader-close]');
+            if (closeBtn) {
+                e.preventDefault();
+                closeAll();
+                return;
+            }
+            const resetBtn = e.target.closest('[data-reader-reset]');
+            if (resetBtn) {
+                e.preventDefault();
+                const merged = this.setReaderDisplayPrefs(this.getDefaultReaderDisplayPrefs());
+                applyPrefs(merged);
+                return;
+            }
+            const presetBtn = e.target.closest('[data-reader-preset]');
+            if (presetBtn) {
+                e.preventDefault();
+                const presetId = presetBtn.getAttribute('data-reader-preset') || 'default';
+                const merged = this.setReaderDisplayPrefs(this.getReaderDisplayPresetConfig(presetId, isMobile));
+                applyPrefs(merged);
+                return;
+            }
             const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-theme], [data-reader-para], [data-reader-justify], [data-reader-measure], [data-reader-size-inc], [data-reader-size-dec]');
             if (!btn) return;
-            const size = btn.getAttribute('data-reader-size');
-            const line = btn.getAttribute('data-reader-line');
-            const family = btn.getAttribute('data-reader-family');
-            const theme = btn.getAttribute('data-reader-theme');
-            const para = btn.getAttribute('data-reader-para');
-            const justify = btn.getAttribute('data-reader-justify');
-            const measure = btn.getAttribute('data-reader-measure');
-            const inc = btn.hasAttribute('data-reader-size-inc');
-            const dec = btn.hasAttribute('data-reader-size-dec');
-            let next = {};
-            if (size && READER_SIZE_MAP[size]) next.size = size;
-            if (inc || dec) {
-                try {
-                    const order = ['s', 'm', 'l', 'xl', 'xxl'];
-                    const cur = this.getReaderDisplayPrefs().size || 'm';
-                    let idx = Math.max(0, order.indexOf(cur));
-                    if (inc && idx < order.length - 1) idx++;
-                    if (dec && idx > 0) idx--;
-                    next.size = order[idx];
-                } catch (_) { }
-            }
-            if (line && READER_LINE_MAP[line]) next.line = line;
-            if (family && READER_FAMILY_MAP[family]) next.family = family;
-            if (theme && READER_THEMES.includes(theme)) next.theme = theme;
-            if (para && READER_PARA_STYLES.includes(para)) next.paraStyle = para;
-            if (justify && READER_JUSTIFY.includes(justify)) next.justify = justify;
-            if (measure && READER_MEASURE_MAP[measure]) next.measure = measure;
-            const merged = this.setReaderDisplayPrefs(next);
-            this.applyReaderDisplayPrefs(container, bodyEl);
-            // Update live preview
-            try {
-                const prev = pop.querySelector('#readerPreview');
-                if (prev) {
-                    const fs = READER_SIZE_MAP[merged.size] || 1.0;
-                    const lh = READER_LINE_MAP[merged.line] || 1.6;
-                    const ff = READER_FAMILY_MAP[merged.family] || 'inherit';
-                    prev.style.fontSize = fs + 'rem';
-                    prev.style.lineHeight = String(lh);
-                    prev.style.fontFamily = ff;
-                    let baseTheme = 'light';
-                    try {
-                        if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
-                        else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
-                    } catch (_) { }
-                    const effectiveTheme = (merged.systemTheme ? baseTheme : merged.theme);
-                    prev.classList.remove('preview-theme--light', 'preview-theme--sepia', 'preview-theme--dark');
-                    prev.classList.add('preview-theme--' + effectiveTheme);
-                }
-                const chip = pop.querySelector('[data-size-chip]');
-                if (chip) chip.style.fontSize = (READER_SIZE_MAP[merged.size] || 1.0) + 'rem';
-            } catch (_) { }
-            // Update pressed states
-            pop.querySelectorAll('[data-reader-size]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-size') === merged.size ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-line]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-line') === merged.line ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-family]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-family') === merged.family ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-theme]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-theme') === merged.theme ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-para]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-para') === merged.paraStyle ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-justify]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-justify') === merged.justify ? 'true' : 'false'));
-            pop.querySelectorAll('[data-reader-measure]').forEach(b => b.setAttribute('aria-pressed', b.getAttribute('data-reader-measure') === merged.measure ? 'true' : 'false'));
-            // Update micro preview for justification
-            const jr = pop.querySelector('[data-row="justify"]');
-            if (jr) jr.setAttribute('data-justify-state', merged.justify === 'justify' ? 'justify' : 'left');
-            // Light telemetry on change
-            try { this.sendTelemetry && this.sendTelemetry('reader_display_change', merged); } catch (_) { }
+            e.preventDefault();
+            const patch = this.resolveReaderPreferencePatch(btn);
+            const merged = this.setReaderDisplayPrefs(patch);
+            applyPrefs(merged);
         });
-        // Reset handler
-        const resetBtn = pop.querySelector('[data-reader-reset]');
-        if (resetBtn) {
-            resetBtn.addEventListener('click', () => {
-                // Derive default theme from current container
-                let baseTheme = 'light';
-                try {
-                    if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
-                    else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
-                } catch (_) { }
-                const defaults = isMobile
-                    ? { size: 'l', line: 'loose', family: 'sans', theme: baseTheme, systemTheme: false, paraStyle: 'spaced', justify: 'left', measure: 'full' }
-                    : { size: 'm', line: 'normal', family: 'sans', theme: baseTheme, systemTheme: false, paraStyle: 'spaced', justify: 'left', measure: 'narrow' };
-                const merged = this.setReaderDisplayPrefs(defaults);
-                this.applyReaderDisplayPrefs(container, bodyEl);
-                // Update UI state
-                ['size', 'line', 'family', 'theme', 'para', 'justify', 'measure'].forEach(key => {
-                    pop.querySelectorAll('[data-reader-' + key + ']').forEach(el => {
-                        const val = el.getAttribute('data-reader-' + key);
-                        const want = String(merged[key === 'para' ? 'paraStyle' : key]);
-                        el.setAttribute('aria-pressed', val === want ? 'true' : 'false');
-                    });
-                });
-                const jr = pop.querySelector('[data-row="justify"]');
-                if (jr) jr.setAttribute('data-justify-state', 'left');
-                const sys = pop.querySelector('[data-reader-system]');
-                if (sys) sys.checked = false;
-                try {
-                    const prev = pop.querySelector('#readerPreview');
-                    if (prev) {
-                        prev.classList.remove('preview-theme--light', 'preview-theme--sepia', 'preview-theme--dark');
-                        prev.classList.add('preview-theme--' + baseTheme);
-                        prev.style.fontSize = (READER_SIZE_MAP[merged.size] || 1.0) + 'rem';
-                        prev.style.lineHeight = String(READER_LINE_MAP[merged.line] || 1.6);
-                        prev.style.fontFamily = (READER_FAMILY_MAP[merged.family] || 'inherit');
-                    }
-                } catch (_) { }
-            });
-        }
-        // System theme checkbox
-        const sysCb = pop.querySelector('[data-reader-system]');
-        if (sysCb) {
-            sysCb.addEventListener('change', () => {
-                this.setReaderDisplayPrefs({ systemTheme: !!sysCb.checked });
-                this.applyReaderDisplayPrefs(container, bodyEl);
-                // Update preview theme class to follow system
-                try {
-                    const prev = pop.querySelector('#readerPreview');
-                    if (prev) {
-                        let baseTheme = 'light';
-                        try {
-                            if (container.classList.contains('reader-theme--dark')) baseTheme = 'dark';
-                            else if (container.classList.contains('reader-theme--sepia')) baseTheme = 'sepia';
-                        } catch (_) { }
-                        const prefsNow = this.getReaderDisplayPrefs();
-                        const eff = prefsNow.systemTheme ? baseTheme : (prefsNow.theme || baseTheme);
-                        prev.classList.remove('preview-theme--light', 'preview-theme--sepia', 'preview-theme--dark');
-                        prev.classList.add('preview-theme--' + eff);
-                    }
-                } catch (_) { }
-            });
-        }
-        const closeBtn = pop.querySelector('[data-reader-close]');
-        if (closeBtn) closeBtn.addEventListener('click', () => { closeAll(); });
     }
 
     async submitReprocess() {
@@ -7341,8 +7507,7 @@ class AudioDashboard {
         const fallbackSummary = this.computeFallbackSummaryHtml(item);
         const variantInfo = this.extractVariantInfo(item, fallbackSummary);
         const defaultVariant = variantInfo?.defaultId || (variantInfo?.order && variantInfo.order[0]) || '';
-        const canResearch = Boolean(item?.video_id && id);
-        const hasResearch = Boolean(variantInfo?.map?.['deep-research']);
+        const displayVariantInfo = this.ensureResearchVariant(variantInfo, item);
 
         // Helper to bind action button handlers after rendering variant tabs
         const bindVariantTabActions = (container) => {
@@ -7362,39 +7527,25 @@ class AudioDashboard {
                     this.openReaderDisplayPopover(dock, body, displayBtn);
                 });
             }
-            const researchBtn = container.querySelector('[data-wall-action="research"]');
-            if (researchBtn) {
-                on(researchBtn, 'click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const researchVariant = this.getPreferredResearchVariant(variantInfo, dock.dataset.currentVariant || defaultVariant);
-                    this.openDeepResearchModal(item, { variantId: researchVariant }).catch((error) => {
-                        console.error('openDeepResearchModal failed', error);
-                        this.showToast('Unable to open Research', 'error');
-                    });
-                });
-            }
         };
 
         const canRegenerate = item && (item.content_source === 'youtube' || item.video_id);
 
         const setActiveVariant = (variantId) => {
             const normalized = String(variantId || '').toLowerCase();
-            if (!normalized || !variantInfo || !variantInfo.map[normalized]) return;
-            const entry = variantInfo.map[normalized];
-            const variantTabsHtml = this.renderWallDockVariantTabs(variantInfo, normalized, {
+            if (!normalized || !displayVariantInfo || !displayVariantInfo.map[normalized]) return;
+            const entry = displayVariantInfo.map[normalized];
+            const variantTabsHtml = this.renderWallDockVariantTabs(displayVariantInfo, normalized, {
                 videoId: item?.video_id || '',
                 canRegenerate,
-                canResearch,
-                hasResearch,
                 reportId: id
             });
             try { this.setReadDeepLink(id, normalized, { replace: true, videoId: item?.video_id || '' }); } catch (_) { }
             dock.dataset.currentVariant = normalized;
 
             if (entry.kind === 'audio') {
-                const reportId = variantInfo.reportId || id;
-                const audioSrc = entry.audioSrc || variantInfo.audioSrc || null;
+                const reportId = displayVariantInfo.reportId || id;
+                const audioSrc = entry.audioSrc || displayVariantInfo.audioSrc || null;
                 body.innerHTML = this.renderReaderHeader(item) + variantTabsHtml + this.renderInlineAudioVariant(reportId, entry, audioSrc, { docked: true });
                 body.querySelectorAll('[data-wall-dock-variant]').forEach((btn) => {
                     on(btn, 'click', (e) => {
@@ -7413,6 +7564,45 @@ class AudioDashboard {
                     this._wallDockTeardown.push(body._kaleidoCleanup);
                 }
                 this.refreshAudioVariantBlocks();
+                return;
+            }
+
+            if (entry.kind === 'transcript') {
+                body.innerHTML = this.renderReaderHeader(item) + variantTabsHtml + this.renderTranscriptVariant(item, { compact: true });
+                body.querySelectorAll('[data-wall-dock-variant]').forEach((btn) => {
+                    on(btn, 'click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setActiveVariant(btn.getAttribute('data-wall-dock-variant'));
+                    });
+                });
+                bindVariantTabActions(body);
+                this.bindReaderHeaderHandlers(body, on);
+                this.bindReaderMetaInteractions(body, on);
+                this.bindTranscriptVariant(body, on);
+                try { this.applyReaderDisplayPrefs(dock, body); } catch (_) { }
+                return;
+            }
+
+            if (entry.kind === 'research-launcher') {
+                body.innerHTML = this.renderReaderHeader(item) + variantTabsHtml + `
+                    <div class="prose prose-sm dark:prose-invert max-w-none" data-summary-body>
+                        ${this.renderDeepResearchEmptyState(item, entry.sourceVariantId || defaultVariant)}
+                    </div>
+                `;
+                body.querySelectorAll('[data-wall-dock-variant]').forEach((btn) => {
+                    on(btn, 'click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setActiveVariant(btn.getAttribute('data-wall-dock-variant'));
+                    });
+                });
+                bindVariantTabActions(body);
+                this.bindReaderHeaderHandlers(body, on);
+                this.bindReaderMetaInteractions(body, on);
+                const summaryBody = body.querySelector('[data-summary-body]') || body;
+                this.bindDeepResearchLaunchers(summaryBody, item, entry.sourceVariantId || defaultVariant);
+                try { this.applyReaderDisplayPrefs(dock, body); } catch (_) { }
                 return;
             }
 
@@ -7437,7 +7627,7 @@ class AudioDashboard {
             this.bindReaderMetaInteractions(body, on);
             const summaryBody = body.querySelector('[data-summary-body]') || body;
             if (entry.kind === 'research') {
-                this.hydrateDeepResearchThread(summaryBody, item, normalized, variantInfo, entry).catch((error) => {
+                this.hydrateDeepResearchThread(summaryBody, item, normalized, displayVariantInfo, entry).catch((error) => {
                     console.error('hydrateDeepResearchThread failed', error);
                 });
             } else {
@@ -7458,8 +7648,8 @@ class AudioDashboard {
             }
         } catch (_) { }
 
-        if (variantInfo && Array.isArray(variantInfo.order) && variantInfo.order.length > 0) {
-            const initialVariant = (requestedVariant && variantInfo.map[requestedVariant]) ? requestedVariant : (defaultVariant || variantInfo.order[0]);
+        if (displayVariantInfo && Array.isArray(displayVariantInfo.order) && displayVariantInfo.order.length > 0) {
+            const initialVariant = (requestedVariant && displayVariantInfo.map[requestedVariant]) ? requestedVariant : (defaultVariant || displayVariantInfo.order[0]);
             setActiveVariant(initialVariant);
         } else {
             body.innerHTML = this.renderReaderHeader(item) + `
@@ -7492,8 +7682,7 @@ class AudioDashboard {
         const focusBtn = dock.querySelector('[data-action="wall-reader-focus"]');
         // sourceBtn already declared above for header population
         const reprocessBtn = dock.querySelector('[data-action="wall-reader-reprocess"]');
-        const displayInlineBtn = dock.querySelector('[data-action="reader-display-inline-toggle"]');
-        const displayPanel = dock.querySelector('[data-wall-display-panel]');
+        const displayMenuBtn = dock.querySelector('[data-action="reader-display"]');
         const menuBtn = dock.querySelector('[data-action="menu"]');
         const menu = dock.querySelector('[data-kebab-menu]');
         const closeBtn = dock.querySelector('[data-action="wall-dock-close"]');
@@ -7520,83 +7709,16 @@ class AudioDashboard {
             e.preventDefault();
             e.stopPropagation();
             if (menu && menuBtn) this.toggleKebabMenu(dock, false, menuBtn);
+            try { this._pendingReadVariant = { id, variant: dock.dataset.currentVariant || defaultVariant || '' }; } catch (_) { }
+            this.closeWallDockReader({ clearDeepLink: false, skipTelemetry: true });
             this.openWallModalReader(id, getSelectedCardEl() || card || null);
         });
-        const syncInlineDisplayPanel = (prefsInput = null) => {
-            if (!displayPanel) return;
-            const prefs = prefsInput || this.getReaderDisplayPrefs();
-            displayPanel.querySelectorAll('[data-reader-size]').forEach((el) => {
-                el.setAttribute('aria-pressed', el.getAttribute('data-reader-size') === prefs.size ? 'true' : 'false');
-            });
-            displayPanel.querySelectorAll('[data-reader-line]').forEach((el) => {
-                el.setAttribute('aria-pressed', el.getAttribute('data-reader-line') === prefs.line ? 'true' : 'false');
-            });
-            displayPanel.querySelectorAll('[data-reader-family]').forEach((el) => {
-                el.setAttribute('aria-pressed', el.getAttribute('data-reader-family') === prefs.family ? 'true' : 'false');
-            });
-            displayPanel.querySelectorAll('[data-reader-theme]').forEach((el) => {
-                el.setAttribute('aria-pressed', el.getAttribute('data-reader-theme') === prefs.theme ? 'true' : 'false');
-            });
-            displayPanel.querySelectorAll('[data-reader-para]').forEach((el) => {
-                el.setAttribute('aria-pressed', el.getAttribute('data-reader-para') === prefs.paraStyle ? 'true' : 'false');
-            });
-            displayPanel.querySelectorAll('[data-reader-justify]').forEach((el) => {
-                el.setAttribute('aria-pressed', el.getAttribute('data-reader-justify') === prefs.justify ? 'true' : 'false');
-            });
-            displayPanel.querySelectorAll('[data-reader-measure]').forEach((el) => {
-                el.setAttribute('aria-pressed', el.getAttribute('data-reader-measure') === prefs.measure ? 'true' : 'false');
-            });
-        };
-        syncInlineDisplayPanel();
-
-        if (displayInlineBtn && displayPanel) {
-            on(displayInlineBtn, 'click', (e) => {
+        if (displayMenuBtn) {
+            on(displayMenuBtn, 'click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                const expanded = displayInlineBtn.getAttribute('aria-expanded') === 'true';
-                displayInlineBtn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-                displayPanel.classList.toggle('hidden', expanded);
-            });
-            on(displayPanel, 'click', (e) => {
-                const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-theme], [data-reader-para], [data-reader-justify], [data-reader-measure], [data-reader-size-inc], [data-reader-size-dec], [data-reader-reset-inline]');
-                if (!btn) return;
-                e.preventDefault();
-                e.stopPropagation();
-                if (btn.hasAttribute('data-reader-reset-inline')) {
-                    const defaults = { size: 'm', line: 'normal', family: 'sans', theme: 'light', systemTheme: false, paraStyle: 'spaced', justify: 'left', measure: 'medium' };
-                    const merged = this.setReaderDisplayPrefs(defaults);
-                    this.applyReaderDisplayPrefs(dock, body);
-                    syncInlineDisplayPanel(merged);
-                    return;
-                }
-                const size = btn.getAttribute('data-reader-size');
-                const line = btn.getAttribute('data-reader-line');
-                const family = btn.getAttribute('data-reader-family');
-                const theme = btn.getAttribute('data-reader-theme');
-                const para = btn.getAttribute('data-reader-para');
-                const justify = btn.getAttribute('data-reader-justify');
-                const measure = btn.getAttribute('data-reader-measure');
-                const inc = btn.hasAttribute('data-reader-size-inc');
-                const dec = btn.hasAttribute('data-reader-size-dec');
-                const next = {};
-                if (size && READER_SIZE_MAP[size]) next.size = size;
-                if (inc || dec) {
-                    const order = ['s', 'm', 'l', 'xl', 'xxl'];
-                    const cur = this.getReaderDisplayPrefs().size || 'm';
-                    let idx = Math.max(0, order.indexOf(cur));
-                    if (inc && idx < order.length - 1) idx += 1;
-                    if (dec && idx > 0) idx -= 1;
-                    next.size = order[idx];
-                }
-                if (line && READER_LINE_MAP[line]) next.line = line;
-                if (family && READER_FAMILY_MAP[family]) next.family = family;
-                if (theme && READER_THEMES.includes(theme)) next.theme = theme;
-                if (para && READER_PARA_STYLES.includes(para)) next.paraStyle = para;
-                if (justify && READER_JUSTIFY.includes(justify)) next.justify = justify;
-                if (measure && READER_MEASURE_MAP[measure]) next.measure = measure;
-                const merged = this.setReaderDisplayPrefs(next);
-                this.applyReaderDisplayPrefs(dock, body);
-                syncInlineDisplayPanel(merged);
+                this.openReaderDisplayPopover(dock, body, displayMenuBtn);
+                if (menu && menuBtn) this.toggleKebabMenu(dock, false, menuBtn);
             });
         }
 
@@ -7645,10 +7767,6 @@ class AudioDashboard {
                 e.preventDefault();
                 e.stopPropagation();
                 const expanded = menuBtn.getAttribute('aria-expanded') === 'true';
-                if (!expanded && displayInlineBtn && displayPanel) {
-                    displayInlineBtn.setAttribute('aria-expanded', 'false');
-                    displayPanel.classList.add('hidden');
-                }
                 this.toggleKebabMenu(dock, !expanded, menuBtn);
             });
             on(menu, 'click', (e) => {
@@ -7893,6 +8011,7 @@ class AudioDashboard {
 	        const filmstrip = document.getElementById('wallReaderFilmstrip');
 	        const stripEl = modal ? modal.querySelector('.kaleido-strip') : null;
 	        const closeBtn = document.getElementById('wallReaderClose');
+	        const collapseBtn = document.getElementById('wallReaderCollapse');
 	        const backdrop = modal ? modal.querySelector('.kaleido-backdrop') : null;
         console.log('[DEBUG] Modal elements:', { modal: !!modal, body: !!body, sheet: !!sheet, titleEl: !!titleEl, heroEl: !!heroEl });
         const prevBtns = modal ? Array.from(modal.querySelectorAll('[data-kaleido-prev]')) : [];
@@ -7922,6 +8041,24 @@ class AudioDashboard {
             if (!target || !fn) return;
             target.addEventListener(type, fn, opts);
             this._kaleidoTeardown.push(() => { try { target.removeEventListener(type, fn, opts); } catch (_) { } });
+        };
+        const resetReaderScroll = () => {
+            [
+                modal.querySelector('.kaleido-reader'),
+                modal.querySelector('.kaleido-main'),
+                modal.querySelector('.kaleido-content'),
+                body
+            ].filter(Boolean).forEach((el) => {
+                try {
+                    el.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                } catch (_) {
+                    try {
+                        el.scrollTop = 0;
+                        el.scrollLeft = 0;
+                    } catch (_) { }
+                }
+            });
+            try { sheet.classList.remove('kaleido-scrolled'); } catch (_) { }
         };
 
 	        // Populate content
@@ -7977,64 +8114,80 @@ class AudioDashboard {
 	        const fallbackSummary = this.computeFallbackSummaryHtml(item);
 	        const variantInfo = this.extractVariantInfo(item, fallbackSummary);
 	        const defaultVariant = variantInfo?.defaultId || (variantInfo?.order && variantInfo.order[0]) || null;
-            const canResearch = Boolean(item?.video_id && id);
-            const hasResearch = Boolean(variantInfo?.map?.['deep-research']);
+            const displayVariantInfo = this.ensureResearchVariant(variantInfo, item);
 
 	        const renderVariantControls = () => {
 	            if (!variantsEl) return;
-                const showResearchLauncher = canResearch && !hasResearch;
-	            if (!variantInfo || !Array.isArray(variantInfo.order) || (variantInfo.order.length + (showResearchLauncher ? 1 : 0)) <= 1) {
-	                variantsEl.innerHTML = '';
-	                variantsEl.classList.add('hidden');
-	                return;
-	            }
-	            variantsEl.classList.remove('hidden');
-	            variantsEl.innerHTML = variantInfo.order.map((variantId) => {
-	                const meta = variantInfo.map[variantId] || {};
-	                const icon = meta.icon ? `<span class="text-base">${meta.icon}</span>` : '';
+                const canRegenerate = Boolean(item?.video_id || item?.videoId || item?.id || id);
+                const variantButtons = (displayVariantInfo && Array.isArray(displayVariantInfo.order) ? displayVariantInfo.order : []).map((variantId) => {
+	                const meta = displayVariantInfo.map[variantId] || {};
 	                const label = this.escapeHtml(meta.label || this.prettyVariantLabel(variantId));
+                    const normalizedId = String(variantId || '').toLowerCase();
+                    const isActive = normalizedId === String(defaultVariant || '').toLowerCase();
 	                return `<button type="button" data-variant="${this.escapeHtml(variantId)}"
-	                      class="kaleido-variant-btn inline-flex items-center gap-2 px-3 py-2 rounded-full border border-white/60 dark:border-slate-700/60 bg-white/80 dark:bg-slate-900/60 text-slate-600 dark:text-slate-200 shadow-sm transition">
-	                      ${icon}<span class="text-sm font-medium">${label}</span>
+	                      class="kaleido-variant-btn${isActive ? ' is-active' : ''}"
+                          role="tab"
+                          aria-selected="${isActive ? 'true' : 'false'}">
+	                      <span class="kaleido-variant-label">${label}</span>
 	                    </button>`;
-	            }).join('') + (showResearchLauncher
-                    ? `<button type="button" data-variant-action="research"
-                          class="kaleido-variant-btn inline-flex items-center gap-2 px-3 py-2 rounded-full border border-white/60 dark:border-slate-700/60 bg-white/80 dark:bg-slate-900/60 text-slate-600 dark:text-slate-200 shadow-sm transition">
-                          <span class="text-base">${this.escapeHtml(VARIANT_META_MAP['deep-research']?.icon || '🔎')}</span><span class="text-sm font-medium">${this.escapeHtml(VARIANT_META_MAP['deep-research']?.label || 'Research')}</span>
-                        </button>`
-                    : '');
+	            }).join('');
+	            variantsEl.classList.remove('hidden');
+	            variantsEl.innerHTML = `
+                    <div class="kaleido-variant-track" role="tablist">
+                        <div class="kaleido-variant-tabs">
+                            ${variantButtons}
+                        </div>
+                        <div class="kaleido-variant-actions">
+                            ${canRegenerate ? `
+                                <button type="button"
+                                        class="kaleido-variant-action-btn"
+                                        data-action="wall-reader-reprocess"
+                                        title="Regenerate summary">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                    <span class="sr-only">Regenerate</span>
+                                </button>
+                            ` : ''}
+                            <button type="button"
+                                    class="kaleido-variant-action-btn"
+                                    data-action="reader-display"
+                                    title="Display options"
+                                    aria-haspopup="dialog"
+                                    aria-expanded="false">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                                </svg>
+                                <span class="sr-only">Display options</span>
+                            </button>
+                        </div>
+                    </div>
+                `;
 	        };
 
 			        const setActiveVariant = (variantId) => {
-			            if (!variantId || !variantInfo || !variantInfo.map[variantId]) return;
-			            const entry = variantInfo.map[variantId];
+			            if (!variantId || !displayVariantInfo || !displayVariantInfo.map[variantId]) return;
+			            const entry = displayVariantInfo.map[variantId];
 			            try { this.setReadDeepLink(id, variantId, { replace: true, videoId: item?.video_id || '' }); } catch (_) { }
 
 		            if (variantsEl) {
 		                variantsEl.querySelectorAll('[data-variant]').forEach((btn) => {
 		                    const isActive = btn.getAttribute('data-variant') === variantId;
-	                    btn.classList.toggle('bg-audio-500', isActive);
-	                    btn.classList.toggle('text-white', isActive);
-	                    btn.classList.toggle('border-transparent', isActive);
-	                    btn.classList.toggle('shadow', isActive);
-	                    btn.classList.toggle('bg-white/80', !isActive);
-	                    btn.classList.toggle('dark:bg-slate-900/60', !isActive);
-	                    btn.classList.toggle('text-slate-600', !isActive);
-	                    btn.classList.toggle('dark:text-slate-200', !isActive);
-	                    btn.classList.toggle('border-white/60', !isActive);
-	                    btn.classList.toggle('dark:border-slate-700/60', !isActive);
+	                    btn.classList.toggle('is-active', isActive);
+                        btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
 	                });
 	                variantsEl.dataset.currentVariant = variantId;
 	            }
 
 		            if (entry.kind === 'audio') {
-		                const reportId = variantInfo.reportId || id;
-		                const audioSrc = entry.audioSrc || variantInfo.audioSrc || null;
+		                const reportId = displayVariantInfo.reportId || id;
+		                const audioSrc = entry.audioSrc || displayVariantInfo.audioSrc || null;
 		                body.innerHTML = this.renderInlineAudioVariant(reportId, entry, audioSrc);
                         this.bindReaderHeaderHandlers(body, on);
                         this.bindReaderMetaInteractions(body, on);
 		                this.attachInlineAudioVariantHandlers(body, reportId, audioSrc);
 		                this.bindKaleidoInlineAudioControls(body, on);
+                        resetReaderScroll();
 		                // Add kaleido cleanup to teardown array
 		                if (body._kaleidoCleanup) {
 		                    this._wallDockTeardown.push(body._kaleidoCleanup);
@@ -8042,6 +8195,32 @@ class AudioDashboard {
 		                this.refreshAudioVariantBlocks();
 		                return;
 		            }
+
+                    if (entry.kind === 'transcript') {
+			            body.innerHTML = this.renderTranscriptVariant(item, { compact: true });
+                        this.bindReaderHeaderHandlers(body, on);
+                        this.bindReaderMetaInteractions(body, on);
+                        this.bindTranscriptVariant(body, on);
+                        try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
+                        resetReaderScroll();
+                        return;
+                    }
+
+                    if (entry.kind === 'research-launcher') {
+			            body.innerHTML = `
+                            <div class="prose prose-sm sm:prose-base prose-slate dark:prose-invert max-w-none w-full break-words" data-summary-body>
+                                ${this.renderDeepResearchEmptyState(item, entry.sourceVariantId || defaultVariant || '')}
+                            </div>
+                        `;
+                        this.bindReaderHeaderHandlers(body, on);
+                        this.bindReaderMetaInteractions(body, on);
+                        const summaryBody = body.querySelector('[data-summary-body]') || body;
+                        this.bindDeepResearchLaunchers(summaryBody, item, entry.sourceVariantId || defaultVariant || '');
+                        try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
+                        try { this.enhanceSummaryHtml(body); } catch (_) { }
+                        resetReaderScroll();
+                        return;
+                    }
 
 			            body.innerHTML = `
                             <div class="prose prose-sm sm:prose-base prose-slate dark:prose-invert max-w-none w-full break-words" data-summary-body>
@@ -8056,7 +8235,7 @@ class AudioDashboard {
                     this.bindReaderMetaInteractions(body, on);
 		            const summaryBody = body.querySelector('[data-summary-body]') || body;
 		            if (entry.kind === 'research') {
-                        this.hydrateDeepResearchThread(summaryBody, item, variantId, variantInfo, entry).catch((error) => {
+                        this.hydrateDeepResearchThread(summaryBody, item, variantId, displayVariantInfo, entry).catch((error) => {
                             console.error('hydrateDeepResearchThread failed', error);
                         });
                     } else {
@@ -8064,6 +8243,7 @@ class AudioDashboard {
                     }
 		            try { this.applyReaderDisplayPrefs(modal, body); } catch (_) { }
 		            try { this.enhanceSummaryHtml(body); } catch (_) { }
+                    resetReaderScroll();
 			        };
 
 			        // Allow URL (popstate) to switch variants without reopening the reader.
@@ -8083,7 +8263,7 @@ class AudioDashboard {
 		                this._pendingReadVariant = null;
 		            }
 		        } catch (_) { }
-		        if (variantInfo && Array.isArray(variantInfo.order) && variantInfo.order.length > 1) {
+		        if (displayVariantInfo && Array.isArray(displayVariantInfo.order) && displayVariantInfo.order.length > 1) {
 		            if (variantsEl) {
 		                variantsEl.querySelectorAll('[data-variant]').forEach((btn) => {
 		                    on(btn, 'click', (e) => {
@@ -8093,37 +8273,13 @@ class AudioDashboard {
 	                        setActiveVariant(v);
 		                    });
 		                });
-                        variantsEl.querySelectorAll('[data-variant-action="research"]').forEach((btn) => {
-                            on(btn, 'click', (e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                const researchVariant = this.getPreferredResearchVariant(variantInfo, variantsEl.dataset.currentVariant || defaultVariant);
-                                this.openDeepResearchModal(item, { variantId: researchVariant }).catch((error) => {
-                                    console.error('openDeepResearchModal failed', error);
-                                    this.showToast('Unable to open Research', 'error');
-                                });
-                            });
-                        });
 		            }
-		            const initial = (requestedVariant && variantInfo.map[requestedVariant])
+		            const initial = (requestedVariant && displayVariantInfo.map[requestedVariant])
 		                ? requestedVariant
-		                : (defaultVariant || variantInfo.order[0]);
+		                : (defaultVariant || displayVariantInfo.order[0]);
 		            setActiveVariant(initial);
-		        } else if (variantInfo && Array.isArray(variantInfo.order) && variantInfo.order.length === 1) {
-                    if (variantsEl) {
-                        variantsEl.querySelectorAll('[data-variant-action="research"]').forEach((btn) => {
-                            on(btn, 'click', (e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                const researchVariant = this.getPreferredResearchVariant(variantInfo, defaultVariant);
-                                this.openDeepResearchModal(item, { variantId: researchVariant }).catch((error) => {
-                                    console.error('openDeepResearchModal failed', error);
-                                    this.showToast('Unable to open Research', 'error');
-                                });
-                            });
-                        });
-                    }
-		            setActiveVariant(variantInfo.order[0]);
+		        } else if (displayVariantInfo && Array.isArray(displayVariantInfo.order) && displayVariantInfo.order.length === 1) {
+		            setActiveVariant(displayVariantInfo.order[0]);
 		        } else {
 		            body.innerHTML = `
                         <div class="prose prose-sm sm:prose-base prose-slate dark:prose-invert max-w-none w-full break-words" data-summary-body>
@@ -8136,9 +8292,9 @@ class AudioDashboard {
                     `;
                     this.bindReaderMetaInteractions(body, on);
 		            const summaryBody = body.querySelector('[data-summary-body]') || body;
-		            const defaultEntry = variantInfo?.map?.[defaultVariant || ''];
+		            const defaultEntry = displayVariantInfo?.map?.[defaultVariant || ''];
 		            if (defaultEntry?.kind === 'research') {
-                        this.hydrateDeepResearchThread(summaryBody, item, defaultVariant || '', variantInfo, defaultEntry).catch((error) => {
+                        this.hydrateDeepResearchThread(summaryBody, item, defaultVariant || '', displayVariantInfo, defaultEntry).catch((error) => {
                             console.error('hydrateDeepResearchThread failed', error);
                         });
                     } else {
@@ -8157,9 +8313,11 @@ class AudioDashboard {
         if (heroEl) {
             if (heroUrl) {
                 heroEl.dataset.empty = 'false';
+                heroEl.style.setProperty('--kaleido-hero-image', `url("${heroUrl.replace(/"/g, '\\"')}")`);
                 heroEl.innerHTML = `<img class="kaleido-hero-img" src="${heroUrl}" alt="">`;
             } else {
                 heroEl.dataset.empty = 'true';
+                heroEl.style.removeProperty('--kaleido-hero-image');
                 heroEl.innerHTML = '';
             }
         }
@@ -8241,6 +8399,24 @@ class AudioDashboard {
 		            if (displayBtn) {
 		                on(displayBtn, 'click', (e) => { e.preventDefault(); e.stopPropagation(); this.openReaderDisplayPopover(modal, body, displayBtn); });
 		            }
+                    if (collapseBtn) {
+                        const canCollapseToDock = this.isWallDockAvailable();
+                        collapseBtn.classList.toggle('hidden', !canCollapseToDock);
+                        collapseBtn.disabled = !canCollapseToDock;
+                        on(collapseBtn, 'click', (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!canCollapseToDock) return;
+                            const variant = (variantsEl?.dataset?.currentVariant || defaultVariant || '').toLowerCase();
+                            try { this._pendingReadVariant = { id, variant }; } catch (_) { }
+                            close({ clearDeepLink: false, preserveWallContext: false, skipTelemetry: true });
+                            requestAnimationFrame(() => {
+                                try {
+                                    this.openWallDockReader(id, this._kaleidoOriginCard || card || null);
+                                } catch (_) { }
+                            });
+                        });
+                    }
 	            if (menuBtn && menu) {
                 menu.classList.add('hidden');
                 on(menuBtn, 'click', (e) => { e.stopPropagation(); this.toggleKebabMenu(modal, true, menuBtn); });
@@ -8248,8 +8424,9 @@ class AudioDashboard {
                     const a = e.target.closest('[data-action]');
                     if (!a) return;
                     const act = a.getAttribute('data-action');
-                    if (act === 'copy-link') { this.copyLink(card || modal, id); this.toggleKebabMenu(modal, false); }
-                    if (act === 'reprocess') { this.openReprocessModal(id, card || modal); this.toggleKebabMenu(modal, false); }
+                    if (act === 'wall-reader-open-page') { window.location.href = `/${encodeURIComponent(id)}.json?v=2`; this.toggleKebabMenu(modal, false); }
+                    if (act === 'wall-reader-copy-link') { this.copyLink(card || modal, id); this.toggleKebabMenu(modal, false); }
+                    if (act === 'wall-reader-reprocess') { this.openReprocessModal(id, card || modal, item); this.toggleKebabMenu(modal, false); }
                     if (act === 'delete') { if (card) this.handleDelete(id, card); this.toggleKebabMenu(modal, false); }
                 });
             }
@@ -8491,7 +8668,9 @@ class AudioDashboard {
         try {
             const w = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 1024;
             const isMobile = w <= 640;
-            const scroller = isMobile ? (modal.querySelector('.kaleido-main') || modal.querySelector('.kaleido-content')) : modal.querySelector('.kaleido-content');
+            const scroller = isMobile
+                ? (modal.querySelector('.kaleido-main') || modal.querySelector('.kaleido-content'))
+                : (modal.querySelector('.kaleido-reader') || modal.querySelector('.kaleido-content'));
             const syncScroll = () => {
                 if (isMobile) {
                     sheet.classList.remove('kaleido-scrolled');
@@ -8506,12 +8685,14 @@ class AudioDashboard {
             }
         } catch (_) { }
 
-		        const close = () => {
+		        const close = ({ clearDeepLink = true, preserveWallContext = null, skipTelemetry = false } = {}) => {
 		            try {
 		                if (this._activeReader && this._activeReader.id === id) this._activeReader = null;
 		                this._kaleidoSetVariant = null;
 		            } catch (_) { }
-		            try { this.clearReadDeepLinkIfMatches(id); } catch (_) { }
+		            if (clearDeepLink) {
+                        try { this.clearReadDeepLinkIfMatches(id); } catch (_) { }
+                    }
 		            const targetRect = (this._kaleidoOriginCard || card || (grid && grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`)))?.getBoundingClientRect();
 	            if (sheet && targetRect) {
 	                const rectNow = sheet.getBoundingClientRect();
@@ -8532,9 +8713,9 @@ class AudioDashboard {
                 return dockOpen || inlineOpen;
             };
 
-            const preserveWallContext = keepWallReaderOpen();
+            const preserveReaderContext = preserveWallContext === null ? keepWallReaderOpen() : !!preserveWallContext;
             try { sheet.classList.remove('kaleido-scrolled'); } catch (_) { }
-            if (card && !preserveWallContext) card.classList.remove('wall-card--selected');
+            if (card && !preserveReaderContext) card.classList.remove('wall-card--selected');
             // Always clear similarity classes when closing the reader; otherwise the wall grid can stay dimmed.
             try { this.clearSimilarityView(grid); } catch (_) { }
             if (this._kaleidoTeardown) {
@@ -8544,7 +8725,7 @@ class AudioDashboard {
             // Remove global "modal open" classes immediately (iOS bfcache can skip pending timeouts).
             try { document.body.classList.remove('kaleido-open'); } catch (_) { }
             try {
-                if (preserveWallContext) document.body.classList.add('wall-reader-open');
+                if (preserveReaderContext) document.body.classList.add('wall-reader-open');
                 else document.body.classList.remove('wall-reader-open');
             } catch (_) { }
             setTimeout(() => {
@@ -8552,7 +8733,7 @@ class AudioDashboard {
                 modal.classList.remove('kaleido-visible');
                 if (sheet) { sheet.style.transform = ''; sheet.style.opacity = ''; sheet.style.transition = ''; }
             }, 210);
-		            this.sendTelemetry('read_close', { id, view: 'wall' });
+		            if (!skipTelemetry) this.sendTelemetry('read_close', { id, view: 'wall' });
 		        };
 
 		        // Track the open reader so URL popstate can close/switch.
@@ -9417,110 +9598,7 @@ class AudioDashboard {
     }
     openReaderFooterDrawer(container, bodyEl, anchorBtn) {
         try {
-            // Close if open
-            const existing = container.querySelector('.reader-drawer');
-            if (existing) { existing.classList.toggle('open'); if (!existing.classList.contains('open')) { setTimeout(() => existing.remove(), 180); } return; }
-            const prefs = this.getReaderDisplayPrefs();
-            const segBtn = (attrs, label, pressed) => `<span role="button" ${attrs} aria-pressed="${pressed ? 'true' : 'false'}">${label}</span>`;
-            const sizeSeg = `
-              <div class="reader-segment" role="group" aria-label="Text size">
-                ${segBtn('data-reader-size-dec', 'A−', false)}
-                <span data-size-chip style="padding:0 .5rem;">A</span>
-                ${segBtn('data-reader-size-inc', 'A+', false)}
-              </div>`;
-            const lineSeg = `
-              <div class="reader-segment" role="radiogroup" aria-label="Line height">
-                ${segBtn('data-reader-line="tight"', 'Tight', prefs.line === 'tight')}
-                ${segBtn('data-reader-line="normal"', 'Normal', prefs.line === 'normal')}
-                ${segBtn('data-reader-line="loose"', 'Loose', prefs.line === 'loose')}
-              </div>`;
-            const familySeg = `
-              <div class="reader-segment" role="radiogroup" aria-label="Font family">
-                ${segBtn('data-reader-family="sans"', '<span style=\\"font-family:system-ui,sans-serif\\">Aa</span>', prefs.family === 'sans')}
-                ${segBtn('data-reader-family="serif"', '<span style=\\"font-family:Georgia,serif\\">Aa</span>', prefs.family === 'serif')}
-              </div>`;
-            const justifySeg = `
-              <div class="reader-segment" role="radiogroup" aria-label="Justification">
-                ${segBtn('data-reader-justify="left"', 'Left', prefs.justify === 'left')}
-                ${segBtn('data-reader-justify="justify"', 'Justified', prefs.justify === 'justify')}
-              </div>`;
-            const paraSeg = `
-              <div class="reader-segment" role="radiogroup" aria-label="Paragraph style">
-                ${segBtn('data-reader-para="spaced"', 'Spaced', prefs.paraStyle === 'spaced')}
-                ${segBtn('data-reader-para="indented"', 'Indented', prefs.paraStyle === 'indented')}
-              </div>`;
-            const measureSeg = `
-              <div class="reader-segment" role="radiogroup" aria-label="Reading width">
-                ${segBtn('data-reader-measure="narrow"', 'Narrow', prefs.measure === 'narrow')}
-                ${segBtn('data-reader-measure="medium"', 'Medium', prefs.measure === 'medium')}
-                ${segBtn('data-reader-measure="wide"', 'Wide', prefs.measure === 'wide')}
-                ${segBtn('data-reader-measure="full"', 'Full', prefs.measure === 'full')}
-              </div>`;
-            const drawer = document.createElement('div');
-            drawer.className = 'reader-drawer';
-            drawer.innerHTML = `
-              <div class="flex items-center justify-between">
-                <div class="tabs" role="tablist">
-                  <button type="button" role="tab" aria-pressed="true" data-tab="typo">Typography</button>
-                  <button type="button" role="tab" aria-pressed="false" data-tab="layout">Layout</button>
-                </div>
-                <button type="button" class="reader-close" data-close>×</button>
-              </div>
-              <div class="drawer-row" data-pane="typo" style="display:block">${sizeSeg} ${familySeg} ${lineSeg}</div>
-              <div class="drawer-row" data-pane="layout" style="display:none">${paraSeg} ${justifySeg} ${measureSeg.replace('</div>', '')}${segBtn('data-reader-measure="auto"', 'Auto', prefs.measure === 'auto')}</div>
-            `;
-            const host = container.querySelector('.mega-face--back') || container;
-            host.appendChild(drawer);
-            const setTab = (name) => {
-                const a = drawer.querySelector('[data-tab="typo"]'); const b = drawer.querySelector('[data-tab="layout"]');
-                const p1 = drawer.querySelector('[data-pane="typo"]'); const p2 = drawer.querySelector('[data-pane="layout"]');
-                a.setAttribute('aria-pressed', name === 'typo' ? 'true' : 'false');
-                b.setAttribute('aria-pressed', name === 'layout' ? 'true' : 'false');
-                p1.style.display = name === 'typo' ? 'block' : 'none';
-                p2.style.display = name === 'layout' ? 'block' : 'none';
-            };
-            drawer.addEventListener('click', (e) => {
-                const btn = e.target.closest('[data-reader-size], [data-reader-line], [data-reader-family], [data-reader-para], [data-reader-justify], [data-reader-measure], [data-reader-size-inc], [data-reader-size-dec], [data-tab], [data-close]');
-                if (!btn) return;
-                if (btn.hasAttribute('data-close')) { drawer.classList.remove('open'); setTimeout(() => drawer.remove(), 180); return; }
-                if (btn.hasAttribute('data-tab')) { setTab(btn.getAttribute('data-tab')); return; }
-                const size = btn.getAttribute('data-reader-size');
-                const line = btn.getAttribute('data-reader-line');
-                const family = btn.getAttribute('data-reader-family');
-                const para = btn.getAttribute('data-reader-para');
-                const justify = btn.getAttribute('data-reader-justify');
-                const measure = btn.getAttribute('data-reader-measure');
-                const inc = btn.hasAttribute('data-reader-size-inc');
-                const dec = btn.hasAttribute('data-reader-size-dec');
-                let next = {};
-                if (size && READER_SIZE_MAP[size]) next.size = size;
-                if (inc || dec) {
-                    const order = ['s', 'm', 'l', 'xl', 'xxl'];
-                    const cur = this.getReaderDisplayPrefs().size || 'm';
-                    let idx = Math.max(0, order.indexOf(cur));
-                    if (inc && idx < order.length - 1) idx++;
-                    if (dec && idx > 0) idx--;
-                    next.size = order[idx];
-                }
-                if (line && READER_LINE_MAP[line]) next.line = line;
-                if (family && READER_FAMILY_MAP[family]) next.family = family;
-                if (para && READER_PARA_STYLES.includes(para)) next.paraStyle = para;
-                if (justify && READER_JUSTIFY.includes(justify)) next.justify = justify;
-                if (measure && READER_MEASURE_MAP[measure]) next.measure = measure;
-                const merged = this.setReaderDisplayPrefs(next);
-                this.applyReaderDisplayPrefs(container, bodyEl);
-                // Update toggles states
-                ['size', 'line', 'family', 'para', 'justify', 'measure'].forEach(key => {
-                    drawer.querySelectorAll('[data-reader-' + key + ']').forEach(el => {
-                        const val = el.getAttribute('data-reader-' + key);
-                        const want = String(merged[key === 'para' ? 'paraStyle' : key]);
-                        el.setAttribute('aria-pressed', val === want ? 'true' : 'false');
-                    });
-                });
-            });
-            // Start on Typography tab with slide-up
-            setTab('typo');
-            requestAnimationFrame(() => drawer.classList.add('open'));
+            this.openReaderDisplayPopover(container, bodyEl, anchorBtn);
         } catch (_) { }
     }
     animateGridReflow(grid, beforeMap) {
@@ -12700,7 +12778,11 @@ class AudioDashboard {
         const variantInfo = this.extractVariantInfo(item, fallbackSummary);
         const normalized = String(variantId || '').trim().toLowerCase();
         const preferredEntry = (normalized && variantInfo?.map?.[normalized]) ? variantInfo.map[normalized] : null;
-        const entry = preferredEntry || variantInfo?.map?.[variantInfo?.defaultId] || (variantInfo?.order?.length ? variantInfo.map[variantInfo.order[0]] : null);
+        const preferredIsLaunchOnly = preferredEntry?.kind === 'research-launcher';
+        const entry = (!preferredIsLaunchOnly && preferredEntry)
+            || variantInfo?.map?.[this.getPreferredResearchVariant(variantInfo, normalized)]
+            || variantInfo?.map?.[variantInfo?.defaultId]
+            || (variantInfo?.order?.length ? variantInfo.map[variantInfo.order[0]] : null);
         const entryText = String(entry?.raw?.text || entry?.raw?.content?.text || '').trim();
         if (entryText) return entryText;
         if (entry?.html) return this.htmlToPlainText(entry.html);
@@ -13278,7 +13360,8 @@ class AudioDashboard {
             button.addEventListener('click', (event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                this.openDeepResearchModal(item, { variantId }).catch((error) => {
+                const launcherVariantId = String(button.getAttribute('data-deep-research-variant-id') || variantId || '').trim().toLowerCase();
+                this.openDeepResearchModal(item, { variantId: launcherVariantId }).catch((error) => {
                     console.error('openDeepResearchModal failed', error);
                     this.showToast('Unable to open Deep Research', 'error');
                 });
@@ -14512,6 +14595,7 @@ class AudioDashboard {
             sidebar.classList.add('flex');
             // Ensure it's shown as overlay on mobile
             sidebar.style.display = 'block';
+            sidebar.setAttribute('aria-hidden', 'false');
             // Prevent body scroll when sidebar is open
             document.body.style.overflow = 'hidden';
         }
@@ -14524,6 +14608,7 @@ class AudioDashboard {
             sidebar.classList.remove('flex');
             sidebar.classList.add('hidden');
             sidebar.style.display = '';
+            sidebar.setAttribute('aria-hidden', 'true');
             // Restore body scroll
             document.body.style.overflow = '';
             if (typeof this._collapsedForMobile === 'boolean') {
