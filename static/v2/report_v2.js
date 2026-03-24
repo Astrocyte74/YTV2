@@ -230,10 +230,20 @@
     }
 
     const canResearch = Boolean(getReportVideoId());
-    const hasResearch = variants.has('deep-research');
-    const showResearchLauncher = canResearch && !hasResearch;
+    if (canResearch && !variants.has('deep-research')) {
+      const preferredVariantId = getPreferredReportResearchVariantId(variants, defaultVariant);
+      variants.set('deep-research', {
+        id: 'deep-research',
+        label: VARIANT_META['deep-research']?.label || 'Research',
+        icon: VARIANT_META['deep-research']?.icon || '🔎',
+        kind: 'research-launcher',
+        text: '',
+        html: renderReportResearchEmptyState(preferredVariantId),
+        preferredVariantId,
+      });
+    }
 
-    if ((variants.size + (showResearchLauncher ? 1 : 0)) <= 1) {
+    if (variants.size <= 1) {
       controls.style.display = 'none';
       if (controlsDock) controlsDock.style.display = 'none';
       return;
@@ -248,13 +258,7 @@
                 <span class="text-base">${variant.icon}</span>
                 <span>${variant.label}</span>
               </button>`;
-    }).join('') + (showResearchLauncher ? `
-      <button type="button" data-variant-action="research"
-              class="inline-flex items-center gap-2 rounded-full border border-white/50 bg-white/80 px-3.5 py-1.5 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-white dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-200">
-              <span class="text-base">${VARIANT_META['deep-research']?.icon || '🔎'}</span>
-              <span>${VARIANT_META['deep-research']?.label || 'Research'}</span>
-            </button>
-    ` : '');
+    }).join('');
 
     const setActive = (variantId) => {
       const variant = variants.get(variantId);
@@ -263,6 +267,15 @@
       if (variant.kind === 'audio') {
         summaryBody.innerHTML = renderReportAudioVariant(variant);
         attachReportAudioHandlers(summaryBody, variant);
+      } else if (variant.kind === 'research-launcher') {
+        summaryBody.innerHTML = variant.html;
+        summaryBody.querySelectorAll('[data-deep-research-open]').forEach((btn) => {
+          btn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            await openReportDeepResearchModal({ preferredVariantId: variant.preferredVariantId || '' });
+          });
+        });
       } else {
         summaryBody.innerHTML = variant.html;
         if (variant.kind === 'research') {
@@ -289,6 +302,7 @@
       });
 
       controls.dataset.currentVariant = variantId;
+      controls.dataset.currentVariantKind = variant.kind || 'text';
       refreshAudioVariantState();
       try {
         window.dispatchEvent(new CustomEvent('ytv2:report-variant-changed', {
@@ -302,13 +316,6 @@
         event.preventDefault();
         event.stopPropagation();
         setActive(btn.dataset.variant);
-      });
-    });
-    controls.querySelectorAll('[data-variant-action="research"]').forEach((btn) => {
-      btn.addEventListener('click', async (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        await openReportDeepResearchModal();
       });
     });
 
@@ -327,6 +334,127 @@
     return String(reprocessBtn?.dataset.videoId || '').trim();
   };
 
+  const getTranscriptText = () => String(REPORT_CONTEXT.transcript_text || '').trim();
+
+  const getTranscriptSegments = () => {
+    if (!Array.isArray(REPORT_CONTEXT.transcript_segments)) return [];
+    return REPORT_CONTEXT.transcript_segments
+      .map((segment) => ({
+        text: String(segment?.text || '').trim(),
+        start: Number(segment?.start),
+        duration: Number(segment?.duration)
+      }))
+      .filter((segment) => segment.text);
+  };
+
+  const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  const highlightTranscriptText = (text, query) => {
+    const raw = text == null ? '' : String(text);
+    const needle = String(query || '').trim();
+    if (!needle) return escapeHtml(raw);
+    const matcher = new RegExp(`(${escapeRegExp(needle)})`, 'ig');
+    return raw.split(matcher).map((part) => {
+      if (part.toLowerCase() === needle.toLowerCase()) {
+        return `<mark class="rounded bg-amber-200 px-0.5 text-inherit dark:bg-amber-500/40">${escapeHtml(part)}</mark>`;
+      }
+      return escapeHtml(part);
+    }).join('');
+  };
+
+  const formatTranscriptTimestamp = (seconds) => {
+    const totalSeconds = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+    return `${minutes}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const getTranscriptJumpUrl = (seconds) => {
+    const videoId = getReportVideoId();
+    if (!videoId) return '';
+    const start = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+    return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&t=${start}s`;
+  };
+
+  const renderTranscriptFallback = (text, query) => {
+    const transcript = String(text || '').trim();
+    const needle = String(query || '').trim().toLowerCase();
+    if (!transcript) return '';
+    if (needle && !transcript.toLowerCase().includes(needle)) return '';
+    return `
+      <article class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-700 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-300">
+        ${highlightTranscriptText(transcript, query)}
+      </article>
+    `;
+  };
+
+  const initTranscriptExplorer = () => {
+    const section = $('transcriptSection');
+    const list = $('transcriptList');
+    const search = $('transcriptSearch');
+    const status = $('transcriptStatus');
+    const empty = $('transcriptEmpty');
+    const openBtn = $('openTranscriptBtn');
+    if (!section || !list) return;
+
+    const transcriptText = getTranscriptText();
+    const segments = getTranscriptSegments();
+    const hasTranscript = Boolean(transcriptText) || segments.length > 0;
+
+    if (!hasTranscript) {
+      section.classList.add('hidden');
+      openBtn?.classList.add('hidden');
+      return;
+    }
+
+    const render = () => {
+      const query = String(search?.value || '').trim();
+      const normalizedQuery = query.toLowerCase();
+      if (segments.length > 0) {
+        const filtered = normalizedQuery
+          ? segments.filter((segment) => segment.text.toLowerCase().includes(normalizedQuery))
+          : segments;
+
+        list.innerHTML = filtered.map((segment) => {
+          const timestamp = formatTranscriptTimestamp(segment.start);
+          const jumpUrl = getTranscriptJumpUrl(segment.start);
+          const timestampHtml = jumpUrl
+            ? `<a href="${jumpUrl}" target="_blank" rel="noopener noreferrer" class="inline-flex shrink-0 items-center rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700 transition hover:bg-blue-100 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/70">${timestamp}</a>`
+            : `<span class="inline-flex shrink-0 items-center rounded-lg border border-slate-200 bg-slate-100 px-2.5 py-1 font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">${timestamp}</span>`;
+          return `
+            <article class="rounded-xl border border-slate-200 bg-slate-50 p-3 transition hover:border-slate-300 dark:border-slate-700 dark:bg-slate-950/40 dark:hover:border-slate-600">
+              <div class="flex items-start gap-3">
+                ${timestampHtml}
+                <p class="min-w-0 text-sm leading-6 text-slate-700 dark:text-slate-300">${highlightTranscriptText(segment.text, query)}</p>
+              </div>
+            </article>
+          `;
+        }).join('');
+
+        if (status) status.textContent = `${filtered.length} of ${segments.length} segments`;
+        if (empty) empty.classList.toggle('hidden', filtered.length > 0);
+        return;
+      }
+
+      const fallbackHtml = renderTranscriptFallback(transcriptText, query);
+      list.innerHTML = fallbackHtml;
+      if (status) status.textContent = transcriptText ? `${transcriptText.length} chars` : '';
+      if (empty) empty.classList.toggle('hidden', Boolean(fallbackHtml));
+    };
+
+    openBtn?.addEventListener('click', () => {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.setTimeout(() => search?.focus(), 250);
+    });
+
+    search?.addEventListener('input', render);
+    render();
+  };
+
   const getActiveReportVariantId = () => {
     const controls = $('summaryVariantControls');
     return String(controls?.dataset.currentVariant || window.SUMMARY_DEFAULT_VARIANT || 'comprehensive').trim().toLowerCase();
@@ -342,6 +470,9 @@
   };
 
   const getActiveReportVariantKind = () => {
+    const controls = $('summaryVariantControls');
+    const explicit = String(controls?.dataset.currentVariantKind || '').trim().toLowerCase();
+    if (explicit) return explicit;
     const current = getActiveReportVariantId();
     return VARIANT_META[current]?.kind || 'text';
   };
@@ -364,6 +495,34 @@
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   };
 
+  const getPreferredReportResearchVariantId = (variants, preferredVariantId = '') => {
+    const candidates = [preferredVariantId, 'key-insights', 'bullet-points', 'comprehensive'];
+    for (const candidate of candidates) {
+      const normalized = normalizeVariantId(candidate);
+      const entry = normalized ? variants.get(normalized) : null;
+      if (entry && (entry.kind || 'text') === 'text') return normalized;
+    }
+    for (const [variantId, entry] of variants.entries()) {
+      if ((entry?.kind || 'text') === 'text') return variantId;
+    }
+    return '';
+  };
+
+  const renderReportResearchEmptyState = (preferredVariantId = '') => `
+    <section class="deep-research-empty-state" data-deep-research-empty-state>
+      <div class="deep-research-empty-state__copy">
+        <div class="deep-research-launcher__eyebrow">Research</div>
+        <h3 class="deep-research-empty-state__title">Deep Research hasn’t been generated yet</h3>
+        <p class="deep-research-empty-state__text">Deep Research turns this summary into a deeper follow-up report. You can start from suggested questions or add your own to dig further into claims, evidence, and context.</p>
+      </div>
+      <div class="deep-research-empty-state__actions">
+        <button type="button" class="deep-research-launcher__button" data-deep-research-open data-deep-research-variant-id="${escapeHtml(preferredVariantId || '')}">
+          Open Research Setup
+        </button>
+      </div>
+    </section>
+  `;
+
   const htmlToPlainText = (html) => {
     if (!html) return '';
     const div = document.createElement('div');
@@ -378,6 +537,14 @@
 
   const getCurrentSummaryTextForResearch = () => {
     const entry = getActiveReportVariantEntry();
+    if (entry?.kind === 'research-launcher') {
+      const variantData = Array.isArray(window.SUMMARY_VARIANT_DATA) ? window.SUMMARY_VARIANT_DATA : [];
+      const fallbackEntry = variantData.find((item) => (item?.kind || 'text') === 'text');
+      const fallbackText = String(fallbackEntry?.text || '').trim();
+      if (fallbackText) return fallbackText;
+      const fallbackHtml = String(fallbackEntry?.html || '').trim();
+      if (fallbackHtml) return htmlToPlainText(fallbackHtml);
+    }
     const entryText = String(entry?.text || '').trim();
     if (entryText) return entryText;
     const entryHtml = String(entry?.html || '').trim();
@@ -715,7 +882,7 @@
     });
   };
 
-  const openReportDeepResearchModal = async ({ initialCustomQuestion = '' } = {}) => {
+  const openReportDeepResearchModal = async ({ initialCustomQuestion = '', preferredVariantId = '' } = {}) => {
     const videoId = getReportVideoId();
     if (!videoId) {
       window.alert('Deep Research is only available for persisted summaries.');
@@ -735,7 +902,7 @@
     }
 
     const sourceContext = buildReportSourceContext();
-    const activeVariantId = getActiveReportVariantId();
+    const activeVariantId = normalizeVariantId(preferredVariantId || getActiveReportVariantId());
     const activeKind = getActiveReportVariantKind();
     const parentFollowUpRunId = getActiveParentFollowUpRunId();
     const isDeepResearchFollowUp = activeKind === 'research';
@@ -1622,7 +1789,7 @@
     btn.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      openReportDeepResearchModal();
+      openReportDeepResearchModal({ preferredVariantId: String(btn.getAttribute('data-deep-research-variant-id') || '').trim().toLowerCase() });
     });
   });
   window.addEventListener('ytv2:report-variant-changed', updateReportDeepResearchLaunchers);
@@ -1725,5 +1892,6 @@
   maybeShowSticky();
   initReportMetaTabs();
   initSummaryVariants();
+  initTranscriptExplorer();
   updateReportDeepResearchLaunchers();
 })();

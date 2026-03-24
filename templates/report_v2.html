@@ -41,6 +41,17 @@
     }
     /* improve iOS slider thumb tap area a bit */
     input[type="range"]::-webkit-slider-thumb { height: 28px; width: 28px; }
+    .transcript-scrollbar {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(148, 163, 184, 0.75) transparent;
+    }
+    .transcript-scrollbar::-webkit-scrollbar {
+      width: 8px;
+    }
+    .transcript-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.6);
+      border-radius: 999px;
+    }
   </style>
 </head>
 <body class="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
@@ -124,6 +135,15 @@
           </svg>
           Copy link
         </button>
+        {% if has_transcript %}
+        <button id="openTranscriptBtn"
+           class="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium transition-colors border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">
+          <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h8m-8 4h6M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"/>
+          </svg>
+          Transcript
+        </button>
+        {% endif %}
       </div>
     </div>
   </header>
@@ -372,6 +392,45 @@
         </div>
       </article>
     </section>
+
+    {% if has_transcript %}
+    <section id="transcriptSection" class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900 lg:p-6">
+      <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div class="min-w-0">
+          <h2 class="text-xl font-semibold text-slate-900 dark:text-slate-100">Transcript</h2>
+          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Search the transcript and jump to the matching moment on YouTube.
+          </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+          {% if transcript_segments and transcript_segments|length > 0 %}
+          <span class="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
+            {{ transcript_segments|length }} segments
+          </span>
+          {% endif %}
+          {% if transcript_text %}
+          <span class="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 font-medium text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
+            {{ transcript_text|length }} chars
+          </span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <label class="sr-only" for="transcriptSearch">Search transcript</label>
+        <input id="transcriptSearch"
+               type="search"
+               placeholder="Search transcript"
+               class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-400 dark:focus:ring-blue-900/40" />
+        <div id="transcriptStatus" class="shrink-0 text-xs font-medium text-slate-500 dark:text-slate-400"></div>
+      </div>
+      <div id="transcriptEmpty" class="mt-4 hidden rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-400">
+        No transcript matches that search.
+      </div>
+      <div id="transcriptList"
+           class="transcript-scrollbar mt-4 max-h-[32rem] space-y-2 overflow-y-auto pr-1"
+           data-transcript-list></div>
+    </section>
+    {% endif %}
   </main>
 
   <!-- Sticky mini player (mobile & desktop) -->
@@ -410,7 +469,9 @@
       "title": title,
       "source_url": source_url or youtube_url or '',
       "source_label": source_label or '',
-      "content_source": content_source or ''
+      "content_source": content_source or '',
+      "transcript_text": transcript_text or '',
+      "transcript_segments": transcript_segments or []
     } | tojson | safe }};
   </script>
 

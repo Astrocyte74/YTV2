@@ -1595,6 +1595,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             "content_source": content_source,
             "canonical_url": canonical_url,
             "video_id": video_id,
+            "transcript_text": report_data.get('transcript') or report_data.get('transcript_text') or '',
+            "transcript_segments": report_data.get('transcript_segments') or [],
+            "has_transcript": bool(
+                report_data.get('transcript') or
+                report_data.get('transcript_text') or
+                report_data.get('transcript_segments')
+            ),
             "report_id": report_data.get('file_stem') or report_data.get('id') or video_id,
             "deployment_commit": COMMIT_SHA,
             "cache_bust": cache_bust,

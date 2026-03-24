@@ -943,6 +943,14 @@ class PostgreSQLContentIndex:
                 media_metadata_json = json.loads(media_metadata_json)
             except json.JSONDecodeError:
                 media_metadata_json = {}
+        transcript_segments = self._parse_json_field(row.get('transcript_segments'))
+        if not isinstance(transcript_segments, list):
+            transcript_segments = []
+        transcript_text = row.get('transcript_text') or ''
+        if transcript_text is not None and not isinstance(transcript_text, str):
+            transcript_text = str(transcript_text)
+        transcript_chars = len(transcript_text or '')
+        has_transcript = bool(transcript_text) or bool(transcript_segments)
 
         # Summary metadata (only attached for detailed view, but we pass through here)
         summary_variant = row.get('summary_variant') or 'comprehensive'
@@ -998,8 +1006,8 @@ class PostgreSQLContentIndex:
             'media': {
                 'has_audio': bool(row.get('has_audio', False)),
                 'audio_duration_seconds': analysis_json.get('audio_duration_seconds', 0),
-                'has_transcript': analysis_json.get('has_transcript', False),
-                'transcript_chars': analysis_json.get('transcript_chars', 0),
+                'has_transcript': has_transcript,
+                'transcript_chars': transcript_chars,
                 # Surface audio_url from content.media when available
                 'audio_url': (media_json.get('audio_url') if isinstance(media_json, dict) else None),
                 # Mirror image URL inside media for convenience (optional consumer)
@@ -1019,7 +1027,9 @@ class PostgreSQLContentIndex:
             'original_language': language,
             'summary_language': language,
             'audio_language': language,
-            'word_count': analysis_json.get('word_count', 0)
+            'word_count': analysis_json.get('word_count', 0),
+            'transcript': transcript_text,
+            'transcript_segments': transcript_segments,
         }
 
         # If backend stored an explicit audio_url in analysis_json, surface it in media
