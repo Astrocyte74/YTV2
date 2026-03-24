@@ -137,6 +137,73 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _build_delete_candidates(report_id: str) -> dict:
+    raw = str(report_id or "").strip()
+    prefix = ""
+    normalized = raw
+    if ":" in raw:
+        prefix, normalized = raw.split(":", 1)
+        prefix = prefix.strip().lower()
+        normalized = normalized.strip()
+    candidates = {raw, normalized}
+    if prefix and normalized:
+        candidates.add(f"{prefix}:{normalized}")
+    if normalized and len(normalized) == 11:
+        candidates.add(f"yt:{normalized}")
+    return {
+        "raw": raw,
+        "normalized": normalized,
+        "candidates": {item for item in candidates if item},
+    }
+
+
+def _json_contains_delete_target(value, *, candidates: set[str], normalized_ids: set[str]) -> bool:
+    if isinstance(value, dict):
+        return any(
+            _json_contains_delete_target(item, candidates=candidates, normalized_ids=normalized_ids)
+            for item in value.values()
+        )
+    if isinstance(value, list):
+        return any(
+            _json_contains_delete_target(item, candidates=candidates, normalized_ids=normalized_ids)
+            for item in value
+        )
+    if not isinstance(value, str):
+        return False
+
+    text = value.strip()
+    if not text:
+        return False
+    if text in candidates:
+        return True
+
+    lowered = text.lower()
+    for normalized in normalized_ids:
+        if normalized and normalized.lower() in lowered:
+            return True
+    return False
+
+
+def _json_file_matches_delete_target(path: Path, *, candidates: set[str], normalized_ids: set[str]) -> bool:
+    stem = path.stem.strip()
+    if stem in candidates:
+        return True
+    if any(normalized and normalized in stem for normalized in normalized_ids):
+        return True
+
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception:
+        return False
+
+    return _json_contains_delete_target(
+        payload,
+        candidates=candidates,
+        normalized_ids=normalized_ids,
+    )
+
 # Log minimal diagnostics about DEBUG_TOKEN (without revealing the secret)
 try:
     _raw_dbg = os.getenv('DEBUG_TOKEN') or ''
@@ -3895,6 +3962,67 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 }
         
         return files
+
+    def _dashboard_root(self) -> Path:
+        return Path(__file__).resolve().parent
+
+    def _backend_root(self) -> Path:
+        return self._dashboard_root().parent / "backend"
+
+    def _backend_data_roots(self) -> List[Path]:
+        return self._candidate_paths(
+            Path("/app/backend-data"),
+            self._backend_root() / "data",
+        )
+
+    def _candidate_paths(self, *paths: Path) -> List[Path]:
+        unique_paths = []
+        seen = set()
+        for path in paths:
+            key = str(path)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_paths.append(path)
+        return unique_paths
+
+    def _delete_matching_json_files(self, directories, *, candidates: set[str], normalized_ids: set[str], deleted_files: list, errors: list, label: str) -> None:
+        for directory in directories:
+            if not directory.exists():
+                continue
+            for path in directory.glob("*.json"):
+                if not path.is_file():
+                    continue
+                if not _json_file_matches_delete_target(path, candidates=candidates, normalized_ids=normalized_ids):
+                    continue
+                try:
+                    path.unlink()
+                    deleted_files.append(str(path))
+                    logger.info("Deleted %s: %s", label, path)
+                except Exception as exc:
+                    errors.append(f"Failed to delete {label} {path}: {exc}")
+
+    def _delete_matching_queue_files(self, *, candidates: set[str], normalized_ids: set[str], deleted_files: list, errors: list) -> None:
+        backend_data_roots = self._backend_data_roots()
+        queue_dirs = self._candidate_paths(
+            Path("/app/data/summary_queue"),
+            Path("/app/data/image_queue"),
+            Path("/app/data/tts_queue"),
+            *(root / "summary_queue" for root in backend_data_roots),
+            *(root / "image_queue" for root in backend_data_roots),
+            *(root / "tts_queue" for root in backend_data_roots),
+            self._dashboard_root() / "data" / "summary_queue",
+            self._dashboard_root() / "data" / "image_queue",
+            self._dashboard_root() / "data" / "tts_queue",
+        )
+        self._delete_matching_json_files(
+            queue_dirs,
+            candidates=candidates,
+            normalized_ids=normalized_ids,
+            deleted_files=deleted_files,
+            errors=errors,
+            label="queue job",
+        )
     
     def _auth_ok(self) -> bool:
         """Check bearer token authentication for delete operations"""
@@ -3913,143 +4041,165 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         """
         deleted_files = []
         errors = []
-        
-        # Search for report files in multiple directories
-        search_dirs = [
-            Path('./exports'),       # HTML reports (legacy)
-            Path('.')               # Current directory (legacy)
-        ]
-        
-        video_id_for_audio = None
-        
-        # Delete report files
-        for search_dir in search_dirs:
+
+        target = _build_delete_candidates(report_id)
+        video_id = target["normalized"] or target["raw"]
+        candidate_ids = set(target["candidates"])
+        normalized_ids = {video_id} if video_id else set()
+        deleted_paths = set()
+        backend_data_roots = self._backend_data_roots()
+
+        html_dirs = self._candidate_paths(
+            Path("./exports"),
+            Path("."),
+            self._dashboard_root() / "exports",
+            self._dashboard_root(),
+            self._backend_root() / "exports",
+            self._backend_root(),
+        )
+        html_patterns = [f"{target['raw']}.html", f"{video_id}.html"]
+        if video_id:
+            html_patterns.append(f"*{video_id}*.html")
+        for search_dir in html_dirs:
             if not search_dir.exists():
                 continue
-                
-            for ext in ['.html']:
-                file_path = search_dir / f"{report_id}{ext}"
-                if file_path.exists():
+            for pattern in html_patterns:
+                for file_path in search_dir.glob(pattern):
+                    if not file_path.is_file() or str(file_path) in deleted_paths:
+                        continue
                     try:
-                        # JSON-based deletion removed (Postgres-only mode)
                         file_path.unlink()
+                        deleted_paths.add(str(file_path))
                         deleted_files.append(str(file_path))
-                        logger.info(f"Deleted report: {file_path}")
-                    except Exception as e:
-                        errors.append(f"Failed to delete {file_path}: {e}")
-        
-        # Delete associated audio files if video_id was found
-        if video_id_for_audio:
-            audio_dirs = [
-                Path('/app/data/exports'),  # Render deployment
-                Path('./exports')           # Local development
-            ]
-            
-            for audio_dir in audio_dirs:
-                if not audio_dir.exists():
-                    continue
-                    
-                # Search for audio files with different patterns
-                patterns = [
-                    f'audio_{video_id_for_audio}_*.mp3',  # Standard pattern
-                    f'{video_id_for_audio}_*.mp3',        # Legacy pattern  
-                    f'*{video_id_for_audio}*.mp3'         # Flexible pattern
-                ]
-                
-                for pattern in patterns:
-                    for audio_path in audio_dir.glob(pattern):
-                        try:
-                            audio_path.unlink()
-                            deleted_files.append(str(audio_path))
-                            logger.info(f"Deleted audio: {audio_path}")
-                        except Exception as e:
-                            errors.append(f"Failed to delete audio {audio_path}: {e}")
-        
-        # Remove cached JSON reports if present (Render disk or local dev)
-        try:
-            json_dirs = [
-                Path('/app/data/reports'),
-                Path('./data/reports')
-            ]
-            for jdir in json_dirs:
-                if not jdir.exists():
-                    continue
-                jpath = jdir / f"{report_id}.json"
-                if jpath.is_file():
-                    try:
-                        jpath.unlink()
-                        deleted_files.append(str(jpath))
-                        logger.info("Deleted cached JSON report: %s", jpath)
-                    except Exception as e:
-                        errors.append(f"Failed to delete JSON {jpath}: {e}")
-        except Exception as e:
-            errors.append(f"JSON cleanup error: {e}")
+                        logger.info("Deleted report: %s", file_path)
+                    except Exception as exc:
+                        errors.append(f"Failed to delete {file_path}: {exc}")
 
-        # Remove generated summary images if present
-        # Modern image filenames are based on the bare video_id (no source prefix)
-        # e.g. 7GnRsYHwNIU_20251119_071657_neon_network384.png and
-        #       AI2_7GnRsYHwNIU_20251119_071804_minimal_vector384.png
         try:
-            img_dirs = [
-                Path('/app/data/exports/images'),
-                Path('./exports/images')
-            ]
-            # Derive a generic base id for filenames (strip yt:/reddit:/web: prefixes)
-            base_id = (report_id or '').split(':', 1)[-1]
+            json_dirs = self._candidate_paths(
+                Path("/app/data/reports"),
+                *(root / "reports" for root in backend_data_roots),
+                Path("./data/reports"),
+                self._dashboard_root() / "data" / "reports",
+            )
+            self._delete_matching_json_files(
+                json_dirs,
+                candidates=candidate_ids,
+                normalized_ids=normalized_ids,
+                deleted_files=deleted_files,
+                errors=errors,
+                label="cached JSON report",
+            )
+        except Exception as exc:
+            errors.append(f"JSON cleanup error: {exc}")
+
+        try:
+            img_dirs = self._candidate_paths(
+                Path("/app/data/exports/images"),
+                Path("./exports/images"),
+                self._dashboard_root() / "exports" / "images",
+                self._backend_root() / "exports" / "images",
+            )
             for idir in img_dirs:
                 if not idir.exists():
                     continue
-                for ext in ('.png', '.jpg', '.jpeg', '.webp'):
+                for ext in (".png", ".jpg", ".jpeg", ".webp"):
                     patterns = [
-                        f"{base_id}_*{ext}",           # AI1 / legacy pattern
-                        f"AI2_{base_id}_*{ext}",       # AI2 pattern
-                        f"{report_id}_*{ext}",         # older prefix pattern
+                        f"{video_id}_*{ext}",
+                        f"AI2_{video_id}_*{ext}",
+                        f"{target['raw']}_*{ext}",
+                        f"*{video_id}*{ext}",
                     ]
                     for pattern in patterns:
-                        for p in idir.glob(pattern):
+                        for path in idir.glob(pattern):
+                            if not path.is_file():
+                                continue
                             try:
-                                p.unlink()
-                                deleted_files.append(str(p))
-                                logger.info("Deleted summary image: %s", p)
-                            except Exception as e:
-                                errors.append(f"Failed to delete image {p}: {e}")
-        except Exception as e:
-            errors.append(f"Image cleanup error: {e}")
+                                path.unlink()
+                                deleted_files.append(str(path))
+                                logger.info("Deleted summary image: %s", path)
+                            except Exception as exc:
+                                errors.append(f"Failed to delete image {path}: {exc}")
+        except Exception as exc:
+            errors.append(f"Image cleanup error: {exc}")
+
+        try:
+            audio_dirs = self._candidate_paths(
+                Path("/app/data/exports/audio"),
+                Path("/app/data/exports"),
+                Path("./exports/audio"),
+                Path("./exports"),
+                self._dashboard_root() / "exports" / "audio",
+                self._dashboard_root() / "exports",
+                self._backend_root() / "exports" / "audio",
+                self._backend_root() / "exports",
+            )
+            for audio_dir in audio_dirs:
+                if not audio_dir.exists():
+                    continue
+                patterns = [
+                    f"{video_id}.mp3",
+                    f"yt:{video_id}.mp3",
+                    f"audio_{video_id}_*.mp3",
+                    f"{video_id}_*.mp3",
+                    f"*{video_id}*.mp3",
+                ]
+                for pattern in patterns:
+                    for audio_path in audio_dir.glob(pattern):
+                        if not audio_path.is_file():
+                            continue
+                        try:
+                            audio_path.unlink()
+                            deleted_files.append(str(audio_path))
+                            logger.info("Deleted audio: %s", audio_path)
+                        except Exception as exc:
+                            errors.append(f"Failed to delete audio {audio_path}: {exc}")
+        except Exception as exc:
+            errors.append(f"Audio cleanup error: {exc}")
+
+        try:
+            self._delete_matching_queue_files(
+                candidates=candidate_ids,
+                normalized_ids=normalized_ids,
+                deleted_files=deleted_files,
+                errors=errors,
+            )
+        except Exception as exc:
+            errors.append(f"Queue cleanup error: {exc}")
 
         # (SQLite deletion removed in Postgres-only mode)
 
         # Delete from PostgreSQL database if using PostgreSQL backend
-        video_id = (report_id or "").replace("yt:", "").strip()
-
         if content_index and hasattr(content_index, "delete_content"):
             try:
                 result = content_index.delete_content(video_id)
                 if result.get("success"):
                     deleted_files.append(
-                        f"PostgreSQL: {result['content_deleted']} content, {result['summaries_deleted']} summaries"
+                        "PostgreSQL: "
+                        f"{result['content_deleted']} content, "
+                        f"{result['summaries_deleted']} summaries, "
+                        f"{result.get('follow_up_runs_deleted', 0)} follow-up runs, "
+                        f"{result.get('follow_up_suggestions_deleted', 0)} follow-up suggestion sets"
                     )
-
-                    # Clean up MP3 files if present
-                    audio_root = Path("/app/data/exports/audio")
-                    for name in (f"{video_id}.mp3", f"yt:{video_id}.mp3"):
-                        p = audio_root / name
-                        if p.is_file():
-                            try:
-                                p.unlink()
-                                deleted_files.append(f"Audio: {name}")
-                            except Exception as e:
-                                logger.warning(f"Could not remove {p}: {e}")
 
                 else:
                     errors.append(f"PostgreSQL deletion failed: {result.get('error','Unknown')}")
-            except Exception as e:
-                errors.append(f"Failed to delete in PostgreSQL: {e}")
+            except Exception as exc:
+                errors.append(f"Failed to delete in PostgreSQL: {exc}")
+
+        try:
+            from modules.semantic_search import delete_document as chroma_delete
+
+            if chroma_delete(video_id):
+                deleted_files.append(f"ChromaDB: {video_id}")
+        except Exception as exc:
+            errors.append(f"Semantic index cleanup error: {exc}")
 
         return {
             'report_id': report_id,
             'deleted_files': deleted_files,
             'errors': errors,
-            'found_video_id': video_id_for_audio,
+            'found_video_id': video_id,
             'success': len(deleted_files) > 0 or len(errors) == 0  # Success if we deleted something OR no errors (idempotent)
         }
     

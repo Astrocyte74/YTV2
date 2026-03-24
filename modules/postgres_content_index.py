@@ -165,8 +165,8 @@ class PostgreSQLContentIndex:
                     conn.close()
         return bool(self._content_source_column_present)
 
-    def _has_follow_up_research_table(self, conn=None) -> bool:
-        """Detect whether follow-up research persistence is available in this database."""
+    def _table_exists(self, table_name: str, conn=None) -> bool:
+        """Detect whether a table exists in the current database."""
         close_conn = False
         cursor = None
         try:
@@ -181,17 +181,25 @@ class PostgreSQLContentIndex:
                 WHERE table_name = %s
                 LIMIT 1
                 """,
-                ('follow_up_research_runs',),
+                (table_name,),
             )
             return cursor.fetchone() is not None
         except Exception:
-            logger.exception("Failed to detect follow_up_research_runs table")
+            logger.exception("Failed to detect table %s", table_name)
             return False
         finally:
             if cursor:
                 cursor.close()
             if close_conn and conn:
                 conn.close()
+
+    def _has_follow_up_research_table(self, conn=None) -> bool:
+        """Detect whether follow-up research persistence is available in this database."""
+        return self._table_exists('follow_up_research_runs', conn=conn)
+
+    def _has_follow_up_suggestions_table(self, conn=None) -> bool:
+        """Detect whether stored follow-up suggestions are available in this database."""
+        return self._table_exists('follow_up_suggestions', conn=conn)
 
     def _source_case_expression(self, alias: str = 'c', conn=None) -> str:
         """Build SQL CASE expression that normalizes source slugs without schema assumptions."""
@@ -2933,6 +2941,23 @@ class PostgreSQLContentIndex:
         try:
             conn = self._get_connection()
             cur = conn.cursor()
+            follow_up_runs_deleted = 0
+            follow_up_suggestions_deleted = 0
+
+            if self._has_follow_up_research_table(conn):
+                cur.execute("""
+                    DELETE FROM follow_up_research_runs
+                    WHERE video_id = %s
+                """, (video_id,))
+                follow_up_runs_deleted = cur.rowcount
+
+            if self._has_follow_up_suggestions_table(conn):
+                cur.execute("""
+                    DELETE FROM follow_up_suggestions
+                    WHERE video_id = %s
+                """, (video_id,))
+                follow_up_suggestions_deleted = cur.rowcount
+
             # Delete summaries first (FK or not, it's safe)
             cur.execute("""
                 DELETE FROM content_summaries
@@ -2952,10 +2977,19 @@ class PostgreSQLContentIndex:
                 "success": True,
                 "content_deleted": int(content_deleted),
                 "summaries_deleted": int(summaries_deleted),
+                "follow_up_runs_deleted": int(follow_up_runs_deleted),
+                "follow_up_suggestions_deleted": int(follow_up_suggestions_deleted),
             }
         except Exception as e:
             if conn: conn.rollback()
             logger.error(f"PostgreSQL deletion error for {video_id}: {e}")
-            return {"success": False, "error": str(e), "content_deleted": 0, "summaries_deleted": 0}
+            return {
+                "success": False,
+                "error": str(e),
+                "content_deleted": 0,
+                "summaries_deleted": 0,
+                "follow_up_runs_deleted": 0,
+                "follow_up_suggestions_deleted": 0,
+            }
         finally:
             if conn: conn.close()
