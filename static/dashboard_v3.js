@@ -3849,6 +3849,7 @@ class AudioDashboard {
                                         <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-open-page">Open full page</button>
                                         <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-copy-link">Copy link</button>
                                         <button type="button" class="summary-card__menu-item" role="menuitem" data-action="wall-reader-reprocess">Regenerate…</button>
+                                        <button type="button" class="summary-card__menu-item" role="menuitem" data-action="images-manage">Manage images…</button>
                                         <button type="button" class="summary-card__menu-item summary-card__menu-item--danger" role="menuitem" data-action="delete">Delete…</button>
                                     </div>
                                 </div>
@@ -8512,6 +8513,7 @@ class AudioDashboard {
                     if (act === 'wall-reader-open-page') { window.location.href = `/${encodeURIComponent(id)}.json?v=2`; this.toggleKebabMenu(modal, false); }
                     if (act === 'wall-reader-copy-link') { this.copyLink(card || modal, id); this.toggleKebabMenu(modal, false); }
                     if (act === 'wall-reader-reprocess') { this.openReprocessModal(id, card || modal, item); this.toggleKebabMenu(modal, false); }
+                    if (act === 'images-manage') { this.handleManageImages(id); this.toggleKebabMenu(modal, false); }
                     if (act === 'delete') { if (card) this.handleDelete(id, card); this.toggleKebabMenu(modal, false); }
                 });
             }
