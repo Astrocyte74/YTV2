@@ -783,7 +783,8 @@
 
             <!-- Search & Filters Sidebar (HIDDEN on desktop - filtering moved to horizontal bar) -->
             <aside id="sidebar"
-                class="lg:hidden fixed inset-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur overflow-y-auto"
+                class="hidden lg:hidden fixed inset-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur overflow-y-auto"
+                aria-hidden="true"
                 style="height: calc(100vh - 4rem)">
                 <div
                     class="sidebar-inner p-6 space-y-6 bg-gradient-to-b from-white/30 via-white/10 to-transparent dark:from-white/5 dark:via-white/5 dark:to-transparent rounded-3xl border border-white/30 dark:border-white/10 shadow-lg shadow-slate-900/10">
@@ -1264,12 +1265,6 @@
             <div id="wallReaderSheet" class="kaleido-shell">
                 <div class="kaleido-topbar">
                     <div class="kaleido-title-stack">
-                        <button id="wallReaderClose" class="kaleido-icon-btn" aria-label="Close">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
                         <div class="kaleido-title-block">
                             <div class="kaleido-meta-row">
                                 <span id="wallReaderSource" class="kaleido-source-badge">Source</span>
@@ -1285,17 +1280,7 @@
                             <h3 id="wallReaderTitle" class="kaleido-heading">Summary</h3>
                         </div>
                     </div>
-		                    <div class="kaleido-actions">
-                                <button class="kaleido-icon-btn" data-action="wall-reader-reprocess" title="Regenerate summary">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                    </svg>
-                                </button>
-                                <button class="kaleido-icon-btn" data-action="reader-display" title="Display options">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                                    </svg>
-                                </button>
+                    <div class="kaleido-actions">
 		                        <button class="kaleido-nav-btn" data-kaleido-prev aria-label="Previous">←</button>
 		                        <button class="kaleido-nav-btn" data-kaleido-next aria-label="Next">→</button>
 		                        <button class="summary-card__menu-btn kaleido-menu-btn" data-action="menu" aria-label="More options"
@@ -1308,12 +1293,32 @@
                         </button>
                         <div class="summary-card__menu hidden" data-kebab-menu role="menu">
                             <button type="button" class="summary-card__menu-item" role="menuitem"
-                                data-action="copy-link">Copy link</button>
+                                data-action="wall-reader-open-page">Open full page</button>
                             <button type="button" class="summary-card__menu-item" role="menuitem"
-                                data-action="open-source">Open source</button>
+                                data-action="wall-reader-copy-link">Copy link</button>
+                            <button type="button" class="summary-card__menu-item" role="menuitem"
+                                data-action="wall-reader-reprocess">Regenerate…</button>
                             <button type="button" class="summary-card__menu-item summary-card__menu-item--danger"
                                 role="menuitem" data-action="delete">Delete…</button>
                         </div>
+                        <button id="wallReaderCollapse" class="kaleido-icon-btn" aria-label="Collapse to dock" title="Collapse to dock">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 3H3v6" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M15 21h6v-6" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M3 9l7-7" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M21 15l-7 7" />
+                            </svg>
+                        </button>
+                        <button id="wallReaderClose" class="kaleido-icon-btn" aria-label="Close">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
 	                    <div class="kaleido-main">

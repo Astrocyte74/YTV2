@@ -572,6 +572,39 @@ article[data-summary-body] p:has(strong:nth-child(1)) {
     box-shadow: none;
 }
 
+.deep-research-empty-state {
+    display: grid;
+    gap: 0.9rem;
+    padding: 1rem 0;
+}
+
+.deep-research-empty-state__copy {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.deep-research-empty-state__title {
+    margin: 0;
+    font-size: clamp(1.15rem, 2vw, 1.4rem);
+    font-weight: 700;
+    line-height: 1.2;
+    color: #f8fafc;
+}
+
+.deep-research-empty-state__text {
+    margin: 0;
+    max-width: 46rem;
+    font-size: 0.98rem;
+    line-height: 1.65;
+    color: #cbd5e1;
+}
+
+.deep-research-empty-state__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
 /* Deep Research Table Styles */
 .deep-research-table {
     width: 100%;

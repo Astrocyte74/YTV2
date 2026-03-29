@@ -6337,9 +6337,23 @@ class AudioDashboard {
                 const popRect = pop.getBoundingClientRect();
                 let top = Math.round(anchorRect.bottom + 10);
                 let right = Math.round(Math.max(16, window.innerWidth - anchorRect.right));
+
+                // Reposition to avoid going off-screen, but keep header visible
                 if (top + popRect.height > window.innerHeight - 16) {
-                    top = Math.round(Math.max(16, anchorRect.top - popRect.height - 10));
+                    // Try positioning above the button
+                    const topAbove = Math.round(anchorRect.top - popRect.height - 10);
+                    if (topAbove >= 16) {
+                        // Fits above with safe margin from top
+                        top = topAbove;
+                    } else {
+                        // Popover is taller than available space - position at top edge
+                        // This ensures the header is always visible
+                        top = 16;
+                        // Also cap max-height to fit viewport with header visible
+                        pop.style.maxHeight = `${window.innerHeight - 32}px`;
+                    }
                 }
+
                 const left = window.innerWidth - right - popRect.width;
                 if (left < 16) right = Math.round(Math.max(16, window.innerWidth - 16 - popRect.width));
                 pop.style.top = `${top}px`;

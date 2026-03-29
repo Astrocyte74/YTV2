@@ -2469,6 +2469,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "summary_type": report_data.get('summary_type_latest', 'unknown'),
                 # Also expose variants at the top-level to match list responses
                 "summary_variants": enriched_variants,
+                # Transcript data for the UI
+                "transcript": report_data.get('transcript', ''),
+                "transcript_segments": report_data.get('transcript_segments', []),
                 # Embed commit for deploy verification (header may be stripped upstream)
                 "deployment_commit": COMMIT_SHA
             }
