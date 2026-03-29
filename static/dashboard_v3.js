@@ -231,6 +231,17 @@ class AudioDashboard {
     }
 
     initializeElements() {
+        // Sync kaleido modal menu from builder (single source of truth)
+        try {
+            const kaleidoMenu = document.querySelector('#wallReaderModal [data-kebab-menu]');
+            if (kaleidoMenu) {
+                const tmp = document.createElement('div');
+                tmp.innerHTML = this._buildKebabMenu(this._readerMenuItems);
+                const built = tmp.firstElementChild;
+                if (built) kaleidoMenu.replaceWith(built);
+            }
+        } catch (_) { }
+
         // Audio elements
         this.audioElement = document.getElementById('audioElement');
         // Bottom container removed; mini player is always visible in sidebar
@@ -3985,7 +3996,10 @@ class AudioDashboard {
             this.sendTelemetry('cta_toggle_image', { id });
         }
         if (action === 'delete') { this._lastDeleteTrigger = btn; this.toggleDeletePopover(card, true); }
-        if (action === 'menu') { this.toggleKebabMenu(card, true, btn); }
+        if (action === 'menu') {
+            const expanded = btn.getAttribute('aria-expanded') === 'true';
+            this.toggleKebabMenu(card, !expanded, btn);
+        }
         if (action === 'menu-close') { this.toggleKebabMenu(card, false); }
         if (action === 'copy-link') { this.copyLink(card, id); this.toggleKebabMenu(card, false); }
         if (action === 'toggle-image') {
@@ -5123,7 +5137,7 @@ class AudioDashboard {
         { action: 'copy-link', label: 'Copy link' },
         { action: 'images-manage', label: 'Manage images\u2026' },
         { action: 'reprocess', label: 'Regenerate\u2026' },
-        { action: 'delete', label: 'Delete\u2026', danger: true },
+        { action: 'delete', label: 'Remove\u2026', danger: true },
     ];
 
     _readerMenuItems = [
@@ -5131,7 +5145,7 @@ class AudioDashboard {
         { action: 'wall-reader-copy-link', label: 'Copy link' },
         { action: 'wall-reader-reprocess', label: 'Regenerate\u2026' },
         { action: 'images-manage', label: 'Manage images\u2026' },
-        { action: 'delete', label: 'Delete\u2026', danger: true },
+        { action: 'delete', label: 'Remove\u2026', danger: true },
     ];
 
     _buildKebabMenu(items, opts = {}) {
@@ -6903,16 +6917,6 @@ class AudioDashboard {
             mediaImgs = `<div class="wall-card__thumb wall-card__thumb--fallback"></div>`;
         }
 
-        // Tags button (top-right corner)
-        const tagsBtn = totalTags > 0 ? `
-            <button type="button" class="wall-card__tags-btn" ${tagsDataAttr} title="${totalTags} tags">
-                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
-                    <line x1="7" y1="7" x2="7.01" y2="7"/>
-                </svg>
-                <span class="wall-card__tags-count">${totalTags}</span>
-            </button>` : '';
-
         // Meta row: source + duration, channel
         const metaRow = `
             <div class="wall-card__meta-row">
@@ -6927,7 +6931,6 @@ class AudioDashboard {
         return `
             <article data-card data-decorated="true" data-report-id="${item.file_stem}" data-video-id="${item.video_id || ''}" data-canonical-url="${this.escapeHtml(item.canonical_url || '')}" data-source="${this.escapeHtml(source)}" data-has-audio="${hasAudio ? 'true' : 'false'}" data-href="${href}" tabindex="0" class="wall-card wall-card--${source}">
                 ${menuMarkup}
-                ${tagsBtn}
                 <div class="wall-card__media">${toggleBtn}${mediaImgs}</div>
                 <div class="wall-card__overlay">
                     ${metaRow}
@@ -8330,7 +8333,12 @@ class AudioDashboard {
                     }
 	            if (menuBtn && menu) {
                 menu.classList.add('hidden');
-                on(menuBtn, 'click', (e) => { e.stopPropagation(); this.toggleKebabMenu(modal, true, menuBtn); });
+                on(menuBtn, 'click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const expanded = menuBtn.getAttribute('aria-expanded') === 'true';
+                    this.toggleKebabMenu(modal, !expanded, menuBtn);
+                });
                 on(menu, 'click', (e) => {
                     const a = e.target.closest('[data-action]');
                     if (!a) return;

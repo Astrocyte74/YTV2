@@ -703,6 +703,7 @@ body {
     color: #fff;
     transition: background 160ms ease, transform 160ms ease;
     backdrop-filter: blur(8px);
+    z-index: 10;
 }
 
 /* Connector overlay styling */
@@ -716,6 +717,25 @@ body {
 .summary-card__menu-btn:focus-visible {
     transform: translateY(-1px);
     background: rgba(15, 23, 42, 0.6);
+}
+
+.wall-card > .summary-card__menu-btn {
+    top: 0.6rem;
+    right: 0.6rem;
+    width: 2rem;
+    height: 2rem;
+    background: rgba(15, 23, 42, 0.24);
+    border-color: rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 8px 22px rgba(2, 8, 23, 0.14);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+.wall-card > .summary-card__menu-btn:hover,
+.wall-card > .summary-card__menu-btn:focus-visible {
+    background: rgba(15, 23, 42, 0.46);
+    border-color: rgba(255, 255, 255, 0.24);
 }
 
 /* Reader header kebab menu: inline in header row */
