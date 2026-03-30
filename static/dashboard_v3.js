@@ -653,38 +653,6 @@ class AudioDashboard {
             });
         } catch (_) { /* no-op */ }
 
-        // Ensure kebab action opens Manage Images (capture phase to beat other handlers)
-        document.addEventListener('click', (e) => {
-            const el = e.target.closest('[data-action="images-manage"]');
-            if (!el) return;
-            e.preventDefault();
-            e.stopPropagation();
-            let id = null;
-            const card = el.closest('[data-report-id]');
-            if (card && card.dataset) id = card.dataset.reportId;
-            if (!id) {
-                const menu = el.closest('[data-kebab-menu][data-report-id]');
-                if (menu && menu.getAttribute) id = menu.getAttribute('data-report-id');
-            }
-            if (id) this.handleManageImages(id);
-        }, true);
-        const imageNewHandler = (e) => {
-            const el = e.target.closest && e.target.closest('[data-action="images-manage"]');
-            if (!el) return;
-            e.preventDefault();
-            e.stopPropagation();
-            let id = null;
-            const card = el.closest('[data-report-id]');
-            if (card && card.dataset) id = card.dataset.reportId;
-            if (!id) {
-                const menu = el.closest('[data-kebab-menu][data-report-id]');
-                if (menu && menu.getAttribute) id = menu.getAttribute('data-report-id');
-            }
-            if (id) this.handleManageImages(id);
-        };
-        document.addEventListener('pointerup', imageNewHandler, true);
-        document.addEventListener('mousedown', imageNewHandler, true);
-
         // Show more sort options toggle
         const toggleMoreSorts = document.getElementById('toggleMoreSorts');
         const showMoreSorts = document.getElementById('showMoreSorts');
@@ -3871,15 +3839,6 @@ class AudioDashboard {
                         </div>
                         <h3 id="wallDockTitle" class="wall-dock__title">Summary</h3>
                     </div>
-                    <div class="summary-card__popover hidden" data-delete-popover>
-                        <div class="summary-card__popover-panel">
-                            <p>Delete this summary?</p>
-                            <div class="summary-card__popover-actions">
-                                <button type="button" data-action="cancel-delete">Cancel</button>
-                                <button type="button" data-action="confirm-delete">Delete</button>
-                            </div>
-                        </div>
-                    </div>
                     <div id="wallDockBody" class="wall-dock__body prose prose-sm dark:prose-invert max-w-none"></div>
                 </aside>
             </section>`;
@@ -3957,51 +3916,29 @@ class AudioDashboard {
         setTimeout(() => { try { delete btn.dataset.busy; } catch (_) { } }, 400);
         const action = btn.dataset.action;
         const id = card.dataset.reportId;
+
+        // Card-specific actions (not in kebab menus)
         if (action === 'listen') {
             const hasAudio = card.getAttribute('data-has-audio') === 'true';
             if (!hasAudio) { this.showToast('No audio for this item', 'warn'); return; }
-            // If tapping Listen on the currently selected item, toggle play/pause
             if (this.currentAudio && this.currentAudio.id === id) {
                 this.togglePlayPause();
             } else {
                 this.playAudio(id);
             }
             this.sendTelemetry('cta_listen', { id });
+            return;
         }
-        if (action === 'read') { this.handleRead(id); this.sendTelemetry('cta_read', { id }); }
-        if (action === 'image-new' || action === 'images-manage') { this.handleManageImages(id); }
+        if (action === 'read') { this.handleRead(id); this.sendTelemetry('cta_read', { id }); return; }
+        if (action === 'image-new') { this.handleManageImages(id); return; }
         if (action === 'watch') {
             const source = card.dataset.source || 'youtube';
             const videoId = card.dataset.videoId || '';
             const canonicalUrl = card.dataset.canonicalUrl || '';
             this.openSourceLink(source, videoId, canonicalUrl);
             this.sendTelemetry('cta_watch', { id, source, video_id: videoId || null });
+            return;
         }
-        if (action === 'toggle-image') {
-            const media = card.querySelector('.summary-card__media');
-            if (!media) return;
-            const a = media.querySelector('[data-role="thumb-default"]');
-            const b = media.querySelector('[data-role="thumb-summary"]');
-            if (!a || !b) return;
-            const aHidden = a.classList.contains('hidden');
-            if (aHidden) {
-                a.classList.remove('hidden');
-                b.classList.add('hidden');
-                btn.setAttribute('aria-pressed', 'false');
-            } else {
-                a.classList.add('hidden');
-                b.classList.remove('hidden');
-                btn.setAttribute('aria-pressed', 'true');
-            }
-            this.sendTelemetry('cta_toggle_image', { id });
-        }
-        if (action === 'delete') { this._lastDeleteTrigger = btn; this.toggleDeletePopover(card, true); }
-        if (action === 'menu') {
-            const expanded = btn.getAttribute('aria-expanded') === 'true';
-            this.toggleKebabMenu(card, !expanded, btn);
-        }
-        if (action === 'menu-close') { this.toggleKebabMenu(card, false); }
-        if (action === 'copy-link') { this.copyLink(card, id); this.toggleKebabMenu(card, false); }
         if (action === 'toggle-image') {
             const media = card.querySelector('.summary-card__media, .stream-card__media, .relative.w-full.h-40');
             if (!media) return;
@@ -4013,14 +3950,19 @@ class AudioDashboard {
             else { a.classList.add('hidden'); b.classList.remove('hidden'); }
             btn.setAttribute('aria-pressed', String(!aHidden));
             this.sendTelemetry('cta_toggle_image', { id });
+            return;
         }
-        if (action === 'reprocess') {
-            this.toggleKebabMenu(card, false);
-            this.openReprocessModal(id, card);
+        if (action === 'menu') {
+            const expanded = btn.getAttribute('aria-expanded') === 'true';
+            this.toggleKebabMenu(card, !expanded, btn);
+            return;
         }
-        if (action === 'confirm-delete') { this.handleDelete(id, card); this.sendTelemetry('cta_delete', { id }); }
-        if (action === 'cancel-delete') this.toggleDeletePopover(card, false);
-        if (action === 'collapse') this.collapseCardInline(id);
+        if (action === 'menu-close') { this.toggleKebabMenu(card, false); return; }
+        if (action === 'collapse') { this.collapseCardInline(id); return; }
+
+        // Shared menu actions — route through unified dispatcher
+        const item = (this.currentItems || []).find(x => x.file_stem === id);
+        this._dispatchMenuAction(action, { reportId: id, item, card, container: card });
     }
 
     handleRead(id) {
@@ -5110,23 +5052,87 @@ class AudioDashboard {
         });
     }
 
-    toggleDeletePopover(card, show) {
-        const pop = card.querySelector('[data-delete-popover]');
-        if (!pop) return;
-        if (show) {
-            pop.setAttribute('role', 'dialog');
-            pop.setAttribute('aria-modal', 'true');
-            pop.classList.remove('hidden');
-            // focus first button
-            const firstBtn = pop.querySelector('button');
-            if (firstBtn) firstBtn.focus();
-        } else {
-            pop.classList.add('hidden');
-            // restore focus
-            if (this._lastDeleteTrigger && this._lastDeleteTrigger.focus) {
-                this._lastDeleteTrigger.focus();
-            }
+    /* ── Unified menu action dispatcher ──────────────────────────
+     * Single entry point for ALL kebab menu actions from every context.
+     * card menu, dock reader, kaleido reader all route here.
+     */
+    _dispatchMenuAction(action, { reportId, item, card, container }) {
+        const closeMenu = () => this.toggleKebabMenu(container, false);
+
+        if (action === 'copy-link' || action === 'wall-reader-copy-link') {
+            this.copyLink(container, reportId);
+            closeMenu();
+            return;
         }
+        if (action === 'images-manage') {
+            this.handleManageImages(reportId);
+            closeMenu();
+            return;
+        }
+        if (action === 'reprocess' || action === 'wall-reader-reprocess') {
+            this.openReprocessModal(reportId, card || container, item);
+            closeMenu();
+            return;
+        }
+        if (action === 'wall-reader-open-page') {
+            window.location.href = `/${encodeURIComponent(reportId)}.json?v=2`;
+            closeMenu();
+            return;
+        }
+        if (action === 'delete') {
+            closeMenu();
+            this._confirmDelete(reportId, item, card);
+            return;
+        }
+    }
+
+    async _confirmDelete(reportId, item, card) {
+        const ok = await this._showConfirmDialog('Delete this summary?', 'Delete');
+        if (!ok) return;
+
+        const videoId = item?.video_id || card?.dataset?.videoId;
+        if (!videoId) { this.showToast('No video ID found', 'error'); return; }
+
+        try {
+            const res = await fetch(`/api/delete/${encodeURIComponent(videoId)}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            // Remove grid card with animation
+            const gridCard = card || this.contentGrid?.querySelector(`[data-card][data-report-id="${CSS.escape(reportId)}"]`);
+            if (gridCard) {
+                gridCard.classList.add('transition', 'duration-200', 'ease-out', 'opacity-0', 'scale-95');
+                setTimeout(() => gridCard.remove(), 200);
+            }
+
+            // Close any open reader
+            if (this.closeWallDockReader) this.closeWallDockReader();
+            if (this.closeKaleidoModal) this.closeKaleidoModal();
+
+            this.showToast('Deleted successfully', 'success');
+            fetch('/api/refresh').catch(() => {});
+        } catch (err) {
+            this.showToast(`Delete failed: ${err.message}`, 'error');
+        }
+    }
+
+    _showConfirmDialog(message, confirmLabel = 'OK') {
+        return new Promise((resolve) => {
+            const ov = document.createElement('div');
+            ov.className = 'fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4';
+            const box = document.createElement('div');
+            box.className = 'w-full max-w-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl p-4';
+            box.innerHTML = `
+              <div class="text-sm text-slate-700 dark:text-slate-200">${this.escapeHtml(message)}</div>
+              <div class="mt-4 flex items-center justify-end gap-2">
+                <button type="button" data-cancel class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Cancel</button>
+                <button type="button" data-ok class="px-3 py-1.5 rounded-md bg-red-600 text-white hover:bg-red-700">${this.escapeHtml(confirmLabel)}</button>
+              </div>`;
+            ov.appendChild(box);
+            document.body.appendChild(ov);
+            const done = (v) => { try { ov.remove(); } catch (_) {} resolve(v); };
+            box.querySelector('[data-cancel]').addEventListener('click', () => done(false));
+            box.querySelector('[data-ok]').addEventListener('click', () => done(true));
+        });
     }
 
     /* ── Shared kebab menu builder ────────────────────────────────
@@ -5137,7 +5143,7 @@ class AudioDashboard {
         { action: 'copy-link', label: 'Copy link' },
         { action: 'images-manage', label: 'Manage images\u2026' },
         { action: 'reprocess', label: 'Regenerate\u2026' },
-        { action: 'delete', label: 'Remove\u2026', danger: true },
+        { action: 'delete', label: 'Delete\u2026', danger: true },
     ];
 
     _readerMenuItems = [
@@ -5145,7 +5151,7 @@ class AudioDashboard {
         { action: 'wall-reader-copy-link', label: 'Copy link' },
         { action: 'wall-reader-reprocess', label: 'Regenerate\u2026' },
         { action: 'images-manage', label: 'Manage images\u2026' },
-        { action: 'delete', label: 'Remove\u2026', danger: true },
+        { action: 'delete', label: 'Delete\u2026', danger: true },
     ];
 
     _buildKebabMenu(items, opts = {}) {
@@ -6543,50 +6549,6 @@ class AudioDashboard {
         }
     }
 
-    async handleDelete(id, cardEl) {
-        try {
-            // Optimistic UI: show busy state
-            const pop = cardEl.querySelector('[data-delete-popover]');
-            if (pop) pop.classList.add('pointer-events-none', 'opacity-60');
-
-            // Use video_id from card dataset, not the generic id
-            const videoId = cardEl.dataset.videoId;
-            if (!videoId) {
-                throw new Error('No video ID found on card');
-            }
-
-            // Use the proper DELETE endpoint format with video_id
-            const res = await fetch(`/api/delete/${encodeURIComponent(videoId)}`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (!res.ok) {
-                const errorText = await res.text();
-                throw new Error(`HTTP ${res.status}: ${errorText}`);
-            }
-
-            const result = await res.json();
-
-            // Smooth remove
-            cardEl.classList.add('transition', 'duration-200', 'ease-out', 'opacity-0', 'scale-95');
-            setTimeout(() => {
-                cardEl.remove();
-                this.showToast('Deleted successfully', 'success');
-            }, 200);
-
-            // Ask server to refresh
-            fetch('/api/refresh').catch(() => { });
-        } catch (err) {
-            console.error('Delete failed', err);
-            this.showToast(`Delete failed: ${err.message}`, 'error');
-        } finally {
-            this.toggleDeletePopover(cardEl, false);
-        }
-    }
-
     openConfirm(stem, title) {
         this.pendingDelete = { stem, title };
         if (this.confirmText) this.confirmText.textContent = `Delete "${title}" and its audio?`;
@@ -7718,71 +7680,11 @@ class AudioDashboard {
                     this.toggleKebabMenu(dock, false, menuBtn);
                     return;
                 }
-                if (action === 'delete') {
-                    this.toggleDeletePopover(dock, true);
-                    this.toggleKebabMenu(dock, false, menuBtn);
-                    return;
-                }
+                // All other menu actions go through the unified dispatcher
+                this._dispatchMenuAction(action, { reportId: id, item, card: getSelectedCardEl(), container: dock });
+                this.toggleKebabMenu(dock, false, menuBtn);
             });
         }
-
-        // Handle delete popover buttons (which are outside the menu)
-        // This handler is attached to dock directly to catch popover button clicks
-        on(dock, 'click', (e) => {
-            const actionEl = e.target.closest('[data-action]');
-            if (!actionEl) return;
-            const action = actionEl.getAttribute('data-action');
-            if (action === 'confirm-delete') {
-                // Wall-dock specific delete: use item.video_id, remove card from grid, close dock
-                (async () => {
-                    try {
-                        const pop = dock.querySelector('[data-delete-popover]');
-                        if (pop) pop.classList.add('pointer-events-none', 'opacity-60');
-
-                        const videoId = item.video_id;
-                        if (!videoId) {
-                            throw new Error('No video ID found on item');
-                        }
-
-                        const res = await fetch(`/api/delete/${encodeURIComponent(videoId)}`, {
-                            method: 'DELETE',
-                            headers: { 'Content-Type': 'application/json' }
-                        });
-
-                        if (!res.ok) {
-                            const errorText = await res.text();
-                            throw new Error(`HTTP ${res.status}: ${errorText}`);
-                        }
-
-                        // Find and remove the card from the grid
-                        const cardEl = grid.querySelector(`[data-card][data-report-id="${CSS.escape(id)}"]`);
-                        if (cardEl) {
-                            cardEl.classList.add('transition', 'duration-200', 'ease-out', 'opacity-0', 'scale-95');
-                            setTimeout(() => {
-                                cardEl.remove();
-                            }, 200);
-                        }
-
-                        // Close the dock
-                        this.closeWallDockReader();
-
-                        this.showToast('Deleted successfully', 'success');
-                        fetch('/api/refresh').catch(() => { });
-                    } catch (err) {
-                        console.error('Delete failed', err);
-                        this.showToast(`Delete failed: ${err.message}`, 'error');
-                    } finally {
-                        this.toggleDeletePopover(dock, false);
-                    }
-                })();
-                this.sendTelemetry('cta_delete', { id });
-                return;
-            }
-            if (action === 'cancel-delete') {
-                this.toggleDeletePopover(dock, false);
-                return;
-            }
-        });
 
         const getSelectedCardEl = () => {
             const selectedId = this._wallDockSelectedId || id;
@@ -8342,12 +8244,8 @@ class AudioDashboard {
                 on(menu, 'click', (e) => {
                     const a = e.target.closest('[data-action]');
                     if (!a) return;
-                    const act = a.getAttribute('data-action');
-                    if (act === 'wall-reader-open-page') { window.location.href = `/${encodeURIComponent(id)}.json?v=2`; this.toggleKebabMenu(modal, false); }
-                    if (act === 'wall-reader-copy-link') { this.copyLink(card || modal, id); this.toggleKebabMenu(modal, false); }
-                    if (act === 'wall-reader-reprocess') { this.openReprocessModal(id, card || modal, item); this.toggleKebabMenu(modal, false); }
-                    if (act === 'images-manage') { this.handleManageImages(id); this.toggleKebabMenu(modal, false); }
-                    if (act === 'delete') { if (card) this.handleDelete(id, card); this.toggleKebabMenu(modal, false); }
+                    this._dispatchMenuAction(a.getAttribute('data-action'), { reportId: id, item, card, container: modal });
+                    this.toggleKebabMenu(modal, false);
                 });
             }
         } catch (_) { }
@@ -11415,7 +11313,9 @@ class AudioDashboard {
                 const card = active && active.closest && active.closest('[data-card]');
                 if (!card) break;
                 event.preventDefault();
-                this.toggleDeletePopover(card, true);
+                const rid = card.dataset.reportId;
+                const dItem = (this.currentItems || []).find(x => x.file_stem === rid);
+                this._dispatchMenuAction('delete', { reportId: rid, item: dItem, card, container: card });
                 break;
             }
             case 'Escape':
@@ -12539,7 +12439,7 @@ class AudioDashboard {
                 if (lastA1) a1Default = lastA1.prompt;
                 else if (a.summary_image_prompt_last_used) a1Default = a.summary_image_prompt_last_used;
             }
-            let a2Default = a.summary_image_ai2_prompt || '';
+            let a2Default = a.summary_image_ai2_prompt || a.summary_image_ai2_prompt_last_used || '';
             if (!a2Default) {
                 const lastA2 = [...allVars].reverse().find(v => isAi2(v) && v.prompt);
                 if (lastA2) a2Default = lastA2.prompt;
@@ -12657,7 +12557,7 @@ class AudioDashboard {
                 <div data-pane="ai2" class="hidden">
                   <label class="block text-sm mb-1">AI2 prompt</label>
                   <textarea data-input-ai2 rows="4" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/80 px-3 py-2">${this.escapeHtml(a2Default)}</textarea>
-                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai2-line style="${(a.summary_image_ai2_prompt_original || '').trim() ? '' : 'display:none'}">Default: <span data-default-ai2>${this.escapeHtml((a.summary_image_ai2_prompt_original || '').trim() || '')}</span></div>
+                  <div class="mt-1 text-xs text-slate-500 dark:text-slate-400" data-default-ai2-line style="${(a.summary_image_ai2_prompt_original || a.summary_image_ai2_prompt_last_used || '').trim() ? '' : 'display:none'}">Default: <span data-default-ai2>${this.escapeHtml((a.summary_image_ai2_prompt_original || a.summary_image_ai2_prompt_last_used || '').trim())}</span></div>
                   <div class="mt-1 text-xs text-slate-500 dark:text-slate-400 hidden" data-status-ai2><span class="inline-flex items-center gap-1" data-status-ai2-text><svg class="animate-spin h-3 w-3 text-audio-600" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path></svg> Regenerating…</span></div>
                   <div class="mt-2 flex items-center gap-2"><button data-save-ai2 class="px-3 py-1.5 rounded-md bg-audio-600 text-white hover:bg-audio-700">Regenerate AI2</button><button data-use-default-ai2 class="px-3 py-1.5 rounded-md border border-slate-300 dark:border-slate-600">Use default prompt</button></div>
                   <div class="mt-3 text-xs uppercase tracking-wide text-slate-400">AI2 variants</div>
@@ -12780,7 +12680,7 @@ class AudioDashboard {
             saveA1.addEventListener('click', () => onSavePrompt('ai1', (inputA1.value || '').trim()));
             saveA2.addEventListener('click', () => onSavePrompt('ai2', (inputA2.value || '').trim()));
             if (useDefaultA1) useDefaultA1.addEventListener('click', () => { inputA1.value = (a.summary_image_prompt_original || a.summary_image_prompt || a1Default || ''); });
-            if (useDefaultA2) useDefaultA2.addEventListener('click', () => { inputA2.value = (a.summary_image_ai2_prompt_original || a.summary_image_ai2_prompt || a2Default || ''); });
+            if (useDefaultA2) useDefaultA2.addEventListener('click', () => { inputA2.value = (a.summary_image_ai2_prompt_original || a.summary_image_ai2_prompt || a.summary_image_ai2_prompt_last_used || a2Default || ''); });
 
             // Simple in-modal confirmation UI (instead of window.confirm)
             const confirmModal = (message, confirmLabel = 'Delete') => new Promise((resolve) => {

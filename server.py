@@ -5586,11 +5586,46 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             except Exception:
                 pass
 
+            # Trigger backend image generation
+            regen_status = 'not-triggered'
+            base_url = (os.getenv('BACKEND_API_URL') or os.getenv('NGROK_BASE_URL') or os.getenv('NGROK_URL') or '').strip()
+            if base_url:
+                try:
+                    target = base_url.rstrip('/') + '/api/regenerate-image'
+                    tok = (self.headers.get('Authorization') or '').replace('Bearer ', '').strip()
+                    headers = {
+                        'Content-Type': 'application/json',
+                        'ngrok-skip-browser-warning': 'true',
+                    }
+                    if tok:
+                        headers['X-Reprocess-Token'] = tok
+                    user = os.getenv('NGROK_BASIC_USER', '')
+                    pwd = os.getenv('NGROK_BASIC_PASS', '')
+                    auth = (user, pwd) if (user or pwd) else None
+                    resp = requests.post(
+                        target,
+                        headers=headers,
+                        json={"video_id": video_id, "mode": mode},
+                        auth=auth,
+                        timeout=120,
+                    )
+                    if resp.ok:
+                        regen_status = 'triggered'
+                        logger.info("Backend image regeneration triggered for %s (%s)", video_id, mode)
+                    else:
+                        regen_status = f'backend-{resp.status_code}'
+                        logger.warning("Backend image regeneration returned %s for %s", resp.status_code, video_id)
+                except RequestException as e:
+                    regen_status = 'backend-unreachable'
+                    logger.warning("Backend image regeneration request failed for %s: %s", video_id, e)
+            else:
+                logger.warning("No BACKEND_API_URL configured; image regeneration skipped for %s", video_id)
+
             self.send_response(200)
             self.set_cors_headers()
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(json.dumps({"ok": True, "video_id": video_id}).encode())
+            self.wfile.write(json.dumps({"ok": True, "video_id": video_id, "regen": regen_status}).encode())
         except Exception as e:
             logger.exception("set-image-prompt failed")
             self.send_response(500)
