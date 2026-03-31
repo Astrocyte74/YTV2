@@ -1,5 +1,5 @@
 /* ============================================================
-   YTV2 Editorial Dashboard — Phase 2
+   YTV2 Editorial Dashboard — Phase 3
    ============================================================ */
 
 (function () {
@@ -673,12 +673,74 @@
                     return;
                 }
 
-                // Card click (navigate to report)
+                // Close reader
+                if (e.target.closest('[data-action="close-reader"]')) {
+                    this.closeReader();
+                    return;
+                }
+
+                // Audio toggle
+                if (e.target.closest('[data-action="audio-toggle"]')) {
+                    this.toggleAudioPlayback();
+                    return;
+                }
+
+                // Audio close
+                if (e.target.closest('[data-action="audio-close"]')) {
+                    this.closeAudio();
+                    return;
+                }
+
+                // Audio seek
+                if (e.target.classList.contains('ed-audio-bar__seek')) {
+                    var audio = document.getElementById('ed-audio-element');
+                    if (audio && audio.duration) {
+                        audio.currentTime = parseFloat(e.target.value);
+                    }
+                    return;
+                }
+
+                // Reader play audio button
+                var playBtn = e.target.closest('[data-action="play-audio"]');
+                if (playBtn) {
+                    var audioUrl = playBtn.dataset.audioUrl;
+                    if (audioUrl) {
+                        var readerTitle = document.querySelector('.ed-reader__title');
+                        this.playAudio(audioUrl, readerTitle ? readerTitle.textContent : '');
+                    }
+                    return;
+                }
+
+                // Read button -> open side reader
+                var readLink = e.target.closest('[data-action="read"]');
+                if (readLink) {
+                    var readCard = readLink.closest('.ed-card');
+                    var vid = readCard ? readCard.dataset.videoId : null;
+                    if (vid) {
+                        e.preventDefault();
+                        this.openReader(vid);
+                        return;
+                    }
+                }
+
+                // Listen button on card
+                var listenBtn = e.target.closest('[data-action="listen"]');
+                if (listenBtn) {
+                    var listenCard = listenBtn.closest('.ed-card');
+                    var listenVid = listenCard ? listenCard.dataset.videoId : null;
+                    if (listenVid) {
+                        e.preventDefault();
+                        this.openReader(listenVid);
+                        return;
+                    }
+                }
+
+                // Card click (open side reader instead of navigating)
                 var card = e.target.closest('.ed-card');
                 if (card && !e.target.closest('.ed-btn') && !e.target.closest('a')) {
                     var videoId = card.dataset.videoId;
                     if (videoId) {
-                        window.location.href = '/' + videoId;
+                        this.openReader(videoId);
                     }
                 }
             }.bind(this));
@@ -710,6 +772,188 @@
                 this.state.page = 1;
                 this.loadContent();
             }.bind(this), 350);
+        }
+
+        // ---- Side Reader ----
+
+        async openReader(videoId) {
+            if (!videoId) return;
+            this._activeReaderId = videoId;
+            this.showReaderPanel('<div class="ed-loading">Loading...</div>');
+
+            try {
+                var resp = await fetch('/' + videoId + '.json');
+                if (!resp.ok) throw new Error('Failed to load report');
+                var data = await resp.json();
+                this.renderReaderContent(data);
+            } catch (err) {
+                console.error('[Editorial] Reader failed:', err);
+                this.showReaderPanel('<div class="ed-loading" style="color:#ef4444">Error: ' + escapeHtml(err.message) + '</div>');
+            }
+        }
+
+        showReaderPanel(contentHtml) {
+            var panel = document.getElementById('ed-reader');
+            if (!panel) {
+                panel = document.createElement('div');
+                panel.id = 'ed-reader';
+                panel.className = 'ed-reader';
+                document.body.appendChild(panel);
+            }
+            panel.innerHTML = contentHtml;
+            panel.classList.add('ed-reader--open');
+        }
+
+        closeReader() {
+            var panel = document.getElementById('ed-reader');
+            if (panel) {
+                panel.classList.remove('ed-reader--open');
+            }
+            this._activeReaderId = null;
+        }
+
+        renderReaderContent(data) {
+            var video = data.video || {};
+            var summary = data.summary || {};
+            var analysis = data.analysis || {};
+            var title = video.title || '';
+            var channel = video.channel || '';
+            var thumb = data.thumbnail_url || '';
+            var canonicalUrl = video.url || '';
+            var duration = formatDuration(video.duration_seconds);
+            var summaryHtml = summary.html || summary.text || '<p>No summary available.</p>';
+            var hasAudio = !!data.has_audio;
+            var audioUrl = (data.media && data.media.audio_url) ? data.media.audio_url : null;
+
+            // Categories
+            var categories = [];
+            if (Array.isArray(analysis.categories)) {
+                for (var i = 0; i < analysis.categories.length; i++) {
+                    categories.push(analysis.categories[i].category);
+                }
+            }
+
+            var html = '<div class="ed-reader__header">';
+            html += '<button class="ed-reader__close" data-action="close-reader">&times;</button>';
+            html += '</div>';
+
+            html += '<div class="ed-reader__body">';
+
+            // Meta bar
+            html += '<div class="ed-reader__meta">';
+            if (channel) html += '<span class="ed-card__channel">' + escapeHtml(channel) + '</span>';
+            if (duration) html += '<span class="ed-card__time">' + duration + '</span>';
+            if (categories.length) html += '<span class="ed-card__category-chip">' + escapeHtml(categories[0]) + '</span>';
+            html += '</div>';
+
+            // Title
+            html += '<h1 class="ed-reader__title">' + escapeHtml(title) + '</h1>';
+
+            // Thumbnail
+            if (thumb) {
+                html += '<div class="ed-reader__thumb"><img src="' + escapeHtml(thumb) + '" alt=""></div>';
+            }
+
+            // Actions
+            html += '<div class="ed-reader__actions">';
+            html += '<a class="ed-btn ed-btn--secondary ed-btn--sm" href="/' + escapeHtml(video.video_id || '') + '">Full page</a>';
+            if (canonicalUrl) {
+                html += '<a class="ed-btn ed-btn--ghost ed-btn--sm" href="' + escapeHtml(canonicalUrl) + '" target="_blank" rel="noopener">Watch source</a>';
+            }
+            if (hasAudio && audioUrl) {
+                html += '<button class="ed-btn ed-btn--secondary ed-btn--sm" data-action="play-audio" data-audio-url="' + escapeHtml(audioUrl) + '">Listen</button>';
+            }
+            html += '</div>';
+
+            // Summary content
+            html += '<div class="ed-reader__summary">' + summaryHtml + '</div>';
+
+            html += '</div>'; // ed-reader__body
+
+            this.showReaderPanel(html);
+        }
+
+        // ---- Audio Player ----
+
+        playAudio(url, title) {
+            var player = this.mounts.player;
+            if (!player) return;
+
+            var audio = player.querySelector('audio');
+            if (!audio) {
+                audio = document.createElement('audio');
+                audio.id = 'ed-audio-element';
+            }
+
+            // If same URL and paused, resume
+            if (audio.src && audio.src.endsWith(url) && audio.paused) {
+                audio.play();
+                player.classList.add('active');
+                return;
+            }
+
+            audio.src = url;
+            audio.preload = 'metadata';
+            player.innerHTML = '';
+            player.appendChild(audio);
+
+            var bar = document.createElement('div');
+            bar.className = 'ed-audio-bar';
+            bar.innerHTML =
+                '<button class="ed-audio-bar__play" data-action="audio-toggle">&#9654;</button>' +
+                '<span class="ed-audio-bar__title">' + escapeHtml(title || 'Playing') + '</span>' +
+                '<span class="ed-audio-bar__time">0:00</span>' +
+                '<input type="range" class="ed-audio-bar__seek" min="0" max="100" value="0" step="0.1">' +
+                '<span class="ed-audio-bar__duration">--:--</span>' +
+                '<button class="ed-audio-bar__close" data-action="audio-close">&times;</button>';
+            player.appendChild(bar);
+
+            var self = this;
+            audio.addEventListener('loadedmetadata', function () {
+                var durSpan = bar.querySelector('.ed-audio-bar__duration');
+                if (durSpan) durSpan.textContent = formatDuration(audio.duration);
+                var seek = bar.querySelector('.ed-audio-bar__seek');
+                if (seek) seek.max = Math.floor(audio.duration);
+            });
+
+            audio.addEventListener('timeupdate', function () {
+                var timeSpan = bar.querySelector('.ed-audio-bar__time');
+                if (timeSpan) timeSpan.textContent = formatDuration(audio.currentTime);
+                var seek = bar.querySelector('.ed-audio-bar__seek');
+                if (seek && audio.duration) seek.value = audio.currentTime;
+            });
+
+            audio.addEventListener('ended', function () {
+                var playBtn = bar.querySelector('.ed-audio-bar__play');
+                if (playBtn) playBtn.innerHTML = '&#9654;';
+            });
+
+            player.classList.add('active');
+            audio.play().catch(function () {});
+            var playBtn = bar.querySelector('.ed-audio-bar__play');
+            if (playBtn) playBtn.innerHTML = '&#10074;&#10074;';
+        }
+
+        toggleAudioPlayback() {
+            var audio = document.getElementById('ed-audio-element');
+            if (!audio) return;
+            var playBtn = document.querySelector('.ed-audio-bar__play');
+            if (audio.paused) {
+                audio.play();
+                if (playBtn) playBtn.innerHTML = '&#10074;&#10074;';
+            } else {
+                audio.pause();
+                if (playBtn) playBtn.innerHTML = '&#9654;';
+            }
+        }
+
+        closeAudio() {
+            var audio = document.getElementById('ed-audio-element');
+            if (audio) { audio.pause(); audio.src = ''; }
+            if (this.mounts.player) {
+                this.mounts.player.classList.remove('active');
+                this.mounts.player.innerHTML = '';
+            }
         }
     }
 
