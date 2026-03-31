@@ -1702,6 +1702,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(410, "Endpoint removed (SQLite diagnostics)")
         elif path == '/api/migrate-audio':
             self.serve_audio_migration()
+        elif path == '/editorial':
+            self.serve_dashboard_editorial()
         elif path.startswith('/api/'):
             self.serve_api()
         elif path.endswith('.css'):
@@ -2113,6 +2115,54 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             logger.error(f"Error serving dashboard: {e}")
             self.send_error(500, "Internal server error")
     
+    def serve_dashboard_editorial(self):
+        """Serve the editorial dashboard on /editorial"""
+        try:
+            template_content = load_template('dashboard_editorial_template.html')
+            if not template_content:
+                self.send_error(404, "Editorial template not found")
+                return
+
+            nas_config = {
+                "base_url": os.getenv('NGROK_BASE_URL') or os.getenv('NGROK_URL') or '',
+                "basic_user": os.getenv('NGROK_BASIC_USER', ''),
+                "basic_pass": os.getenv('NGROK_BASIC_PASS', ''),
+            }
+            dashboard_config = {
+                "autoPlayOnLoad": bool(DASHBOARD_AUTOPLAY_ON_LOAD)
+            }
+            editorial_config = {
+                "features": {
+                    "audio": True,
+                    "search": True,
+                }
+            }
+            editorial_asset_version = compute_asset_version(
+                "dashboard_editorial_template.html",
+                "static/editorial_dashboard.css",
+                "static/editorial_dashboard.js",
+            )
+
+            editorial_html = template_content.replace(
+                '{ nas_config }', json.dumps(nas_config)
+            ).replace(
+                '{ dashboard_config }', json.dumps(dashboard_config)
+            ).replace(
+                '{ editorial_config }', json.dumps(editorial_config)
+            ).replace(
+                '__EDITORIAL_ASSET_VERSION__', editorial_asset_version
+            )
+
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html; charset=utf-8')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(editorial_html.encode('utf-8'))
+
+        except Exception as e:
+            logger.error(f"Error serving editorial dashboard: {e}")
+            self.send_error(500, "Internal server error")
+
     def serve_css(self):
         """Serve CSS files"""
         try:

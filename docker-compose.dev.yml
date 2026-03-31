@@ -7,6 +7,7 @@ services:
       - ../backend/data:/app/backend-data
       - ./static:/app/static
       - ./dashboard_v3_template.html:/app/dashboard_v3_template.html
+      - ./dashboard_editorial_template.html:/app/dashboard_editorial_template.html
       - ./templates:/app/templates
       - ./server.py:/app/server.py
       - ./modules:/app/modules

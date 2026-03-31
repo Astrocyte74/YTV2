@@ -1,0 +1,172 @@
+/* ============================================================
+   YTV2 Editorial Dashboard — Design Tokens & Shell Layout
+   ============================================================ */
+
+/* Design tokens */
+:root {
+    /* Spacing */
+    --ed-space-xs: 0.5rem;
+    --ed-space-sm: 1rem;
+    --ed-space-md: 1.5rem;
+    --ed-space-lg: 2.5rem;
+    --ed-space-xl: 4rem;
+
+    /* Typography */
+    --ed-font-display: 'Playfair Display', Georgia, serif;
+    --ed-font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+    /* Colors */
+    --ed-color-bg: #0a0a0a;
+    --ed-color-surface: #141414;
+    --ed-color-surface-hover: #1a1a1a;
+    --ed-color-text: #e5e5e5;
+    --ed-color-muted: #737373;
+    --ed-color-accent: #3b82f6;
+    --ed-color-accent-hover: #2563eb;
+    --ed-color-border: #262626;
+
+    /* Radii */
+    --ed-radius-sm: 6px;
+    --ed-radius-md: 10px;
+    --ed-radius-lg: 14px;
+
+    /* Transitions */
+    --ed-transition-fast: 150ms ease;
+    --ed-transition-normal: 250ms ease;
+}
+
+/* Reset */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: var(--ed-font-body);
+    background: var(--ed-color-bg);
+    color: var(--ed-color-text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Top Bar ---- */
+#ed-topbar {
+    display: flex;
+    align-items: center;
+    gap: var(--ed-space-md);
+    padding: var(--ed-space-sm) var(--ed-space-lg);
+    border-bottom: 1px solid var(--ed-color-border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--ed-color-bg);
+}
+
+.ed-topbar__brand {
+    font-family: var(--ed-font-display);
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--ed-color-text);
+    white-space: nowrap;
+}
+
+.ed-topbar__search {
+    flex: 1;
+    max-width: 480px;
+}
+
+.ed-topbar__nav {
+    display: flex;
+    gap: var(--ed-space-sm);
+}
+
+/* ---- Main Layout Grid ---- */
+#ed-layout {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 0;
+    min-height: calc(100vh - 57px); /* viewport minus topbar */
+}
+
+#ed-main {
+    padding: var(--ed-space-lg);
+    min-width: 0;
+}
+
+#ed-rail {
+    padding: var(--ed-space-lg) var(--ed-space-md);
+    border-left: 1px solid var(--ed-color-border);
+    overflow-y: auto;
+    max-height: calc(100vh - 57px);
+    position: sticky;
+    top: 57px;
+}
+
+/* ---- Hero ---- */
+#ed-hero {
+    margin-bottom: var(--ed-space-xl);
+}
+
+/* ---- Sections ---- */
+#ed-sections {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ed-space-lg);
+}
+
+/* ---- Player ---- */
+#ed-player {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    background: var(--ed-color-surface);
+    border-top: 1px solid var(--ed-color-border);
+    display: none; /* shown when audio plays */
+}
+
+#ed-player.active {
+    display: block;
+}
+
+/* ---- Card stubs ---- */
+.ed-card-hero { /* Phase 1 */ }
+.ed-card-feature { /* Phase 1 */ }
+.ed-card-compact { /* Phase 1 */ }
+
+/* ---- Loading state ---- */
+.ed-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--ed-space-xl);
+    color: var(--ed-color-muted);
+    font-size: 0.95rem;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 1024px) {
+    #ed-layout {
+        grid-template-columns: 1fr;
+    }
+    #ed-rail {
+        position: static;
+        max-height: none;
+        border-left: none;
+        border-top: 1px solid var(--ed-color-border);
+    }
+}
+
+@media (max-width: 640px) {
+    #ed-topbar {
+        padding: var(--ed-space-sm);
+    }
+    #ed-main {
+        padding: var(--ed-space-md);
+    }
+    #ed-rail {
+        padding: var(--ed-space-md);
+    }
+}
