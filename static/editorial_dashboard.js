@@ -478,6 +478,7 @@
                 channel: opts.channels,
                 language: opts.languages,
                 summary_type: opts.summary_type,
+                content_type: opts.content_type,
             };
             var list = lists[key];
             if (list) {
@@ -730,7 +731,7 @@
                     var listenVid = listenCard ? listenCard.dataset.videoId : null;
                     if (listenVid) {
                         e.preventDefault();
-                        this.openReader(listenVid);
+                        this.openReader(listenVid, { autoPlayAudio: true });
                         return;
                     }
                 }
@@ -776,9 +777,11 @@
 
         // ---- Side Reader ----
 
-        async openReader(videoId) {
+        async openReader(videoId, opts) {
             if (!videoId) return;
+            opts = opts || {};
             this._activeReaderId = videoId;
+            this._readerAutoPlayAudio = !!opts.autoPlayAudio;
             this.showReaderPanel('<div class="ed-loading">Loading...</div>');
 
             try {
@@ -786,6 +789,10 @@
                 if (!resp.ok) throw new Error('Failed to load report');
                 var data = await resp.json();
                 this.renderReaderContent(data);
+                if (this._readerAutoPlayAudio && this._readerAudioUrl) {
+                    var readerTitle = document.querySelector('.ed-reader__title');
+                    this.playAudio(this._readerAudioUrl, readerTitle ? readerTitle.textContent : '');
+                }
             } catch (err) {
                 console.error('[Editorial] Reader failed:', err);
                 this.showReaderPanel('<div class="ed-loading" style="color:#ef4444">Error: ' + escapeHtml(err.message) + '</div>');
@@ -823,7 +830,14 @@
             var duration = formatDuration(video.duration_seconds);
             var summaryHtml = summary.html || summary.text || '<p>No summary available.</p>';
             var hasAudio = !!data.has_audio;
-            var audioUrl = (data.media && data.media.audio_url) ? data.media.audio_url : null;
+            var audioUrl = null;
+            var variants = data.summary_variants || [];
+            for (var vi = 0; vi < variants.length; vi++) {
+                if (variants[vi].audio_url) {
+                    audioUrl = variants[vi].audio_url;
+                    break;
+                }
+            }
 
             // Categories
             var categories = [];
@@ -870,6 +884,9 @@
 
             html += '</div>'; // ed-reader__body
 
+            // Store audio URL for auto-play
+            this._readerAudioUrl = audioUrl;
+
             this.showReaderPanel(html);
         }
 
@@ -886,7 +903,8 @@
             }
 
             // If same URL and paused, resume
-            if (audio.src && audio.src.endsWith(url) && audio.paused) {
+            var resolvedUrl = new URL(url, window.location.origin).href;
+            if (audio.src && audio.src === resolvedUrl && audio.paused) {
                 audio.play();
                 player.classList.add('active');
                 return;
