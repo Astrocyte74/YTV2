@@ -1,11 +1,11 @@
 /* ============================================================
-   YTV2 Editorial Dashboard — Skeleton
+   YTV2 Editorial Dashboard — Phase 1
    ============================================================ */
 
 (function () {
     'use strict';
 
-    // ---- Inline helpers (duplicated from classic, no imports) ----
+    // ---- Inline helpers ----
 
     function escapeHtml(str) {
         if (!str) return '';
@@ -42,6 +42,148 @@
         return parts.length ? '?' + parts.join('&') : '';
     }
 
+    function getCategories(item) {
+        var analysis = item.analysis || {};
+        if (Array.isArray(analysis.categories) && analysis.categories.length > 0) {
+            return analysis.categories.map(function (c) { return c.category; });
+        }
+        if (Array.isArray(analysis.category)) return analysis.category;
+        return [];
+    }
+
+    function getPrimaryCategory(item) {
+        var cats = getCategories(item);
+        return cats.length > 0 ? cats[0] : '';
+    }
+
+    function getExcerpt(text, maxLen) {
+        if (!text) return '';
+        var clean = text.replace(/<[^>]+>/g, '').trim();
+        if (clean.length <= (maxLen || 180)) return clean;
+        return clean.substring(0, maxLen || 180).replace(/\s+\S*$/, '') + '...';
+    }
+
+    function getThumbnail(item) {
+        return item.thumbnail_url ||
+            item.summary_image_url ||
+            '/static/placeholder-thumb.png';
+    }
+
+    function getSourceLabel(item) {
+        return item.source_label || item.source || '';
+    }
+
+    function timeAgo(dateStr) {
+        if (!dateStr) return '';
+        var d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        var now = new Date();
+        var diffMs = now - d;
+        var diffMins = Math.floor(diffMs / 60000);
+        if (diffMins < 60) return diffMins + 'm ago';
+        var diffHrs = Math.floor(diffMins / 60);
+        if (diffHrs < 24) return diffHrs + 'h ago';
+        var diffDays = Math.floor(diffHrs / 24);
+        if (diffDays < 30) return diffDays + 'd ago';
+        var diffMonths = Math.floor(diffDays / 30);
+        return diffMonths + 'mo ago';
+    }
+
+    // ---- Card factories ----
+
+    function renderHeroCard(item) {
+        var media = item.media || {};
+        var hasAudio = !!media.has_audio;
+        var duration = formatDuration(item.duration_seconds);
+        var excerpt = getExcerpt(item.summary_text, 240);
+        var thumb = getThumbnail(item);
+        var sourceLabel = getSourceLabel(item);
+        var channel = item.channel || item.channel_name || '';
+        var category = getPrimaryCategory(item);
+        var ago = timeAgo(item.indexed_at);
+
+        return '<article class="ed-card ed-card-hero" data-video-id="' + escapeHtml(item.video_id || item.id) + '">' +
+            '<div class="ed-card-hero__image">' +
+                '<img src="' + escapeHtml(thumb) + '" alt="" loading="eager">' +
+                (duration ? '<span class="ed-card__duration">' + duration + '</span>' : '') +
+                (hasAudio ? '<span class="ed-card__audio-badge">Audio</span>' : '') +
+            '</div>' +
+            '<div class="ed-card-hero__body">' +
+                '<div class="ed-card__meta">' +
+                    (sourceLabel ? '<span class="ed-card__source">' + escapeHtml(sourceLabel) + '</span>' : '') +
+                    (channel ? '<span class="ed-card__channel">' + escapeHtml(channel) + '</span>' : '') +
+                    (ago ? '<span class="ed-card__time">' + ago + '</span>' : '') +
+                '</div>' +
+                '<h2 class="ed-card-hero__title">' + escapeHtml(item.title) + '</h2>' +
+                (excerpt ? '<p class="ed-card-hero__excerpt">' + escapeHtml(excerpt) + '</p>' : '') +
+                (category ? '<span class="ed-card__category-chip">' + escapeHtml(category) + '</span>' : '') +
+                '<div class="ed-card__actions">' +
+                    '<a class="ed-btn ed-btn--primary" href="/' + escapeHtml(item.video_id || item.file_stem) + '" data-action="read">Read</a>' +
+                    (hasAudio ? '<button class="ed-btn ed-btn--secondary" data-action="listen">Listen</button>' : '') +
+                    (item.canonical_url ? '<a class="ed-btn ed-btn--secondary" href="' + escapeHtml(item.canonical_url) + '" target="_blank" rel="noopener" data-action="watch">Watch</a>' : '') +
+                '</div>' +
+            '</div>' +
+        '</article>';
+    }
+
+    function renderFeatureCard(item) {
+        var media = item.media || {};
+        var hasAudio = !!media.has_audio;
+        var duration = formatDuration(item.duration_seconds);
+        var excerpt = getExcerpt(item.summary_text, 120);
+        var thumb = getThumbnail(item);
+        var sourceLabel = getSourceLabel(item);
+        var channel = item.channel || item.channel_name || '';
+        var ago = timeAgo(item.indexed_at);
+
+        return '<article class="ed-card ed-card-feature" data-video-id="' + escapeHtml(item.video_id || item.id) + '">' +
+            '<div class="ed-card-feature__image">' +
+                '<img src="' + escapeHtml(thumb) + '" alt="" loading="lazy">' +
+                (duration ? '<span class="ed-card__duration">' + duration + '</span>' : '') +
+                (hasAudio ? '<span class="ed-card__audio-badge">Audio</span>' : '') +
+            '</div>' +
+            '<div class="ed-card-feature__body">' +
+                '<div class="ed-card__meta">' +
+                    (sourceLabel ? '<span class="ed-card__source">' + escapeHtml(sourceLabel) + '</span>' : '') +
+                    (channel ? '<span class="ed-card__channel">' + escapeHtml(channel) + '</span>' : '') +
+                    (ago ? '<span class="ed-card__time">' + ago + '</span>' : '') +
+                '</div>' +
+                '<h3 class="ed-card-feature__title">' + escapeHtml(item.title) + '</h3>' +
+                (excerpt ? '<p class="ed-card-feature__excerpt">' + escapeHtml(excerpt) + '</p>' : '') +
+                '<div class="ed-card__actions">' +
+                    '<a class="ed-btn ed-btn--sm" href="/' + escapeHtml(item.video_id || item.file_stem) + '" data-action="read">Read</a>' +
+                    (item.canonical_url ? '<a class="ed-btn ed-btn--sm ed-btn--ghost" href="' + escapeHtml(item.canonical_url) + '" target="_blank" rel="noopener" data-action="watch">Watch</a>' : '') +
+                '</div>' +
+            '</div>' +
+        '</article>';
+    }
+
+    function renderCompactCard(item) {
+        var media = item.media || {};
+        var hasAudio = !!media.has_audio;
+        var duration = formatDuration(item.duration_seconds);
+        var thumb = getThumbnail(item);
+        var sourceLabel = getSourceLabel(item);
+        var channel = item.channel || item.channel_name || '';
+        var ago = timeAgo(item.indexed_at);
+
+        return '<article class="ed-card ed-card-compact" data-video-id="' + escapeHtml(item.video_id || item.id) + '">' +
+            '<div class="ed-card-compact__image">' +
+                '<img src="' + escapeHtml(thumb) + '" alt="" loading="lazy">' +
+                (duration ? '<span class="ed-card__duration ed-card__duration--sm">' + duration + '</span>' : '') +
+            '</div>' +
+            '<div class="ed-card-compact__body">' +
+                '<h4 class="ed-card-compact__title">' + escapeHtml(item.title) + '</h4>' +
+                '<div class="ed-card__meta">' +
+                    (sourceLabel ? '<span class="ed-card__source">' + escapeHtml(sourceLabel) + '</span>' : '') +
+                    (channel ? '<span class="ed-card__channel">' + escapeHtml(channel) + '</span>' : '') +
+                    (ago ? '<span class="ed-card__time">' + ago + '</span>' : '') +
+                    (hasAudio ? '<span class="ed-card__audio-indicator">&#9835;</span>' : '') +
+                '</div>' +
+            '</div>' +
+        '</article>';
+    }
+
     // ---- EditorialDashboard class ----
 
     class EditorialDashboard {
@@ -54,19 +196,32 @@
                 items: [],
                 page: 1,
                 size: 50,
+                total: 0,
                 filters: {},
                 search: '',
                 sort: 'newest',
                 loading: false,
                 error: null,
+                filterOptions: null,
             };
 
             this.mounts = {
+                topbar: document.getElementById('ed-topbar'),
                 hero: document.getElementById('ed-hero'),
                 sections: document.getElementById('ed-sections'),
                 rail: document.getElementById('ed-rail'),
                 player: document.getElementById('ed-player'),
             };
+        }
+
+        async loadFilters() {
+            try {
+                var resp = await fetch('/api/filters');
+                if (!resp.ok) return;
+                this.state.filterOptions = await resp.json();
+            } catch (e) {
+                console.warn('[Editorial] Failed to load filters:', e);
+            }
         }
 
         async loadContent() {
@@ -92,7 +247,8 @@
                 if (!resp.ok) throw new Error('API returned ' + resp.status);
                 var data = await resp.json();
                 this.state.items = data.reports || data.items || [];
-                console.log('[Editorial] Loaded', this.state.items.length, 'reports');
+                this.state.total = data.total_count || data.pagination && data.pagination.total || 0;
+                console.log('[Editorial] Loaded', this.state.items.length, 'of', this.state.total, 'reports');
                 this.render();
             } catch (err) {
                 this.state.error = err.message;
@@ -104,15 +260,189 @@
         }
 
         render() {
-            if (!this.state.items.length) {
+            var items = this.state.items;
+            if (!items.length) {
                 this.renderEmpty();
                 return;
             }
-            // Phase 1 will implement real card rendering
+
+            // Hero: first item
+            var hero = items[0];
             if (this.mounts.hero) {
-                this.mounts.hero.innerHTML =
-                    '<div class="ed-loading">Loaded ' + this.state.items.length +
-                    ' reports — card rendering coming in Phase 1</div>';
+                this.mounts.hero.innerHTML = renderHeroCard(hero);
+            }
+
+            // Section grouping: remaining items by primary category
+            var remaining = items.slice(1);
+            var sections = this.groupByCategory(remaining);
+
+            if (this.mounts.sections) {
+                var html = '';
+                var sectionOrder = Object.keys(sections);
+                for (var i = 0; i < sectionOrder.length; i++) {
+                    var cat = sectionOrder[i];
+                    var sectionItems = sections[cat];
+                    html += '<section class="ed-section">';
+                    html += '<h2 class="ed-section__title">' + escapeHtml(cat) +
+                        ' <span class="ed-section__count">' + sectionItems.length + '</span></h2>';
+                    html += '<div class="ed-section__grid">';
+                    for (var j = 0; j < sectionItems.length; j++) {
+                        // First 2 items in section get feature cards, rest compact
+                        if (j < 2) {
+                            html += renderFeatureCard(sectionItems[j]);
+                        } else {
+                            html += renderCompactCard(sectionItems[j]);
+                        }
+                    }
+                    html += '</div></section>';
+                }
+                this.mounts.sections.innerHTML = html;
+            }
+
+            // Right rail: compact cards from the last items
+            if (this.mounts.rail) {
+                var railItems = remaining.slice(-10);
+                var railHtml = '<h3 class="ed-rail__title">Recent</h3>';
+                for (var k = 0; k < railItems.length; k++) {
+                    railHtml += renderCompactCard(railItems[k]);
+                }
+                this.mounts.rail.innerHTML = railHtml;
+            }
+
+            // Sync filter UI state
+            this.renderFilterChips();
+            this.updateFilterButtonStates();
+        }
+
+        updateFilterButtonStates() {
+            var buttons = document.querySelectorAll('.ed-filter-btn');
+            for (var i = 0; i < buttons.length; i++) {
+                var btn = buttons[i];
+                var type = btn.dataset.filterType;
+                var value = btn.dataset.filterValue;
+                var isActive = this.state.filters[type] === value;
+                btn.classList.toggle('ed-filter-btn--active', isActive);
+            }
+        }
+
+        groupByCategory(items) {
+            var groups = {};
+            var order = [];
+            for (var i = 0; i < items.length; i++) {
+                var cat = getPrimaryCategory(items[i]) || 'Uncategorized';
+                if (!groups[cat]) {
+                    groups[cat] = [];
+                    order.push(cat);
+                }
+                groups[cat].push(items[i]);
+            }
+            return groups;
+        }
+
+        renderTopbar() {
+            var search = this.mounts.topbar;
+            if (!search) return;
+
+            var searchInput = search.querySelector('.ed-topbar__search');
+            if (searchInput) {
+                searchInput.innerHTML =
+                    '<input type="text" class="ed-search__input" placeholder="Search summaries..." value="' +
+                    escapeHtml(this.state.search) + '">';
+            }
+
+            var nav = search.querySelector('.ed-topbar__nav');
+            if (nav) {
+                var sortOpts = [
+                    { value: 'newest', label: 'Newest' },
+                    { value: 'oldest', label: 'Oldest' },
+                ];
+                var navHtml = '<select class="ed-sort__select">';
+                for (var i = 0; i < sortOpts.length; i++) {
+                    navHtml += '<option value="' + sortOpts[i].value + '"' +
+                        (this.state.sort === sortOpts[i].value ? ' selected' : '') + '>' +
+                        sortOpts[i].label + '</option>';
+                }
+                navHtml += '</select>';
+                navHtml += '<a class="ed-topbar__link" href="/">Classic</a>';
+                nav.innerHTML = navHtml;
+            }
+
+            // Active filter chips
+            this.renderFilterChips();
+        }
+
+        renderFilterChips() {
+            var existing = document.getElementById('ed-filter-chips');
+            if (existing) existing.remove();
+
+            var activeFilters = Object.keys(this.state.filters).filter(
+                function (k) { return this.state.filters[k]; }.bind(this)
+            );
+            if (!activeFilters.length && !this.state.search) return;
+
+            var chipContainer = document.createElement('div');
+            chipContainer.id = 'ed-filter-chips';
+            chipContainer.className = 'ed-filter-chips';
+
+            if (this.state.search) {
+                chipContainer.innerHTML += '<span class="ed-chip" data-filter-key="search">' +
+                    '"' + escapeHtml(this.state.search) + '" <button class="ed-chip__remove">&times;</button></span>';
+            }
+
+            for (var i = 0; i < activeFilters.length; i++) {
+                var key = activeFilters[i];
+                var val = this.state.filters[key];
+                chipContainer.innerHTML += '<span class="ed-chip" data-filter-key="' + escapeHtml(key) + '">' +
+                    escapeHtml(key) + ': ' + escapeHtml(val) +
+                    ' <button class="ed-chip__remove">&times;</button></span>';
+            }
+
+            var main = document.getElementById('ed-main');
+            if (main) main.insertBefore(chipContainer, main.firstChild);
+        }
+
+        renderQuickFilters() {
+            var filters = this.state.filterOptions;
+            if (!filters) return;
+
+            var container = document.createElement('div');
+            container.id = 'ed-quick-filters';
+            container.className = 'ed-quick-filters';
+
+            // Source filters
+            var sources = filters.source || filters.content_source || [];
+            if (sources.length > 1) {
+                var html = '<div class="ed-filter-group"><span class="ed-filter-group__label">Source</span>';
+                for (var i = 0; i < sources.length; i++) {
+                    var s = sources[i];
+                    var isActive = this.state.filters.source === s.value;
+                    html += '<button class="ed-filter-btn' + (isActive ? ' ed-filter-btn--active' : '') +
+                        '" data-filter-type="source" data-filter-value="' + escapeHtml(s.value) + '">' +
+                        escapeHtml(s.label) + ' <small>' + s.count + '</small></button>';
+                }
+                html += '</div>';
+                container.innerHTML += html;
+            }
+
+            // Category filters (top 6)
+            var categories = (filters.categories || []).slice(0, 6);
+            if (categories.length > 1) {
+                var catHtml = '<div class="ed-filter-group"><span class="ed-filter-group__label">Category</span>';
+                for (var j = 0; j < categories.length; j++) {
+                    var c = categories[j];
+                    var isCatActive = this.state.filters.category === c.value;
+                    catHtml += '<button class="ed-filter-btn' + (isCatActive ? ' ed-filter-btn--active' : '') +
+                        '" data-filter-type="category" data-filter-value="' + escapeHtml(c.value) + '">' +
+                        escapeHtml(c.value) + ' <small>' + c.count + '</small></button>';
+                }
+                catHtml += '</div>';
+                container.innerHTML += catHtml;
+            }
+
+            // Insert after filter chips, before hero
+            var hero = this.mounts.hero;
+            if (hero && hero.parentNode) {
+                hero.parentNode.insertBefore(container, hero);
             }
         }
 
@@ -120,6 +450,8 @@
             if (this.mounts.hero) {
                 this.mounts.hero.innerHTML = '<div class="ed-loading">Loading...</div>';
             }
+            if (this.mounts.sections) this.mounts.sections.innerHTML = '';
+            if (this.mounts.rail) this.mounts.rail.innerHTML = '';
         }
 
         renderError() {
@@ -136,8 +468,75 @@
             }
         }
 
+        // ---- Event handling ----
+
         bindEvents() {
-            // Phase 1 will wire up search, filters, card clicks
+            // Search input
+            document.addEventListener('input', function (e) {
+                if (e.target.classList.contains('ed-search__input')) {
+                    this.debounceSearch(e.target.value);
+                }
+            }.bind(this));
+
+            // Sort change
+            document.addEventListener('change', function (e) {
+                if (e.target.classList.contains('ed-sort__select')) {
+                    this.state.sort = e.target.value;
+                    this.loadContent();
+                }
+            }.bind(this));
+
+            // Filter buttons
+            document.addEventListener('click', function (e) {
+                var btn = e.target.closest('.ed-filter-btn');
+                if (btn) {
+                    var type = btn.dataset.filterType;
+                    var value = btn.dataset.filterValue;
+                    if (this.state.filters[type] === value) {
+                        delete this.state.filters[type];
+                    } else {
+                        this.state.filters[type] = value;
+                    }
+                    this.loadContent();
+                    return;
+                }
+
+                // Filter chip remove
+                var chip = e.target.closest('.ed-chip__remove');
+                if (chip) {
+                    var chipEl = chip.closest('.ed-chip');
+                    if (chipEl) {
+                        var key = chipEl.dataset.filterKey;
+                        if (key === 'search') {
+                            this.state.search = '';
+                            var input = document.querySelector('.ed-search__input');
+                            if (input) input.value = '';
+                        } else {
+                            delete this.state.filters[key];
+                        }
+                        this.loadContent();
+                    }
+                    return;
+                }
+
+                // Card click (navigate to report)
+                var card = e.target.closest('.ed-card');
+                if (card && !e.target.closest('.ed-btn') && !e.target.closest('a')) {
+                    var videoId = card.dataset.videoId;
+                    if (videoId) {
+                        window.location.href = '/' + videoId;
+                    }
+                }
+            }.bind(this));
+        }
+
+        debounceSearch(query) {
+            clearTimeout(this._searchTimer);
+            this._searchTimer = setTimeout(function () {
+                this.state.search = query.trim();
+                this.state.page = 1;
+                this.loadContent();
+            }.bind(this), 350);
         }
     }
 
@@ -148,11 +547,14 @@
         init();
     }
 
-    function init() {
+    async function init() {
         console.log('[Editorial] Initializing...');
         var app = new EditorialDashboard();
         app.bindEvents();
-        app.loadContent();
-        window.__editorialApp = app; // for debugging
+        app.renderTopbar();
+        await app.loadFilters();
+        app.renderQuickFilters();
+        await app.loadContent();
+        window.__editorialApp = app;
     }
 })();
