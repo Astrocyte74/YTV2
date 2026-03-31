@@ -1,5 +1,5 @@
 /* ============================================================
-   YTV2 Editorial Dashboard — Phase 1
+   YTV2 Editorial Dashboard — Phase 2
    ============================================================ */
 
 (function () {
@@ -186,6 +186,9 @@
 
     // ---- EditorialDashboard class ----
 
+    // Filter keys that map to URL query params
+    var URL_FILTER_KEYS = ['source', 'category', 'subcategory', 'channel', 'language', 'content_type', 'summary_type', 'has_audio'];
+
     class EditorialDashboard {
         constructor() {
             this.config = window.EDITORIAL_CONFIG || { features: {} };
@@ -194,6 +197,7 @@
 
             this.state = {
                 items: [],
+                allItems: [],       // accumulated items across pages
                 page: 1,
                 size: 50,
                 total: 0,
@@ -203,6 +207,7 @@
                 loading: false,
                 error: null,
                 filterOptions: null,
+                hasMore: true,
             };
 
             this.mounts = {
@@ -213,6 +218,39 @@
                 player: document.getElementById('ed-player'),
             };
         }
+
+        // ---- URL state ----
+
+        readStateFromURL() {
+            var params = new URLSearchParams(window.location.search);
+            this.state.search = params.get('q') || '';
+            this.state.sort = params.get('sort') || 'newest';
+            this.state.page = parseInt(params.get('page'), 10) || 1;
+            this.state.filters = {};
+
+            for (var i = 0; i < URL_FILTER_KEYS.length; i++) {
+                var key = URL_FILTER_KEYS[i];
+                var val = params.get(key);
+                if (val !== null && val !== '') {
+                    this.state.filters[key] = val;
+                }
+            }
+        }
+
+        writeStateToURL() {
+            var params = new URLSearchParams();
+            if (this.state.search) params.set('q', this.state.search);
+            if (this.state.sort && this.state.sort !== 'newest') params.set('sort', this.state.sort);
+            for (var i = 0; i < URL_FILTER_KEYS.length; i++) {
+                var key = URL_FILTER_KEYS[i];
+                if (this.state.filters[key]) params.set(key, this.state.filters[key]);
+            }
+            var qs = params.toString();
+            var url = window.location.pathname + (qs ? '?' + qs : '');
+            history.replaceState(null, '', url);
+        }
+
+        // ---- Data loading ----
 
         async loadFilters() {
             try {
@@ -226,7 +264,10 @@
 
         async loadContent() {
             this.state.loading = true;
-            this.renderLoading();
+            if (this.state.page === 1) {
+                this.state.allItems = [];
+                this.renderLoading();
+            }
 
             var params = {
                 page: this.state.page,
@@ -246,9 +287,21 @@
                 var resp = await fetch(url);
                 if (!resp.ok) throw new Error('API returned ' + resp.status);
                 var data = await resp.json();
-                this.state.items = data.reports || data.items || [];
-                this.state.total = data.total_count || data.pagination && data.pagination.total || 0;
-                console.log('[Editorial] Loaded', this.state.items.length, 'of', this.state.total, 'reports');
+                var newItems = data.reports || data.items || [];
+                this.state.total = data.total_count || (data.pagination && data.pagination.total) || 0;
+
+                if (this.state.page === 1) {
+                    this.state.allItems = newItems;
+                } else {
+                    this.state.allItems = this.state.allItems.concat(newItems);
+                }
+                this.state.items = this.state.allItems;
+                this.state.hasMore = this.state.allItems.length < this.state.total;
+
+                console.log('[Editorial] Loaded', newItems.length, 'page', this.state.page,
+                    '| total accumulated:', this.state.allItems.length, 'of', this.state.total);
+
+                this.writeStateToURL();
                 this.render();
             } catch (err) {
                 this.state.error = err.message;
@@ -259,6 +312,14 @@
             }
         }
 
+        async loadMore() {
+            if (this.state.loading || !this.state.hasMore) return;
+            this.state.page++;
+            await this.loadContent();
+        }
+
+        // ---- Rendering ----
+
         render() {
             var items = this.state.items;
             if (!items.length) {
@@ -266,42 +327,54 @@
                 return;
             }
 
-            // Hero: first item
-            var hero = items[0];
-            if (this.mounts.hero) {
-                this.mounts.hero.innerHTML = renderHeroCard(hero);
+            // Hero: first item only on page 1
+            if (this.state.page === 1 || this.mounts.hero.children.length === 0) {
+                var hero = items[0];
+                if (this.mounts.hero) {
+                    this.mounts.hero.innerHTML = renderHeroCard(hero);
+                }
             }
 
-            // Section grouping: remaining items by primary category
-            var remaining = items.slice(1);
-            var sections = this.groupByCategory(remaining);
+            // Section grouping: items after hero, grouped by category
+            var sectionItems = items.slice(1);
+            var sections = this.groupByCategory(sectionItems);
 
             if (this.mounts.sections) {
                 var html = '';
                 var sectionOrder = Object.keys(sections);
                 for (var i = 0; i < sectionOrder.length; i++) {
                     var cat = sectionOrder[i];
-                    var sectionItems = sections[cat];
+                    var catItems = sections[cat];
                     html += '<section class="ed-section">';
                     html += '<h2 class="ed-section__title">' + escapeHtml(cat) +
-                        ' <span class="ed-section__count">' + sectionItems.length + '</span></h2>';
+                        ' <span class="ed-section__count">' + catItems.length + '</span></h2>';
                     html += '<div class="ed-section__grid">';
-                    for (var j = 0; j < sectionItems.length; j++) {
-                        // First 2 items in section get feature cards, rest compact
+                    for (var j = 0; j < catItems.length; j++) {
                         if (j < 2) {
-                            html += renderFeatureCard(sectionItems[j]);
+                            html += renderFeatureCard(catItems[j]);
                         } else {
-                            html += renderCompactCard(sectionItems[j]);
+                            html += renderCompactCard(catItems[j]);
                         }
                     }
                     html += '</div></section>';
                 }
+
+                // Load more trigger
+                if (this.state.hasMore) {
+                    html += '<div id="ed-load-more" class="ed-load-more">';
+                    html += '<button class="ed-btn ed-btn--secondary ed-load-more__btn">Load more</button>';
+                    html += '<span class="ed-load-more__count">' + this.state.allItems.length + ' of ' + this.state.total + '</span>';
+                    html += '</div>';
+                } else if (this.state.total > 0) {
+                    html += '<div class="ed-load-more"><span class="ed-load-more__count">All ' + this.state.total + ' items loaded</span></div>';
+                }
+
                 this.mounts.sections.innerHTML = html;
             }
 
-            // Right rail: compact cards from the last items
+            // Right rail: recent compact cards
             if (this.mounts.rail) {
-                var railItems = remaining.slice(-10);
+                var railItems = sectionItems.slice(-10);
                 var railHtml = '<h3 class="ed-rail__title">Recent</h3>';
                 for (var k = 0; k < railItems.length; k++) {
                     railHtml += renderCompactCard(railItems[k]);
@@ -327,13 +400,9 @@
 
         groupByCategory(items) {
             var groups = {};
-            var order = [];
             for (var i = 0; i < items.length; i++) {
                 var cat = getPrimaryCategory(items[i]) || 'Uncategorized';
-                if (!groups[cat]) {
-                    groups[cat] = [];
-                    order.push(cat);
-                }
+                if (!groups[cat]) groups[cat] = [];
                 groups[cat].push(items[i]);
             }
             return groups;
@@ -366,9 +435,6 @@
                 navHtml += '<a class="ed-topbar__link" href="/">Classic</a>';
                 nav.innerHTML = navHtml;
             }
-
-            // Active filter chips
-            this.renderFilterChips();
         }
 
         renderFilterChips() {
@@ -392,8 +458,9 @@
             for (var i = 0; i < activeFilters.length; i++) {
                 var key = activeFilters[i];
                 var val = this.state.filters[key];
+                var label = this.getFilterLabel(key, val);
                 chipContainer.innerHTML += '<span class="ed-chip" data-filter-key="' + escapeHtml(key) + '">' +
-                    escapeHtml(key) + ': ' + escapeHtml(val) +
+                    escapeHtml(label) +
                     ' <button class="ed-chip__remove">&times;</button></span>';
             }
 
@@ -401,9 +468,47 @@
             if (main) main.insertBefore(chipContainer, main.firstChild);
         }
 
+        getFilterLabel(key, value) {
+            var opts = this.state.filterOptions || {};
+            // Try to find the human-readable label from filter options
+            var lists = {
+                source: opts.source || opts.content_source,
+                category: (opts.categories || []).map(function (c) { return { value: c.value, label: c.value }; }),
+                subcategory: this.flattenSubcategories(opts.categories),
+                channel: opts.channels,
+                language: opts.languages,
+                summary_type: opts.summary_type,
+            };
+            var list = lists[key];
+            if (list) {
+                for (var i = 0; i < list.length; i++) {
+                    if (String(list[i].value) === String(value)) {
+                        return (list[i].label || list[i].value);
+                    }
+                }
+            }
+            return key + ': ' + value;
+        }
+
+        flattenSubcategories(categories) {
+            if (!categories) return [];
+            var result = [];
+            for (var i = 0; i < categories.length; i++) {
+                var subs = categories[i].subcategories || [];
+                for (var j = 0; j < subs.length; j++) {
+                    result.push(subs[j]);
+                }
+            }
+            return result;
+        }
+
         renderQuickFilters() {
             var filters = this.state.filterOptions;
             if (!filters) return;
+
+            // Remove existing quick filters if re-rendering
+            var existing = document.getElementById('ed-quick-filters');
+            if (existing) existing.remove();
 
             var container = document.createElement('div');
             container.id = 'ed-quick-filters';
@@ -439,7 +544,38 @@
                 container.innerHTML += catHtml;
             }
 
-            // Insert after filter chips, before hero
+            // Content type filter
+            var contentTypes = filters.content_type || [];
+            if (contentTypes.length > 1) {
+                var ctHtml = '<div class="ed-filter-group"><span class="ed-filter-group__label">Type</span>';
+                for (var ct = 0; ct < contentTypes.length; ct++) {
+                    var t = contentTypes[ct];
+                    var isTypeActive = this.state.filters.content_type === t.value;
+                    ctHtml += '<button class="ed-filter-btn' + (isTypeActive ? ' ed-filter-btn--active' : '') +
+                        '" data-filter-type="content_type" data-filter-value="' + escapeHtml(t.value) + '">' +
+                        escapeHtml(t.value) + ' <small>' + t.count + '</small></button>';
+                }
+                ctHtml += '</div>';
+                container.innerHTML += ctHtml;
+            }
+
+            // Has audio filter
+            var audioOpts = filters.has_audio || [];
+            if (audioOpts.length > 1) {
+                var auHtml = '<div class="ed-filter-group"><span class="ed-filter-group__label">Audio</span>';
+                for (var au = 0; au < audioOpts.length; au++) {
+                    var a = audioOpts[au];
+                    if (a.value === true) {
+                        var isAudioActive = this.state.filters.has_audio === 'true';
+                        auHtml += '<button class="ed-filter-btn' + (isAudioActive ? ' ed-filter-btn--active' : '') +
+                            '" data-filter-type="has_audio" data-filter-value="true">' +
+                            'With Audio <small>' + a.count + '</small></button>';
+                    }
+                }
+                auHtml += '</div>';
+                container.innerHTML += auHtml;
+            }
+
             var hero = this.mounts.hero;
             if (hero && hero.parentNode) {
                 hero.parentNode.insertBefore(container, hero);
@@ -452,6 +588,13 @@
             }
             if (this.mounts.sections) this.mounts.sections.innerHTML = '';
             if (this.mounts.rail) this.mounts.rail.innerHTML = '';
+        }
+
+        renderLoadingMore() {
+            var trigger = document.getElementById('ed-load-more');
+            if (trigger) {
+                trigger.innerHTML = '<div class="ed-loading" style="padding:1rem">Loading more...</div>';
+            }
         }
 
         renderError() {
@@ -482,12 +625,14 @@
             document.addEventListener('change', function (e) {
                 if (e.target.classList.contains('ed-sort__select')) {
                     this.state.sort = e.target.value;
+                    this.state.page = 1;
                     this.loadContent();
                 }
             }.bind(this));
 
-            // Filter buttons
+            // Click delegation
             document.addEventListener('click', function (e) {
+                // Filter buttons
                 var btn = e.target.closest('.ed-filter-btn');
                 if (btn) {
                     var type = btn.dataset.filterType;
@@ -497,6 +642,7 @@
                     } else {
                         this.state.filters[type] = value;
                     }
+                    this.state.page = 1;
                     this.loadContent();
                     return;
                 }
@@ -514,8 +660,16 @@
                         } else {
                             delete this.state.filters[key];
                         }
+                        this.state.page = 1;
                         this.loadContent();
                     }
+                    return;
+                }
+
+                // Load more button
+                var loadMoreBtn = e.target.closest('.ed-load-more__btn');
+                if (loadMoreBtn) {
+                    this.loadMore();
                     return;
                 }
 
@@ -528,6 +682,25 @@
                     }
                 }
             }.bind(this));
+
+            // Browser back/forward
+            window.addEventListener('popstate', function () {
+                this.readStateFromURL();
+                this.state.page = 1;
+                this.loadContent();
+            }.bind(this));
+
+            // Scroll-based progressive load (supplements the button)
+            this._scrollHandler = function () {
+                if (this.state.loading || !this.state.hasMore) return;
+                var sentinel = document.getElementById('ed-load-more');
+                if (!sentinel) return;
+                var rect = sentinel.getBoundingClientRect();
+                if (rect.top < window.innerHeight + 400) {
+                    this.loadMore();
+                }
+            }.bind(this);
+            window.addEventListener('scroll', this._scrollHandler, { passive: true });
         }
 
         debounceSearch(query) {
@@ -550,6 +723,7 @@
     async function init() {
         console.log('[Editorial] Initializing...');
         var app = new EditorialDashboard();
+        app.readStateFromURL();
         app.bindEvents();
         app.renderTopbar();
         await app.loadFilters();
