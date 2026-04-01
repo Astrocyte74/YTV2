@@ -371,7 +371,7 @@
                         ' <span class="ed-section__count">' + catItems.length + '</span></h2>';
                     html += '<div class="ed-section__grid">';
                     for (var j = 0; j < catItems.length; j++) {
-                        if (j < 2) {
+                        if (j === 0) {
                             html += renderFeatureCard(catItems[j]);
                         } else {
                             html += renderCompactCard(catItems[j]);

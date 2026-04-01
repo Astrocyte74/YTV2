@@ -317,13 +317,19 @@ body {
 .ed-section__count {
     font-weight: 400;
     color: var(--ed-color-muted);
-    font-size: 0.85rem;
+    font-size: 0.75rem;
+    opacity: 0.6;
 }
 
 .ed-section__grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: var(--ed-space-md);
+    gap: var(--ed-space-sm);
+}
+
+/* Feature card spans full width of section grid */
+.ed-section__grid > .ed-card-feature {
+    grid-column: 1 / -1;
 }
 
 /* ---- Feature Card ---- */
@@ -390,7 +396,7 @@ body {
     display: grid;
     grid-template-columns: 72px 1fr;
     gap: 0.75rem;
-    padding: 0.6rem 0;
+    padding: 0.5rem 0;
     cursor: pointer;
     border-bottom: 1px solid var(--ed-color-border);
     transition: background var(--ed-transition-fast);
