@@ -102,6 +102,28 @@ body {
     outline: none;
 }
 
+/* Refine button */
+.ed-refine-btn {
+    padding: 0.4rem 0.75rem;
+    background: transparent;
+    border: 1px solid var(--ed-color-border);
+    border-radius: var(--ed-radius-sm);
+    color: var(--ed-color-muted);
+    font-size: 0.85rem;
+    font-family: var(--ed-font-body);
+    cursor: pointer;
+    transition: all var(--ed-transition-fast);
+}
+.ed-refine-btn:hover {
+    color: var(--ed-color-text);
+    border-color: var(--ed-color-muted);
+}
+.ed-refine-btn--active {
+    background: var(--ed-color-surface);
+    border-color: var(--ed-color-accent);
+    color: var(--ed-color-accent);
+}
+
 /* ---- Main Layout Grid ---- */
 #ed-layout {
     display: grid;
@@ -123,14 +145,19 @@ body {
     top: 57px;
 }
 
-/* ---- Quick Filters ---- */
+/* ---- Quick Filters (collapsible refine panel) ---- */
 .ed-quick-filters {
-    display: flex;
+    display: none;
     flex-wrap: wrap;
     gap: var(--ed-space-md);
-    margin-bottom: var(--ed-space-md);
-    padding-bottom: var(--ed-space-md);
-    border-bottom: 1px solid var(--ed-color-border);
+    margin-bottom: var(--ed-space-sm);
+    padding: var(--ed-space-sm) var(--ed-space-md);
+    background: var(--ed-color-surface);
+    border: 1px solid var(--ed-color-border);
+    border-radius: var(--ed-radius-md);
+}
+.ed-quick-filters--open {
+    display: flex;
 }
 
 .ed-filter-group {
@@ -175,24 +202,24 @@ body {
 }
 .ed-filter-btn--active small { opacity: 0.8; }
 
-/* ---- Filter Chips ---- */
+/* ---- Filter Chips (active filters only) ---- */
 .ed-filter-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.4rem;
+    gap: 0.35rem;
     margin-bottom: var(--ed-space-sm);
 }
 
 .ed-chip {
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
-    padding: 0.2rem 0.6rem;
-    background: var(--ed-color-surface);
+    gap: 0.25rem;
+    padding: 0.15rem 0.5rem;
+    background: transparent;
     border: 1px solid var(--ed-color-border);
     border-radius: 20px;
-    font-size: 0.8rem;
-    color: var(--ed-color-text);
+    font-size: 0.75rem;
+    color: var(--ed-color-muted);
 }
 
 .ed-chip__remove {

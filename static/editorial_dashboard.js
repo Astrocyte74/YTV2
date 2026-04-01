@@ -432,6 +432,12 @@
                         sortOpts[i].label + '</option>';
                 }
                 navHtml += '</select>';
+                var hasFilters = Object.keys(this.state.filters).some(
+                    function (k) { return this.state.filters[k]; }.bind(this)
+                );
+                navHtml += '<button class="ed-refine-btn' + (hasFilters ? ' ed-refine-btn--active' : '') +
+                    '" data-action="toggle-refine">Refine' +
+                    (hasFilters ? ' (' + Object.keys(this.state.filters).length + ')' : '') + '</button>';
                 navHtml += '<a class="ed-topbar__link" href="/">Classic</a>';
                 nav.innerHTML = navHtml;
             }
@@ -504,16 +510,19 @@
         }
 
         renderQuickFilters() {
+            // Only render when refine panel is open
+            if (!this._refineOpen) return;
+
             var filters = this.state.filterOptions;
             if (!filters) return;
 
-            // Remove existing quick filters if re-rendering
+            // Remove existing if re-rendering
             var existing = document.getElementById('ed-quick-filters');
             if (existing) existing.remove();
 
             var container = document.createElement('div');
             container.id = 'ed-quick-filters';
-            container.className = 'ed-quick-filters';
+            container.className = 'ed-quick-filters ed-quick-filters--open';
 
             // Source filters
             var sources = filters.source || filters.content_source || [];
@@ -583,6 +592,16 @@
             }
         }
 
+        toggleRefine() {
+            this._refineOpen = !this._refineOpen;
+            if (this._refineOpen) {
+                this.renderQuickFilters();
+            } else {
+                var existing = document.getElementById('ed-quick-filters');
+                if (existing) existing.remove();
+            }
+        }
+
         renderLoading() {
             if (this.mounts.hero) {
                 this.mounts.hero.innerHTML = '<div class="ed-loading">Loading...</div>';
@@ -633,6 +652,22 @@
 
             // Click delegation
             document.addEventListener('click', function (e) {
+                // Refine toggle
+                if (e.target.closest('[data-action="toggle-refine"]')) {
+                    this.toggleRefine();
+                    return;
+                }
+
+                // Close refine on outside click
+                if (this._refineOpen) {
+                    var panel = document.getElementById('ed-quick-filters');
+                    var refineBtn = document.querySelector('[data-action="toggle-refine"]');
+                    if (panel && !panel.contains(e.target) && refineBtn && !refineBtn.contains(e.target)) {
+                        this._refineOpen = false;
+                        if (panel) panel.remove();
+                    }
+                }
+
                 // Filter buttons
                 var btn = e.target.closest('.ed-filter-btn');
                 if (btn) {
