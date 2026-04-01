@@ -234,13 +234,15 @@ body {
 .ed-chip__remove:hover { color: #ef4444; }
 
 /* ---- Hero Card ---- */
-#ed-hero { margin-bottom: var(--ed-space-xl); }
+#ed-hero { margin-top: var(--ed-space-sm); margin-bottom: var(--ed-space-xl); }
 
 .ed-card-hero {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--ed-space-lg);
     cursor: pointer;
+    padding-bottom: var(--ed-space-sm);
+    border-bottom: 1px solid var(--ed-color-border);
 }
 
 .ed-card-hero__image {
@@ -261,38 +263,55 @@ body {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: var(--ed-space-sm);
+    gap: 0.6rem;
 }
 
 .ed-card-hero__title {
     font-family: var(--ed-font-display);
-    font-size: 1.75rem;
+    font-size: 2rem;
     font-weight: 700;
-    line-height: 1.25;
+    line-height: 1.2;
     color: var(--ed-color-text);
+    margin-top: 0.2rem;
 }
 
 .ed-card-hero__excerpt {
     font-size: 0.95rem;
     color: var(--ed-color-muted);
-    line-height: 1.6;
+    line-height: 1.65;
     max-width: 520px;
 }
+
+/* Hero meta: lighter than regular card meta */
+.ed-card-hero .ed-card__meta {
+    font-size: 0.7rem;
+    opacity: 0.7;
+}
+
+/* Hero category chip: quieter */
+.ed-card-hero .ed-card__category-chip {
+    font-size: 0.7rem;
+    padding: 0.1rem 0.45rem;
+}
+
+/* Hero actions: less visual weight */
+.ed-card-hero .ed-card__actions { margin-top: 0.25rem; }
 
 /* ---- Sections ---- */
 #ed-sections {
     display: flex;
     flex-direction: column;
-    gap: var(--ed-space-lg);
+    gap: var(--ed-space-xl);
 }
 
 .ed-section {}
 
 .ed-section__title {
-    font-size: 1.1rem;
+    font-size: 0.95rem;
     font-weight: 600;
     margin-bottom: var(--ed-space-sm);
-    color: var(--ed-color-text);
+    color: var(--ed-color-muted);
+    letter-spacing: 0.01em;
 }
 
 .ed-section__count {
