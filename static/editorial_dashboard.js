@@ -427,6 +427,7 @@
             }
 
             // Sync filter UI state
+            this.renderTopbar();
             this.renderFilterChips();
             this.updateFilterButtonStates();
         }
@@ -761,6 +762,21 @@
                         this._refineOpen = false;
                         if (panel) panel.remove();
                     }
+                }
+
+                // Rail pivot buttons (act as filter shortcuts)
+                var pivotBtn = e.target.closest('.ed-rail-pivot-btn');
+                if (pivotBtn) {
+                    var pType = pivotBtn.dataset.filterType;
+                    var pValue = pivotBtn.dataset.filterValue;
+                    if (this.state.filters[pType] === pValue) {
+                        delete this.state.filters[pType];
+                    } else {
+                        this.state.filters[pType] = pValue;
+                    }
+                    this.state.page = 1;
+                    this.loadContent();
+                    return;
                 }
 
                 // Filter buttons
