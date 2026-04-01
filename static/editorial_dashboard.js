@@ -184,6 +184,27 @@
         '</article>';
     }
 
+    function renderRailCard(item) {
+        var thumb = item.thumbnail_url || item.summary_image_url || '';
+        var sourceLabel = item.source_label || item.source || '';
+        var channel = item.channel || item.channel_name || '';
+        var duration = formatDuration(item.duration_seconds);
+        var ago = timeAgo(item.indexed_at);
+        var hasAudio = item.media && item.media.has_audio;
+
+        return '<a class="ed-rail-card" href="/' + escapeHtml(item.video_id || item.file_stem || '') + '">' +
+            (thumb ? '<div class="ed-rail-card__thumb"><img src="' + escapeHtml(thumb) + '" alt="" loading="lazy"></div>' : '') +
+            '<div class="ed-rail-card__body">' +
+                '<h4 class="ed-rail-card__title">' + escapeHtml(item.title) + '</h4>' +
+                '<div class="ed-rail-card__meta">' +
+                    (sourceLabel ? '<span>' + escapeHtml(sourceLabel) + '</span>' : '') +
+                    (duration ? '<span>' + duration + '</span>' : '') +
+                    (hasAudio ? '<span>&#9835;</span>' : '') +
+                '</div>' +
+            '</div>' +
+        '</a>';
+    }
+
     // ---- EditorialDashboard class ----
 
     // Filter keys that map to URL query params
@@ -372,13 +393,36 @@
                 this.mounts.sections.innerHTML = html;
             }
 
-            // Right rail: recent compact cards
+            // Right rail: curated modules
             if (this.mounts.rail) {
-                var railItems = sectionItems.slice(-10);
-                var railHtml = '<h3 class="ed-rail__title">Recent</h3>';
-                for (var k = 0; k < railItems.length; k++) {
-                    railHtml += renderCompactCard(railItems[k]);
+                var railHtml = '';
+                var heroItem = items[0];
+
+                // Module 1: Related to This Story
+                var related = this.getRelatedItems(heroItem, 4);
+                if (related.length > 0) {
+                    railHtml += '<div class="ed-rail-module">';
+                    railHtml += '<h3 class="ed-rail-module__title">Related to This Story</h3>';
+                    for (var k = 0; k < related.length; k++) {
+                        railHtml += renderRailCard(related[k]);
+                    }
+                    railHtml += '</div>';
                 }
+
+                // Module 2: Quick Pivots
+                var pivots = this.getPivotButtons();
+                if (pivots.length > 0) {
+                    railHtml += '<div class="ed-rail-module">';
+                    railHtml += '<h3 class="ed-rail-module__title">Quick Pivots</h3>';
+                    railHtml += '<div class="ed-rail-pivots">';
+                    for (var p = 0; p < pivots.length; p++) {
+                        railHtml += '<button class="ed-rail-pivot-btn" data-filter-type="' +
+                            escapeHtml(pivots[p].type) + '" data-filter-value="' +
+                            escapeHtml(pivots[p].value) + '">' + escapeHtml(pivots[p].label) + '</button>';
+                    }
+                    railHtml += '</div></div>';
+                }
+
                 this.mounts.rail.innerHTML = railHtml;
             }
 
@@ -406,6 +450,57 @@
                 groups[cat].push(items[i]);
             }
             return groups;
+        }
+
+        // ---- Rail module helpers ----
+
+        getRelatedItems(heroItem, max) {
+            if (!heroItem) return [];
+            var allItems = this.state.allItems || [];
+            var heroCategories = getCategories(heroItem);
+            var heroSource = heroItem.source || '';
+            var heroChannel = heroItem.channel || heroItem.channel_name || '';
+            var scored = [];
+            for (var i = 0; i < allItems.length; i++) {
+                var item = allItems[i];
+                if (item.video_id === heroItem.video_id || item.id === heroItem.id) continue;
+                var score = 0;
+                var itemCats = getCategories(item);
+                // Category overlap
+                for (var c = 0; c < itemCats.length; c++) {
+                    if (heroCategories.indexOf(itemCats[c]) !== -1) score += 3;
+                }
+                // Same source
+                if (heroSource && item.source === heroSource) score += 2;
+                // Same channel
+                if (heroChannel && (item.channel || item.channel_name) === heroChannel) score += 2;
+                if (score > 0) scored.push({ item: item, score: score });
+            }
+            scored.sort(function (a, b) { return b.score - a.score; });
+            return scored.slice(0, max || 4).map(function (s) { return s.item; });
+        }
+
+        getPivotButtons() {
+            var opts = this.state.filterOptions || {};
+            var buttons = [];
+            // Top categories
+            var cats = (opts.categories || []).slice(0, 5);
+            for (var i = 0; i < cats.length; i++) {
+                buttons.push({ type: 'category', value: cats[i].value, label: cats[i].value });
+            }
+            // Sources
+            var sources = (opts.source || opts.content_source || []).slice(0, 3);
+            for (var j = 0; j < sources.length; j++) {
+                buttons.push({ type: 'source', value: sources[j].value, label: sources[j].label });
+            }
+            // Audio
+            var audioOpts = opts.has_audio || [];
+            for (var a = 0; a < audioOpts.length; a++) {
+                if (audioOpts[a].value === true) {
+                    buttons.push({ type: 'has_audio', value: 'true', label: 'With Audio' });
+                }
+            }
+            return buttons;
         }
 
         renderTopbar() {

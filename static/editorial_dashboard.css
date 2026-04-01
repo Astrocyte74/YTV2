@@ -522,14 +522,88 @@ body {
     font-size: 0.8rem;
 }
 
-/* ---- Rail ---- */
-.ed-rail__title {
-    font-size: 0.85rem;
+/* ---- Rail Modules ---- */
+.ed-rail-module {
+    margin-bottom: var(--ed-space-lg);
+}
+
+.ed-rail-module__title {
+    font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--ed-color-muted);
     margin-bottom: var(--ed-space-sm);
+}
+
+/* Rail card — larger than compact, shows more detail */
+.ed-rail-card {
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    gap: 0.6rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--ed-color-border);
+    text-decoration: none;
+    color: inherit;
+    transition: background var(--ed-transition-fast);
+}
+.ed-rail-card:hover { background: var(--ed-color-surface); }
+.ed-rail-card:last-child { border-bottom: none; }
+
+.ed-rail-card__thumb {
+    aspect-ratio: 16 / 9;
+    border-radius: var(--ed-radius-sm);
+    overflow: hidden;
+    background: var(--ed-color-border);
+    flex-shrink: 0;
+}
+.ed-rail-card__thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.ed-rail-card__title {
+    font-size: 0.85rem;
+    font-weight: 500;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 0.2rem;
+}
+
+.ed-rail-card__meta {
+    font-size: 0.72rem;
+    color: var(--ed-color-muted);
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+/* Quick Pivot buttons */
+.ed-rail-pivots {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.ed-rail-pivot-btn {
+    padding: 0.3rem 0.6rem;
+    background: var(--ed-color-surface);
+    border: 1px solid var(--ed-color-border);
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-family: var(--ed-font-body);
+    color: var(--ed-color-muted);
+    cursor: pointer;
+    transition: all var(--ed-transition-fast);
+}
+.ed-rail-pivot-btn:hover {
+    color: var(--ed-color-accent);
+    border-color: var(--ed-color-accent);
 }
 
 /* ---- Load More ---- */
