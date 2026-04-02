@@ -608,60 +608,63 @@
             container.id = 'ed-quick-filters';
             container.className = 'ed-quick-filters ed-quick-filters--open';
 
-            // Sort control (moved from topbar)
-            var sortHtml = '<div class="ed-filter-group"><span class="ed-filter-group__label">Sort</span>';
-            sortHtml += '<select class="ed-sort__select">';
-            sortHtml += '<option value="newest"' + (this.state.sort === 'newest' ? ' selected' : '') + '>Newest</option>';
-            sortHtml += '<option value="oldest"' + (this.state.sort === 'oldest' ? ' selected' : '') + '>Oldest</option>';
-            sortHtml += '</select></div>';
-            container.innerHTML += sortHtml;
+            // Sort section
+            var html = '<div class="ed-refine-section">';
+            html += '<span class="ed-refine-section__label">Sort</span>';
+            html += '<div class="ed-refine-section__options">';
+            html += '<button class="ed-refine-option' + (this.state.sort === 'newest' ? ' ed-refine-option--active' : '') +
+                '" data-action="refine-sort" data-sort="newest">Newest</button>';
+            html += '<button class="ed-refine-option' + (this.state.sort === 'oldest' ? ' ed-refine-option--active' : '') +
+                '" data-action="refine-sort" data-sort="oldest">Oldest</button>';
+            html += '</div></div>';
 
-            // Source filters
+            // Source section
             var sources = filters.source || filters.content_source || [];
             if (sources.length > 1) {
-                var html = '<div class="ed-filter-group"><span class="ed-filter-group__label">Source</span>';
+                html += '<div class="ed-refine-section">';
+                html += '<span class="ed-refine-section__label">Source</span>';
+                html += '<div class="ed-refine-section__options">';
                 for (var i = 0; i < sources.length; i++) {
-                    var s = sources[i];
-                    var isActive = this.state.filters.source === s.value;
-                    html += '<button class="ed-filter-btn' + (isActive ? ' ed-filter-btn--active' : '') +
-                        '" data-filter-type="source" data-filter-value="' + escapeHtml(s.value) + '">' +
-                        escapeHtml(s.label) + ' <small>' + s.count + '</small></button>';
+                    var isActive = this.state.filters.source === sources[i].value;
+                    html += '<button class="ed-refine-option' + (isActive ? ' ed-refine-option--active' : '') +
+                        '" data-filter-type="source" data-filter-value="' + escapeHtml(sources[i].value) + '">' +
+                        escapeHtml(sources[i].label) + '</button>';
                 }
-                html += '</div>';
-                container.innerHTML += html;
+                html += '</div></div>';
             }
 
-            // Content type filter
+            // Type section
             var contentTypes = filters.content_type || [];
             if (contentTypes.length > 1) {
-                var ctHtml = '<div class="ed-filter-group"><span class="ed-filter-group__label">Type</span>';
+                html += '<div class="ed-refine-section">';
+                html += '<span class="ed-refine-section__label">Type</span>';
+                html += '<div class="ed-refine-section__options">';
                 for (var ct = 0; ct < contentTypes.length; ct++) {
-                    var t = contentTypes[ct];
-                    var isTypeActive = this.state.filters.content_type === t.value;
-                    ctHtml += '<button class="ed-filter-btn' + (isTypeActive ? ' ed-filter-btn--active' : '') +
-                        '" data-filter-type="content_type" data-filter-value="' + escapeHtml(t.value) + '">' +
-                        escapeHtml(t.value) + ' <small>' + t.count + '</small></button>';
+                    var isTypeActive = this.state.filters.content_type === contentTypes[ct].value;
+                    html += '<button class="ed-refine-option' + (isTypeActive ? ' ed-refine-option--active' : '') +
+                        '" data-filter-type="content_type" data-filter-value="' + escapeHtml(contentTypes[ct].value) + '">' +
+                        escapeHtml(contentTypes[ct].value) + '</button>';
                 }
-                ctHtml += '</div>';
-                container.innerHTML += ctHtml;
+                html += '</div></div>';
             }
 
-            // Has audio filter
+            // Audio section
             var audioOpts = filters.has_audio || [];
             if (audioOpts.length > 1) {
-                var auHtml = '<div class="ed-filter-group"><span class="ed-filter-group__label">Audio</span>';
                 for (var au = 0; au < audioOpts.length; au++) {
-                    var a = audioOpts[au];
-                    if (a.value === true) {
+                    if (audioOpts[au].value === true) {
                         var isAudioActive = this.state.filters.has_audio === 'true';
-                        auHtml += '<button class="ed-filter-btn' + (isAudioActive ? ' ed-filter-btn--active' : '') +
-                            '" data-filter-type="has_audio" data-filter-value="true">' +
-                            'With Audio <small>' + a.count + '</small></button>';
+                        html += '<div class="ed-refine-section">';
+                        html += '<span class="ed-refine-section__label">Audio</span>';
+                        html += '<div class="ed-refine-section__options">';
+                        html += '<button class="ed-refine-option' + (isAudioActive ? ' ed-refine-option--active' : '') +
+                            '" data-filter-type="has_audio" data-filter-value="true">With Audio</button>';
+                        html += '</div></div>';
                     }
                 }
-                auHtml += '</div>';
-                container.innerHTML += auHtml;
             }
+
+            container.innerHTML = html;
 
             var topbar = this.mounts.topbar;
             if (topbar) {
@@ -718,20 +721,20 @@
                 }
             }.bind(this));
 
-            // Sort change
-            document.addEventListener('change', function (e) {
-                if (e.target.classList.contains('ed-sort__select')) {
-                    this.state.sort = e.target.value;
-                    this.state.page = 1;
-                    this.loadContent();
-                }
-            }.bind(this));
-
             // Click delegation
             document.addEventListener('click', function (e) {
                 // Refine toggle
                 if (e.target.closest('[data-action="toggle-refine"]')) {
                     this.toggleRefine();
+                    return;
+                }
+
+                // Refine sort buttons
+                var refineSortBtn = e.target.closest('[data-action="refine-sort"]');
+                if (refineSortBtn) {
+                    this.state.sort = refineSortBtn.dataset.sort;
+                    this.state.page = 1;
+                    this.loadContent();
                     return;
                 }
 
