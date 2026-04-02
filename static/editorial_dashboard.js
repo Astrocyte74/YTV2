@@ -480,26 +480,50 @@
 
             var nav = search.querySelector('.ed-topbar__nav');
             if (nav) {
-                var sortOpts = [
-                    { value: 'newest', label: 'Newest' },
-                    { value: 'oldest', label: 'Oldest' },
-                ];
-                var navHtml = '<select class="ed-sort__select">';
-                for (var i = 0; i < sortOpts.length; i++) {
-                    navHtml += '<option value="' + sortOpts[i].value + '"' +
-                        (this.state.sort === sortOpts[i].value ? ' selected' : '') + '>' +
-                        sortOpts[i].label + '</option>';
-                }
-                navHtml += '</select>';
+                var activeCategory = this.state.filters.category || '';
+                var isRecent = !activeCategory;
+
+                // Editorial nav: Recent | Topics dropdown
+                var navHtml = '<div class="ed-nav">';
+                navHtml += '<button class="ed-nav__tab' + (isRecent ? ' ed-nav__tab--active' : '') +
+                    '" data-action="nav-recent">Recent</button>';
+                navHtml += '<div class="ed-nav__topics-wrap">';
+                navHtml += '<button class="ed-nav__tab' + (!isRecent ? ' ed-nav__tab--active' : '') +
+                    '" data-action="toggle-topics">' +
+                    (activeCategory ? escapeHtml(activeCategory) : 'Topics') + ' ▾</button>';
+                navHtml += this.renderTopicsDropdown();
+                navHtml += '</div>';
+                navHtml += '</div>';
+
                 var hasFilters = Object.keys(this.state.filters).some(
-                    function (k) { return this.state.filters[k]; }.bind(this)
+                    function (k) { return this.state.filters[k] && k !== 'category'; }.bind(this)
                 );
                 navHtml += '<button class="ed-refine-btn' + (hasFilters ? ' ed-refine-btn--active' : '') +
                     '" data-action="toggle-refine">Refine' +
-                    (hasFilters ? ' (' + Object.keys(this.state.filters).length + ')' : '') + '</button>';
+                    (hasFilters ? ' (' + Object.keys(this.state.filters).filter(function (k) { return k !== 'category' && this.state.filters[k]; }.bind(this)).length + ')' : '') + '</button>';
                 navHtml += '<a class="ed-topbar__link" href="/">Classic</a>';
                 nav.innerHTML = navHtml;
             }
+        }
+
+        renderTopicsDropdown() {
+            var opts = this.state.filterOptions || {};
+            var categories = (opts.categories || [])
+                .slice()
+                .sort(function (a, b) { return (b.count || 0) - (a.count || 0); })
+                .slice(0, 8);
+            if (!categories.length) return '';
+
+            var activeCategory = this.state.filters.category || '';
+            var html = '<div class="ed-topics-dropdown">';
+            for (var i = 0; i < categories.length; i++) {
+                var isSelected = categories[i].value === activeCategory;
+                html += '<button class="ed-topics-dropdown__item' + (isSelected ? ' ed-topics-dropdown__item--active' : '') +
+                    '" data-action="select-topic" data-topic="' + escapeHtml(categories[i].value) + '">' +
+                    escapeHtml(categories[i].value) + '</button>';
+            }
+            html += '</div>';
+            return html;
         }
 
         renderFilterChips() {
@@ -582,6 +606,14 @@
             var container = document.createElement('div');
             container.id = 'ed-quick-filters';
             container.className = 'ed-quick-filters ed-quick-filters--open';
+
+            // Sort control (moved from topbar)
+            var sortHtml = '<div class="ed-filter-group"><span class="ed-filter-group__label">Sort</span>';
+            sortHtml += '<select class="ed-sort__select">';
+            sortHtml += '<option value="newest"' + (this.state.sort === 'newest' ? ' selected' : '') + '>Newest</option>';
+            sortHtml += '<option value="oldest"' + (this.state.sort === 'oldest' ? ' selected' : '') + '>Oldest</option>';
+            sortHtml += '</select></div>';
+            container.innerHTML += sortHtml;
 
             // Source filters
             var sources = filters.source || filters.content_source || [];
@@ -715,6 +747,43 @@
                 if (e.target.closest('[data-action="toggle-refine"]')) {
                     this.toggleRefine();
                     return;
+                }
+
+                // Nav: Recent
+                if (e.target.closest('[data-action="nav-recent"]')) {
+                    delete this.state.filters.category;
+                    this.state.page = 1;
+                    this._topicsOpen = false;
+                    this.loadContent();
+                    return;
+                }
+
+                // Nav: Topics dropdown toggle
+                if (e.target.closest('[data-action="toggle-topics"]')) {
+                    this._topicsOpen = !this._topicsOpen;
+                    var dd = document.querySelector('.ed-topics-dropdown');
+                    if (dd) dd.classList.toggle('ed-topics-dropdown--open', this._topicsOpen);
+                    return;
+                }
+
+                // Nav: Topic selection
+                var topicBtn = e.target.closest('[data-action="select-topic"]');
+                if (topicBtn) {
+                    this.state.filters.category = topicBtn.dataset.topic;
+                    this.state.page = 1;
+                    this._topicsOpen = false;
+                    this.loadContent();
+                    return;
+                }
+
+                // Close topics dropdown on outside click
+                if (this._topicsOpen) {
+                    var topicsWrap = document.querySelector('.ed-nav__topics-wrap');
+                    if (topicsWrap && !topicsWrap.contains(e.target)) {
+                        this._topicsOpen = false;
+                        var ddClose = document.querySelector('.ed-topics-dropdown');
+                        if (ddClose) ddClose.classList.remove('ed-topics-dropdown--open');
+                    }
                 }
 
                 // Close refine on outside click
