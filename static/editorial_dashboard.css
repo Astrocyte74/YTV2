@@ -127,7 +127,7 @@ body {
 /* ---- Main Layout Grid ---- */
 #ed-layout {
     display: grid;
-    grid-template-columns: 1fr 320px;
+    grid-template-columns: 1fr;
     min-height: calc(100vh - 57px);
 }
 
@@ -137,12 +137,7 @@ body {
 }
 
 #ed-rail {
-    padding: var(--ed-space-lg) var(--ed-space-md);
-    border-left: 1px solid var(--ed-color-border);
-    overflow-y: auto;
-    max-height: calc(100vh - 57px);
-    position: sticky;
-    top: 57px;
+    display: none;
 }
 
 /* ---- Quick Filters (collapsible refine panel) ---- */
@@ -297,39 +292,44 @@ body {
 /* Hero actions: less visual weight */
 .ed-card-hero .ed-card__actions { margin-top: 0.25rem; }
 
-/* ---- Sections ---- */
+/* ---- Support Block (2-4 feature cards) ---- */
 #ed-sections {
     display: flex;
     flex-direction: column;
-    gap: var(--ed-space-xl);
+    gap: var(--ed-space-lg);
 }
 
-.ed-section {}
-
-.ed-section__title {
-    font-size: 0.95rem;
-    font-weight: 600;
-    margin-bottom: var(--ed-space-sm);
-    color: var(--ed-color-muted);
-    letter-spacing: 0.01em;
-}
-
-.ed-section__count {
-    font-weight: 400;
-    color: var(--ed-color-muted);
-    font-size: 0.75rem;
-    opacity: 0.6;
-}
-
-.ed-section__grid {
+.ed-support {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: var(--ed-space-sm);
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: var(--ed-space-md);
+    padding-bottom: var(--ed-space-lg);
+    border-bottom: 1px solid var(--ed-color-border);
 }
 
-/* Feature card spans full width of section grid */
-.ed-section__grid > .ed-card-feature {
-    grid-column: 1 / -1;
+/* Support cards: larger image, more breathing room */
+.ed-support .ed-card-feature {
+    grid-template-columns: 220px 1fr;
+    padding: var(--ed-space-md);
+    gap: var(--ed-space-md);
+}
+
+.ed-support .ed-card-feature__title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.3;
+    -webkit-line-clamp: 3;
+}
+
+.ed-support .ed-card-feature__excerpt {
+    -webkit-line-clamp: 3;
+}
+
+/* ---- Feed Block (flat 2-col compact cards) ---- */
+.ed-feed {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: var(--ed-space-xs);
 }
 
 /* ---- Feature Card ---- */
@@ -394,9 +394,9 @@ body {
 /* ---- Compact Card ---- */
 .ed-card-compact {
     display: grid;
-    grid-template-columns: 72px 1fr;
+    grid-template-columns: 80px 1fr;
     gap: 0.75rem;
-    padding: 0.5rem 0;
+    padding: 0.6rem 0;
     cursor: pointer;
     border-bottom: 1px solid var(--ed-color-border);
     transition: background var(--ed-transition-fast);
@@ -686,23 +686,17 @@ body {
 
 /* ---- Responsive ---- */
 @media (max-width: 1024px) {
-    #ed-layout { grid-template-columns: 1fr; }
-    #ed-rail {
-        position: static;
-        max-height: none;
-        border-left: none;
-        border-top: 1px solid var(--ed-color-border);
-    }
     .ed-card-hero { grid-template-columns: 1fr; }
+    .ed-support { grid-template-columns: 1fr; }
+    .ed-feed { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 640px) {
     #ed-topbar { padding: var(--ed-space-sm); }
     #ed-main { padding: var(--ed-space-md); }
-    #ed-rail { padding: var(--ed-space-md); }
     .ed-card-hero__title { font-size: 1.3rem; }
-    .ed-section__grid { grid-template-columns: 1fr; }
-    .ed-card-feature { grid-template-columns: 120px 1fr; }
+    .ed-support .ed-card-feature { grid-template-columns: 120px 1fr; }
+    .ed-feed { grid-template-columns: 1fr; }
 }
 
 /* ---- Side Reader ---- */

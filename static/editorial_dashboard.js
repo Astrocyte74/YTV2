@@ -348,7 +348,7 @@
                 return;
             }
 
-            // Hero: first item only on page 1
+            // Block 1: Hero — first item
             if (this.state.page === 1 || this.mounts.hero.children.length === 0) {
                 var hero = items[0];
                 if (this.mounts.hero) {
@@ -356,28 +356,31 @@
                 }
             }
 
-            // Section grouping: items after hero, grouped by category
-            var sectionItems = items.slice(1);
-            var sections = this.groupByCategory(sectionItems);
-
             if (this.mounts.sections) {
                 var html = '';
-                var sectionOrder = Object.keys(sections);
-                for (var i = 0; i < sectionOrder.length; i++) {
-                    var cat = sectionOrder[i];
-                    var catItems = sections[cat];
-                    html += '<section class="ed-section">';
-                    html += '<h2 class="ed-section__title">' + escapeHtml(cat) +
-                        ' <span class="ed-section__count">' + catItems.length + '</span></h2>';
-                    html += '<div class="ed-section__grid">';
-                    for (var j = 0; j < catItems.length; j++) {
-                        if (j === 0) {
-                            html += renderFeatureCard(catItems[j]);
-                        } else {
-                            html += renderCompactCard(catItems[j]);
-                        }
+
+                // Block 2: Supporting stories — next 2-4 items with source variety
+                var supportPool = items.slice(1, 9);  // scan up to 8
+                var supportItems = this.getSupportItems(supportPool, 4);
+
+                if (supportItems.length > 0) {
+                    html += '<section class="ed-support">';
+                    for (var s = 0; s < supportItems.length; s++) {
+                        html += renderFeatureCard(supportItems[s]);
                     }
-                    html += '</div></section>';
+                    html += '</section>';
+                }
+
+                // Block 3: Main feed — everything after support items
+                var feedStart = 1 + supportItems.length;
+                var feedItems = items.slice(feedStart);
+
+                if (feedItems.length > 0) {
+                    html += '<section class="ed-feed">';
+                    for (var f = 0; f < feedItems.length; f++) {
+                        html += renderCompactCard(feedItems[f]);
+                    }
+                    html += '</section>';
                 }
 
                 // Load more trigger
@@ -393,43 +396,31 @@
                 this.mounts.sections.innerHTML = html;
             }
 
-            // Right rail: curated modules
+            // Hide rail (no longer used on homepage)
             if (this.mounts.rail) {
-                var railHtml = '';
-                var heroItem = items[0];
-
-                // Module 1: Related to This Story
-                var related = this.getRelatedItems(heroItem, 4);
-                if (related.length > 0) {
-                    railHtml += '<div class="ed-rail-module">';
-                    railHtml += '<h3 class="ed-rail-module__title">Related to This Story</h3>';
-                    for (var k = 0; k < related.length; k++) {
-                        railHtml += renderRailCard(related[k]);
-                    }
-                    railHtml += '</div>';
-                }
-
-                // Module 2: Quick Pivots
-                var pivots = this.getPivotButtons();
-                if (pivots.length > 0) {
-                    railHtml += '<div class="ed-rail-module">';
-                    railHtml += '<h3 class="ed-rail-module__title">Quick Pivots</h3>';
-                    railHtml += '<div class="ed-rail-pivots">';
-                    for (var p = 0; p < pivots.length; p++) {
-                        railHtml += '<button class="ed-rail-pivot-btn" data-filter-type="' +
-                            escapeHtml(pivots[p].type) + '" data-filter-value="' +
-                            escapeHtml(pivots[p].value) + '">' + escapeHtml(pivots[p].label) + '</button>';
-                    }
-                    railHtml += '</div></div>';
-                }
-
-                this.mounts.rail.innerHTML = railHtml;
+                this.mounts.rail.innerHTML = '';
             }
 
             // Sync filter UI state
             this.renderTopbar();
             this.renderFilterChips();
             this.updateFilterButtonStates();
+        }
+
+        getSupportItems(pool, max) {
+            if (!pool || !pool.length) return [];
+            var sourceCounts = {};
+            var picked = [];
+            for (var i = 0; i < pool.length && picked.length < max; i++) {
+                var item = pool[i];
+                var src = item.source || '';
+                var count = sourceCounts[src] || 0;
+                if (count < 2) {
+                    picked.push(item);
+                    sourceCounts[src] = count + 1;
+                }
+            }
+            return picked;
         }
 
         updateFilterButtonStates() {
