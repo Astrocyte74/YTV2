@@ -127,44 +127,30 @@
     }
 
     function renderFeatureCard(item) {
-        var media = item.media || {};
-        var hasAudio = !!media.has_audio;
         var duration = formatDuration(item.duration_seconds);
-        var excerpt = getExcerpt(item.summary_text, 120);
         var thumb = getThumbnail(item);
         var sourceLabel = getSourceLabel(item);
-        var channel = item.channel || item.channel_name || '';
         var ago = timeAgo(item.indexed_at);
 
         return '<article class="ed-card ed-card-feature" data-video-id="' + escapeHtml(item.video_id || item.id) + '">' +
             '<div class="ed-card-feature__image">' +
                 '<img src="' + escapeHtml(thumb) + '" alt="" loading="lazy">' +
                 (duration ? '<span class="ed-card__duration">' + duration + '</span>' : '') +
-                (hasAudio ? '<span class="ed-card__audio-badge">Audio</span>' : '') +
             '</div>' +
             '<div class="ed-card-feature__body">' +
+                '<h3 class="ed-card-feature__title">' + escapeHtml(item.title) + '</h3>' +
                 '<div class="ed-card__meta">' +
                     (sourceLabel ? '<span class="ed-card__source">' + escapeHtml(sourceLabel) + '</span>' : '') +
-                    (channel ? '<span class="ed-card__channel">' + escapeHtml(channel) + '</span>' : '') +
                     (ago ? '<span class="ed-card__time">' + ago + '</span>' : '') +
-                '</div>' +
-                '<h3 class="ed-card-feature__title">' + escapeHtml(item.title) + '</h3>' +
-                (excerpt ? '<p class="ed-card-feature__excerpt">' + escapeHtml(excerpt) + '</p>' : '') +
-                '<div class="ed-card__actions">' +
-                    '<a class="ed-btn ed-btn--sm" href="/' + escapeHtml(item.video_id || item.file_stem) + '" data-action="read">Read</a>' +
-                    (item.canonical_url ? '<a class="ed-btn ed-btn--sm ed-btn--ghost" href="' + escapeHtml(item.canonical_url) + '" target="_blank" rel="noopener" data-action="watch">Watch</a>' : '') +
                 '</div>' +
             '</div>' +
         '</article>';
     }
 
     function renderCompactCard(item) {
-        var media = item.media || {};
-        var hasAudio = !!media.has_audio;
         var duration = formatDuration(item.duration_seconds);
         var thumb = getThumbnail(item);
         var sourceLabel = getSourceLabel(item);
-        var channel = item.channel || item.channel_name || '';
         var ago = timeAgo(item.indexed_at);
 
         return '<article class="ed-card ed-card-compact" data-video-id="' + escapeHtml(item.video_id || item.id) + '">' +
@@ -175,10 +161,8 @@
             '<div class="ed-card-compact__body">' +
                 '<h4 class="ed-card-compact__title">' + escapeHtml(item.title) + '</h4>' +
                 '<div class="ed-card__meta">' +
-                    (sourceLabel ? '<span class="ed-card__source">' + escapeHtml(sourceLabel) + '</span>' : '') +
-                    (channel ? '<span class="ed-card__channel">' + escapeHtml(channel) + '</span>' : '') +
-                    (ago ? '<span class="ed-card__time">' + ago + '</span>' : '') +
-                    (hasAudio ? '<span class="ed-card__audio-indicator">&#9835;</span>' : '') +
+                    (sourceLabel ? '<span>' + escapeHtml(sourceLabel) + '</span>' : '') +
+                    (ago ? '<span>' + ago + '</span>' : '') +
                 '</div>' +
             '</div>' +
         '</article>';
@@ -361,7 +345,7 @@
 
                 // Block 2: Supporting stories — next 2-4 items with source variety
                 var supportPool = items.slice(1, 9);  // scan up to 8
-                var supportItems = this.getSupportItems(supportPool, 4);
+                var supportItems = this.getSupportItems(supportPool, 3);
 
                 if (supportItems.length > 0) {
                     html += '<section class="ed-support">';

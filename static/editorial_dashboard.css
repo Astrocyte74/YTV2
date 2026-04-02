@@ -292,7 +292,7 @@ body {
 /* Hero actions: less visual weight */
 .ed-card-hero .ed-card__actions { margin-top: 0.25rem; }
 
-/* ---- Support Block (2-4 feature cards) ---- */
+/* ---- Support Block (3 vertical cards) ---- */
 #ed-sections {
     display: flex;
     flex-direction: column;
@@ -301,34 +301,47 @@ body {
 
 .ed-support {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: var(--ed-space-md);
     padding-bottom: var(--ed-space-lg);
     border-bottom: 1px solid var(--ed-color-border);
 }
 
-/* Support cards: larger image, more breathing room */
+/* Support cards: vertical — image on top, text below */
 .ed-support .ed-card-feature {
-    grid-template-columns: 220px 1fr;
-    padding: var(--ed-space-md);
-    gap: var(--ed-space-md);
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    gap: 0.75rem;
+    border: none;
+    background: none;
+    border-radius: 0;
+}
+
+.ed-support .ed-card-feature__image {
+    border-radius: var(--ed-radius-md);
+    overflow: hidden;
+}
+
+.ed-support .ed-card-feature__body {
+    gap: 0.25rem;
 }
 
 .ed-support .ed-card-feature__title {
-    font-size: 1.05rem;
+    font-size: 1rem;
     font-weight: 600;
-    line-height: 1.3;
+    line-height: 1.35;
     -webkit-line-clamp: 3;
 }
 
-.ed-support .ed-card-feature__excerpt {
-    -webkit-line-clamp: 3;
+.ed-support .ed-card__meta {
+    font-size: 0.72rem;
 }
 
-/* ---- Feed Block (flat 2-col compact cards) ---- */
+/* ---- Feed Block (flat compact cards) ---- */
 .ed-feed {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: var(--ed-space-xs);
 }
 
@@ -687,7 +700,7 @@ body {
 /* ---- Responsive ---- */
 @media (max-width: 1024px) {
     .ed-card-hero { grid-template-columns: 1fr; }
-    .ed-support { grid-template-columns: 1fr; }
+    .ed-support { grid-template-columns: repeat(2, 1fr); }
     .ed-feed { grid-template-columns: 1fr; }
 }
 
@@ -695,7 +708,7 @@ body {
     #ed-topbar { padding: var(--ed-space-sm); }
     #ed-main { padding: var(--ed-space-md); }
     .ed-card-hero__title { font-size: 1.3rem; }
-    .ed-support .ed-card-feature { grid-template-columns: 120px 1fr; }
+    .ed-support { grid-template-columns: 1fr; }
     .ed-feed { grid-template-columns: 1fr; }
 }
 
