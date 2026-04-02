@@ -201,6 +201,10 @@
                 rail: document.getElementById('ed-rail'),
                 player: document.getElementById('ed-player'),
             };
+
+            this._topicsOpen = false;
+            this._refineOpen = false;
+            this._refineSection = '';
         }
 
         // ---- URL state ----
@@ -498,9 +502,12 @@
                 var hasFilters = Object.keys(this.state.filters).some(
                     function (k) { return this.state.filters[k] && k !== 'category'; }.bind(this)
                 );
+                navHtml += '<div class="ed-refine-wrap">';
                 navHtml += '<button class="ed-refine-btn' + (hasFilters ? ' ed-refine-btn--active' : '') +
                     '" data-action="toggle-refine">Refine' +
                     (hasFilters ? ' (' + Object.keys(this.state.filters).filter(function (k) { return k !== 'category' && this.state.filters[k]; }.bind(this)).length + ')' : '') + '</button>';
+                navHtml += this.renderRefineMenu();
+                navHtml += '</div>';
                 navHtml += '<a class="ed-topbar__link" href="/">Classic</a>';
                 nav.innerHTML = navHtml;
             }
@@ -533,7 +540,8 @@
             var activeFilters = Object.keys(this.state.filters).filter(
                 function (k) { return this.state.filters[k]; }.bind(this)
             );
-            if (!activeFilters.length && !this.state.search) return;
+            var visibleFilters = activeFilters.filter(function (k) { return k !== 'category'; });
+            if (!visibleFilters.length && !this.state.search) return;
 
             var chipContainer = document.createElement('div');
             chipContainer.id = 'ed-filter-chips';
@@ -544,9 +552,8 @@
                     '"' + escapeHtml(this.state.search) + '" <button class="ed-chip__remove">&times;</button></span>';
             }
 
-            for (var i = 0; i < activeFilters.length; i++) {
-                var key = activeFilters[i];
-                if (key === 'category') continue;  // topic shown in nav, not as chip
+            for (var i = 0; i < visibleFilters.length; i++) {
+                var key = visibleFilters[i];
                 var val = this.state.filters[key];
                 var label = this.getFilterLabel(key, val);
                 chipContainer.innerHTML += '<span class="ed-chip" data-filter-key="' + escapeHtml(key) + '">' +
@@ -593,93 +600,104 @@
             return result;
         }
 
-        renderQuickFilters() {
-            // Only render when refine panel is open
-            if (!this._refineOpen) return;
-
+        renderRefineMenu() {
             var filters = this.state.filterOptions;
-            if (!filters) return;
+            if (!filters) return '';
+            var html = '<div class="ed-refine-menu' + (this._refineOpen ? ' ed-refine-menu--open' : '') + '" id="ed-refine-menu">';
+            if (!this._refineSection) {
+                html += '<div class="ed-refine-menu__list">';
+                html += this.renderRefineMenuItem('sort', 'Sort', this.state.sort === 'oldest' ? 'Oldest' : 'Newest');
 
-            // Remove existing if re-rendering
-            var existing = document.getElementById('ed-quick-filters');
-            if (existing) existing.remove();
+                var sources = filters.source || filters.content_source || [];
+                if (sources.length > 1) {
+                    html += this.renderRefineMenuItem(
+                        'source',
+                        'Source',
+                        this.state.filters.source ? this.getFilterLabel('source', this.state.filters.source) : 'Any'
+                    );
+                }
 
-            var container = document.createElement('div');
-            container.id = 'ed-quick-filters';
-            container.className = 'ed-quick-filters ed-quick-filters--open';
+                var contentTypes = filters.content_type || [];
+                if (contentTypes.length > 1) {
+                    html += this.renderRefineMenuItem(
+                        'content_type',
+                        'Type',
+                        this.state.filters.content_type ? this.getFilterLabel('content_type', this.state.filters.content_type) : 'Any'
+                    );
+                }
 
-            // Sort section
-            var html = '<div class="ed-refine-section">';
-            html += '<span class="ed-refine-section__label">Sort</span>';
-            html += '<div class="ed-refine-section__options">';
-            html += '<button class="ed-refine-option' + (this.state.sort === 'newest' ? ' ed-refine-option--active' : '') +
-                '" data-action="refine-sort" data-sort="newest">Newest</button>';
-            html += '<button class="ed-refine-option' + (this.state.sort === 'oldest' ? ' ed-refine-option--active' : '') +
-                '" data-action="refine-sort" data-sort="oldest">Oldest</button>';
-            html += '</div></div>';
+                var audioOpts = filters.has_audio || [];
+                if (audioOpts.length > 1) {
+                    html += this.renderRefineMenuItem(
+                        'has_audio',
+                        'Audio',
+                        this.state.filters.has_audio === 'true' ? 'With Audio' : 'Any'
+                    );
+                }
+                html += '</div>';
+            } else {
+                html += this.renderRefineSubmenu();
+            }
+            html += '</div>';
+            return html;
+        }
 
-            // Source section
-            var sources = filters.source || filters.content_source || [];
-            if (sources.length > 1) {
-                html += '<div class="ed-refine-section">';
-                html += '<span class="ed-refine-section__label">Source</span>';
-                html += '<div class="ed-refine-section__options">';
+        renderRefineMenuItem(section, label, value) {
+            return '<button class="ed-refine-menu__item" data-action="open-refine-section" data-section="' + escapeHtml(section) + '">' +
+                '<span class="ed-refine-menu__item-label">' + escapeHtml(label) + '</span>' +
+                '<span class="ed-refine-menu__item-value">' + escapeHtml(value) + '</span>' +
+                '</button>';
+        }
+
+        renderRefineSubmenu() {
+            var filters = this.state.filterOptions || {};
+            var section = this._refineSection;
+            var html = '<div class="ed-refine-submenu">';
+            html += '<div class="ed-refine-submenu__header">';
+            html += '<button class="ed-refine-submenu__back" data-action="close-refine-section">← Refine</button>';
+            html += '</div>';
+            html += '<div class="ed-refine-submenu__list">';
+
+            if (section === 'sort') {
+                html += '<button class="ed-refine-menu__button' + (this.state.sort === 'newest' ? ' ed-refine-menu__button--active' : '') +
+                    '" data-action="refine-sort" data-sort="newest">Newest</button>';
+                html += '<button class="ed-refine-menu__button' + (this.state.sort === 'oldest' ? ' ed-refine-menu__button--active' : '') +
+                    '" data-action="refine-sort" data-sort="oldest">Oldest</button>';
+            } else if (section === 'source') {
+                html += '<button class="ed-refine-menu__button' + (!this.state.filters.source ? ' ed-refine-menu__button--active' : '') +
+                    '" data-filter-type="source" data-filter-value="">Any source</button>';
+                var sources = filters.source || filters.content_source || [];
                 for (var i = 0; i < sources.length; i++) {
-                    var isActive = this.state.filters.source === sources[i].value;
-                    html += '<button class="ed-refine-option' + (isActive ? ' ed-refine-option--active' : '') +
+                    var isActive = this.state.filters.source === String(sources[i].value);
+                    html += '<button class="ed-refine-menu__button' + (isActive ? ' ed-refine-menu__button--active' : '') +
                         '" data-filter-type="source" data-filter-value="' + escapeHtml(sources[i].value) + '">' +
                         escapeHtml(sources[i].label) + '</button>';
                 }
-                html += '</div></div>';
-            }
-
-            // Type section
-            var contentTypes = filters.content_type || [];
-            if (contentTypes.length > 1) {
-                html += '<div class="ed-refine-section">';
-                html += '<span class="ed-refine-section__label">Type</span>';
-                html += '<div class="ed-refine-section__options">';
+            } else if (section === 'content_type') {
+                html += '<button class="ed-refine-menu__button' + (!this.state.filters.content_type ? ' ed-refine-menu__button--active' : '') +
+                    '" data-filter-type="content_type" data-filter-value="">Any type</button>';
+                var contentTypes = filters.content_type || [];
                 for (var ct = 0; ct < contentTypes.length; ct++) {
-                    var isTypeActive = this.state.filters.content_type === contentTypes[ct].value;
-                    html += '<button class="ed-refine-option' + (isTypeActive ? ' ed-refine-option--active' : '') +
+                    var isTypeActive = this.state.filters.content_type === String(contentTypes[ct].value);
+                    html += '<button class="ed-refine-menu__button' + (isTypeActive ? ' ed-refine-menu__button--active' : '') +
                         '" data-filter-type="content_type" data-filter-value="' + escapeHtml(contentTypes[ct].value) + '">' +
                         escapeHtml(contentTypes[ct].value) + '</button>';
                 }
-                html += '</div></div>';
+            } else if (section === 'has_audio') {
+                html += '<button class="ed-refine-menu__button' + (!this.state.filters.has_audio ? ' ed-refine-menu__button--active' : '') +
+                    '" data-filter-type="has_audio" data-filter-value="">Any audio</button>';
+                html += '<button class="ed-refine-menu__button' + (this.state.filters.has_audio === 'true' ? ' ed-refine-menu__button--active' : '') +
+                    '" data-filter-type="has_audio" data-filter-value="true">With Audio</button>';
             }
 
-            // Audio section
-            var audioOpts = filters.has_audio || [];
-            if (audioOpts.length > 1) {
-                for (var au = 0; au < audioOpts.length; au++) {
-                    if (audioOpts[au].value === true) {
-                        var isAudioActive = this.state.filters.has_audio === 'true';
-                        html += '<div class="ed-refine-section">';
-                        html += '<span class="ed-refine-section__label">Audio</span>';
-                        html += '<div class="ed-refine-section__options">';
-                        html += '<button class="ed-refine-option' + (isAudioActive ? ' ed-refine-option--active' : '') +
-                            '" data-filter-type="has_audio" data-filter-value="true">With Audio</button>';
-                        html += '</div></div>';
-                    }
-                }
-            }
-
-            container.innerHTML = html;
-
-            var topbar = this.mounts.topbar;
-            if (topbar) {
-                topbar.appendChild(container);
-            }
+            html += '</div></div>';
+            return html;
         }
 
         toggleRefine() {
             this._refineOpen = !this._refineOpen;
-            if (this._refineOpen) {
-                this.renderQuickFilters();
-            } else {
-                var existing = document.getElementById('ed-quick-filters');
-                if (existing) existing.remove();
-            }
+            this._refineSection = '';
+            this.renderTopbar();
         }
 
         renderLoading() {
@@ -733,8 +751,23 @@
                 var refineSortBtn = e.target.closest('[data-action="refine-sort"]');
                 if (refineSortBtn) {
                     this.state.sort = refineSortBtn.dataset.sort;
+                    this._refineOpen = false;
+                    this._refineSection = '';
                     this.state.page = 1;
                     this.loadContent();
+                    return;
+                }
+
+                var openRefineSectionBtn = e.target.closest('[data-action="open-refine-section"]');
+                if (openRefineSectionBtn) {
+                    this._refineSection = openRefineSectionBtn.dataset.section || '';
+                    this.renderTopbar();
+                    return;
+                }
+
+                if (e.target.closest('[data-action="close-refine-section"]')) {
+                    this._refineSection = '';
+                    this.renderTopbar();
                     return;
                 }
 
@@ -770,18 +803,17 @@
                     var topicsWrap = document.querySelector('.ed-nav__topics-wrap');
                     if (topicsWrap && !topicsWrap.contains(e.target)) {
                         this._topicsOpen = false;
-                        var ddClose = document.querySelector('.ed-topics-dropdown');
-                        if (ddClose) ddClose.classList.remove('ed-topics-dropdown--open');
+                        this.renderTopbar();
                     }
                 }
 
                 // Close refine on outside click
                 if (this._refineOpen) {
-                    var panel = document.getElementById('ed-quick-filters');
-                    var refineBtn = document.querySelector('[data-action="toggle-refine"]');
-                    if (panel && !panel.contains(e.target) && refineBtn && !refineBtn.contains(e.target)) {
+                    var refineWrap = document.querySelector('.ed-refine-wrap');
+                    if (refineWrap && !refineWrap.contains(e.target)) {
                         this._refineOpen = false;
-                        if (panel) panel.remove();
+                        this._refineSection = '';
+                        this.renderTopbar();
                     }
                 }
 
@@ -795,6 +827,23 @@
                     } else {
                         this.state.filters[pType] = pValue;
                     }
+                    this.state.page = 1;
+                    this.loadContent();
+                    return;
+                }
+
+                // Refine filter buttons
+                var refineFilterBtn = e.target.closest('.ed-refine-menu__button[data-filter-type]');
+                if (refineFilterBtn) {
+                    var refineType = refineFilterBtn.dataset.filterType;
+                    var refineValue = refineFilterBtn.dataset.filterValue;
+                    if (!refineValue || this.state.filters[refineType] === refineValue) {
+                        delete this.state.filters[refineType];
+                    } else {
+                        this.state.filters[refineType] = refineValue;
+                    }
+                    this._refineOpen = false;
+                    this._refineSection = '';
                     this.state.page = 1;
                     this.loadContent();
                     return;
@@ -1156,7 +1205,7 @@
         app.bindEvents();
         app.renderTopbar();
         await app.loadFilters();
-        app.renderQuickFilters();
+        app.renderTopbar();
         await app.loadContent();
         window.__editorialApp = app;
     }
