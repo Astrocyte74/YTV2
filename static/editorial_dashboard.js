@@ -630,21 +630,6 @@
                 container.innerHTML += html;
             }
 
-            // Category filters (top 6)
-            var categories = (filters.categories || []).slice(0, 6);
-            if (categories.length > 1) {
-                var catHtml = '<div class="ed-filter-group"><span class="ed-filter-group__label">Category</span>';
-                for (var j = 0; j < categories.length; j++) {
-                    var c = categories[j];
-                    var isCatActive = this.state.filters.category === c.value;
-                    catHtml += '<button class="ed-filter-btn' + (isCatActive ? ' ed-filter-btn--active' : '') +
-                        '" data-filter-type="category" data-filter-value="' + escapeHtml(c.value) + '">' +
-                        escapeHtml(c.value) + ' <small>' + c.count + '</small></button>';
-                }
-                catHtml += '</div>';
-                container.innerHTML += catHtml;
-            }
-
             // Content type filter
             var contentTypes = filters.content_type || [];
             if (contentTypes.length > 1) {
