@@ -338,11 +338,37 @@ body {
     font-size: 0.72rem;
 }
 
-/* ---- Feed Block (flat compact cards) ---- */
+/* ---- Feed Block (vertical cards, same family as support) ---- */
 .ed-feed {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: var(--ed-space-xs);
+    gap: var(--ed-space-md);
+}
+
+/* Feed cards: same structure as support, slightly tighter */
+.ed-feed .ed-card-feature {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    gap: 0.5rem;
+    border: none;
+    background: none;
+    border-radius: 0;
+}
+
+.ed-feed .ed-card-feature__image {
+    border-radius: var(--ed-radius-sm);
+}
+
+.ed-feed .ed-card-feature__title {
+    font-size: 0.9rem;
+    font-weight: 500;
+    line-height: 1.35;
+    -webkit-line-clamp: 2;
+}
+
+.ed-feed .ed-card__meta {
+    font-size: 0.7rem;
 }
 
 /* ---- Feature Card ---- */
@@ -404,47 +430,6 @@ body {
     overflow: hidden;
 }
 
-/* ---- Compact Card ---- */
-.ed-card-compact {
-    display: grid;
-    grid-template-columns: 80px 1fr;
-    gap: 0.75rem;
-    padding: 0.6rem 0;
-    cursor: pointer;
-    border-bottom: 1px solid var(--ed-color-border);
-    transition: background var(--ed-transition-fast);
-}
-.ed-card-compact:last-child { border-bottom: none; }
-.ed-card-compact:hover { background: var(--ed-color-surface); }
-
-.ed-card-compact__image {
-    position: relative;
-    border-radius: var(--ed-radius-sm);
-    overflow: hidden;
-    aspect-ratio: 16 / 9;
-    background: var(--ed-color-border);
-    flex-shrink: 0;
-}
-.ed-card-compact__image img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-}
-
-.ed-card-compact__body { min-width: 0; }
-
-.ed-card-compact__title {
-    font-size: 0.85rem;
-    font-weight: 500;
-    line-height: 1.35;
-    color: var(--ed-color-text);
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
 /* ---- Shared card elements ---- */
 .ed-card__meta {
     display: flex;
@@ -473,10 +458,6 @@ body {
     padding: 0.15rem 0.4rem;
     border-radius: 3px;
     font-variant-numeric: tabular-nums;
-}
-.ed-card__duration--sm {
-    font-size: 0.6rem;
-    padding: 0.1rem 0.3rem;
 }
 
 .ed-card__audio-badge {

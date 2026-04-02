@@ -147,27 +147,6 @@
         '</article>';
     }
 
-    function renderCompactCard(item) {
-        var duration = formatDuration(item.duration_seconds);
-        var thumb = getThumbnail(item);
-        var sourceLabel = getSourceLabel(item);
-        var ago = timeAgo(item.indexed_at);
-
-        return '<article class="ed-card ed-card-compact" data-video-id="' + escapeHtml(item.video_id || item.id) + '">' +
-            '<div class="ed-card-compact__image">' +
-                '<img src="' + escapeHtml(thumb) + '" alt="" loading="lazy">' +
-                (duration ? '<span class="ed-card__duration ed-card__duration--sm">' + duration + '</span>' : '') +
-            '</div>' +
-            '<div class="ed-card-compact__body">' +
-                '<h4 class="ed-card-compact__title">' + escapeHtml(item.title) + '</h4>' +
-                '<div class="ed-card__meta">' +
-                    (sourceLabel ? '<span>' + escapeHtml(sourceLabel) + '</span>' : '') +
-                    (ago ? '<span>' + ago + '</span>' : '') +
-                '</div>' +
-            '</div>' +
-        '</article>';
-    }
-
     function renderRailCard(item) {
         var thumb = item.thumbnail_url || item.summary_image_url || '';
         var sourceLabel = item.source_label || item.source || '';
@@ -371,7 +350,7 @@
                 if (feedItems.length > 0) {
                     html += '<section class="ed-feed">';
                     for (var f = 0; f < feedItems.length; f++) {
-                        html += renderCompactCard(feedItems[f]);
+                        html += renderFeatureCard(feedItems[f]);
                     }
                     html += '</section>';
                 }
