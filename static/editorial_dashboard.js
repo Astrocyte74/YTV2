@@ -371,9 +371,18 @@
                     html += '</section>';
                 }
 
-                // Block 3: Main feed — everything after support items
-                var feedStart = 1 + supportItems.length;
-                var feedItems = items.slice(feedStart);
+                // Block 3: Main feed — exclude hero and chosen support items by id
+                var supportIds = {};
+                for (var si = 0; si < supportItems.length; si++) {
+                    supportIds[supportItems[si].video_id || supportItems[si].id] = true;
+                }
+                var feedItems = [];
+                for (var fi = 1; fi < items.length; fi++) {
+                    var fid = items[fi].video_id || items[fi].id;
+                    if (!supportIds[fid]) {
+                        feedItems.push(items[fi]);
+                    }
+                }
 
                 if (feedItems.length > 0) {
                     html += '<section class="ed-feed">';
