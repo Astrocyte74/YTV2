@@ -225,16 +225,25 @@ body {
     display: none;
 }
 
-/* ---- Quick Filters (collapsible refine panel) ---- */
+/* ---- Refine Popover ---- */
+#ed-topbar { position: relative; }
+
 .ed-quick-filters {
     display: none;
-    flex-wrap: wrap;
-    gap: var(--ed-space-md);
-    margin-bottom: var(--ed-space-sm);
-    padding: var(--ed-space-sm) var(--ed-space-md);
+    position: absolute;
+    top: 100%;
+    right: var(--ed-space-lg);
+    margin-top: 0.35rem;
+    min-width: 280px;
+    max-width: 360px;
     background: var(--ed-color-surface);
     border: 1px solid var(--ed-color-border);
     border-radius: var(--ed-radius-md);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    z-index: 150;
+    padding: var(--ed-space-sm);
+    flex-direction: column;
+    gap: var(--ed-space-sm);
 }
 .ed-quick-filters--open {
     display: flex;

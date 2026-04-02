@@ -546,6 +546,7 @@
 
             for (var i = 0; i < activeFilters.length; i++) {
                 var key = activeFilters[i];
+                if (key === 'category') continue;  // topic shown in nav, not as chip
                 var val = this.state.filters[key];
                 var label = this.getFilterLabel(key, val);
                 chipContainer.innerHTML += '<span class="ed-chip" data-filter-key="' + escapeHtml(key) + '">' +
@@ -662,9 +663,9 @@
                 container.innerHTML += auHtml;
             }
 
-            var hero = this.mounts.hero;
-            if (hero && hero.parentNode) {
-                hero.parentNode.insertBefore(container, hero);
+            var topbar = this.mounts.topbar;
+            if (topbar) {
+                topbar.appendChild(container);
             }
         }
 
