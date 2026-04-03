@@ -203,6 +203,7 @@
             };
 
             this._topicsOpen = false;
+            this._topicsSection = '';
             this._refineOpen = false;
             this._refineSection = '';
         }
@@ -494,18 +495,19 @@
                 navHtml += '<div class="ed-nav__topics-wrap">';
                 navHtml += '<button class="ed-nav__tab' + (!isRecent ? ' ed-nav__tab--active' : '') +
                     '" data-action="toggle-topics">' +
-                    (activeCategory ? escapeHtml(activeCategory) : 'Topics') + ' ▾</button>';
+                    (this.state.filters.subcategory ? escapeHtml(this.state.filters.subcategory) :
+                     (activeCategory ? escapeHtml(activeCategory) : 'Topics')) + ' ▾</button>';
                 navHtml += this.renderTopicsDropdown();
                 navHtml += '</div>';
                 navHtml += '</div>';
 
                 var hasFilters = Object.keys(this.state.filters).some(
-                    function (k) { return this.state.filters[k] && k !== 'category'; }.bind(this)
+                    function (k) { return this.state.filters[k] && k !== 'category' && k !== 'subcategory'; }.bind(this)
                 );
                 navHtml += '<div class="ed-refine-wrap">';
                 navHtml += '<button class="ed-refine-btn' + (hasFilters ? ' ed-refine-btn--active' : '') +
                     '" data-action="toggle-refine">Refine' +
-                    (hasFilters ? ' (' + Object.keys(this.state.filters).filter(function (k) { return k !== 'category' && this.state.filters[k]; }.bind(this)).length + ')' : '') + '</button>';
+                    (hasFilters ? ' (' + Object.keys(this.state.filters).filter(function (k) { return k !== 'category' && k !== 'subcategory' && this.state.filters[k]; }.bind(this)).length + ')' : '') + '</button>';
                 navHtml += this.renderRefineMenu();
                 navHtml += '</div>';
                 navHtml += '<a class="ed-topbar__link" href="/">Classic</a>';
@@ -523,11 +525,40 @@
 
             var activeCategory = this.state.filters.category || '';
             var html = '<div class="ed-topics-dropdown' + (this._topicsOpen ? ' ed-topics-dropdown--open' : '') + '">';
-            for (var i = 0; i < categories.length; i++) {
-                var isSelected = categories[i].value === activeCategory;
-                html += '<button class="ed-topics-dropdown__item' + (isSelected ? ' ed-topics-dropdown__item--active' : '') +
-                    '" data-action="select-topic" data-topic="' + escapeHtml(categories[i].value) + '">' +
-                    escapeHtml(categories[i].value) + '</button>';
+            if (!this._topicsSection) {
+                // First level: category list
+                for (var i = 0; i < categories.length; i++) {
+                    var isSelected = categories[i].value === activeCategory;
+                    html += '<button class="ed-topics-dropdown__item' + (isSelected ? ' ed-topics-dropdown__item--active' : '') +
+                        '" data-action="open-topic-section" data-topic="' + escapeHtml(categories[i].value) + '">' +
+                        '<span>' + escapeHtml(categories[i].value) + '</span>' +
+                        '<span class="ed-topics-dropdown__count">' + (categories[i].count || 0) + '</span>' +
+                        '</button>';
+                }
+            } else {
+                // Second level: "All [Category]" + subcategories
+                html += '<div class="ed-topics-submenu__header">';
+                html += '<button class="ed-topics-submenu__back" data-action="close-topic-section">\u2190 Topics</button>';
+                html += '</div>';
+                html += '<div class="ed-topics-submenu__list">';
+                // "All [Category]" option
+                var allActive = activeCategory === this._topicsSection && !this.state.filters.subcategory;
+                html += '<button class="ed-topics-dropdown__item' + (allActive ? ' ed-topics-dropdown__item--active' : '') +
+                    '" data-action="select-topic" data-topic="' + escapeHtml(this._topicsSection) + '">' +
+                    'All ' + escapeHtml(this._topicsSection) + '</button>';
+                // Subcategories
+                var cat = categories.filter(function (c) { return c.value === this._topicsSection; }.bind(this))[0];
+                var subs = (cat && cat.subcategories) || [];
+                for (var s = 0; s < subs.length; s++) {
+                    var isSubActive = this.state.filters.subcategory === subs[s].value;
+                    html += '<button class="ed-topics-dropdown__item' + (isSubActive ? ' ed-topics-dropdown__item--active' : '') +
+                        '" data-action="select-subtopic" data-topic="' + escapeHtml(this._topicsSection) +
+                        '" data-subtopic="' + escapeHtml(subs[s].value) + '">' +
+                        '<span>' + escapeHtml(subs[s].value) + '</span>' +
+                        '<span class="ed-topics-dropdown__count">' + (subs[s].count || 0) + '</span>' +
+                        '</button>';
+                }
+                html += '</div>';
             }
             html += '</div>';
             return html;
@@ -540,7 +571,7 @@
             var activeFilters = Object.keys(this.state.filters).filter(
                 function (k) { return this.state.filters[k]; }.bind(this)
             );
-            var visibleFilters = activeFilters.filter(function (k) { return k !== 'category'; });
+            var visibleFilters = activeFilters.filter(function (k) { return k !== 'category' && k !== 'subcategory'; });
             if (!visibleFilters.length && !this.state.search) return;
 
             var chipContainer = document.createElement('div');
@@ -697,6 +728,7 @@
         toggleRefine() {
             this._refineOpen = !this._refineOpen;
             this._topicsOpen = false;
+            this._topicsSection = '';
             this._refineSection = '';
             this.renderTopbar();
         }
@@ -775,8 +807,10 @@
                 // Nav: Recent
                 if (e.target.closest('[data-action="nav-recent"]')) {
                     delete this.state.filters.category;
+                    delete this.state.filters.subcategory;
                     this.state.page = 1;
                     this._topicsOpen = false;
+                    this._topicsSection = '';
                     this.loadContent();
                     return;
                 }
@@ -784,18 +818,47 @@
                 // Nav: Topics dropdown toggle
                 if (e.target.closest('[data-action="toggle-topics"]')) {
                     this._topicsOpen = !this._topicsOpen;
+                    this._topicsSection = '';
                     this._refineOpen = false;
                     this._refineSection = '';
                     this.renderTopbar();
                     return;
                 }
 
-                // Nav: Topic selection
+                // Open topic section (show subcategories)
+                var openTopicBtn = e.target.closest('[data-action="open-topic-section"]');
+                if (openTopicBtn) {
+                    this._topicsSection = openTopicBtn.dataset.topic || '';
+                    this.renderTopbar();
+                    return;
+                }
+
+                if (e.target.closest('[data-action="close-topic-section"]')) {
+                    this._topicsSection = '';
+                    this.renderTopbar();
+                    return;
+                }
+
+                // Nav: Topic selection ("All [Category]")
                 var topicBtn = e.target.closest('[data-action="select-topic"]');
                 if (topicBtn) {
                     this.state.filters.category = topicBtn.dataset.topic;
+                    delete this.state.filters.subcategory;
                     this.state.page = 1;
                     this._topicsOpen = false;
+                    this._topicsSection = '';
+                    this.loadContent();
+                    return;
+                }
+
+                // Nav: Subtopic selection
+                var subtopicBtn = e.target.closest('[data-action="select-subtopic"]');
+                if (subtopicBtn) {
+                    this.state.filters.category = subtopicBtn.dataset.topic;
+                    this.state.filters.subcategory = subtopicBtn.dataset.subtopic;
+                    this.state.page = 1;
+                    this._topicsOpen = false;
+                    this._topicsSection = '';
                     this.loadContent();
                     return;
                 }
@@ -805,6 +868,7 @@
                     var topicsWrap = document.querySelector('.ed-nav__topics-wrap');
                     if (topicsWrap && !topicsWrap.contains(e.target)) {
                         this._topicsOpen = false;
+                        this._topicsSection = '';
                         this.renderTopbar();
                     }
                 }

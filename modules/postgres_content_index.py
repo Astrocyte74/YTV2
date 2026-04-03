@@ -1230,6 +1230,37 @@ class PostgreSQLContentIndex:
                     if cat_conditions:
                         where_conditions.append(f"({' OR '.join(cat_conditions)})")
 
+                # Subcategory filter — narrow within selected category
+                if 'subcategory' in filters and filters['subcategory']:
+                    subcats = filters['subcategory'] if isinstance(filters['subcategory'], list) else [filters['subcategory']]
+                    parent_categories = []
+                    if 'category' in filters and filters['category']:
+                        parent_categories = filters['category'] if isinstance(filters['category'], list) else [filters['category']]
+                    sub_conditions = []
+                    for subcat in subcats:
+                        if parent_categories:
+                            for parent in parent_categories:
+                                sub_json = json.dumps([{"category": parent, "subcategories": [subcat]}])
+                                sub_conditions.append("""(
+                                    (c.subcategories_json IS NOT NULL AND
+                                     c.subcategories_json->'categories' @> %s::jsonb) OR
+                                    (c.analysis_json->'categories' IS NOT NULL AND
+                                     c.analysis_json->'categories' @> %s::jsonb)
+                                )""")
+                                params.extend([sub_json, sub_json])
+                        else:
+                            sub_conditions.append("""(
+                                EXISTS (
+                                    SELECT 1 FROM jsonb_array_elements(
+                                        COALESCE(c.subcategories_json->'categories', c.analysis_json->'categories', '[]'::jsonb)
+                                    ) AS cat_obj
+                                    WHERE cat_obj->'subcategories' @> %s::jsonb
+                                )
+                            )""")
+                            params.append(json.dumps([subcat]))
+                    if sub_conditions:
+                        where_conditions.append(f"({' OR '.join(sub_conditions)})")
+
                 # Source filters
                 if 'source' in filters and filters['source']:
                     sources = filters['source'] if isinstance(filters['source'], list) else [filters['source']]

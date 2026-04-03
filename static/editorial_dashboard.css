@@ -181,7 +181,9 @@ body {
 }
 
 .ed-topics-dropdown__item {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     width: 100%;
     padding: 0.5rem 1rem;
     background: none;
@@ -202,6 +204,37 @@ body {
 .ed-topics-dropdown__item--active {
     color: var(--ed-color-accent);
     font-weight: 500;
+}
+
+.ed-topics-dropdown__count {
+    color: var(--ed-color-muted);
+    font-size: 0.76rem;
+    margin-left: auto;
+    opacity: 0.7;
+}
+
+.ed-topics-submenu__header {
+    padding: 0 0.35rem 0.35rem;
+    border-bottom: 1px solid var(--ed-color-border);
+    margin-bottom: 0.25rem;
+}
+
+.ed-topics-submenu__back {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    color: var(--ed-color-muted);
+    font-size: 0.8rem;
+    font-family: var(--ed-font-body);
+    cursor: pointer;
+    text-align: left;
+}
+
+.ed-topics-submenu__back:hover {
+    background: var(--ed-color-surface-hover);
 }
 
 /* ---- Refine Menu (compact popover, sibling to Topics) ---- */
