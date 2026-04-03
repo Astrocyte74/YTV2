@@ -1091,14 +1091,39 @@
             }
             panel.innerHTML = contentHtml;
             panel.classList.add('ed-reader--open');
+            document.body.style.overflow = 'hidden';
+            this._bindReaderScrollTrap(panel);
         }
 
         closeReader() {
             var panel = document.getElementById('ed-reader');
             if (panel) {
                 panel.classList.remove('ed-reader--open');
+                this._unbindReaderScrollTrap(panel);
             }
+            document.body.style.overflow = '';
             this._activeReaderId = null;
+        }
+
+        _bindReaderScrollTrap(panel) {
+            var self = this;
+            this._readerScrollHandler = function (e) {
+                var body = panel.querySelector('.ed-reader__body');
+                if (!body) return;
+                var atTop = body.scrollTop <= 0;
+                var atBottom = body.scrollTop + body.clientHeight >= body.scrollHeight;
+                if ((atTop && e.deltaY < 0) || (atBottom && e.deltaY > 0)) {
+                    e.preventDefault();
+                }
+            };
+            panel.addEventListener('wheel', this._readerScrollHandler, { passive: false });
+        }
+
+        _unbindReaderScrollTrap(panel) {
+            if (this._readerScrollHandler) {
+                panel.removeEventListener('wheel', this._readerScrollHandler);
+                this._readerScrollHandler = null;
+            }
         }
 
         renderReaderContent(data) {

@@ -927,6 +927,7 @@ body {
 .ed-reader__body {
     flex: 1;
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding: var(--ed-space-lg) var(--ed-space-lg);
 }
 
