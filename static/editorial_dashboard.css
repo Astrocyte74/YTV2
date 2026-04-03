@@ -929,6 +929,29 @@ body {
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: var(--ed-space-lg) var(--ed-space-lg);
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(115, 115, 115, 0.75) transparent;
+}
+
+.ed-reader__body::-webkit-scrollbar {
+    width: 12px;
+}
+
+.ed-reader__body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.ed-reader__body::-webkit-scrollbar-thumb {
+    background: rgba(115, 115, 115, 0.55);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+}
+
+.ed-reader__body::-webkit-scrollbar-thumb:hover {
+    background: rgba(115, 115, 115, 0.8);
+    background-clip: padding-box;
 }
 
 .ed-reader__meta {
