@@ -522,7 +522,7 @@
             if (!categories.length) return '';
 
             var activeCategory = this.state.filters.category || '';
-            var html = '<div class="ed-topics-dropdown">';
+            var html = '<div class="ed-topics-dropdown' + (this._topicsOpen ? ' ed-topics-dropdown--open' : '') + '">';
             for (var i = 0; i < categories.length; i++) {
                 var isSelected = categories[i].value === activeCategory;
                 html += '<button class="ed-topics-dropdown__item' + (isSelected ? ' ed-topics-dropdown__item--active' : '') +
@@ -696,6 +696,7 @@
 
         toggleRefine() {
             this._refineOpen = !this._refineOpen;
+            this._topicsOpen = false;
             this._refineSection = '';
             this.renderTopbar();
         }
@@ -783,8 +784,9 @@
                 // Nav: Topics dropdown toggle
                 if (e.target.closest('[data-action="toggle-topics"]')) {
                     this._topicsOpen = !this._topicsOpen;
-                    var dd = document.querySelector('.ed-topics-dropdown');
-                    if (dd) dd.classList.toggle('ed-topics-dropdown--open', this._topicsOpen);
+                    this._refineOpen = false;
+                    this._refineSection = '';
+                    this.renderTopbar();
                     return;
                 }
 
