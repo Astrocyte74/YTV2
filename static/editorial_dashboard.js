@@ -1129,9 +1129,10 @@
                 }
             }
 
-            var html = '<div class="ed-reader__header">';
+            var html = '';
+
+            // Close button — absolutely positioned, no header row
             html += '<button class="ed-reader__close" data-action="close-reader">&times;</button>';
-            html += '</div>';
 
             html += '<div class="ed-reader__body">';
 
@@ -1145,14 +1146,9 @@
             // Title
             html += '<h1 class="ed-reader__title">' + escapeHtml(title) + '</h1>';
 
-            // Thumbnail
-            if (thumb) {
-                html += '<div class="ed-reader__thumb"><img src="' + escapeHtml(thumb) + '" alt=""></div>';
-            }
-
-            // Actions
+            // Actions (before image — text-first flow)
             html += '<div class="ed-reader__actions">';
-            html += '<a class="ed-btn ed-btn--secondary ed-btn--sm" href="/' + escapeHtml(video.video_id || '') + '">Full page</a>';
+            html += '<a class="ed-btn ed-btn--primary ed-btn--sm" href="/' + escapeHtml(video.video_id || '') + '">Open full report</a>';
             if (canonicalUrl) {
                 html += '<a class="ed-btn ed-btn--ghost ed-btn--sm" href="' + escapeHtml(canonicalUrl) + '" target="_blank" rel="noopener">Watch source</a>';
             }
@@ -1160,6 +1156,11 @@
                 html += '<button class="ed-btn ed-btn--secondary ed-btn--sm" data-action="play-audio" data-audio-url="' + escapeHtml(audioUrl) + '">Listen</button>';
             }
             html += '</div>';
+
+            // Thumbnail (after actions — image as supporting content)
+            if (thumb) {
+                html += '<div class="ed-reader__thumb"><img src="' + escapeHtml(thumb) + '" alt=""></div>';
+            }
 
             // Summary content
             html += '<div class="ed-reader__summary">' + summaryHtml + '</div>';
