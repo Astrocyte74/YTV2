@@ -69,21 +69,15 @@ body {
     gap: 0;
 }
 
-.ed-topbar__nav::before {
-    content: '';
-    display: inline-block;
-    width: 1px;
-    height: 1.1rem;
-    background: var(--ed-color-border);
-    margin: 0 0.6rem;
-}
-
 .ed-topbar__link {
     color: var(--ed-color-muted);
     text-decoration: none;
     font-size: 0.78rem;
     opacity: 0.65;
     transition: opacity var(--ed-transition-fast), color var(--ed-transition-fast);
+    margin-left: 0.6rem;
+    padding-left: 0.6rem;
+    border-left: 1px solid var(--ed-color-muted);
 }
 .ed-topbar__link:hover { color: var(--ed-color-text); opacity: 1; }
 
@@ -202,7 +196,7 @@ body {
     padding: 0.55rem 1rem;
     background: none;
     border: none;
-    color: var(--ed-color-text);
+    color: var(--ed-color-muted);
     font-size: 0.85rem;
     font-weight: 500;
     font-family: var(--ed-font-body);
