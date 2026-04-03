@@ -1221,11 +1221,6 @@
             }
             html += '</div>';
 
-            // Thumbnail (after actions — image as supporting content)
-            if (thumb) {
-                html += '<div class="ed-reader__thumb"><img src="' + escapeHtml(thumb) + '" alt=""></div>';
-            }
-
             // Variant tabs (only if multiple variants)
             if (this._readerVariants.length > 1) {
                 html += '<div class="ed-reader__variants">';
@@ -1236,6 +1231,11 @@
                         '" data-action="switch-variant" data-variant-idx="' + ti + '">' + escapeHtml(vLabel) + '</button>';
                 }
                 html += '</div>';
+            }
+
+            // Thumbnail (after variant tabs — image as supporting content)
+            if (thumb) {
+                html += '<div class="ed-reader__thumb"><img src="' + escapeHtml(thumb) + '" alt=""></div>';
             }
 
             // Summary content
