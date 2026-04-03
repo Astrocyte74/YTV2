@@ -996,6 +996,38 @@ body {
     display: block;
 }
 
+/* ---- Reader Variant Tabs ---- */
+.ed-reader__variants {
+    display: flex;
+    gap: 0.15rem;
+    margin-bottom: var(--ed-space-md);
+    padding-bottom: var(--ed-space-sm);
+    border-bottom: 1px solid var(--ed-color-border);
+}
+
+.ed-reader__variant {
+    padding: 0.3rem 0.7rem;
+    background: none;
+    border: none;
+    border-radius: var(--ed-radius-sm);
+    color: var(--ed-color-muted);
+    font-size: 0.82rem;
+    font-family: var(--ed-font-body);
+    font-weight: 500;
+    cursor: pointer;
+    transition: color var(--ed-transition-fast), background var(--ed-transition-fast);
+}
+
+.ed-reader__variant:hover {
+    color: var(--ed-color-text);
+    background: var(--ed-color-surface);
+}
+
+.ed-reader__variant--active {
+    color: var(--ed-color-accent);
+    background: rgba(59, 130, 246, 0.08);
+}
+
 .ed-reader__summary {
     font-size: 0.95rem;
     line-height: 1.8;

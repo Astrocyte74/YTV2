@@ -962,6 +962,14 @@
                     return;
                 }
 
+                // Switch summary variant
+                var variantBtn = e.target.closest('[data-action="switch-variant"]');
+                if (variantBtn) {
+                    var idx = parseInt(variantBtn.dataset.variantIdx, 10);
+                    this.switchReaderVariant(idx);
+                    return;
+                }
+
                 // Audio toggle
                 if (e.target.closest('[data-action="audio-toggle"]')) {
                     this.toggleAudioPlayback();
@@ -1101,6 +1109,39 @@
             this._activeReaderId = null;
         }
 
+        switchReaderVariant(idx) {
+            var variants = this._readerVariants;
+            if (!variants || idx < 0 || idx >= variants.length) return;
+            this._readerActiveVariant = idx;
+
+            var v = variants[idx];
+            var summaryEl = document.querySelector('.ed-reader__summary');
+            if (summaryEl) {
+                summaryEl.innerHTML = v.html || v.text || '<p>No summary available.</p>';
+            }
+
+            // Update active tab
+            var tabs = document.querySelectorAll('.ed-reader__variant');
+            for (var t = 0; t < tabs.length; t++) {
+                var tabIdx = parseInt(tabs[t].dataset.variantIdx, 10);
+                tabs[t].classList.toggle('ed-reader__variant--active', tabIdx === idx);
+            }
+
+            // Update listen button audio URL
+            var listenBtn = document.querySelector('[data-action="play-audio"]');
+            if (listenBtn) {
+                if (v.audio_url) {
+                    listenBtn.dataset.audioUrl = v.audio_url;
+                    listenBtn.disabled = false;
+                    listenBtn.classList.remove('ed-btn--disabled');
+                } else {
+                    listenBtn.dataset.audioUrl = '';
+                    listenBtn.disabled = true;
+                    listenBtn.classList.add('ed-btn--disabled');
+                }
+            }
+        }
+
         renderReaderContent(data) {
             var video = data.video || {};
             var summary = data.summary || {};
@@ -1114,11 +1155,34 @@
             var hasAudio = !!data.has_audio;
             var audioUrl = null;
             var variants = data.summary_variants || [];
+
+            // Store variants for switching
+            this._readerVariants = variants.length > 0 ? variants : [{ variant: 'default', html: summaryHtml, text: summary.text || '' }];
+            this._readerActiveVariant = 0;
+
             for (var vi = 0; vi < variants.length; vi++) {
                 if (variants[vi].audio_url) {
                     audioUrl = variants[vi].audio_url;
                     break;
                 }
+            }
+
+            // Use first variant's html if available
+            if (variants.length > 0 && variants[0].html) {
+                summaryHtml = variants[0].html;
+            }
+
+            // Humanize variant names
+            var variantLabels = {
+                'key-insights': 'Key Insights',
+                'bullet-points': 'Key Points',
+                'comprehensive': 'Full Summary',
+                'deep-research': 'Research'
+            };
+
+            function humanizeVariant(slug) {
+                if (variantLabels[slug]) return variantLabels[slug];
+                return slug.replace(/-/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
             }
 
             // Categories
@@ -1160,6 +1224,18 @@
             // Thumbnail (after actions — image as supporting content)
             if (thumb) {
                 html += '<div class="ed-reader__thumb"><img src="' + escapeHtml(thumb) + '" alt=""></div>';
+            }
+
+            // Variant tabs (only if multiple variants)
+            if (this._readerVariants.length > 1) {
+                html += '<div class="ed-reader__variants">';
+                for (var ti = 0; ti < this._readerVariants.length; ti++) {
+                    var vSlug = this._readerVariants[ti].variant || '';
+                    var vLabel = humanizeVariant(vSlug);
+                    html += '<button class="ed-reader__variant' + (ti === 0 ? ' ed-reader__variant--active' : '') +
+                        '" data-action="switch-variant" data-variant-idx="' + ti + '">' + escapeHtml(vLabel) + '</button>';
+                }
+                html += '</div>';
             }
 
             // Summary content
