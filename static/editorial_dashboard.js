@@ -1930,11 +1930,18 @@
             var when = timeAgo(variant.created_at);
             var preview = (variant.prompt || '').trim();
             if (preview.length > 150) preview = preview.slice(0, 147) + '...';
+            var thumbHtml = isSel
+                ? '<div class="ed-img-row__thumb ed-img-row__thumb--current">' +
+                    '<img src="' + escapeHtml(vUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' +
+                    '<span class="ed-img-row__thumb-badge">Current</span>' +
+                '</div>'
+                : '<button class="ed-img-row__thumb ed-img-row__thumb-btn" type="button" data-action="select-image-variant" data-url="' + escapeHtml(vUrl) + '" aria-label="Make this the current image">' +
+                    '<img src="' + escapeHtml(vUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' +
+                    '<span class="ed-img-row__thumb-badge">Make current</span>' +
+                '</button>';
 
             return '<article class="ed-img-row' + (isSel ? ' ed-img-row--selected' : '') + '" data-variant-url="' + escapeHtml(vUrl) + '">' +
-                '<div class="ed-img-row__thumb">' +
-                    '<img src="' + escapeHtml(vUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' +
-                '</div>' +
+                thumbHtml +
                 '<div class="ed-img-row__body">' +
                     '<div class="ed-img-row__top">' +
                         '<div class="ed-img-row__meta">' +
@@ -2038,6 +2045,7 @@
             }
 
             html += '<div class="ed-images-prompt__hint">Use a saved prompt as a starting point, or restore the original baseline before generating a new variant.</div>';
+            html += '<div class="ed-images-prompt__hint">Click a library row to reuse its prompt. Click the image itself to make that variant current.</div>';
             html += '<div class="ed-images-prompt__actions">' +
                 '<button class="ed-btn ed-btn--primary" data-action="save-image-prompt">' + (pending ? 'Generating...' : 'Generate new variant') + '</button>' +
                 '<button class="ed-btn ed-btn--secondary" data-action="use-default-prompt">Reset to default</button>' +
