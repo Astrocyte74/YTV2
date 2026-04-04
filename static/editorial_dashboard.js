@@ -1540,6 +1540,42 @@
                     }
                 });
 
+                this._eventSource.addEventListener('reprocess-complete', function (e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        console.log('[Editorial SSE] reprocess-complete:', data.video_id, data.summary_type, data.status);
+                        if (data.status === 'error') {
+                            self.showToast('Regeneration failed for ' + (data.summary_type || 'report'));
+                        } else {
+                            self.showToast('Regeneration complete — ' + (data.summary_type || 'report'));
+                            // Refresh reader if open for this video
+                            if (self._activeReaderId === data.video_id) {
+                                self.openReader(data.video_id);
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('[Editorial SSE] reprocess-complete parse error:', err);
+                    }
+                });
+
+                this._eventSource.addEventListener('reprocess-error', function (e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        console.warn('[Editorial SSE] reprocess-error:', data.video_id, data.error);
+                        var msg = 'Regeneration failed';
+                        if (data.error === 'no-summary-types') {
+                            msg = 'No summary types found for this report';
+                        } else if (data.error === 'missing-url') {
+                            msg = 'Could not resolve video URL';
+                        } else if (data.error) {
+                            msg = 'Regeneration failed: ' + data.error.substring(0, 80);
+                        }
+                        self.showToast(msg);
+                    } catch (err) {
+                        console.warn('[Editorial SSE] reprocess-error parse error:', err);
+                    }
+                });
+
                 this._eventSource.addEventListener('audio-synced', function (e) {
                     try {
                         var data = JSON.parse(e.data);
