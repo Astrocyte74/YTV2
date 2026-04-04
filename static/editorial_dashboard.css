@@ -995,13 +995,21 @@ body {
     margin-bottom: var(--ed-space-md);
 }
 
-.ed-reader__actions {
-    display: flex;
-    gap: 0.6rem;
+.ed-reader__source-link {
+    margin-bottom: var(--ed-space-sm);
+    font-size: 0.8rem;
+    color: var(--ed-color-muted);
+}
+.ed-reader__source-link a {
+    color: var(--ed-color-muted);
+    text-decoration: none;
+}
+.ed-reader__source-link a:hover {
+    color: var(--ed-color-accent);
+    text-decoration: underline;
+}
+.ed-reader__listen-btn {
     margin-bottom: var(--ed-space-md);
-    flex-wrap: wrap;
-    padding-bottom: var(--ed-space-md);
-    border-bottom: 1px solid var(--ed-color-border);
 }
 
 .ed-reader__thumb {

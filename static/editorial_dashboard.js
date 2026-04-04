@@ -1389,16 +1389,13 @@
             // Title
             html += '<h1 class="ed-reader__title">' + escapeHtml(title) + '</h1>';
 
-            // Actions (before image — text-first flow)
-            html += '<div class="ed-reader__actions">';
-            html += '<a class="ed-btn ed-btn--primary ed-btn--sm" href="/' + escapeHtml(video.video_id || '') + '">Open full report</a>';
+            // Source link + audio (inline, minimal)
             if (canonicalUrl) {
-                html += '<a class="ed-btn ed-btn--ghost ed-btn--sm" href="' + escapeHtml(canonicalUrl) + '" target="_blank" rel="noopener">Watch source</a>';
+                html += '<div class="ed-reader__source-link"><a href="' + escapeHtml(canonicalUrl) + '" target="_blank" rel="noopener">↗ View source</a></div>';
             }
             if (hasAudio && audioUrl) {
-                html += '<button class="ed-btn ed-btn--secondary ed-btn--sm" data-action="play-audio" data-audio-url="' + escapeHtml(audioUrl) + '">Listen</button>';
+                html += '<button class="ed-btn ed-btn--ghost ed-btn--sm ed-reader__listen-btn" data-action="play-audio" data-audio-url="' + escapeHtml(audioUrl) + '">▶ Listen</button>';
             }
-            html += '</div>';
 
             // Variant tabs (only if multiple variants)
             if (this._readerVariants.length > 1) {
