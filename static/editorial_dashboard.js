@@ -1955,7 +1955,8 @@
             var defaultPrompt = mode === 'ai2' ? data.a2Default : data.a1Default;
             var originalPrompt = mode === 'ai2' ? data.a2Original : data.a1Original;
             var modeLabel = mode === 'ai2' ? 'AI2' : 'AI1';
-            var countLabel = variants.length ? variants.length + ' variant' + (variants.length === 1 ? '' : 's') : 'No saved variants';
+            var countLabel = variants.length ? variants.length + ' saved variant' + (variants.length === 1 ? '' : 's') : 'No saved variants';
+            var pending = this._pendingImageGeneration && this._pendingImageGeneration.mode === mode ? this._pendingImageGeneration : null;
 
             var html = '<div class="ed-modal__header ed-modal__header--spread">' +
                 '<div>' +
@@ -1981,24 +1982,25 @@
             html += '<button class="ed-btn ed-btn--ghost ed-btn--sm ed-btn--danger-ghost" data-action="confirm-delete-all-images">Delete all AI images...</button>' +
             '</div>';
 
-            html += '<div class="ed-images-layout">';
+            html += '<div class="ed-images-layout' + (variants.length <= 1 ? ' ed-images-layout--sparse' : '') + '">';
             html += '<section class="ed-images-compose">' +
                 '<div class="ed-images-panel__header">' +
                     '<div>' +
                         '<div class="ed-images-panel__eyebrow">' + modeLabel + ' prompt</div>' +
-                        '<h3 class="ed-images-panel__title">Compose the next image</h3>' +
+                        '<h3 class="ed-images-panel__title">Create a new variant</h3>' +
                     '</div>' +
                 '</div>' +
-                '<textarea class="ed-images-prompt__textarea" rows="6" data-prompt-input>' + escapeHtml(defaultPrompt) + '</textarea>';
+                '<div class="ed-images-flow-note">Edit the prompt, generate a fresh variant, then choose the image you want to keep.</div>' +
+                '<textarea class="ed-images-prompt__textarea" rows="5" data-prompt-input>' + escapeHtml(defaultPrompt) + '</textarea>';
 
             if (originalPrompt) {
                 html += '<div class="ed-images-prompt__default">Default: ' + escapeHtml(originalPrompt) + '</div>';
             }
 
-            html += '<div class="ed-images-prompt__hint">Use a saved prompt as a starting point, or restore the original baseline before regenerating.</div>';
+            html += '<div class="ed-images-prompt__hint">Use a saved prompt as a starting point, or restore the original baseline before generating a new variant.</div>';
             html += '<div class="ed-images-prompt__actions">' +
-                '<button class="ed-btn ed-btn--primary" data-action="save-image-prompt">Regenerate ' + modeLabel + '</button>' +
-                '<button class="ed-btn ed-btn--secondary" data-action="use-default-prompt">Use default prompt</button>' +
+                '<button class="ed-btn ed-btn--primary" data-action="save-image-prompt">' + (pending ? 'Generating...' : 'Generate new variant') + '</button>' +
+                '<button class="ed-btn ed-btn--secondary" data-action="use-default-prompt">Reset to default</button>' +
             '</div>' +
             (selectedUrl ? '<div class="ed-images-prompt__hint">The library highlights the image currently shown in the reader.</div>' : '') +
             '</section>';
@@ -2010,6 +2012,13 @@
                         '<h3 class="ed-images-panel__title">' + countLabel + '</h3>' +
                     '</div>' +
                 '</div>';
+
+            if (pending) {
+                html += '<div class="ed-images-status">' +
+                    '<div class="ed-images-status__title">Generation requested</div>' +
+                    '<div class="ed-images-status__text">A new ' + modeLabel + ' variant is being generated. Refresh or reopen this modal in a moment to see it.</div>' +
+                '</div>';
+            }
 
             if (variants.length > 0) {
                 html += '<div class="ed-images-rows">';
@@ -2075,6 +2084,11 @@
             if (!newPrompt) { this.showToast('Enter a prompt', 'error'); return; }
 
             var mode = this._imageMode || 'ai1';
+            var btn = document.querySelector('[data-action="save-image-prompt"]');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Generating...';
+            }
             try {
                 var resp = await fetch('/api/set-image-prompt', {
                     method: 'POST',
@@ -2082,9 +2096,14 @@
                     body: JSON.stringify({ video_id: this._activeReaderId, prompt: newPrompt, mode: mode })
                 });
                 if (!resp.ok) throw new Error('Failed (' + resp.status + ')');
-                this.showToast('Image regeneration started');
-                this.closeModal();
+                this._pendingImageGeneration = { mode: mode, prompt: newPrompt, startedAt: Date.now() };
+                this.showToast('Image generation started');
+                this._renderImagesModal();
             } catch (err) {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Generate new variant';
+                }
                 this.showToast('Failed: ' + err.message, 'error');
             }
         }
@@ -2116,6 +2135,9 @@
                         this._readerData.analysis.summary_image_selected_url = url;
                         this._readerData.summary_image_url = url;
                     }
+                }
+                if (this._pendingImageGeneration && this._pendingImageGeneration.mode === mode) {
+                    this._pendingImageGeneration = null;
                 }
                 this._renderImagesModal();
             } catch (err) {
@@ -2213,6 +2235,7 @@
                     this._readerData.analysis.summary_image_selected_url = '';
                     this._readerData.summary_image_url = '';
                 }
+                this._pendingImageGeneration = null;
                 this.closeModal();
                 this._renderImagesModal();
             } catch (err) {
