@@ -1122,6 +1122,11 @@
                     this.useVariantPrompt(e.target.closest('[data-action="use-variant-prompt"]'));
                     return;
                 }
+                var variantRow = e.target.closest('.ed-img-row[data-variant-url]');
+                if (variantRow && !e.target.closest('button, a, input, textarea, select, label')) {
+                    this._loadVariantPromptByUrl(variantRow.dataset.variantUrl);
+                    return;
+                }
                 if (e.target.closest('[data-action="use-default-prompt"]')) {
                     this.useDefaultPrompt();
                     return;
@@ -1947,6 +1952,29 @@
             '</article>';
         }
 
+        _renderPendingImageRow(pending) {
+            var preview = (pending && pending.prompt ? pending.prompt.trim() : '');
+            if (preview.length > 150) preview = preview.slice(0, 147) + '...';
+
+            return '<article class="ed-img-row ed-img-row--pending">' +
+                '<div class="ed-img-row__thumb ed-img-row__thumb--pending">' +
+                    '<div class="ed-img-row__thumb-skeleton"></div>' +
+                '</div>' +
+                '<div class="ed-img-row__body">' +
+                    '<div class="ed-img-row__top">' +
+                        '<div class="ed-img-row__meta">' +
+                            '<span class="ed-img-row__time">Generating now</span>' +
+                            '<span class="ed-img-row__selected-badge ed-img-row__selected-badge--pending">Pending</span>' +
+                        '</div>' +
+                        '<div class="ed-img-row__prompt">' + escapeHtml(preview || 'Generating a new image variant from the current prompt.') + '</div>' +
+                    '</div>' +
+                    '<div class="ed-img-row__actions">' +
+                        '<span class="ed-img-row__current">Waiting for new variant</span>' +
+                    '</div>' +
+                '</div>' +
+            '</article>';
+        }
+
         _renderImagesModal() {
             var data = this._getImageAnalysis();
             var mode = data.mode;
@@ -1955,8 +1983,20 @@
             var defaultPrompt = mode === 'ai2' ? data.a2Default : data.a1Default;
             var originalPrompt = mode === 'ai2' ? data.a2Original : data.a1Original;
             var modeLabel = mode === 'ai2' ? 'AI2' : 'AI1';
-            var countLabel = variants.length ? variants.length + ' saved variant' + (variants.length === 1 ? '' : 's') : 'No saved variants';
             var pending = this._pendingImageGeneration && this._pendingImageGeneration.mode === mode ? this._pendingImageGeneration : null;
+            if (pending) {
+                var resolved = variants.some(function (variant) {
+                    if (!variant || !variant.created_at) return false;
+                    var created = Date.parse(variant.created_at);
+                    return !Number.isNaN(created) && created >= (pending.startedAt - 2000);
+                });
+                if (resolved) {
+                    this._pendingImageGeneration = null;
+                    pending = null;
+                }
+            }
+            var pendingCount = pending ? 1 : 0;
+            var countLabel = (variants.length + pendingCount) ? (variants.length + pendingCount) + ' saved variant' + ((variants.length + pendingCount) === 1 ? '' : 's') : 'No saved variants';
 
             var html = '<div class="ed-modal__header ed-modal__header--spread">' +
                 '<div>' +
@@ -2016,12 +2056,15 @@
             if (pending) {
                 html += '<div class="ed-images-status">' +
                     '<div class="ed-images-status__title">Generation requested</div>' +
-                    '<div class="ed-images-status__text">A new ' + modeLabel + ' variant is being generated. Refresh or reopen this modal in a moment to see it.</div>' +
+                    '<div class="ed-images-status__text">A new ' + modeLabel + ' variant is on the way. The pending row below will resolve into a real image once generation finishes.</div>' +
                 '</div>';
             }
 
-            if (variants.length > 0) {
+            if (variants.length > 0 || pending) {
                 html += '<div class="ed-images-rows">';
+                if (pending) {
+                    html += this._renderPendingImageRow(pending);
+                }
                 for (var i = 0; i < variants.length; i++) {
                     html += this._renderImageVariantRow(variants[i], selectedUrl, mode);
                 }
@@ -2041,6 +2084,27 @@
             this.showModal(html, 'ed-modal--wide ed-modal--images ed-modal--admin');
         }
 
+        _loadVariantPromptByUrl(url) {
+            if (!url) return false;
+            var data = this._getImageAnalysis();
+            var variants = data.mode === 'ai2' ? data.a2Variants : data.a1Variants;
+            var normalizedTarget = normalizeAssetUrl(url);
+            var match = null;
+            for (var i = 0; i < variants.length; i++) {
+                if (normalizeAssetUrl(variants[i].url) === normalizedTarget) { match = variants[i]; break; }
+            }
+            if (match && match.prompt) {
+                var textarea = document.querySelector('[data-prompt-input]');
+                if (textarea) {
+                    textarea.value = match.prompt;
+                    textarea.focus();
+                    textarea.setSelectionRange(0, textarea.value.length);
+                }
+                return true;
+            }
+            return false;
+        }
+
         switchImageMode(btn) {
             this._imageMode = btn.dataset.mode || 'ai1';
             this._renderImagesModal();
@@ -2048,17 +2112,7 @@
 
         useVariantPrompt(btn) {
             var url = btn ? btn.dataset.url : '';
-            if (!url) return;
-            var data = this._getImageAnalysis();
-            var variants = data.mode === 'ai2' ? data.a2Variants : data.a1Variants;
-            var match = null;
-            for (var i = 0; i < variants.length; i++) {
-                if (normalizeAssetUrl(variants[i].url) === normalizeAssetUrl(url)) { match = variants[i]; break; }
-            }
-            if (match && match.prompt) {
-                var textarea = document.querySelector('[data-prompt-input]');
-                if (textarea) textarea.value = match.prompt;
-            }
+            this._loadVariantPromptByUrl(url);
         }
 
         useDefaultPrompt() {
