@@ -63,7 +63,22 @@
         return clean.substring(0, maxLen || 180).replace(/\s+\S*$/, '') + '...';
     }
 
+    var _imageMode = localStorage.getItem('ytv2.imageMode') || 'default';
+
     function getThumbnail(item) {
+        if (_imageMode === 'ai1') {
+            return item.summary_image_url ||
+                item.thumbnail_url ||
+                '/static/placeholder-thumb.png';
+        }
+        if (_imageMode === 'ai2') {
+            var analysis = item.analysis || {};
+            return analysis.summary_image_ai2_url ||
+                item.summary_image_ai2_url ||
+                item.summary_image_url ||
+                item.thumbnail_url ||
+                '/static/placeholder-thumb.png';
+        }
         return item.thumbnail_url ||
             item.summary_image_url ||
             '/static/placeholder-thumb.png';
@@ -258,6 +273,7 @@
             this._topicsSection = '';
             this._refineOpen = false;
             this._refineSection = '';
+            this._settingsOpen = false;
         }
 
         // ---- URL state ----
@@ -562,7 +578,10 @@
                     (hasFilters ? ' (' + Object.keys(this.state.filters).filter(function (k) { return k !== 'category' && k !== 'subcategory' && this.state.filters[k]; }.bind(this)).length + ')' : '') + '</button>';
                 navHtml += this.renderRefineMenu();
                 navHtml += '</div>';
-                navHtml += '<a class="ed-topbar__link" href="/">Classic</a>';
+                navHtml += '<div class="ed-settings-wrap">';
+                navHtml += '<button class="ed-refine-btn" data-action="toggle-settings">Settings</button>';
+                navHtml += this.renderSettingsPanel();
+                navHtml += '</div>';
                 nav.innerHTML = navHtml;
             }
         }
@@ -782,7 +801,30 @@
             this._topicsOpen = false;
             this._topicsSection = '';
             this._refineSection = '';
+            this._settingsOpen = false;
             this.renderTopbar();
+        }
+
+        renderSettingsPanel() {
+            var html = '<div class="ed-settings-panel' + (this._settingsOpen ? ' ed-settings-panel--open' : '') + '">';
+            html += '<div class="ed-settings-section">';
+            html += '<div class="ed-settings-label">Image display</div>';
+            html += '<div class="ed-settings-segmented">';
+            var modes = [
+                { key: 'default', label: 'Default' },
+                { key: 'ai1', label: 'AI 1' },
+                { key: 'ai2', label: 'AI 2' },
+            ];
+            for (var mi = 0; mi < modes.length; mi++) {
+                var isActive = _imageMode === modes[mi].key;
+                html += '<button class="ed-settings-seg' + (isActive ? ' ed-settings-seg--active' : '') +
+                    '" data-action="set-image-mode" data-mode="' + modes[mi].key + '">' + modes[mi].label + '</button>';
+            }
+            html += '</div></div>';
+            html += '<div class="ed-settings-divider"></div>';
+            html += '<a class="ed-settings-link" href="/">Classic dashboard</a>';
+            html += '</div>';
+            return html;
         }
 
         renderLoading() {
@@ -832,6 +874,38 @@
                     return;
                 }
 
+                // Settings toggle
+                if (e.target.closest('[data-action="toggle-settings"]')) {
+                    this._settingsOpen = !this._settingsOpen;
+                    this._topicsOpen = false;
+                    this._topicsSection = '';
+                    this._refineOpen = false;
+                    this._refineSection = '';
+                    this.renderTopbar();
+                    return;
+                }
+
+                // Image mode change
+                var imgModeBtn = e.target.closest('[data-action="set-image-mode"]');
+                if (imgModeBtn) {
+                    var newMode = imgModeBtn.dataset.mode || 'default';
+                    _imageMode = newMode;
+                    localStorage.setItem('ytv2.imageMode', newMode);
+                    this._swapCardImages();
+                    // Keep settings open so user sees the active state change
+                    this._settingsOpen = true;
+                    this.renderTopbar();
+                    // Update reader thumbnail if open
+                    try {
+                        var readerImg = document.querySelector('.ed-reader__thumb img');
+                        if (readerImg && this._currentReaderData) {
+                            var readerItem = this._currentReaderData;
+                            readerImg.src = getThumbnail(readerItem);
+                        }
+                    } catch (_) {}
+                    return;
+                }
+
                 // Refine sort buttons
                 var refineSortBtn = e.target.closest('[data-action="refine-sort"]');
                 if (refineSortBtn) {
@@ -873,6 +947,7 @@
                     this._topicsSection = '';
                     this._refineOpen = false;
                     this._refineSection = '';
+                    this._settingsOpen = false;
                     this.renderTopbar();
                     return;
                 }
@@ -931,6 +1006,15 @@
                     if (refineWrap && !refineWrap.contains(e.target)) {
                         this._refineOpen = false;
                         this._refineSection = '';
+                        this.renderTopbar();
+                    }
+                }
+
+                // Close settings on outside click
+                if (this._settingsOpen) {
+                    var settingsWrap = document.querySelector('.ed-settings-wrap');
+                    if (settingsWrap && !settingsWrap.contains(e.target)) {
+                        this._settingsOpen = false;
                         this.renderTopbar();
                     }
                 }
@@ -1248,6 +1332,7 @@
                 var resp = await fetch('/' + videoId + '.json');
                 if (!resp.ok) throw new Error('Failed to load report');
                 var data = await resp.json();
+                this._currentReaderData = data;
                 this.renderReaderContent(data);
                 if (this._readerAutoPlayAudio && this._readerAudioUrl) {
                     var readerTitle = document.querySelector('.ed-reader__title');
@@ -1269,6 +1354,24 @@
             }
             panel.innerHTML = contentHtml;
             panel.classList.add('ed-reader--open');
+        }
+
+        _swapCardImages() {
+            var articles = document.querySelectorAll('article[data-video-id]');
+            if (!articles.length) return;
+            var items = this.state.allItems || [];
+            var byId = {};
+            for (var i = 0; i < items.length; i++) {
+                var id = items[i].video_id || items[i].id;
+                if (id) byId[id] = items[i];
+            }
+            for (var j = 0; j < articles.length; j++) {
+                var vid = articles[j].dataset.videoId;
+                if (vid && byId[vid]) {
+                    var img = articles[j].querySelector('img');
+                    if (img) img.src = getThumbnail(byId[vid]);
+                }
+            }
         }
 
         closeReader() {
@@ -1319,7 +1422,7 @@
             var analysis = data.analysis || {};
             var title = video.title || '';
             var channel = video.channel || '';
-            var thumb = data.thumbnail_url || '';
+            var thumb = getThumbnail(data);
             var canonicalUrl = video.url || '';
             var duration = formatDuration(video.duration_seconds);
             var summaryHtml = summary.html || summary.text || '<p>No summary available.</p>';
