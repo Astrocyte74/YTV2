@@ -671,6 +671,92 @@ class ReportEventStream:
 report_event_stream = ReportEventStream()
 
 
+def _start_backend_sse_subscriber():
+    """Background thread that subscribes to the backend SSE stream and
+    re-broadcasts events to local dashboard clients.
+
+    urllib.request.urlopen buffers HTTP/1.0 streaming responses, so we use
+    http.client directly which supports incremental reads.
+    """
+    import http.client
+    import time
+
+    backend_url = os.getenv('BACKEND_API_URL', '').rstrip('/')
+    if not backend_url:
+        return
+
+    # Parse host:port from BACKEND_API_URL (e.g. "http://youtube-summarizer-bot:6452")
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(backend_url)
+        host = parsed.hostname or 'localhost'
+        port = parsed.port or 80
+    except Exception:
+        logger.warning("Cannot parse BACKEND_API_URL for SSE subscriber: %s", backend_url)
+        return
+
+    def _subscriber_loop():
+        while True:
+            conn = None
+            try:
+                conn = http.client.HTTPConnection(host, port, timeout=30)
+                conn.request('GET', '/api/report-events', headers={'Accept': 'text/event-stream'})
+                resp = conn.getresponse()
+
+                if resp.status != 200:
+                    logger.warning("Backend SSE returned %s; retrying in 10s", resp.status)
+                    conn.close()
+                    time.sleep(10)
+                    continue
+
+                logger.info("Backend SSE subscriber connected to %s:%s", host, port)
+                buf = ''
+                while True:
+                    try:
+                        chunk = resp.read(4096)
+                        if not chunk:
+                            break
+                        buf += chunk.decode('utf-8', errors='replace')
+
+                        # Process complete SSE messages (ended by \n\n)
+                        while '\n\n' in buf:
+                            raw, buf = buf.split('\n\n', 1)
+                            event_name = None
+                            data_str = None
+                            for line in raw.split('\n'):
+                                if line.startswith('event: '):
+                                    event_name = line[7:].strip()
+                                elif line.startswith('data: '):
+                                    data_str = line[6:]
+                                elif line.startswith(':'):
+                                    # Comment / keep-alive — ignore
+                                    pass
+
+                            if event_name and data_str:
+                                try:
+                                    payload = json.loads(data_str)
+                                except (json.JSONDecodeError, TypeError):
+                                    payload = {}
+                                report_event_stream.broadcast(event_name, payload)
+                    except (http.client.HTTPException, OSError):
+                        break
+
+                logger.info("Backend SSE connection closed; reconnecting in 5s")
+            except Exception as e:
+                logger.warning("Backend SSE subscriber error: %s; retrying in 10s", e)
+            finally:
+                if conn:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+            time.sleep(5)
+
+    t = threading.Thread(target=_subscriber_loop, daemon=True, name='backend-sse-subscriber')
+    t.start()
+    logger.info("Backend SSE subscriber thread started for %s:%s", host, port)
+
+
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     """HTTP server that handles each request in its own thread."""
 
@@ -3169,46 +3255,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def serve_api_report_events(self):
         """Stream report ingest events to the frontend via Server-Sent Events.
 
-        If BACKEND_API_URL is configured, proxy SSE from the backend to avoid
-        browser CORS issues with direct localhost connections.
+        Uses local SSE broadcaster. A background subscriber thread forwards
+        backend events (report-synced, audio-synced, etc.) into the local
+        stream when BACKEND_API_URL is configured, so clients receive both
+        local and backend events through this single connection.
         """
-        import urllib.request
-        import urllib.error
-
-        backend_url = os.getenv('BACKEND_API_URL', '').rstrip('/')
-        if backend_url:
-            # Proxy SSE from backend to avoid browser CORS issues
-            try:
-                sse_url = f"{backend_url}/api/report-events"
-                req = urllib.request.Request(sse_url)
-                req.add_header('Accept', 'text/event-stream')
-
-                with urllib.request.urlopen(req, timeout=30) as response:
-                    # Send headers to client
-                    self.send_response(200)
-                    self.send_header('Content-type', 'text/event-stream')
-                    self.send_header('Cache-Control', 'no-cache')
-                    self.send_header('Connection', 'keep-alive')
-                    self.send_header('X-Accel-Buffering', 'no')
-                    self.end_headers()
-                    self.close_connection = False
-
-                    # Stream SSE from backend to client
-                    while True:
-                        try:
-                            chunk = response.read(1024)
-                            if not chunk:
-                                break
-                            self.wfile.write(chunk)
-                            self.wfile.flush()
-                        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
-                            break
-                return  # Proxy completed, don't fall through to local SSE
-            except Exception as e:
-                logger.warning(f"SSE proxy to backend failed, falling back to local SSE: {e}")
-                # Fall through to local SSE below
-
-        # Fallback: local SSE (won't receive backend events)
         self.send_response(200)
         self.send_header('Content-type', 'text/event-stream')
         self.send_header('Cache-Control', 'no-cache')
@@ -7892,7 +7943,10 @@ def start_http_server():
         
         server_thread = threading.Thread(target=run_server, daemon=True)
         server_thread.start()
-        
+
+        # Subscribe to backend SSE events and re-broadcast to local clients
+        _start_backend_sse_subscriber()
+
         return httpd, port
         
     except Exception as e:

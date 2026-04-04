@@ -1512,6 +1512,110 @@
             }
         }
 
+        // ---- SSE Live Updates ----
+
+        connectEventSource() {
+            if (this._eventSource) return; // already connected
+            try {
+                this._eventSource = new EventSource('/api/report-events');
+                var self = this;
+
+                this._eventSource.addEventListener('report-synced', function (e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        console.log('[Editorial SSE] report-synced:', data.video_id);
+                        self._handleReportSynced(data);
+                    } catch (err) {
+                        console.warn('[Editorial SSE] report-synced parse error:', err);
+                    }
+                });
+
+                this._eventSource.addEventListener('reprocess-scheduled', function (e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        console.log('[Editorial SSE] reprocess-scheduled:', data.video_id);
+                        self.showToast('Regeneration scheduled for ' + (data.video_id || 'report'));
+                    } catch (err) {
+                        console.warn('[Editorial SSE] reprocess-scheduled parse error:', err);
+                    }
+                });
+
+                this._eventSource.addEventListener('audio-synced', function (e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        console.log('[Editorial SSE] audio-synced:', data.video_id);
+                        if (self._activeReaderId === data.video_id) {
+                            self.showToast('Audio generation complete');
+                            // Re-open reader to pick up new audio
+                            self.openReader(data.video_id);
+                        }
+                    } catch (err) {
+                        console.warn('[Editorial SSE] audio-synced parse error:', err);
+                    }
+                });
+
+                this._eventSource.addEventListener('report-added', function (e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        console.log('[Editorial SSE] report-added:', data.video_id);
+                        self.showToast('New report available');
+                        // Reload content to show the new report
+                        self.state.page = 1;
+                        self.loadContent();
+                    } catch (err) {
+                        console.warn('[Editorial SSE] report-added parse error:', err);
+                    }
+                });
+
+                this._eventSource.addEventListener('image-prompt-set', function (e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        console.log('[Editorial SSE] image-prompt-set:', data.video_id);
+                        if (self._pendingImageGeneration && self._pendingImageGeneration.mode === (data.mode || 'ai1')) {
+                            // Generation started, pending row will resolve via report-synced
+                        }
+                    } catch (err) {
+                        console.warn('[Editorial SSE] image-prompt-set parse error:', err);
+                    }
+                });
+
+                this._eventSource.addEventListener('error', function () {
+                    console.warn('[Editorial SSE] Connection error — will auto-reconnect');
+                });
+
+                console.log('[Editorial] SSE connected to /api/report-events');
+            } catch (err) {
+                console.warn('[Editorial] Failed to connect SSE:', err);
+            }
+        }
+
+        _handleReportSynced(data) {
+            var videoId = data.video_id;
+            if (!videoId) return;
+
+            // If the user is viewing this report in the reader, refresh it
+            if (this._activeReaderId === videoId) {
+                console.log('[Editorial] Refreshing reader for synced report:', videoId);
+                this.showToast('Report updated — refreshing');
+                this.openReader(videoId);
+            }
+
+            // Check if this report exists in the current feed — refresh if on page 1
+            if (this.state.page === 1) {
+                var existsInFeed = false;
+                for (var i = 0; i < this.state.items.length; i++) {
+                    if (this.state.items[i].video_id === videoId || this.state.items[i].id === videoId) {
+                        existsInFeed = true;
+                        break;
+                    }
+                }
+                if (existsInFeed) {
+                    // Silently reload to pick up updated data
+                    this.loadContent();
+                }
+            }
+        }
+
         // ---- Admin Actions ----
 
         // Token management — shows editorial modal, never browser prompt()
@@ -2323,6 +2427,7 @@
         await app.loadFilters();
         app.renderTopbar();
         await app.loadContent();
+        app.connectEventSource();
         window.__editorialApp = app;
     }
 })();
