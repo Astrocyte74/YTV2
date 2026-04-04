@@ -89,6 +89,49 @@
         return diffMonths + 'mo ago';
     }
 
+    // ---- Image helpers (ported from classic) ----
+
+    function isAi2Variant(v) {
+        var m = (v.image_mode || '').toLowerCase();
+        var tmpl = (v.template || '').toLowerCase();
+        var ps = (v.prompt_source || '').toLowerCase();
+        var url = v.url || '';
+        return m === 'ai2' || tmpl === 'ai2_freestyle' || (ps && ps.startsWith('ai2')) || /(?:^|\/)AI2_/i.test(url);
+    }
+
+    function normalizeAssetUrl(u) {
+        if (!u || typeof u !== 'string') return u || '';
+        var trimmed = u.trim();
+        if (!trimmed) return '';
+        if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+        if (trimmed.startsWith('/')) return trimmed;
+        return '/' + trimmed;
+    }
+
+    function urlPath(url) {
+        if (!url) return '';
+        try { return new URL(url, 'http://x').pathname; }
+        catch (_) { return url.replace(/^https?:\/\/[^\/]+/, ''); }
+    }
+
+    function getAi2VariantUrls(analysis) {
+        var urls = [];
+        var seen = {};
+        function push(u) {
+            var n = normalizeAssetUrl(u);
+            if (n && !seen[n]) { seen[n] = true; urls.push(n); }
+        }
+        var direct = (analysis && analysis.summary_image_ai2_url) || '';
+        push(direct);
+        var variants = (analysis && Array.isArray(analysis.summary_image_variants)) ? analysis.summary_image_variants : [];
+        for (var i = 0; i < variants.length; i++) {
+            var v = variants[i] || {};
+            var u = v.url || '';
+            if (isAi2Variant(v)) push(u);
+        }
+        return urls;
+    }
+
     // ---- Card factories ----
 
     function renderHeroCard(item) {
@@ -172,6 +215,15 @@
 
     // Filter keys that map to URL query params
     var URL_FILTER_KEYS = ['source', 'category', 'subcategory', 'channel', 'language', 'content_type', 'summary_type', 'has_audio'];
+
+    var REPROCESS_VARIANTS = [
+        { id: 'comprehensive', label: 'Comprehensive', kind: 'text', hint: 'Long-form narrative summary' },
+        { id: 'bullet-points', label: 'Key Points', kind: 'text', hint: 'Compact bullet digest' },
+        { id: 'key-insights', label: 'Insights', kind: 'text', hint: 'Higher-level takeaways' },
+        { id: 'audio', label: 'Audio (EN)', kind: 'audio', hint: 'English listening track' },
+        { id: 'audio-fr', label: 'Audio français', kind: 'audio', proficiency: true, hint: 'French audio with level selection' },
+        { id: 'audio-es', label: 'Audio español', kind: 'audio', proficiency: true, hint: 'Spanish audio with level selection' }
+    ];
 
     class EditorialDashboard {
         constructor() {
@@ -962,6 +1014,135 @@
                     return;
                 }
 
+                // Admin menu toggle
+                if (e.target.closest('[data-action="toggle-admin-menu"]')) {
+                    this.toggleAdminMenu();
+                    return;
+                }
+
+                // Admin actions
+                if (e.target.closest('[data-action="admin-delete"]')) {
+                    this.showDeleteConfirm();
+                    return;
+                }
+                if (e.target.closest('[data-action="admin-regenerate"]')) {
+                    this.showRegenerateModal();
+                    return;
+                }
+                if (e.target.closest('[data-action="admin-images"]')) {
+                    this.showImagesModal();
+                    return;
+                }
+
+                // Close admin menu on outside click
+                var adminMenuEl = document.querySelector('.ed-reader__admin-menu--open');
+                if (adminMenuEl) {
+                    var adminToggle = document.querySelector('.ed-reader__admin-toggle');
+                    if (adminToggle && !adminToggle.contains(e.target) && !adminMenuEl.contains(e.target)) {
+                        adminMenuEl.classList.remove('ed-reader__admin-menu--open');
+                    }
+                }
+
+                // Modal dismiss (cancel button, or click directly on backdrop element)
+                if (e.target.closest('[data-action="modal-cancel"]')) {
+                    this.closeModal();
+                    return;
+                }
+                if (e.target.classList.contains('ed-modal-backdrop')) {
+                    this.closeModal();
+                    return;
+                }
+
+                // Token save
+                if (e.target.closest('[data-action="save-token"]')) {
+                    this.saveTokenFromModal();
+                    return;
+                }
+
+                // Proficiency toggle (within regenerate modal)
+                var profBtnEl = e.target.closest('.ed-proficiency-btn');
+                if (profBtnEl) {
+                    e.preventDefault();
+                    var profCard = profBtnEl.closest('[data-regen-card]');
+                    if (profCard) {
+                        var siblings = profCard.querySelectorAll('.ed-proficiency-btn');
+                        for (var pb = 0; pb < siblings.length; pb++) {
+                            siblings[pb].classList.remove('ed-proficiency-btn--active');
+                        }
+                        profBtnEl.classList.add('ed-proficiency-btn--active');
+                    }
+                    return;
+                }
+
+                // Regenerate card interaction → update card state + CTA
+                if (e.target.closest('[data-regen-card]')) {
+                    var self = this;
+                    setTimeout(function () { self._syncRegenSelectionState(); }, 0);
+                    return;
+                }
+
+                // Modal confirm actions
+                if (e.target.closest('[data-action="confirm-delete"]')) {
+                    this.executeDelete();
+                    return;
+                }
+                if (e.target.closest('[data-action="confirm-regenerate"]')) {
+                    this.executeRegenerate();
+                    return;
+                }
+                if (e.target.closest('[data-action="regen-missing"]')) {
+                    this.runRegeneratePreset('missing');
+                    return;
+                }
+                if (e.target.closest('[data-action="regen-all"]')) {
+                    this.runRegeneratePreset('all');
+                    return;
+                }
+                if (e.target.closest('[data-action="open-regen-customize"]')) {
+                    this.toggleRegenerateCustomize(true);
+                    return;
+                }
+                if (e.target.closest('[data-action="close-regen-customize"]')) {
+                    this.toggleRegenerateCustomize(false);
+                    return;
+                }
+                if (e.target.closest('[data-action="save-image-prompt"]')) {
+                    this.executeSetImagePrompt();
+                    return;
+                }
+                if (e.target.closest('[data-action="confirm-delete-image"]')) {
+                    this.showDeleteImageConfirm(e.target.closest('[data-action="confirm-delete-image"]'));
+                    return;
+                }
+                if (e.target.closest('[data-action="do-delete-image"]')) {
+                    this.executeDeleteImageVariant();
+                    return;
+                }
+                if (e.target.closest('[data-action="confirm-delete-all-images"]')) {
+                    this.showDeleteAllImagesConfirm();
+                    return;
+                }
+                if (e.target.closest('[data-action="do-delete-all-images"]')) {
+                    this.executeDeleteAllImages();
+                    return;
+                }
+                if (e.target.closest('[data-action="select-image-variant"]')) {
+                    this.executeSelectImageVariant(e.target.closest('[data-action="select-image-variant"]'));
+                    return;
+                }
+                if (e.target.closest('[data-action="switch-image-mode"]')) {
+                    this.switchImageMode(e.target.closest('[data-action="switch-image-mode"]'));
+                    return;
+                }
+                if (e.target.closest('[data-action="use-variant-prompt"]')) {
+                    this.useVariantPrompt(e.target.closest('[data-action="use-variant-prompt"]'));
+                    return;
+                }
+                if (e.target.closest('[data-action="use-default-prompt"]')) {
+                    this.useDefaultPrompt();
+                    return;
+                }
+
                 // Switch summary variant
                 var variantBtn = e.target.closest('[data-action="switch-variant"]');
                 if (variantBtn) {
@@ -1143,6 +1324,7 @@
         }
 
         renderReaderContent(data) {
+            this._readerData = data;
             var video = data.video || {};
             var summary = data.summary || {};
             var analysis = data.analysis || {};
@@ -1197,6 +1379,14 @@
 
             // Close button — absolutely positioned, no header row
             html += '<button class="ed-reader__close" data-action="close-reader">&times;</button>';
+
+            // Admin menu (...)
+            html += '<button class="ed-reader__admin-toggle" data-action="toggle-admin-menu">...</button>';
+            html += '<div class="ed-reader__admin-menu">';
+            html += '<button class="ed-reader__admin-item" data-action="admin-regenerate">Regenerate...</button>';
+            html += '<button class="ed-reader__admin-item" data-action="admin-images">Manage Images...</button>';
+            html += '<button class="ed-reader__admin-item ed-reader__admin-item--danger" data-action="admin-delete">Delete...</button>';
+            html += '</div>';
 
             html += '<div class="ed-reader__body">';
 
@@ -1330,6 +1520,801 @@
             if (this.mounts.player) {
                 this.mounts.player.classList.remove('active');
                 this.mounts.player.innerHTML = '';
+            }
+        }
+
+        // ---- Admin Actions ----
+
+        // Token management — shows editorial modal, never browser prompt()
+        getAdminToken() {
+            return localStorage.getItem('ytv2.reprocessToken') || '';
+        }
+
+        requireAdminToken(callback) {
+            var token = this.getAdminToken();
+            if (token) { callback(token); return; }
+            this.showTokenPrompt(callback);
+        }
+
+        showTokenPrompt(callback) {
+            this.showModal(
+                '<div class="ed-modal__header">' +
+                    '<h2 class="ed-modal__title">Admin token required</h2>' +
+                    '<p class="ed-modal__subtitle">Enter your reprocess token to perform admin actions.</p>' +
+                '</div>' +
+                '<div class="ed-modal__body">' +
+                    '<input type="password" class="ed-token-input" placeholder="Token" autocomplete="off">' +
+                    '<p class="ed-token-helper">The token is stored locally and reused for future actions.</p>' +
+                '</div>' +
+                '<div class="ed-modal__footer">' +
+                    '<button class="ed-btn ed-btn--ghost" data-action="modal-cancel">Cancel</button>' +
+                    '<button class="ed-btn ed-btn--primary" data-action="save-token">Save token</button>' +
+                '</div>',
+                'ed-modal--admin'
+            );
+            this._tokenCallback = callback;
+        }
+
+        saveTokenFromModal() {
+            var input = document.querySelector('.ed-token-input');
+            var token = input ? input.value.trim() : '';
+            if (!token) return;
+            localStorage.setItem('ytv2.reprocessToken', token);
+            this.closeModal();
+            if (this._tokenCallback) {
+                this._tokenCallback(token);
+                this._tokenCallback = null;
+            }
+        }
+
+        toggleAdminMenu() {
+            var menu = document.querySelector('.ed-reader__admin-menu');
+            if (menu) menu.classList.toggle('ed-reader__admin-menu--open');
+        }
+
+        closeAdminMenu() {
+            var menu = document.querySelector('.ed-reader__admin-menu');
+            if (menu) menu.classList.remove('ed-reader__admin-menu--open');
+        }
+
+        showModal(html, cssClass) {
+            this.closeModal();
+            var backdrop = document.createElement('div');
+            backdrop.className = 'ed-modal-backdrop';
+            var modal = document.createElement('div');
+            modal.className = 'ed-modal' + (cssClass ? ' ' + cssClass : '');
+            modal.innerHTML = html;
+            backdrop.appendChild(modal);
+            document.body.appendChild(backdrop);
+        }
+
+        closeModal() {
+            var existing = document.querySelector('.ed-modal-backdrop');
+            if (existing) existing.remove();
+        }
+
+        showToast(message, type) {
+            var toast = document.createElement('div');
+            toast.className = 'ed-toast' + (type === 'error' ? ' ed-toast--error' : '');
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(function () { toast.classList.add('ed-toast--fade'); }, 2500);
+            setTimeout(function () { toast.remove(); }, 3000);
+        }
+
+        // Editorial confirmation dialog — replaces browser confirm()
+        showConfirm(title, body, action, dangerLabel) {
+            this.showModal(
+                '<div class="ed-modal__header">' +
+                    '<h2 class="ed-modal__title">' + escapeHtml(title) + '</h2>' +
+                '</div>' +
+                '<div class="ed-modal__body">' +
+                    '<div class="ed-confirm-body">' + body + '</div>' +
+                '</div>' +
+                '<div class="ed-modal__footer">' +
+                    '<button class="ed-btn ed-btn--ghost" data-action="modal-cancel">Cancel</button>' +
+                    '<button class="ed-btn ed-btn--danger" data-action="' + escapeHtml(action) + '">' + escapeHtml(dangerLabel || 'Confirm') + '</button>' +
+                '</div>',
+                'ed-modal--admin'
+            );
+        }
+
+        // ---- Delete ----
+
+        showDeleteConfirm() {
+            this.closeAdminMenu();
+            var title = document.querySelector('.ed-reader__title');
+            var titleText = title ? title.textContent : 'this report';
+            this.showConfirm(
+                'Delete report',
+                '<p>This will permanently delete <strong>"' + escapeHtml(titleText) + '"</strong> and all associated files (summary, images, audio). This cannot be undone.</p>',
+                'confirm-delete',
+                'Delete'
+            );
+        }
+
+        async executeDelete() {
+            var videoId = this._activeReaderId;
+            if (!videoId) return;
+            var btn = document.querySelector('[data-action="confirm-delete"]');
+            if (btn) { btn.disabled = true; btn.textContent = 'Deleting...'; }
+            try {
+                var resp = await fetch('/api/delete/' + encodeURIComponent(videoId), { method: 'DELETE' });
+                if (!resp.ok) throw new Error('Delete failed (' + resp.status + ')');
+                this.closeModal();
+                this.closeReader();
+                this.showToast('Report deleted');
+                var card = document.querySelector('[data-video-id="' + videoId + '"]');
+                if (card) {
+                    card.style.transition = 'opacity 0.3s ease';
+                    card.style.opacity = '0';
+                    setTimeout(function () { card.remove(); }, 300);
+                }
+            } catch (err) {
+                this.showToast('Delete failed: ' + err.message, 'error');
+                this.closeModal();
+            }
+        }
+
+        // ---- Regenerate ----
+
+        showRegenerateModal() {
+            this.closeAdminMenu();
+
+            var existingSlugs = {};
+            if (this._readerVariants) {
+                for (var i = 0; i < this._readerVariants.length; i++) {
+                    existingSlugs[this._readerVariants[i].variant] = true;
+                }
+            }
+
+            // Separate text and audio variants
+            var textVariants = [];
+            var audioVariants = [];
+            for (var v = 0; v < REPROCESS_VARIANTS.length; v++) {
+                if (REPROCESS_VARIANTS[v].kind === 'audio') {
+                    audioVariants.push(REPROCESS_VARIANTS[v]);
+                } else {
+                    textVariants.push(REPROCESS_VARIANTS[v]);
+                }
+            }
+            var generatedCount = 0;
+            for (var slug in existingSlugs) {
+                if (Object.prototype.hasOwnProperty.call(existingSlugs, slug)) generatedCount++;
+            }
+            var missingCount = REPROCESS_VARIANTS.length - generatedCount;
+
+            var title = '';
+            var titleEl = document.querySelector('.ed-reader__title');
+            if (titleEl) title = titleEl.textContent || '';
+
+            var html = '<div class="ed-modal__header ed-modal__header--spread">' +
+                '<div>' +
+                    '<div class="ed-modal__eyebrow">Admin action</div>' +
+                    '<h2 class="ed-modal__title">Regenerate Summary</h2>' +
+                    '<p class="ed-modal__subtitle">Choose the outputs to refresh for <strong>' + escapeHtml(title || 'this report') + '</strong>.</p>' +
+                '</div>' +
+                '<button class="ed-modal__close" data-action="modal-cancel" aria-label="Close">&times;</button>' +
+            '</div>' +
+            '<div class="ed-modal__body">';
+            html += '<div class="ed-regen-summary">' +
+                '<div class="ed-regen-summary__pill">' + generatedCount + ' generated</div>' +
+                '<div class="ed-regen-summary__pill ed-regen-summary__pill--muted">' + missingCount + ' missing</div>' +
+            '</div>';
+            html += '<div class="ed-regen-overview" data-regen-overview>';
+            html += '<div class="ed-regen-overview__section">' +
+                '<div class="ed-regen-overview__label">Current outputs</div>' +
+                '<div class="ed-regen-status-list">';
+            for (var t = 0; t < textVariants.length; t++) {
+                html += this._renderRegenStatusRow(textVariants[t], !!existingSlugs[textVariants[t].id]);
+            }
+            for (var a = 0; a < audioVariants.length; a++) {
+                html += this._renderRegenStatusRow(audioVariants[a], !!existingSlugs[audioVariants[a].id]);
+            }
+            html += '</div></div>';
+            html += '<div class="ed-regen-overview__section" data-regen-actions-section>' +
+                '<div class="ed-regen-overview__label">Quick actions</div>' +
+                '<div class="ed-regen-actions">' +
+                    '<button class="ed-regen-action" data-action="regen-missing">' +
+                        '<span class="ed-regen-action__title">Generate Missing</span>' +
+                        '<span class="ed-regen-action__desc">' + missingCount + ' output' + (missingCount === 1 ? '' : 's') + ' still need to be created.</span>' +
+                    '</button>' +
+                    '<button class="ed-regen-action" data-action="regen-all">' +
+                        '<span class="ed-regen-action__title">Regenerate All</span>' +
+                        '<span class="ed-regen-action__desc">Refresh all ' + REPROCESS_VARIANTS.length + ' text and audio outputs.</span>' +
+                    '</button>' +
+                    '<button class="ed-regen-action ed-regen-action--secondary" data-action="open-regen-customize">' +
+                        '<span class="ed-regen-action__title">Customize</span>' +
+                        '<span class="ed-regen-action__desc">Choose exactly which outputs to generate and set audio levels.</span>' +
+                    '</button>' +
+                '</div>' +
+            '</div>';
+            html += '</div>';
+
+            html += '<div class="ed-regen-customize" hidden>' +
+                '<div class="ed-regen-customize__header">' +
+                    '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="close-regen-customize">Back</button>' +
+                    '<div>' +
+                        '<div class="ed-regen-customize__title">Customize outputs</div>' +
+                        '<div class="ed-regen-customize__subtitle">Select only the formats you want to generate. Language levels appear after selection.</div>' +
+                    '</div>' +
+                '</div>';
+
+            html += '<div class="ed-regen-group">';
+            html += '<div class="ed-regen-group__label">Text summaries</div>';
+            html += '<div class="ed-regen-list">';
+            for (var tt = 0; tt < textVariants.length; tt++) {
+                html += this._renderRegenCard(textVariants[tt], !!existingSlugs[textVariants[tt].id]);
+            }
+            html += '</div></div>';
+
+            html += '<div class="ed-regen-group">';
+            html += '<div class="ed-regen-group__label">Audio outputs</div>';
+            html += '<div class="ed-regen-list">';
+            for (var aa = 0; aa < audioVariants.length; aa++) {
+                html += this._renderRegenCard(audioVariants[aa], !!existingSlugs[audioVariants[aa].id]);
+            }
+            html += '</div></div></div>';
+
+            html += '</div>' +
+                '<div class="ed-modal__footer" data-regen-footer hidden>' +
+                    '<div class="ed-modal__footer-note">Existing outputs can be regenerated without deleting the current version first.</div>' +
+                    '<button class="ed-btn ed-btn--ghost" data-action="modal-cancel">Cancel</button>' +
+                    '<button class="ed-btn ed-btn--primary" data-action="confirm-regenerate" hidden>Generate selected outputs</button>' +
+                '</div>';
+
+            this.showModal(html, 'ed-modal--compact ed-modal--admin');
+            this._syncRegenSelectionState();
+        }
+
+        _renderRegenStatusRow(variant, exists) {
+            return '<div class="ed-regen-status-row">' +
+                '<div class="ed-regen-status-row__copy">' +
+                    '<div class="ed-regen-status-row__title">' + escapeHtml(variant.label) + '</div>' +
+                    '<div class="ed-regen-status-row__hint">' + escapeHtml(variant.hint || '') + '</div>' +
+                '</div>' +
+                '<div class="ed-regen-status-row__state ' + (exists ? 'is-generated' : 'is-missing') + '">' +
+                    (exists ? 'Generated' : 'Missing') +
+                '</div>' +
+            '</div>';
+        }
+
+        _renderRegenCard(variant, exists) {
+            var cls = 'ed-regen-card' + (exists ? ' ed-regen-card--exists' : '');
+            var html = '<label class="' + cls + '" data-regen-card>' +
+                '<input type="checkbox" class="ed-regen-card__check" value="' + escapeHtml(variant.id) + '" data-kind="' + variant.kind + '">' +
+                '<div class="ed-regen-card__surface">' +
+                    '<div class="ed-regen-card__top">' +
+                        '<div class="ed-regen-card__info">' +
+                            '<span class="ed-regen-card__label">' + escapeHtml(variant.label) + '</span>' +
+                            '<span class="ed-regen-card__hint">' + escapeHtml(variant.hint || '') + '</span>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="ed-regen-card__meta">' +
+                        (exists ? '<span class="ed-regen-card__badge">Already generated</span>' : '<span class="ed-regen-card__subtle">Not yet generated</span>') +
+                    '</div>';
+
+            if (variant.proficiency) {
+                html += '<div class="ed-regen-card__proficiency" hidden>' +
+                    '<button type="button" class="ed-proficiency-btn ed-proficiency-btn--active" data-proficiency="intermediate">Intermediate</button>' +
+                    '<button type="button" class="ed-proficiency-btn" data-proficiency="beginner">Beginner</button>' +
+                    '<button type="button" class="ed-proficiency-btn" data-proficiency="advanced">Advanced</button>' +
+                '</div>';
+            }
+
+            html += '</div></label>';
+            return html;
+        }
+
+        _syncRegenSelectionState() {
+            var cards = document.querySelectorAll('[data-regen-card]');
+            for (var i = 0; i < cards.length; i++) {
+                var check = cards[i].querySelector('.ed-regen-card__check');
+                var selected = !!(check && check.checked);
+                cards[i].classList.toggle('ed-regen-card--selected', selected);
+                var prof = cards[i].querySelector('.ed-regen-card__proficiency');
+                if (prof) prof.hidden = !selected;
+            }
+            this._updateRegenCta();
+        }
+
+        _updateRegenCta() {
+            var checked = document.querySelectorAll('.ed-regen-card__check:checked');
+            var cta = document.querySelector('[data-action="confirm-regenerate"]');
+            if (cta) {
+                cta.textContent = checked.length ? this._getRegenActionLabel(checked) : 'Generate selected outputs';
+                cta.disabled = !checked.length;
+            }
+        }
+
+        _getRegenActionLabel(checkedNodes) {
+            var existing = 0;
+            for (var i = 0; i < checkedNodes.length; i++) {
+                var card = checkedNodes[i].closest('[data-regen-card]');
+                if (card && card.classList.contains('ed-regen-card--exists')) existing++;
+            }
+            var count = checkedNodes.length;
+            if (existing === 0) return 'Generate ' + count + ' output' + (count === 1 ? '' : 's');
+            if (existing === count) return 'Regenerate ' + count + ' output' + (count === 1 ? '' : 's');
+            return 'Update ' + count + ' output' + (count === 1 ? '' : 's');
+        }
+
+        toggleRegenerateCustomize(open) {
+            var section = document.querySelector('.ed-regen-customize');
+            var cta = document.querySelector('[data-action="confirm-regenerate"]');
+            var footer = document.querySelector('[data-regen-footer]');
+            var actionsSection = document.querySelector('[data-regen-actions-section]');
+            var overview = document.querySelector('[data-regen-overview]');
+            var modalBody = document.querySelector('.ed-modal__body');
+            if (section) section.hidden = !open;
+            if (cta) cta.hidden = !open;
+            if (footer) footer.hidden = !open;
+            if (actionsSection) actionsSection.hidden = !!open;
+            if (overview) overview.hidden = !!open;
+            if (modalBody) modalBody.scrollTop = 0;
+            if (open) this._syncRegenSelectionState();
+        }
+
+        runRegeneratePreset(mode) {
+            var checks = document.querySelectorAll('.ed-regen-card__check');
+            var selectedCount = 0;
+            for (var i = 0; i < checks.length; i++) {
+                var card = checks[i].closest('[data-regen-card]');
+                var exists = !!(card && card.classList.contains('ed-regen-card--exists'));
+                checks[i].checked = mode === 'all' ? true : !exists;
+                if (checks[i].checked) selectedCount++;
+            }
+            this._syncRegenSelectionState();
+            if (!selectedCount) {
+                this.showToast(mode === 'missing' ? 'Nothing missing to generate' : 'Select at least one output', 'error');
+                return;
+            }
+            this.executeRegenerate();
+        }
+
+        async executeRegenerate() {
+            var videoId = this._activeReaderId;
+            if (!videoId) return;
+
+            var self = this;
+            this.requireAdminToken(function (token) { self._doRegenerate(token); });
+        }
+
+        async _doRegenerate(token) {
+            var checkboxes = document.querySelectorAll('.ed-regen-card__check:checked');
+            if (!checkboxes.length) { this.showToast('Select at least one variant', 'error'); return; }
+
+            var summaryTypes = [];
+            var regenerateAudio = false;
+            for (var i = 0; i < checkboxes.length; i++) {
+                var kind = checkboxes[i].dataset.kind;
+                var val = checkboxes[i].value;
+                if (kind === 'audio') {
+                    regenerateAudio = true;
+                    var card = checkboxes[i].closest('[data-regen-card]');
+                    var profBtn = card ? card.querySelector('.ed-proficiency-btn--active') : null;
+                    if (profBtn && (val === 'audio-fr' || val === 'audio-es')) {
+                        summaryTypes.push(val + ':' + profBtn.dataset.proficiency);
+                    } else {
+                        summaryTypes.push(val);
+                    }
+                } else {
+                    summaryTypes.push(val);
+                }
+            }
+
+            var btn = document.querySelector('[data-action="confirm-regenerate"]');
+            if (btn) { btn.disabled = true; btn.textContent = 'Regenerating...'; }
+
+            try {
+                var resp = await fetch('/api/reprocess', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Reprocess-Token': token
+                    },
+                    body: JSON.stringify({
+                        video_id: this._activeReaderId,
+                        regenerate_audio: regenerateAudio,
+                        summary_types: summaryTypes
+                    })
+                });
+                if (!resp.ok) throw new Error('Regenerate failed (' + resp.status + ')');
+                this.closeModal();
+                this.showToast('Regeneration started');
+            } catch (err) {
+                this.showToast('Regenerate failed: ' + err.message, 'error');
+                this.closeModal();
+            }
+        }
+
+        // ---- Manage Images ----
+
+        showImagesModal() {
+            this.closeAdminMenu();
+            if (!this._readerData) {
+                this.showToast('No report data loaded', 'error');
+                return;
+            }
+            this._imageMode = 'ai1';
+            this._renderImagesModal();
+        }
+
+        _getImageAnalysis() {
+            var analysis = (this._readerData && this._readerData.analysis) || {};
+            var allVars = Array.isArray(analysis.summary_image_variants) ? analysis.summary_image_variants : [];
+            var mode = this._imageMode || 'ai1';
+
+            // Derive AI1 variants (non-AI2 entries)
+            var a1Variants = allVars.filter(function (v) { return !isAi2Variant(v); })
+                .sort(function (a, b) {
+                    var ca = (a.created_at || '') + '';
+                    var cb = (b.created_at || '') + '';
+                    return ca < cb ? 1 : ca > cb ? -1 : 0;
+                });
+
+            // Derive AI2 variants from shared array
+            var ai2Urls = getAi2VariantUrls(analysis);
+            var urlToPrompt = {};
+            var urlToCreated = {};
+            allVars.forEach(function (v) {
+                if (v.url) {
+                    var nu = normalizeAssetUrl(v.url);
+                    urlToPrompt[nu] = v.prompt || '';
+                    if (v.created_at) urlToCreated[nu] = String(v.created_at);
+                }
+            });
+            var a2Variants = ai2Urls
+                .map(function (u) {
+                    return { url: u, image_mode: 'ai2', prompt: urlToPrompt[normalizeAssetUrl(u)] || '', created_at: urlToCreated[normalizeAssetUrl(u)] || '' };
+                })
+                .sort(function (a, b) {
+                    var ca = (a.created_at || '') + '';
+                    var cb = (b.created_at || '') + '';
+                    return ca < cb ? 1 : ca > cb ? -1 : 0;
+                });
+
+            // Selected URLs (normalized for comparison)
+            var a1Selected = normalizeAssetUrl(analysis.summary_image_selected_url || this._readerData.summary_image_url || '');
+            var a2Selected = normalizeAssetUrl(analysis.summary_image_ai2_url || '');
+
+            // Prompt defaults
+            var a1Default = analysis.summary_image_prompt || '';
+            if (!a1Default) {
+                for (var i = allVars.length - 1; i >= 0; i--) {
+                    if (!isAi2Variant(allVars[i]) && allVars[i].prompt) { a1Default = allVars[i].prompt; break; }
+                }
+                if (!a1Default) a1Default = analysis.summary_image_prompt_last_used || '';
+            }
+            var a2Default = analysis.summary_image_ai2_prompt || analysis.summary_image_ai2_prompt_last_used || '';
+            if (!a2Default) {
+                for (var j = allVars.length - 1; j >= 0; j--) {
+                    if (isAi2Variant(allVars[j]) && allVars[j].prompt) { a2Default = allVars[j].prompt; break; }
+                }
+            }
+
+            // Original prompts
+            var a1Original = analysis.summary_image_prompt_original || '';
+            var a2Original = analysis.summary_image_ai2_prompt_original || '';
+
+            // Has AI2 data?
+            var hasAi2 = !!(analysis.summary_image_ai2_url || analysis.summary_image_ai2_prompt || a2Variants.length);
+
+            return {
+                analysis: analysis,
+                allVars: allVars,
+                mode: mode,
+                hasAi2: hasAi2,
+                a1Variants: a1Variants,
+                a2Variants: a2Variants,
+                a1Selected: a1Selected,
+                a2Selected: a2Selected,
+                a1Default: a1Default,
+                a2Default: a2Default,
+                a1Original: a1Original,
+                a2Original: a2Original
+            };
+        }
+
+        _renderImageVariantRow(variant, selectedUrl, mode) {
+            var vUrl = normalizeAssetUrl(variant.url || '');
+            var isSel = vUrl && urlPath(vUrl) === urlPath(selectedUrl);
+            var when = timeAgo(variant.created_at);
+            var preview = (variant.prompt || '').trim();
+            if (preview.length > 150) preview = preview.slice(0, 147) + '...';
+
+            return '<article class="ed-img-row' + (isSel ? ' ed-img-row--selected' : '') + '" data-variant-url="' + escapeHtml(vUrl) + '">' +
+                '<div class="ed-img-row__thumb">' +
+                    '<img src="' + escapeHtml(vUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' +
+                '</div>' +
+                '<div class="ed-img-row__body">' +
+                    '<div class="ed-img-row__top">' +
+                        '<div class="ed-img-row__meta">' +
+                            '<span class="ed-img-row__time">' + escapeHtml(when || 'Recently generated') + '</span>' +
+                            (isSel ? '<span class="ed-img-row__selected-badge">Selected</span>' : '') +
+                        '</div>' +
+                        '<div class="ed-img-row__prompt">' + escapeHtml(preview || 'Saved without a custom prompt.') + '</div>' +
+                    '</div>' +
+                    '<div class="ed-img-row__actions">' +
+                        '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="use-variant-prompt" data-url="' + escapeHtml(vUrl) + '">Use this prompt</button>' +
+                        (isSel ? '<span class="ed-img-row__current">Current image</span>' : '<button class="ed-btn ed-btn--secondary ed-btn--sm" data-action="select-image-variant" data-url="' + escapeHtml(vUrl) + '">Select image</button>') +
+                        '<button class="ed-btn ed-btn--ghost ed-btn--sm ed-btn--danger-ghost" data-action="confirm-delete-image" data-url="' + escapeHtml(vUrl) + '">Delete</button>' +
+                    '</div>' +
+                '</div>' +
+            '</article>';
+        }
+
+        _renderImagesModal() {
+            var data = this._getImageAnalysis();
+            var mode = data.mode;
+            var variants = mode === 'ai2' ? data.a2Variants : data.a1Variants;
+            var selectedUrl = mode === 'ai2' ? data.a2Selected : data.a1Selected;
+            var defaultPrompt = mode === 'ai2' ? data.a2Default : data.a1Default;
+            var originalPrompt = mode === 'ai2' ? data.a2Original : data.a1Original;
+            var modeLabel = mode === 'ai2' ? 'AI2' : 'AI1';
+            var countLabel = variants.length ? variants.length + ' variant' + (variants.length === 1 ? '' : 's') : 'No saved variants';
+
+            var html = '<div class="ed-modal__header ed-modal__header--spread">' +
+                '<div>' +
+                    '<div class="ed-modal__eyebrow">Admin action</div>' +
+                    '<h2 class="ed-modal__title">Manage Images</h2>' +
+                    '<p class="ed-modal__subtitle">Refine prompts, choose the active image, and clean up older variants without leaving the reader.</p>' +
+                '</div>' +
+                '<button class="ed-modal__close" data-action="modal-cancel" aria-label="Close">&times;</button>' +
+            '</div>' +
+            '<div class="ed-modal__body ed-images-modal">';
+
+            html += '<div class="ed-images-toolbar">';
+            if (data.hasAi2) {
+                html += '<div class="ed-images-mode-switch">' +
+                    '<button class="ed-images-mode-btn' + (mode === 'ai1' ? ' ed-images-mode-btn--active' : '') +
+                    '" data-action="switch-image-mode" data-mode="ai1">AI1</button>' +
+                    '<button class="ed-images-mode-btn' + (mode === 'ai2' ? ' ed-images-mode-btn--active' : '') +
+                    '" data-action="switch-image-mode" data-mode="ai2">AI2</button>' +
+                '</div>';
+            } else {
+                html += '<div class="ed-images-mode-pill">' + modeLabel + ' workspace</div>';
+            }
+            html += '<button class="ed-btn ed-btn--ghost ed-btn--sm ed-btn--danger-ghost" data-action="confirm-delete-all-images">Delete all AI images...</button>' +
+            '</div>';
+
+            html += '<div class="ed-images-layout">';
+            html += '<section class="ed-images-compose">' +
+                '<div class="ed-images-panel__header">' +
+                    '<div>' +
+                        '<div class="ed-images-panel__eyebrow">' + modeLabel + ' prompt</div>' +
+                        '<h3 class="ed-images-panel__title">Compose the next image</h3>' +
+                    '</div>' +
+                '</div>' +
+                '<textarea class="ed-images-prompt__textarea" rows="6" data-prompt-input>' + escapeHtml(defaultPrompt) + '</textarea>';
+
+            if (originalPrompt) {
+                html += '<div class="ed-images-prompt__default">Default: ' + escapeHtml(originalPrompt) + '</div>';
+            }
+
+            html += '<div class="ed-images-prompt__hint">Use a saved prompt as a starting point, or restore the original baseline before regenerating.</div>';
+            html += '<div class="ed-images-prompt__actions">' +
+                '<button class="ed-btn ed-btn--primary" data-action="save-image-prompt">Regenerate ' + modeLabel + '</button>' +
+                '<button class="ed-btn ed-btn--secondary" data-action="use-default-prompt">Use default prompt</button>' +
+            '</div>' +
+            (selectedUrl ? '<div class="ed-images-prompt__hint">The library highlights the image currently shown in the reader.</div>' : '') +
+            '</section>';
+
+            html += '<section class="ed-images-library">' +
+                '<div class="ed-images-panel__header">' +
+                    '<div>' +
+                        '<div class="ed-images-panel__eyebrow">' + modeLabel + ' library</div>' +
+                        '<h3 class="ed-images-panel__title">' + countLabel + '</h3>' +
+                    '</div>' +
+                '</div>';
+
+            if (variants.length > 0) {
+                html += '<div class="ed-images-rows">';
+                for (var i = 0; i < variants.length; i++) {
+                    html += this._renderImageVariantRow(variants[i], selectedUrl, mode);
+                }
+                html += '</div>';
+            } else {
+                html += '<div class="ed-images-empty">' +
+                    '<div class="ed-images-empty__title">No ' + modeLabel + ' variants yet</div>' +
+                    '<div class="ed-images-empty__text">Save a prompt above to generate the first image for this mode.</div>' +
+                '</div>';
+            }
+
+            html += '</section></div></div>' +
+                '<div class="ed-modal__footer">' +
+                    '<button class="ed-btn ed-btn--ghost" data-action="modal-cancel">Close</button>' +
+                '</div>';
+
+            this.showModal(html, 'ed-modal--wide ed-modal--images ed-modal--admin');
+        }
+
+        switchImageMode(btn) {
+            this._imageMode = btn.dataset.mode || 'ai1';
+            this._renderImagesModal();
+        }
+
+        useVariantPrompt(btn) {
+            var url = btn ? btn.dataset.url : '';
+            if (!url) return;
+            var data = this._getImageAnalysis();
+            var variants = data.mode === 'ai2' ? data.a2Variants : data.a1Variants;
+            var match = null;
+            for (var i = 0; i < variants.length; i++) {
+                if (normalizeAssetUrl(variants[i].url) === normalizeAssetUrl(url)) { match = variants[i]; break; }
+            }
+            if (match && match.prompt) {
+                var textarea = document.querySelector('[data-prompt-input]');
+                if (textarea) textarea.value = match.prompt;
+            }
+        }
+
+        useDefaultPrompt() {
+            var data = this._getImageAnalysis();
+            var original = data.mode === 'ai2' ? (data.a2Original || data.a2Default) : (data.a1Original || data.a1Default);
+            if (original) {
+                var textarea = document.querySelector('[data-prompt-input]');
+                if (textarea) textarea.value = original;
+            }
+        }
+
+        async executeSetImagePrompt() {
+            var videoId = this._activeReaderId;
+            if (!videoId) return;
+
+            var self = this;
+            this.requireAdminToken(function (token) { self._doSetImagePrompt(token); });
+        }
+
+        async _doSetImagePrompt(token) {
+            var textarea = document.querySelector('[data-prompt-input]');
+            var newPrompt = textarea ? textarea.value.trim() : '';
+            if (!newPrompt) { this.showToast('Enter a prompt', 'error'); return; }
+
+            var mode = this._imageMode || 'ai1';
+            try {
+                var resp = await fetch('/api/set-image-prompt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ video_id: this._activeReaderId, prompt: newPrompt, mode: mode })
+                });
+                if (!resp.ok) throw new Error('Failed (' + resp.status + ')');
+                this.showToast('Image regeneration started');
+                this.closeModal();
+            } catch (err) {
+                this.showToast('Failed: ' + err.message, 'error');
+            }
+        }
+
+        async executeSelectImageVariant(btn) {
+            var videoId = this._activeReaderId;
+            var url = btn ? btn.dataset.url : '';
+            if (!videoId || !url) return;
+
+            var self = this;
+            this.requireAdminToken(function (token) { self._doSelectImage(token, url); });
+        }
+
+        async _doSelectImage(token, url) {
+            var mode = this._imageMode || 'ai1';
+            try {
+                var resp = await fetch('/api/select-image-variant', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ video_id: this._activeReaderId, url: url, mode: mode })
+                });
+                if (!resp.ok) throw new Error('Failed (' + resp.status + ')');
+                this.showToast('Image selected');
+                // Update local data — AI1 must update BOTH fields
+                if (this._readerData && this._readerData.analysis) {
+                    if (mode === 'ai2') {
+                        this._readerData.analysis.summary_image_ai2_url = url;
+                    } else {
+                        this._readerData.analysis.summary_image_selected_url = url;
+                        this._readerData.summary_image_url = url;
+                    }
+                }
+                this._renderImagesModal();
+            } catch (err) {
+                this.showToast('Failed: ' + err.message, 'error');
+            }
+        }
+
+        showDeleteImageConfirm(btn) {
+            var url = btn ? btn.dataset.url : '';
+            if (!url) return;
+            this._pendingDeleteUrl = url;
+            this.showConfirm(
+                'Delete image variant',
+                '<p>Permanently delete this image variant?</p>',
+                'do-delete-image',
+                'Delete'
+            );
+        }
+
+        async executeDeleteImageVariant() {
+            var videoId = this._activeReaderId;
+            var url = this._pendingDeleteUrl;
+            if (!videoId || !url) return;
+
+            var self = this;
+            this.requireAdminToken(function (token) { self._doDeleteImage(token, url); });
+        }
+
+        async _doDeleteImage(token, url) {
+            try {
+                var resp = await fetch('/api/delete-image-variant', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ video_id: this._activeReaderId, url: url })
+                });
+                if (!resp.ok) throw new Error('Failed (' + resp.status + ')');
+                this.showToast('Variant deleted');
+
+                // Clear selected pointer if deleting the selected image
+                var mode = this._imageMode || 'ai1';
+                if (this._readerData && this._readerData.analysis) {
+                    var a = this._readerData.analysis;
+                    var normalizedTarget = urlPath(normalizeAssetUrl(url));
+                    a.summary_image_variants = (a.summary_image_variants || []).filter(function (variant) {
+                        return urlPath(normalizeAssetUrl(variant && variant.url)) !== normalizedTarget;
+                    });
+                    if (mode === 'ai1' && urlPath(normalizeAssetUrl(a.summary_image_selected_url)) === urlPath(normalizeAssetUrl(url))) {
+                        a.summary_image_selected_url = '';
+                    }
+                    if (mode === 'ai1' && urlPath(normalizeAssetUrl(this._readerData.summary_image_url)) === urlPath(normalizeAssetUrl(url))) {
+                        this._readerData.summary_image_url = '';
+                    }
+                    if (mode === 'ai2' && urlPath(normalizeAssetUrl(a.summary_image_ai2_url)) === urlPath(normalizeAssetUrl(url))) {
+                        a.summary_image_ai2_url = '';
+                    }
+                }
+
+                this.closeModal();
+                this._renderImagesModal();
+            } catch (err) {
+                this.showToast('Failed: ' + err.message, 'error');
+                this.closeModal();
+            }
+        }
+
+        showDeleteAllImagesConfirm() {
+            this.showConfirm(
+                'Delete all AI images',
+                '<p>This will permanently delete all AI-generated images (AI1 and AI2) for this report. This cannot be undone.</p>',
+                'do-delete-all-images',
+                'Delete all'
+            );
+        }
+
+        async executeDeleteAllImages() {
+            var videoId = this._activeReaderId;
+            if (!videoId) return;
+
+            var self = this;
+            this.requireAdminToken(function (token) { self._doDeleteAllImages(token); });
+        }
+
+        async _doDeleteAllImages(token) {
+            try {
+                var resp = await fetch('/api/delete-all-ai-images', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ video_id: this._activeReaderId, modes: ['ai1', 'ai2'] })
+                });
+                if (!resp.ok) throw new Error('Failed (' + resp.status + ')');
+                this.showToast('All AI images deleted');
+                if (this._readerData && this._readerData.analysis) {
+                    this._readerData.analysis.summary_image_variants = [];
+                    this._readerData.analysis.summary_image_ai2_url = '';
+                    this._readerData.analysis.summary_image_selected_url = '';
+                    this._readerData.summary_image_url = '';
+                }
+                this.closeModal();
+                this._renderImagesModal();
+            } catch (err) {
+                this.showToast('Failed: ' + err.message, 'error');
+                this.closeModal();
             }
         }
     }
