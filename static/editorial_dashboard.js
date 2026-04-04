@@ -1090,22 +1090,6 @@
                     this.executeRegenerate();
                     return;
                 }
-                if (e.target.closest('[data-action="regen-missing"]')) {
-                    this.runRegeneratePreset('missing');
-                    return;
-                }
-                if (e.target.closest('[data-action="regen-all"]')) {
-                    this.runRegeneratePreset('all');
-                    return;
-                }
-                if (e.target.closest('[data-action="open-regen-customize"]')) {
-                    this.toggleRegenerateCustomize(true);
-                    return;
-                }
-                if (e.target.closest('[data-action="close-regen-customize"]')) {
-                    this.toggleRegenerateCustomize(false);
-                    return;
-                }
                 if (e.target.closest('[data-action="save-image-prompt"]')) {
                     this.executeSetImagePrompt();
                     return;
@@ -1692,7 +1676,7 @@
                 '<div>' +
                     '<div class="ed-modal__eyebrow">Admin action</div>' +
                     '<h2 class="ed-modal__title">Regenerate Summary</h2>' +
-                    '<p class="ed-modal__subtitle">Choose the outputs to refresh for <strong>' + escapeHtml(title || 'this report') + '</strong>.</p>' +
+                    '<p class="ed-modal__subtitle">Click the outputs you want to refresh for <strong>' + escapeHtml(title || 'this report') + '</strong>. Existing versions can be regenerated in place.</p>' +
                 '</div>' +
                 '<button class="ed-modal__close" data-action="modal-cancel" aria-label="Close">&times;</button>' +
             '</div>' +
@@ -1701,48 +1685,10 @@
                 '<div class="ed-regen-summary__pill">' + generatedCount + ' generated</div>' +
                 '<div class="ed-regen-summary__pill ed-regen-summary__pill--muted">' + missingCount + ' missing</div>' +
             '</div>';
-            html += '<div class="ed-regen-overview" data-regen-overview>';
-            html += '<div class="ed-regen-overview__section">' +
-                '<div class="ed-regen-overview__label">Current outputs</div>' +
-                '<div class="ed-regen-status-list">';
-            for (var t = 0; t < textVariants.length; t++) {
-                html += this._renderRegenStatusRow(textVariants[t], !!existingSlugs[textVariants[t].id]);
-            }
-            for (var a = 0; a < audioVariants.length; a++) {
-                html += this._renderRegenStatusRow(audioVariants[a], !!existingSlugs[audioVariants[a].id]);
-            }
-            html += '</div></div>';
-            html += '<div class="ed-regen-overview__section" data-regen-actions-section>' +
-                '<div class="ed-regen-overview__label">Quick actions</div>' +
-                '<div class="ed-regen-actions">' +
-                    '<button class="ed-regen-action" data-action="regen-missing">' +
-                        '<span class="ed-regen-action__title">Generate Missing</span>' +
-                        '<span class="ed-regen-action__desc">' + missingCount + ' output' + (missingCount === 1 ? '' : 's') + ' still need to be created.</span>' +
-                    '</button>' +
-                    '<button class="ed-regen-action" data-action="regen-all">' +
-                        '<span class="ed-regen-action__title">Regenerate All</span>' +
-                        '<span class="ed-regen-action__desc">Refresh all ' + REPROCESS_VARIANTS.length + ' text and audio outputs.</span>' +
-                    '</button>' +
-                    '<button class="ed-regen-action ed-regen-action--secondary" data-action="open-regen-customize">' +
-                        '<span class="ed-regen-action__title">Customize</span>' +
-                        '<span class="ed-regen-action__desc">Choose exactly which outputs to generate and set audio levels.</span>' +
-                    '</button>' +
-                '</div>' +
-            '</div>';
-            html += '</div>';
-
-            html += '<div class="ed-regen-customize" hidden>' +
-                '<div class="ed-regen-customize__header">' +
-                    '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="close-regen-customize">Back</button>' +
-                    '<div>' +
-                        '<div class="ed-regen-customize__title">Customize outputs</div>' +
-                        '<div class="ed-regen-customize__subtitle">Select only the formats you want to generate. Language levels appear after selection.</div>' +
-                    '</div>' +
-                '</div>';
-
+            html += '<div class="ed-regen-direct">';
             html += '<div class="ed-regen-group">';
             html += '<div class="ed-regen-group__label">Text summaries</div>';
-            html += '<div class="ed-regen-list">';
+            html += '<div class="ed-regen-grid">';
             for (var tt = 0; tt < textVariants.length; tt++) {
                 html += this._renderRegenCard(textVariants[tt], !!existingSlugs[textVariants[tt].id]);
             }
@@ -1750,33 +1696,21 @@
 
             html += '<div class="ed-regen-group">';
             html += '<div class="ed-regen-group__label">Audio outputs</div>';
-            html += '<div class="ed-regen-list">';
+            html += '<div class="ed-regen-grid">';
             for (var aa = 0; aa < audioVariants.length; aa++) {
                 html += this._renderRegenCard(audioVariants[aa], !!existingSlugs[audioVariants[aa].id]);
             }
             html += '</div></div></div>';
 
             html += '</div>' +
-                '<div class="ed-modal__footer" data-regen-footer hidden>' +
+                '<div class="ed-modal__footer">' +
                     '<div class="ed-modal__footer-note">Existing outputs can be regenerated without deleting the current version first.</div>' +
                     '<button class="ed-btn ed-btn--ghost" data-action="modal-cancel">Cancel</button>' +
-                    '<button class="ed-btn ed-btn--primary" data-action="confirm-regenerate" hidden>Generate selected outputs</button>' +
+                    '<button class="ed-btn ed-btn--primary" data-action="confirm-regenerate">Generate selected outputs</button>' +
                 '</div>';
 
             this.showModal(html, 'ed-modal--compact ed-modal--admin');
             this._syncRegenSelectionState();
-        }
-
-        _renderRegenStatusRow(variant, exists) {
-            return '<div class="ed-regen-status-row">' +
-                '<div class="ed-regen-status-row__copy">' +
-                    '<div class="ed-regen-status-row__title">' + escapeHtml(variant.label) + '</div>' +
-                    '<div class="ed-regen-status-row__hint">' + escapeHtml(variant.hint || '') + '</div>' +
-                '</div>' +
-                '<div class="ed-regen-status-row__state ' + (exists ? 'is-generated' : 'is-missing') + '">' +
-                    (exists ? 'Generated' : 'Missing') +
-                '</div>' +
-            '</div>';
         }
 
         _renderRegenCard(variant, exists) {
@@ -1789,6 +1723,7 @@
                             '<span class="ed-regen-card__label">' + escapeHtml(variant.label) + '</span>' +
                             '<span class="ed-regen-card__hint">' + escapeHtml(variant.hint || '') + '</span>' +
                         '</div>' +
+                        '<span class="ed-regen-card__marker">&#10003;</span>' +
                     '</div>' +
                     '<div class="ed-regen-card__meta">' +
                         (exists ? '<span class="ed-regen-card__badge">Already generated</span>' : '<span class="ed-regen-card__subtle">Not yet generated</span>') +
@@ -1839,38 +1774,6 @@
             return 'Update ' + count + ' output' + (count === 1 ? '' : 's');
         }
 
-        toggleRegenerateCustomize(open) {
-            var section = document.querySelector('.ed-regen-customize');
-            var cta = document.querySelector('[data-action="confirm-regenerate"]');
-            var footer = document.querySelector('[data-regen-footer]');
-            var actionsSection = document.querySelector('[data-regen-actions-section]');
-            var overview = document.querySelector('[data-regen-overview]');
-            var modalBody = document.querySelector('.ed-modal__body');
-            if (section) section.hidden = !open;
-            if (cta) cta.hidden = !open;
-            if (footer) footer.hidden = !open;
-            if (actionsSection) actionsSection.hidden = !!open;
-            if (overview) overview.hidden = !!open;
-            if (modalBody) modalBody.scrollTop = 0;
-            if (open) this._syncRegenSelectionState();
-        }
-
-        runRegeneratePreset(mode) {
-            var checks = document.querySelectorAll('.ed-regen-card__check');
-            var selectedCount = 0;
-            for (var i = 0; i < checks.length; i++) {
-                var card = checks[i].closest('[data-regen-card]');
-                var exists = !!(card && card.classList.contains('ed-regen-card--exists'));
-                checks[i].checked = mode === 'all' ? true : !exists;
-                if (checks[i].checked) selectedCount++;
-            }
-            this._syncRegenSelectionState();
-            if (!selectedCount) {
-                this.showToast(mode === 'missing' ? 'Nothing missing to generate' : 'Select at least one output', 'error');
-                return;
-            }
-            this.executeRegenerate();
-        }
 
         async executeRegenerate() {
             var videoId = this._activeReaderId;
