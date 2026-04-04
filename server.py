@@ -696,26 +696,54 @@ def _start_backend_sse_subscriber():
         return
 
     def _subscriber_loop():
+        import socket as _socket
         while True:
-            conn = None
+            sock = None
             try:
-                conn = http.client.HTTPConnection(host, port, timeout=30)
-                conn.request('GET', '/api/report-events', headers={'Accept': 'text/event-stream'})
-                resp = conn.getresponse()
+                sock = _socket.create_connection((host, port), timeout=30)
+                # Manual HTTP request to avoid http.client buffering
+                req = (
+                    'GET /api/report-events HTTP/1.1\r\n'
+                    f'Host: {host}:{port}\r\n'
+                    'Accept: text/event-stream\r\n'
+                    'Connection: keep-alive\r\n'
+                    '\r\n'
+                )
+                sock.sendall(req.encode('utf-8'))
+                sock.settimeout(20)  # read timeout
 
-                if resp.status != 200:
-                    logger.warning("Backend SSE returned %s; retrying in 10s", resp.status)
-                    conn.close()
+                # Read HTTP response headers
+                header_buf = b''
+                while b'\r\n\r\n' not in header_buf:
+                    chunk = sock.recv(4096)
+                    if not chunk:
+                        raise OSError('Connection closed while reading headers')
+                    header_buf += chunk
+
+                header_end = header_buf.index(b'\r\n\r\n')
+                headers_raw = header_buf[:header_end].decode('utf-8', errors='replace')
+                body_start = header_buf[header_end + 4:]
+
+                # Check status
+                status_line = headers_raw.split('\r\n')[0]
+                if '200' not in status_line:
+                    logger.warning("Backend SSE returned non-200: %s; retrying", status_line)
+                    sock.close()
                     time.sleep(10)
                     continue
 
                 logger.info("Backend SSE subscriber connected to %s:%s", host, port)
-                buf = ''
+                buf = body_start.decode('utf-8', errors='replace')
+                _chunk_count = 0
+
                 while True:
                     try:
-                        chunk = resp.read(4096)
+                        chunk = sock.recv(4096)
                         if not chunk:
                             break
+                        _chunk_count += 1
+                        if _chunk_count <= 5 or _chunk_count % 20 == 0:
+                            logger.info("Backend SSE chunk #%d (%d bytes)", _chunk_count, len(chunk))
                         buf += chunk.decode('utf-8', errors='replace')
 
                         # Process complete SSE messages (ended by \n\n)
@@ -729,7 +757,6 @@ def _start_backend_sse_subscriber():
                                 elif line.startswith('data: '):
                                     data_str = line[6:]
                                 elif line.startswith(':'):
-                                    # Comment / keep-alive — ignore
                                     pass
 
                             if event_name and data_str:
@@ -737,17 +764,24 @@ def _start_backend_sse_subscriber():
                                     payload = json.loads(data_str)
                                 except (json.JSONDecodeError, TypeError):
                                     payload = {}
+                                logger.info("Backend SSE forwarding event: %s video_id=%s", event_name, payload.get('video_id', ''))
                                 report_event_stream.broadcast(event_name, payload)
-                    except (http.client.HTTPException, OSError):
+                    except (_socket.timeout, OSError):
+                        # Read timeout — check if connection is still alive
+                        if _chunk_count == 0:
+                            logger.warning("Backend SSE no data received; reconnecting")
+                            break
+                        continue
+                    except Exception:
                         break
 
                 logger.info("Backend SSE connection closed; reconnecting in 5s")
             except Exception as e:
                 logger.warning("Backend SSE subscriber error: %s; retrying in 10s", e)
             finally:
-                if conn:
+                if sock:
                     try:
-                        conn.close()
+                        sock.close()
                     except Exception:
                         pass
             time.sleep(5)
