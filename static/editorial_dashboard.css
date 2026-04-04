@@ -13,14 +13,14 @@
     --ed-font-display: 'Playfair Display', Georgia, serif;
     --ed-font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 
-    --ed-color-bg: #0a0a0a;
-    --ed-color-surface: #141414;
-    --ed-color-surface-hover: #1a1a1a;
-    --ed-color-text: #e5e5e5;
-    --ed-color-muted: #737373;
-    --ed-color-accent: #3b82f6;
-    --ed-color-accent-hover: #2563eb;
-    --ed-color-border: #262626;
+    --ed-color-bg: #0d1117;
+    --ed-color-surface: #1c2333;
+    --ed-color-surface-hover: #253046;
+    --ed-color-text: #e6edf3;
+    --ed-color-muted: #9ca3af;
+    --ed-color-accent: #7c8cf8;
+    --ed-color-accent-hover: #a5b4fc;
+    --ed-color-border: #2d3548;
 
     --ed-radius-sm: 6px;
     --ed-radius-md: 10px;
@@ -908,9 +908,9 @@ body {
     width: 720px;
     max-width: 90vw;
     height: 100vh;
-    background: var(--ed-color-bg);
+    background: #111827;
     border-left: 1px solid var(--ed-color-border);
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.3);
+    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.4);
     z-index: 300;
     transform: translateX(100%);
     transition: transform 0.3s ease;
@@ -1001,11 +1001,11 @@ body {
     color: var(--ed-color-muted);
 }
 .ed-reader__source-link a {
-    color: var(--ed-color-muted);
+    color: var(--ed-color-accent);
     text-decoration: none;
 }
 .ed-reader__source-link a:hover {
-    color: var(--ed-color-accent);
+    color: var(--ed-color-accent-hover);
     text-decoration: underline;
 }
 .ed-reader__listen-btn {
