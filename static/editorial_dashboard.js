@@ -838,6 +838,9 @@
                 { key: 'rose', label: 'Rose', color: '#fb7185' },
                 { key: 'cyan', label: 'Cyan', color: '#22d3ee' },
                 { key: 'slate', label: 'Slate', color: '#818cf8' },
+                { key: 'paper', label: 'Paper', color: '#2563eb' },
+                { key: 'frost', label: 'Frost', color: '#0284c7' },
+                { key: 'sand', label: 'Sand', color: '#c2410c' },
             ];
             for (var ai = 0; ai < themes.length; ai++) {
                 var thmActive = _theme === themes[ai].key;

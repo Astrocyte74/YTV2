@@ -78,6 +78,41 @@
     --ed-color-accent-hover: #a5b4fc;
 }
 
+/* Light theme presets — inverted text/muted */
+[data-ed-theme="paper"] {
+    --ed-color-bg: #f5f3ee;
+    --ed-color-surface: #ffffff;
+    --ed-color-surface-hover: #f0ede6;
+    --ed-color-text: #1a1a1a;
+    --ed-color-muted: #6b6b6b;
+    --ed-color-border: #e0ddd5;
+    --ed-color-reader-bg: #faf8f4;
+    --ed-color-accent: #2563eb;
+    --ed-color-accent-hover: #3b82f6;
+}
+[data-ed-theme="frost"] {
+    --ed-color-bg: #f0f4f8;
+    --ed-color-surface: #ffffff;
+    --ed-color-surface-hover: #e8eef4;
+    --ed-color-text: #1a1a2e;
+    --ed-color-muted: #5a6577;
+    --ed-color-border: #d4dbe5;
+    --ed-color-reader-bg: #f4f7fa;
+    --ed-color-accent: #0284c7;
+    --ed-color-accent-hover: #0ea5e9;
+}
+[data-ed-theme="sand"] {
+    --ed-color-bg: #f0ebe3;
+    --ed-color-surface: #faf6f0;
+    --ed-color-surface-hover: #ede7dd;
+    --ed-color-text: #2c2418;
+    --ed-color-muted: #7a6f5f;
+    --ed-color-border: #ddd5c8;
+    --ed-color-reader-bg: #f5f0e8;
+    --ed-color-accent: #c2410c;
+    --ed-color-accent-hover: #ea580c;
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
@@ -417,7 +452,9 @@ body {
     top: 100%;
     right: 0;
     margin-top: 0.35rem;
-    width: 220px;
+    width: 230px;
+    max-height: 420px;
+    overflow-y: auto;
     background: var(--ed-color-surface);
     border: 1px solid var(--ed-color-border);
     border-radius: var(--ed-radius-md);
