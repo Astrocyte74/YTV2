@@ -21,6 +21,7 @@
     --ed-color-accent: #7c8cf8;
     --ed-color-accent-hover: #a5b4fc;
     --ed-color-border: #2d3548;
+    --ed-color-reader-bg: #111827;
 
     --ed-radius-sm: 6px;
     --ed-radius-md: 10px;
@@ -30,11 +31,52 @@
     --ed-transition-normal: 250ms ease;
 }
 
-/* Accent theme presets (default is indigo, set in :root) */
-[data-ed-accent="emerald"] { --ed-color-accent: #34d399; --ed-color-accent-hover: #6ee7b7; }
-[data-ed-accent="amber"]   { --ed-color-accent: #f59e0b; --ed-color-accent-hover: #fbbf24; }
-[data-ed-accent="rose"]    { --ed-color-accent: #fb7185; --ed-color-accent-hover: #fda4af; }
-[data-ed-accent="cyan"]    { --ed-color-accent: #22d3ee; --ed-color-accent-hover: #67e8f9; }
+/* Theme presets — combined bg + surface + accent */
+[data-ed-theme="emerald"] {
+    --ed-color-bg: #0a1210;
+    --ed-color-surface: #152623;
+    --ed-color-surface-hover: #1e3632;
+    --ed-color-border: #24403a;
+    --ed-color-reader-bg: #0e1a17;
+    --ed-color-accent: #34d399;
+    --ed-color-accent-hover: #6ee7b7;
+}
+[data-ed-theme="amber"] {
+    --ed-color-bg: #110f0a;
+    --ed-color-surface: #252018;
+    --ed-color-surface-hover: #352d22;
+    --ed-color-border: #3d3428;
+    --ed-color-reader-bg: #1a1610;
+    --ed-color-accent: #f59e0b;
+    --ed-color-accent-hover: #fbbf24;
+}
+[data-ed-theme="rose"] {
+    --ed-color-bg: #12090d;
+    --ed-color-surface: #251520;
+    --ed-color-surface-hover: #351e2b;
+    --ed-color-border: #3d2838;
+    --ed-color-reader-bg: #1a0e15;
+    --ed-color-accent: #fb7185;
+    --ed-color-accent-hover: #fda4af;
+}
+[data-ed-theme="cyan"] {
+    --ed-color-bg: #0a1114;
+    --ed-color-surface: #142228;
+    --ed-color-surface-hover: #1d3038;
+    --ed-color-border: #284048;
+    --ed-color-reader-bg: #0e181d;
+    --ed-color-accent: #22d3ee;
+    --ed-color-accent-hover: #67e8f9;
+}
+[data-ed-theme="slate"] {
+    --ed-color-bg: #111318;
+    --ed-color-surface: #1e2028;
+    --ed-color-surface-hover: #2a2d38;
+    --ed-color-border: #363a48;
+    --ed-color-reader-bg: #161820;
+    --ed-color-accent: #818cf8;
+    --ed-color-accent-hover: #a5b4fc;
+}
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1036,7 +1078,7 @@ body {
     width: 720px;
     max-width: 90vw;
     height: 100vh;
-    background: #111827;
+    background: var(--ed-color-reader-bg);
     border-left: 1px solid var(--ed-color-border);
     box-shadow: -4px 0 24px rgba(0, 0, 0, 0.4);
     z-index: 300;

@@ -64,7 +64,12 @@
     }
 
     var _imageMode = localStorage.getItem('ytv2.imageMode') || 'default';
-    var _accentTheme = localStorage.getItem('ytv2.accentTheme') || 'default';
+    // Migrate old accent-only key to combined theme key
+    var _theme = localStorage.getItem('ytv2.theme') || localStorage.getItem('ytv2.accentTheme') || 'default';
+    if (localStorage.getItem('ytv2.accentTheme')) {
+        localStorage.removeItem('ytv2.accentTheme');
+        localStorage.setItem('ytv2.theme', _theme);
+    }
 
     function getThumbnail(item) {
         if (_imageMode === 'ai1') {
@@ -824,21 +829,22 @@
             html += '</div></div>';
             html += '<div class="ed-settings-divider"></div>';
             html += '<div class="ed-settings-section">';
-            html += '<div class="ed-settings-label">Accent color</div>';
+            html += '<div class="ed-settings-label">Theme</div>';
             html += '<div class="ed-settings-accent-grid">';
-            var accents = [
-                { key: 'default', label: 'Indigo', color: '#7c8cf8' },
+            var themes = [
+                { key: 'default', label: 'Midnight', color: '#7c8cf8' },
                 { key: 'emerald', label: 'Emerald', color: '#34d399' },
                 { key: 'amber', label: 'Amber', color: '#f59e0b' },
                 { key: 'rose', label: 'Rose', color: '#fb7185' },
                 { key: 'cyan', label: 'Cyan', color: '#22d3ee' },
+                { key: 'slate', label: 'Slate', color: '#818cf8' },
             ];
-            for (var ai = 0; ai < accents.length; ai++) {
-                var accActive = _accentTheme === accents[ai].key;
-                html += '<button class="ed-settings-accent-btn' + (accActive ? ' ed-settings-accent-btn--active' : '') +
-                    '" data-action="set-accent" data-accent="' + accents[ai].key + '">' +
-                    '<span class="ed-accent-dot" style="background:' + accents[ai].color + '"></span>' +
-                    accents[ai].label + '</button>';
+            for (var ai = 0; ai < themes.length; ai++) {
+                var thmActive = _theme === themes[ai].key;
+                html += '<button class="ed-settings-accent-btn' + (thmActive ? ' ed-settings-accent-btn--active' : '') +
+                    '" data-action="set-theme" data-theme="' + themes[ai].key + '">' +
+                    '<span class="ed-accent-dot" style="background:' + themes[ai].color + '"></span>' +
+                    themes[ai].label + '</button>';
             }
             html += '</div></div>';
             html += '<div class="ed-settings-divider"></div>';
@@ -926,16 +932,16 @@
                     return;
                 }
 
-                // Accent theme change
-                var accentBtn = e.target.closest('[data-action="set-accent"]');
-                if (accentBtn) {
-                    var accent = accentBtn.dataset.accent || 'default';
-                    _accentTheme = accent;
-                    localStorage.setItem('ytv2.accentTheme', accent);
-                    if (accent === 'default') {
-                        document.documentElement.removeAttribute('data-ed-accent');
+                // Theme change
+                var themeBtn = e.target.closest('[data-action="set-theme"]');
+                if (themeBtn) {
+                    var theme = themeBtn.dataset.theme || 'default';
+                    _theme = theme;
+                    localStorage.setItem('ytv2.theme', theme);
+                    if (theme === 'default') {
+                        document.documentElement.removeAttribute('data-ed-theme');
                     } else {
-                        document.documentElement.setAttribute('data-ed-accent', accent);
+                        document.documentElement.setAttribute('data-ed-theme', theme);
                     }
                     this._settingsOpen = true;
                     this.renderTopbar();
@@ -2592,9 +2598,9 @@
 
     async function init() {
         console.log('[Editorial] Initializing...');
-        // Apply saved accent theme
-        if (_accentTheme !== 'default') {
-            document.documentElement.setAttribute('data-ed-accent', _accentTheme);
+        // Apply saved theme
+        if (_theme !== 'default') {
+            document.documentElement.setAttribute('data-ed-theme', _theme);
         }
         var app = new EditorialDashboard();
         app.readStateFromURL();
