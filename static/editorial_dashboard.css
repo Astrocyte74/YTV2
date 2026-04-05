@@ -45,7 +45,7 @@ body {
     display: flex;
     align-items: center;
     gap: var(--ed-space-sm);
-    padding: 0.5rem var(--ed-space-lg);
+    padding: 0.75rem 2.25rem;
     border-bottom: 1px solid var(--ed-color-border);
     position: sticky;
     top: 0;
@@ -55,13 +55,14 @@ body {
 
 .ed-topbar__brand {
     font-family: var(--ed-font-display);
-    font-size: 1.1rem;
+    font-size: 1.35rem;
     font-weight: 700;
     color: var(--ed-color-muted);
+    opacity: 0.9;
     white-space: nowrap;
 }
 
-.ed-topbar__search { flex: 1; max-width: 480px; }
+.ed-topbar__search { flex: 1; max-width: 560px; }
 
 .ed-topbar__nav {
     display: flex;
@@ -72,11 +73,11 @@ body {
 .ed-topbar__link {
     color: var(--ed-color-muted);
     text-decoration: none;
-    font-size: 0.78rem;
-    opacity: 0.65;
+    font-size: 0.88rem;
+    opacity: 0.74;
     transition: opacity var(--ed-transition-fast), color var(--ed-transition-fast);
-    margin-left: 0.6rem;
-    padding-left: 0.6rem;
+    margin-left: 0.8rem;
+    padding-left: 0.8rem;
     border-left: 1px solid var(--ed-color-muted);
 }
 .ed-topbar__link:hover { color: var(--ed-color-text); opacity: 1; }
@@ -84,12 +85,12 @@ body {
 /* Search input */
 .ed-search__input {
     width: 100%;
-    padding: 0.5rem 0.75rem;
+    padding: 0.72rem 0.95rem;
     background: var(--ed-color-surface);
     border: 1px solid var(--ed-color-border);
-    border-radius: var(--ed-radius-sm);
+    border-radius: 10px;
     color: var(--ed-color-text);
-    font-size: 0.9rem;
+    font-size: 0.96rem;
     font-family: var(--ed-font-body);
     outline: none;
     transition: border-color var(--ed-transition-fast);
@@ -112,12 +113,12 @@ body {
 
 /* Refine button — same family as nav tabs */
 .ed-refine-btn {
-    padding: 0.35rem 0.75rem;
+    padding: 0.48rem 0.92rem;
     background: none;
     border: none;
     border-radius: var(--ed-radius-sm);
     color: var(--ed-color-muted);
-    font-size: 0.85rem;
+    font-size: 0.92rem;
     font-family: var(--ed-font-body);
     font-weight: 500;
     cursor: pointer;
@@ -140,12 +141,12 @@ body {
 }
 
 .ed-nav__tab {
-    padding: 0.35rem 0.75rem;
+    padding: 0.48rem 0.92rem;
     background: none;
     border: none;
     border-radius: var(--ed-radius-sm);
     color: var(--ed-color-muted);
-    font-size: 0.85rem;
+    font-size: 0.92rem;
     font-family: var(--ed-font-body);
     font-weight: 500;
     cursor: pointer;
@@ -438,12 +439,15 @@ body {
 #ed-layout {
     display: grid;
     grid-template-columns: 1fr;
-    min-height: calc(100vh - 57px);
+    min-height: calc(100vh - 74px);
 }
 
 #ed-main {
-    padding: var(--ed-space-sm) var(--ed-space-lg);
+    padding: 1.25rem 2.25rem 2rem;
     min-width: 0;
+    width: 100%;
+    max-width: 1720px;
+    margin: 0 auto;
 }
 
 #ed-rail {
@@ -482,14 +486,14 @@ body {
 .ed-chip__remove:hover { color: #ef4444; }
 
 /* ---- Hero Card ---- */
-#ed-hero { margin-top: var(--ed-space-sm); margin-bottom: var(--ed-space-xl); }
+#ed-hero { margin-top: 0.2rem; margin-bottom: 3.25rem; }
 
 .ed-card-hero {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--ed-space-lg);
+    grid-template-columns: minmax(0, 0.96fr) minmax(420px, 0.84fr);
+    gap: 2.1rem;
     cursor: pointer;
-    padding-bottom: var(--ed-space-sm);
+    padding-bottom: 1.35rem;
     border-bottom: 1px solid var(--ed-color-border);
 }
 
@@ -511,30 +515,30 @@ body {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 0.75rem;
-    max-width: 560px;
+    gap: 0.9rem;
+    max-width: 600px;
 }
 
 .ed-card-hero__title {
     font-family: var(--ed-font-display);
-    font-size: 1.75rem;
+    font-size: 1.85rem;
     font-weight: 700;
     line-height: 1.2;
     color: var(--ed-color-text);
-    margin-top: 0.2rem;
+    margin-top: 0.15rem;
 }
 
 .ed-card-hero__excerpt {
-    font-size: 0.95rem;
+    font-size: 0.98rem;
     color: var(--ed-color-muted);
-    line-height: 1.65;
-    max-width: 520px;
+    line-height: 1.7;
+    max-width: 540px;
 }
 
 /* Hero meta: lighter than regular card meta */
 .ed-card-hero .ed-card__meta {
-    font-size: 0.7rem;
-    opacity: 0.7;
+    font-size: 0.76rem;
+    opacity: 0.76;
 }
 
 /* Hero category chip: quieter */
@@ -556,8 +560,8 @@ body {
 .ed-support {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: var(--ed-space-md);
-    padding-bottom: var(--ed-space-lg);
+    gap: 1.15rem;
+    padding-bottom: 1.85rem;
     border-bottom: 1px solid var(--ed-color-border);
 }
 
@@ -566,7 +570,7 @@ body {
     display: flex;
     flex-direction: column;
     padding: 0;
-    gap: 0.75rem;
+    gap: 0.62rem;
     border: none;
     background: none;
     border-radius: 0;
@@ -575,28 +579,30 @@ body {
 .ed-support .ed-card-feature__image {
     border-radius: var(--ed-radius-md);
     overflow: hidden;
+    aspect-ratio: 16 / 8.8;
 }
 
 .ed-support .ed-card-feature__body {
-    gap: 0.4rem;
+    gap: 0.32rem;
 }
 
 .ed-support .ed-card-feature__title {
-    font-size: 1.05rem;
+    font-size: 0.98rem;
     font-weight: 600;
-    line-height: 1.35;
+    line-height: 1.32;
     -webkit-line-clamp: 3;
 }
 
 .ed-support .ed-card__meta {
     font-size: 0.72rem;
+    opacity: 0.82;
 }
 
 /* ---- Feed Block (vertical cards, same family as support) ---- */
 .ed-feed {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: var(--ed-space-md);
+    gap: 1.15rem;
 }
 
 /* Feed cards: same structure as support, slightly tighter */
@@ -604,7 +610,7 @@ body {
     display: flex;
     flex-direction: column;
     padding: 0;
-    gap: 0.5rem;
+    gap: 0.42rem;
     border: none;
     background: none;
     border-radius: 0;
@@ -612,17 +618,19 @@ body {
 
 .ed-feed .ed-card-feature__image {
     border-radius: var(--ed-radius-sm);
+    aspect-ratio: 16 / 8.9;
 }
 
 .ed-feed .ed-card-feature__title {
-    font-size: 0.9rem;
+    font-size: 0.86rem;
     font-weight: 500;
     line-height: 1.35;
     -webkit-line-clamp: 2;
 }
 
 .ed-feed .ed-card__meta {
-    font-size: 0.7rem;
+    font-size: 0.68rem;
+    opacity: 0.78;
 }
 
 /* ---- Feature Card ---- */
