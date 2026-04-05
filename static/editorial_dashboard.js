@@ -64,6 +64,7 @@
     }
 
     var _imageMode = localStorage.getItem('ytv2.imageMode') || 'default';
+    var _accentTheme = localStorage.getItem('ytv2.accentTheme') || 'default';
 
     function getThumbnail(item) {
         if (_imageMode === 'ai1') {
@@ -822,6 +823,25 @@
             }
             html += '</div></div>';
             html += '<div class="ed-settings-divider"></div>';
+            html += '<div class="ed-settings-section">';
+            html += '<div class="ed-settings-label">Accent color</div>';
+            html += '<div class="ed-settings-accent-grid">';
+            var accents = [
+                { key: 'default', label: 'Indigo', color: '#7c8cf8' },
+                { key: 'emerald', label: 'Emerald', color: '#34d399' },
+                { key: 'amber', label: 'Amber', color: '#f59e0b' },
+                { key: 'rose', label: 'Rose', color: '#fb7185' },
+                { key: 'cyan', label: 'Cyan', color: '#22d3ee' },
+            ];
+            for (var ai = 0; ai < accents.length; ai++) {
+                var accActive = _accentTheme === accents[ai].key;
+                html += '<button class="ed-settings-accent-btn' + (accActive ? ' ed-settings-accent-btn--active' : '') +
+                    '" data-action="set-accent" data-accent="' + accents[ai].key + '">' +
+                    '<span class="ed-accent-dot" style="background:' + accents[ai].color + '"></span>' +
+                    accents[ai].label + '</button>';
+            }
+            html += '</div></div>';
+            html += '<div class="ed-settings-divider"></div>';
             html += '<a class="ed-settings-link" href="/">Classic dashboard</a>';
             html += '</div>';
             return html;
@@ -903,6 +923,22 @@
                             readerImg.src = getThumbnail(readerItem);
                         }
                     } catch (_) {}
+                    return;
+                }
+
+                // Accent theme change
+                var accentBtn = e.target.closest('[data-action="set-accent"]');
+                if (accentBtn) {
+                    var accent = accentBtn.dataset.accent || 'default';
+                    _accentTheme = accent;
+                    localStorage.setItem('ytv2.accentTheme', accent);
+                    if (accent === 'default') {
+                        document.documentElement.removeAttribute('data-ed-accent');
+                    } else {
+                        document.documentElement.setAttribute('data-ed-accent', accent);
+                    }
+                    this._settingsOpen = true;
+                    this.renderTopbar();
                     return;
                 }
 
@@ -2556,6 +2592,10 @@
 
     async function init() {
         console.log('[Editorial] Initializing...');
+        // Apply saved accent theme
+        if (_accentTheme !== 'default') {
+            document.documentElement.setAttribute('data-ed-accent', _accentTheme);
+        }
         var app = new EditorialDashboard();
         app.readStateFromURL();
         app.bindEvents();

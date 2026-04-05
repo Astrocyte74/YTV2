@@ -30,6 +30,12 @@
     --ed-transition-normal: 250ms ease;
 }
 
+/* Accent theme presets (default is indigo, set in :root) */
+[data-ed-accent="emerald"] { --ed-color-accent: #34d399; --ed-color-accent-hover: #6ee7b7; }
+[data-ed-accent="amber"]   { --ed-color-accent: #f59e0b; --ed-color-accent-hover: #fbbf24; }
+[data-ed-accent="rose"]    { --ed-color-accent: #fb7185; --ed-color-accent-hover: #fda4af; }
+[data-ed-accent="cyan"]    { --ed-color-accent: #22d3ee; --ed-color-accent-hover: #67e8f9; }
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
@@ -433,6 +439,44 @@ body {
 .ed-settings-link:hover {
     color: var(--ed-color-text);
     background: var(--ed-color-surface-hover);
+}
+
+/* Accent color picker */
+.ed-settings-accent-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.3rem;
+}
+.ed-settings-accent-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--ed-color-border);
+    background: none;
+    color: var(--ed-color-muted);
+    font-size: 0.76rem;
+    font-family: var(--ed-font-body);
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all var(--ed-transition-fast);
+    white-space: nowrap;
+}
+.ed-settings-accent-btn:hover {
+    color: var(--ed-color-text);
+    background: var(--ed-color-surface-hover);
+}
+.ed-settings-accent-btn--active {
+    color: var(--ed-color-accent);
+    background: rgba(124, 140, 248, 0.08);
+    border-color: var(--ed-color-accent);
+}
+.ed-accent-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
 }
 
 /* ---- Main Layout Grid ---- */
