@@ -1857,16 +1857,11 @@
             html += '<button class="ed-reader__admin-item ed-reader__admin-item--danger" data-action="admin-delete">Delete...</button>';
             html += '</div>';
 
-            // Related mode bar in reader
-            html += '<div class="ed-reader__related-bar">';
-            if (this._relatedMode && this._selectedItemId) {
-                var truncTitle = title.length > 40 ? title.substring(0, 40).replace(/\s+\S*$/, '') + '...' : title;
-                html += '<span class="ed-reader__related-label">Related</span>';
-                html += '<span class="ed-reader__related-title">' + escapeHtml(truncTitle) + '</span>';
-                html += '<button class="ed-btn ed-btn--ghost ed-btn--sm ed-btn--exit-related" data-action="exit-related">Back to Recent</button>';
-            } else {
-                html += '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="toggle-related">Related</button>';
-            }
+            // View mode segmented control: Recent | Related
+            var isRelated = this._relatedMode && this._selectedItemId;
+            html += '<div class="ed-reader__view-bar">';
+            html += '<button class="ed-view-tab' + (!isRelated ? ' ed-view-tab--active' : '') + '" data-action="exit-related">Recent</button>';
+            html += '<button class="ed-view-tab' + (isRelated ? ' ed-view-tab--active' : '') + '" data-action="toggle-related">Related</button>';
             html += '</div>';
 
             html += '<div class="ed-reader__body">';
