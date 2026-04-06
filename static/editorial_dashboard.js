@@ -340,6 +340,7 @@
                 this._relatedMode = false;
                 this._baseOrderedItems = null;
                 this._relatedAnchorIndex = -1;
+                this._selectedItemId = null;
             }
 
             var params = {
@@ -693,16 +694,9 @@
         // ---- Related mode: state management ----
 
         _selectItem(videoId) {
+            // Selection is now driven by openReader — this is a compatibility shim
             if (!videoId) return;
-            if (this._selectedItemId === videoId) {
-                // Deselect
-                this._selectedItemId = null;
-                if (this._relatedMode) {
-                    this._exitRelatedMode();
-                }
-            } else {
-                this._selectedItemId = videoId;
-            }
+            this._selectedItemId = videoId;
             this._updateSelectedVisualState();
             this.renderTopbar();
         }
@@ -1146,8 +1140,7 @@
                 if (e.target.closest('[data-action="toggle-related"]')) {
                     if (this._relatedMode) {
                         this._exitRelatedMode();
-                        this._selectedItemId = null;
-                        this._updateSelectedVisualState();
+                        // Preserve reader context — do NOT clear _selectedItemId
                         this.renderTopbar();
                     } else {
                         this._enterRelatedMode();
@@ -1159,19 +1152,8 @@
                 // Exit related mode (Back to Recent)
                 if (e.target.closest('[data-action="exit-related"]')) {
                     this._exitRelatedMode();
-                    this._selectedItemId = null;
-                    this._updateSelectedVisualState();
+                    // Preserve reader context — do NOT clear _selectedItemId
                     this.renderTopbar();
-                    return;
-                }
-
-                // Card selection (support/feed cards, not hero)
-                var featureCard = e.target.closest('.ed-card-feature[data-video-id]');
-                if (featureCard && !e.target.closest('[data-action]')) {
-                    var cardId = featureCard.getAttribute('data-video-id');
-                    if (cardId) {
-                        this._selectItem(cardId);
-                    }
                     return;
                 }
 
@@ -1609,6 +1591,10 @@
                     var videoId = card.dataset.videoId;
                     if (videoId) {
                         this.openReader(videoId);
+                        // Re-anchor related mode if active
+                        if (this._relatedMode) {
+                            this._enterRelatedMode();
+                        }
                     }
                 }
             }.bind(this));
@@ -1648,6 +1634,7 @@
             if (!videoId) return;
             opts = opts || {};
             this._activeReaderId = videoId;
+            this._selectedItemId = videoId;
             this._readerAutoPlayAudio = !!opts.autoPlayAudio;
             this.showReaderPanel('<div class="ed-loading">Loading...</div>');
 
@@ -1665,6 +1652,8 @@
                 console.error('[Editorial] Reader failed:', err);
                 this.showReaderPanel('<div class="ed-loading" style="color:#ef4444">Error: ' + escapeHtml(err.message) + '</div>');
             }
+            this._updateSelectedVisualState();
+            this.renderTopbar();
         }
 
         showReaderPanel(contentHtml) {
@@ -1703,6 +1692,9 @@
                 panel.classList.remove('ed-reader--open');
             }
             this._activeReaderId = null;
+            this._selectedItemId = null;
+            this._updateSelectedVisualState();
+            this.renderTopbar();
         }
 
         switchReaderVariant(idx) {
