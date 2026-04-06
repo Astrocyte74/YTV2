@@ -1683,6 +1683,19 @@
                     return;
                 }
 
+                // Transcript tab
+                if (e.target.closest('[data-action="show-transcript"]')) {
+                    this._showTranscript();
+                    return;
+                }
+
+                // Transcript search
+                var transcriptSearch = e.target.closest('.ed-transcript__search-input');
+                if (transcriptSearch) {
+                    this._filterTranscript(transcriptSearch.value);
+                    return;
+                }
+
                 // Audio toggle
                 if (e.target.closest('[data-action="audio-toggle"]')) {
                     this.toggleAudioPlayback();
@@ -1862,6 +1875,9 @@
                 summaryEl.innerHTML = v.html || v.text || '<p>No summary available.</p>';
             }
 
+            // Hide transcript, show summary
+            this._hideTranscript();
+
             // Update active tab
             var tabs = document.querySelectorAll('.ed-reader__variant');
             for (var t = 0; t < tabs.length; t++) {
@@ -1880,6 +1896,91 @@
                     listenBtn.dataset.audioUrl = '';
                     listenBtn.disabled = true;
                     listenBtn.classList.add('ed-btn--disabled');
+                }
+            }
+        }
+
+        _renderTranscriptPanel(videoId, canonicalUrl) {
+            var segments = this._readerTranscriptSegments || [];
+            var fullText = this._readerTranscriptText || '';
+            var isYouTube = canonicalUrl && canonicalUrl.indexOf('youtube.com') !== -1;
+
+            var html = '<div class="ed-transcript" style="display:none">';
+
+            if (segments.length > 0) {
+                // Segmented transcript (YouTube)
+                html += '<div class="ed-transcript__search">';
+                html += '<input type="text" class="ed-transcript__search-input" placeholder="Search transcript...">';
+                html += '</div>';
+                html += '<div class="ed-transcript__info">' + segments.length + ' segments</div>';
+                html += '<div class="ed-transcript__list">';
+                for (var i = 0; i < segments.length; i++) {
+                    var seg = segments[i];
+                    var start = parseFloat(seg.start) || 0;
+                    var mins = Math.floor(start / 60);
+                    var secs = Math.floor(start % 60);
+                    var ts = mins + ':' + (secs < 10 ? '0' : '') + secs;
+                    var segText = (seg.text || '').replace(/<[^>]*>/g, '');
+                    var ytUrl = isYouTube ? 'https://www.youtube.com/watch?v=' + encodeURIComponent(videoId) + '&t=' + Math.floor(start) + 's' : '';
+                    html += '<div class="ed-transcript__row" data-transcript-search="' + escapeHtml(segText.toLowerCase()) + '">';
+                    if (ytUrl) {
+                        html += '<a class="ed-transcript__ts" href="' + escapeHtml(ytUrl) + '" target="_blank" rel="noopener">' + ts + '</a>';
+                    } else {
+                        html += '<span class="ed-transcript__ts">' + ts + '</span>';
+                    }
+                    html += '<span class="ed-transcript__text">' + escapeHtml(segText) + '</span>';
+                    html += '</div>';
+                }
+                html += '</div>';
+            } else if (fullText.trim()) {
+                // Plain text transcript (web articles)
+                html += '<div class="ed-transcript__search">';
+                html += '<input type="text" class="ed-transcript__search-input" placeholder="Search text...">';
+                html += '</div>';
+                html += '<div class="ed-transcript__plain">' + escapeHtml(fullText) + '</div>';
+            }
+
+            html += '</div>';
+            return html;
+        }
+
+        _showTranscript() {
+            // Hide summary, show transcript
+            var summaryEl = document.querySelector('.ed-reader__summary');
+            var transcriptEl = document.querySelector('.ed-transcript');
+            var thumbEl = document.querySelector('.ed-reader__thumb');
+            if (summaryEl) summaryEl.style.display = 'none';
+            if (transcriptEl) transcriptEl.style.display = 'block';
+            if (thumbEl) thumbEl.style.display = 'none';
+
+            // Update tab active states
+            var tabs = document.querySelectorAll('.ed-reader__variant');
+            for (var t = 0; t < tabs.length; t++) {
+                var isTranscript = tabs[t].dataset.action === 'show-transcript';
+                tabs[t].classList.toggle('ed-reader__variant--active', isTranscript);
+            }
+        }
+
+        _hideTranscript() {
+            var summaryEl = document.querySelector('.ed-reader__summary');
+            var transcriptEl = document.querySelector('.ed-transcript');
+            var thumbEl = document.querySelector('.ed-reader__thumb');
+            if (summaryEl) summaryEl.style.display = '';
+            if (transcriptEl) transcriptEl.style.display = 'none';
+            if (thumbEl) thumbEl.style.display = '';
+        }
+
+        _filterTranscript(query) {
+            var rows = document.querySelectorAll('.ed-transcript__row');
+            var q = (query || '').toLowerCase().trim();
+            var visible = 0;
+            for (var i = 0; i < rows.length; i++) {
+                var text = rows[i].dataset.transcriptSearch || '';
+                if (!q || text.indexOf(q) !== -1) {
+                    rows[i].style.display = '';
+                    visible++;
+                } else {
+                    rows[i].style.display = 'none';
                 }
             }
         }
@@ -1904,6 +2005,11 @@
             // Store variants for switching
             this._readerVariants = variants.length > 0 ? variants : [{ variant: 'default', html: summaryHtml, text: summary.text || '' }];
             this._readerActiveVariant = 0;
+
+            // Store transcript data for the transcript tab
+            this._readerTranscriptText = data.transcript || '';
+            this._readerTranscriptSegments = data.transcript_segments || [];
+            this._readerHasTranscript = !!(this._readerTranscriptText.trim() || this._readerTranscriptSegments.length);
 
             for (var vi = 0; vi < variants.length; vi++) {
                 if (variants[vi].audio_url) {
@@ -1981,14 +2087,18 @@
                 html += '<button class="ed-btn ed-btn--ghost ed-btn--sm ed-reader__listen-btn" data-action="play-audio" data-audio-url="' + escapeHtml(audioUrl) + '">▶ Listen</button>';
             }
 
-            // Variant tabs (only if multiple variants)
-            if (this._readerVariants.length > 1) {
+            // Variant tabs + Transcript tab
+            var showTabs = this._readerVariants.length > 1 || this._readerHasTranscript;
+            if (showTabs) {
                 html += '<div class="ed-reader__variants">';
                 for (var ti = 0; ti < this._readerVariants.length; ti++) {
                     var vSlug = this._readerVariants[ti].variant || '';
                     var vLabel = humanizeVariant(vSlug);
                     html += '<button class="ed-reader__variant' + (ti === 0 ? ' ed-reader__variant--active' : '') +
                         '" data-action="switch-variant" data-variant-idx="' + ti + '">' + escapeHtml(vLabel) + '</button>';
+                }
+                if (this._readerHasTranscript) {
+                    html += '<button class="ed-reader__variant" data-action="show-transcript">Transcript</button>';
                 }
                 html += '</div>';
             }
@@ -2000,6 +2110,11 @@
 
             // Summary content
             html += '<div class="ed-reader__summary">' + summaryHtml + '</div>';
+
+            // Transcript content (hidden by default, shown when tab clicked)
+            if (this._readerHasTranscript) {
+                html += this._renderTranscriptPanel(video.video_id || '', canonicalUrl);
+            }
 
             html += '</div>'; // ed-reader__body
 
