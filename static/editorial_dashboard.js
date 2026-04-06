@@ -724,9 +724,55 @@
             return null;
         }
 
+        _captureCardRects() {
+            var cards = document.querySelectorAll('.ed-card[data-video-id]');
+            var rects = {};
+            for (var i = 0; i < cards.length; i++) {
+                var vid = cards[i].getAttribute('data-video-id');
+                if (vid) {
+                    rects[vid] = cards[i].getBoundingClientRect();
+                }
+            }
+            return rects;
+        }
+
+        _animateCardReflow(beforeRects) {
+            if (!beforeRects) return;
+            // Respect reduced motion preference
+            if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+            var cards = document.querySelectorAll('.ed-card[data-video-id]');
+            for (var i = 0; i < cards.length; i++) {
+                var vid = cards[i].getAttribute('data-video-id');
+                if (!vid) continue;
+                var from = beforeRects[vid];
+                if (!from) continue;
+                var to = cards[i].getBoundingClientRect();
+                var dx = from.left - to.left;
+                var dy = from.top - to.top;
+                // Skip if barely moved
+                if (Math.abs(dx) < 2 && Math.abs(dy) < 2) continue;
+                try {
+                    cards[i].animate(
+                        [
+                            { transform: 'translate(' + dx + 'px, ' + dy + 'px)' },
+                            { transform: 'translate(0px, 0px)' }
+                        ],
+                        {
+                            duration: 360,
+                            easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+                        }
+                    );
+                } catch (_) { }
+            }
+        }
+
         _enterRelatedMode() {
             var items = this.state.items || [];
             if (!items.length || !this._selectedItemId) return;
+
+            // Capture FIRST positions before re-render
+            var beforeRects = this._captureCardRects();
 
             // Snapshot current order
             this._baseOrderedItems = items.slice();
@@ -763,9 +809,23 @@
             this.state.items = derived;
             this.render();
             this._updateSelectedVisualState();
+
+            // Re-render reader to update the related bar
+            if (this._currentReaderData) {
+                this.renderReaderContent(this._currentReaderData);
+            }
+
+            // LAST + INVERT + PLAY
+            this._animateCardReflow(beforeRects);
+
+            // Scroll to top so user sees the new hero
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         _exitRelatedMode() {
+            // Capture FIRST positions before restoring
+            var beforeRects = this._captureCardRects();
+
             if ((this._baseOrderedItems || []).length > 0) {
                 this.state.items = this._baseOrderedItems.slice();
             }
@@ -773,6 +833,14 @@
             this._baseOrderedItems = null;
             this._relatedAnchorIndex = -1;
             this.render();
+
+            // Re-render reader to update the related bar
+            if (this._currentReaderData) {
+                this.renderReaderContent(this._currentReaderData);
+            }
+
+            // Animate cards back to their original positions
+            this._animateCardReflow(beforeRects);
         }
 
         renderTopbar() {
@@ -1793,6 +1861,18 @@
             html += '<button class="ed-reader__admin-item" data-action="admin-regenerate">Regenerate...</button>';
             html += '<button class="ed-reader__admin-item" data-action="admin-images">Manage Images...</button>';
             html += '<button class="ed-reader__admin-item ed-reader__admin-item--danger" data-action="admin-delete">Delete...</button>';
+            html += '</div>';
+
+            // Related mode bar in reader
+            html += '<div class="ed-reader__related-bar">';
+            if (this._relatedMode && this._selectedItemId) {
+                var truncTitle = title.length > 40 ? title.substring(0, 40).replace(/\s+\S*$/, '') + '...' : title;
+                html += '<span class="ed-reader__related-label">Related</span>';
+                html += '<span class="ed-reader__related-title">' + escapeHtml(truncTitle) + '</span>';
+                html += '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="exit-related">Back to Recent</button>';
+            } else {
+                html += '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="toggle-related">Related</button>';
+            }
             html += '</div>';
 
             html += '<div class="ed-reader__body">';

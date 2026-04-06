@@ -1153,6 +1153,35 @@ body {
 }
 .ed-reader__close:hover { color: var(--ed-color-text); border-color: var(--ed-color-muted); }
 
+/* ---- Reader Related Bar ---- */
+.ed-reader__related-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--ed-color-border);
+    background: var(--ed-color-surface);
+}
+
+.ed-reader__related-label {
+    color: var(--ed-color-accent);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.ed-reader__related-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8rem;
+    color: var(--ed-color-muted);
+    font-style: italic;
+}
+
 .ed-reader__body {
     flex: 1;
     overflow-y: auto;
