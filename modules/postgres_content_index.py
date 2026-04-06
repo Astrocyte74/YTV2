@@ -1391,8 +1391,12 @@ class PostgreSQLContentIndex:
             total_count = cursor.fetchone()['total']
 
             sort_clause = " ORDER BY c.indexed_at DESC"
-            if sort == "video_newest":
-                sort_clause = " ORDER BY c.published_at DESC"
+            if sort == "oldest":
+                sort_clause = " ORDER BY c.indexed_at ASC"
+            elif sort == "video_newest":
+                sort_clause = " ORDER BY c.published_at DESC NULLS LAST"
+            elif sort == "video_oldest":
+                sort_clause = " ORDER BY c.published_at ASC NULLS LAST"
             elif sort == "title_az":
                 sort_clause = " ORDER BY c.title ASC"
             elif sort == "title_za":

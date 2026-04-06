@@ -2643,7 +2643,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "transcript": report_data.get('transcript', ''),
                 "transcript_segments": report_data.get('transcript_segments', []),
                 # Embed commit for deploy verification (header may be stripped upstream)
-                "deployment_commit": COMMIT_SHA
+                "deployment_commit": COMMIT_SHA,
+                "indexed_at": report_data.get('indexed_at', '')
             }
 
             # Send JSON response
@@ -3734,8 +3735,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # Sorting
             sort = query_params.get('sort', ['newest'])[0]
             valid_sorts = [
-                'newest', 'oldest', 'title', 'title_asc', 'title_desc', 
+                'newest', 'oldest', 'title', 'title_asc', 'title_desc',
                 'duration', 'duration_desc', 'duration_asc',
+                'video_newest', 'video_oldest',
                 # SQLite backend specific sorts
                 'added_desc', 'added_asc', 'video_newest', 'video_oldest',
                 'title_az', 'title_za'

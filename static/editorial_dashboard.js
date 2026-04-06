@@ -110,6 +110,14 @@
         return diffMonths + 'mo ago';
     }
 
+    function formatDate(dateStr) {
+        if (!dateStr) return '';
+        var d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+    }
+
     // ---- Image helpers (ported from classic) ----
 
     function isAi2Variant(v) {
@@ -269,6 +277,7 @@
 
             this.mounts = {
                 topbar: document.getElementById('ed-topbar'),
+                contextBar: document.getElementById('ed-context-bar'),
                 hero: document.getElementById('ed-hero'),
                 sections: document.getElementById('ed-sections'),
                 rail: document.getElementById('ed-rail'),
@@ -768,7 +777,12 @@
 
         _enterRelatedMode() {
             var items = this.state.items || [];
-            if (!items.length || !this._selectedItemId) return;
+            if (!items.length) return;
+
+            // If no card selected, use hero (first item) as anchor
+            if (!this._selectedItemId) {
+                this._selectedItemId = items[0].video_id || items[0].id;
+            }
 
             // Capture FIRST positions before re-render
             var beforeRects = this._captureCardRects();
@@ -843,57 +857,74 @@
         }
 
         renderTopbar() {
-            var search = this.mounts.topbar;
-            if (!search) return;
+            var topbar = this.mounts.topbar;
+            if (!topbar) return;
 
-            var searchInput = search.querySelector('.ed-topbar__search');
+            var searchInput = topbar.querySelector('.ed-topbar__search');
             if (searchInput) {
                 searchInput.innerHTML =
                     '<input type="text" class="ed-search__input" placeholder="Search summaries..." value="' +
                     escapeHtml(this.state.search) + '">';
             }
 
-            var nav = search.querySelector('.ed-topbar__nav');
-            if (nav) {
-                var activeCategory = this.state.filters.category || '';
-                var isRecent = !activeCategory;
-
-                // Editorial nav: Sort dropdown | Topics dropdown
-                var navHtml = '<div class="ed-nav">';
-                navHtml += '<div class="ed-nav__sort-wrap">';
-                navHtml += '<button class="ed-nav__tab' + (this._sortOpen ? ' ed-nav__tab--active' : '') +
-                    '" data-action="toggle-sort">' +
-                    (this.state.sort === 'oldest' ? 'Oldest' : 'Newest') + ' ▾</button>';
-                navHtml += this.renderSortDropdown();
-                navHtml += '</div>';
-                navHtml += '<div class="ed-nav__topics-wrap">';
-                navHtml += '<button class="ed-nav__tab' + (activeCategory ? ' ed-nav__tab--active' : '') +
-                    '" data-action="toggle-topics">' +
-                    (this.state.filters.subcategory ? escapeHtml(this.state.filters.subcategory) :
-                     (activeCategory ? escapeHtml(activeCategory) : 'Topics')) + ' ▾</button>';
-                navHtml += this.renderTopicsDropdown();
-                navHtml += '</div>';
-                navHtml += '</div>';
-
-                var hasFilters = Object.keys(this.state.filters).some(
-                    function (k) { return this.state.filters[k] && k !== 'category' && k !== 'subcategory'; }.bind(this)
-                );
-                navHtml += '<div class="ed-refine-wrap">';
-                navHtml += '<button class="ed-refine-btn' + (hasFilters ? ' ed-refine-btn--active' : '') +
-                    '" data-action="toggle-refine">Refine' +
-                    (hasFilters ? ' (' + Object.keys(this.state.filters).filter(function (k) { return k !== 'category' && k !== 'subcategory' && this.state.filters[k]; }.bind(this)).length + ')' : '') + '</button>';
-                navHtml += this.renderRefineMenu();
-                navHtml += '</div>';
-
-                // Note: Related toggle lives in the reader header bar, not the topbar,
-                // because the reader panel covers the topbar on normal-width screens.
-
-                navHtml += '<div class="ed-settings-wrap">';
-                navHtml += '<button class="ed-refine-btn" data-action="toggle-settings">Settings</button>';
+            var navEl = topbar.querySelector('.ed-topbar__nav');
+            if (navEl) {
+                var navHtml = '<div class="ed-settings-wrap">';
+                navHtml += '<button class="ed-topbar__settings-btn" data-action="toggle-settings" title="Settings">&#9881;</button>';
                 navHtml += this.renderSettingsPanel();
                 navHtml += '</div>';
-                nav.innerHTML = navHtml;
+                navEl.innerHTML = navHtml;
             }
+
+            this.renderSubnav();
+        }
+
+        renderSubnav() {
+            var bar = this.mounts.contextBar;
+            if (!bar) return;
+
+            var activeCategory = this.state.filters.category || '';
+            var isRelated = this._relatedMode && this._selectedItemId;
+
+            // Sort label
+            var sortLabel;
+            if (isRelated) {
+                sortLabel = 'Related';
+            } else {
+                sortLabel = this.state.sort === 'oldest' ? 'Oldest added' : 'Newest added';
+            }
+
+            var svgSort = '<svg class="ed-nav__svg" viewBox="0 0 16 16" width="14" height="14"><path d="M3 5l2.5-3L8 5M5.5 2v10M13 11l-2.5 3L8 11M10.5 14V4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            var svgTag = '<svg class="ed-nav__svg" viewBox="0 0 16 16" width="14" height="14"><path d="M2 3h3l6 6-3 3-6-6V3zM11 9l2 2-3 3-2-2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            var svgSliders = '<svg class="ed-nav__svg" viewBox="0 0 16 16" width="14" height="14"><path d="M2 4h12M5 4v8M2 12h12M11 12V4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+
+            var html = '<div class="ed-nav">';
+            html += '<div class="ed-nav__sort-wrap">';
+            html += '<button class="ed-nav__tab' + (this._sortOpen ? ' ed-nav__tab--active' : '') +
+                '" data-action="toggle-sort">' + svgSort + ' ' + escapeHtml(sortLabel) + ' ▾</button>';
+            html += this.renderSortDropdown();
+            html += '</div>';
+            html += '<div class="ed-nav__topics-wrap">';
+            html += '<button class="ed-nav__tab' + (activeCategory ? ' ed-nav__tab--active' : '') +
+                '" data-action="toggle-topics">' + svgTag + ' ' +
+                (this.state.filters.subcategory ? escapeHtml(this.state.filters.subcategory) :
+                 (activeCategory ? escapeHtml(activeCategory) : 'Topics')) + ' ▾</button>';
+            html += this.renderTopicsDropdown();
+            html += '</div>';
+            html += '</div>';
+
+            var hasFilters = Object.keys(this.state.filters).some(
+                function (k) { return this.state.filters[k]; }.bind(this)
+            );
+            html += '<div class="ed-refine-wrap">';
+            html += '<button class="ed-refine-btn' + (hasFilters ? ' ed-refine-btn--active' : '') +
+                '" data-action="toggle-refine">' + svgSliders + ' Refine' +
+                (hasFilters ? ' (' + Object.keys(this.state.filters).filter(function (k) { return this.state.filters[k]; }.bind(this)).length + ')' : '') + '</button>';
+            html += this.renderRefineMenu();
+            html += '</div>';
+
+            bar.className = 'ed-subnav' + (this._activeReaderId ? ' ed-subnav--reader-open' : '');
+            bar.innerHTML = html;
         }
 
         renderTopicsDropdown() {
@@ -954,16 +985,20 @@
         renderSortDropdown() {
             var html = '<div class="ed-sort-dropdown' + (this._sortOpen ? ' ed-sort-dropdown--open' : '') + '">';
             var opts = [
-                { value: 'newest', label: 'Newest first' },
-                { value: 'oldest', label: 'Oldest first' },
+                { value: 'newest', label: 'Newest added' },
+                { value: 'oldest', label: 'Oldest added' },
             ];
             for (var i = 0; i < opts.length; i++) {
-                var isActive = this.state.sort === opts[i].value;
+                var isActive = !this._relatedMode && this.state.sort === opts[i].value;
                 html += '<button class="ed-sort-dropdown__item' + (isActive ? ' ed-sort-dropdown__item--active' : '') +
                     '" data-action="set-sort" data-sort="' + opts[i].value + '">' +
                     escapeHtml(opts[i].label) +
                     '</button>';
             }
+            html += '<div class="ed-sort-dropdown__divider"></div>';
+            var isRelated = this._relatedMode && this._selectedItemId;
+            html += '<button class="ed-sort-dropdown__item' + (isRelated ? ' ed-sort-dropdown__item--active' : '') +
+                '" data-action="toggle-related">Related</button>';
             html += '</div>';
             return html;
         }
@@ -1219,23 +1254,19 @@
 
             // Click delegation
             document.addEventListener('click', function (e) {
-                // Related toggle
+                // Related from sort dropdown — always enter related mode
                 if (e.target.closest('[data-action="toggle-related"]')) {
-                    if (this._relatedMode) {
-                        this._exitRelatedMode();
-                        // Preserve reader context — do NOT clear _selectedItemId
-                        this.renderTopbar();
-                    } else {
+                    this._sortOpen = false;
+                    if (!this._relatedMode) {
                         this._enterRelatedMode();
-                        this.renderTopbar();
                     }
+                    this.renderTopbar();
                     return;
                 }
 
-                // Exit related mode (Back to Recent)
+                // Exit related mode (from sort label tab)
                 if (e.target.closest('[data-action="exit-related"]')) {
                     this._exitRelatedMode();
-                    // Preserve reader context — do NOT clear _selectedItemId
                     this.renderTopbar();
                     return;
                 }
@@ -1347,6 +1378,12 @@
                 if (sortBtn) {
                     this.state.sort = sortBtn.dataset.sort;
                     this._sortOpen = false;
+                    // Exit related mode when choosing a sort
+                    if (this._relatedMode) {
+                        this._relatedMode = false;
+                        this._baseOrderedItems = null;
+                        this._relatedAnchorIndex = -1;
+                    }
                     this.state.page = 1;
                     this.loadContent();
                     return;
@@ -1854,6 +1891,8 @@
             var analysis = data.analysis || {};
             var title = video.title || '';
             var channel = video.channel || '';
+            var publishedAt = video.published_at || '';
+            var indexedAt = data.indexed_at || '';
             var thumb = getThumbnail(data);
             var canonicalUrl = video.url || '';
             var duration = formatDuration(video.duration_seconds);
@@ -1912,13 +1951,6 @@
             html += '<button class="ed-reader__admin-item ed-reader__admin-item--danger" data-action="admin-delete">Delete...</button>';
             html += '</div>';
 
-            // View mode segmented control: Recent | Related
-            var isRelated = this._relatedMode && this._selectedItemId;
-            html += '<div class="ed-reader__view-bar">';
-            html += '<button class="ed-view-tab' + (!isRelated ? ' ed-view-tab--active' : '') + '" data-action="exit-related">Recent</button>';
-            html += '<button class="ed-view-tab' + (isRelated ? ' ed-view-tab--active' : '') + '" data-action="toggle-related">Related</button>';
-            html += '</div>';
-
             html += '<div class="ed-reader__body">';
 
             // Meta bar
@@ -1926,6 +1958,16 @@
             if (channel) html += '<span class="ed-card__channel">' + escapeHtml(channel) + '</span>';
             if (duration) html += '<span class="ed-card__time">' + duration + '</span>';
             if (categories.length) html += '<span class="ed-card__category-chip">' + escapeHtml(categories[0]) + '</span>';
+            html += '</div>';
+
+            // Date line
+            html += '<div class="ed-reader__dates">';
+            if (publishedAt) {
+                html += '<span class="ed-reader__date">Published ' + formatDate(publishedAt) + '</span>';
+            }
+            if (indexedAt) {
+                html += '<span class="ed-reader__date ed-reader__date--sub">Added ' + formatDate(indexedAt) + '</span>';
+            }
             html += '</div>';
 
             // Title
