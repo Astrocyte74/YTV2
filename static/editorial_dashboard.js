@@ -882,14 +882,8 @@
                 navHtml += this.renderRefineMenu();
                 navHtml += '</div>';
 
-                // Related toggle — only when a story is selected
-                if (this._selectedItemId) {
-                    navHtml += '<div class="ed-related-toggle-wrap">';
-                    navHtml += '<button class="ed-related-toggle' + (this._relatedMode ? ' ed-related-toggle--active' : '') +
-                        '" data-action="toggle-related">' +
-                        (this._relatedMode ? 'Exit Related' : 'Related') + '</button>';
-                    navHtml += '</div>';
-                }
+                // Note: Related toggle lives in the reader header bar, not the topbar,
+                // because the reader panel covers the topbar on normal-width screens.
 
                 navHtml += '<div class="ed-settings-wrap">';
                 navHtml += '<button class="ed-refine-btn" data-action="toggle-settings">Settings</button>';
