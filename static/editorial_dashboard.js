@@ -280,6 +280,7 @@
             this._refineOpen = false;
             this._refineSection = '';
             this._settingsOpen = false;
+            this._sortOpen = false;
 
             // Related mode state
             this._selectedItemId = null;
@@ -857,12 +858,16 @@
                 var activeCategory = this.state.filters.category || '';
                 var isRecent = !activeCategory;
 
-                // Editorial nav: Recent | Topics dropdown
+                // Editorial nav: Sort dropdown | Topics dropdown
                 var navHtml = '<div class="ed-nav">';
-                navHtml += '<button class="ed-nav__tab' + (isRecent ? ' ed-nav__tab--active' : '') +
-                    '" data-action="nav-recent">Recent</button>';
+                navHtml += '<div class="ed-nav__sort-wrap">';
+                navHtml += '<button class="ed-nav__tab' + (this._sortOpen ? ' ed-nav__tab--active' : '') +
+                    '" data-action="toggle-sort">' +
+                    (this.state.sort === 'oldest' ? 'Oldest' : 'Newest') + ' ▾</button>';
+                navHtml += this.renderSortDropdown();
+                navHtml += '</div>';
                 navHtml += '<div class="ed-nav__topics-wrap">';
-                navHtml += '<button class="ed-nav__tab' + (!isRecent ? ' ed-nav__tab--active' : '') +
+                navHtml += '<button class="ed-nav__tab' + (activeCategory ? ' ed-nav__tab--active' : '') +
                     '" data-action="toggle-topics">' +
                     (this.state.filters.subcategory ? escapeHtml(this.state.filters.subcategory) :
                      (activeCategory ? escapeHtml(activeCategory) : 'Topics')) + ' ▾</button>';
@@ -902,7 +907,13 @@
             var activeCategory = this.state.filters.category || '';
             var html = '<div class="ed-topics-dropdown' + (this._topicsOpen ? ' ed-topics-dropdown--open' : '') + '">';
             if (!this._topicsSection) {
-                // First level: category list
+                // First level: "All topics" clear option (only when a filter is active)
+                if (activeCategory) {
+                    html += '<button class="ed-topics-dropdown__item" data-action="nav-recent">' +
+                        '<span>All topics</span>' +
+                        '</button>';
+                }
+                // Category list
                 for (var i = 0; i < categories.length; i++) {
                     var isSelected = categories[i].value === activeCategory;
                     html += '<button class="ed-topics-dropdown__item' + (isSelected ? ' ed-topics-dropdown__item--active' : '') +
@@ -940,6 +951,23 @@
             return html;
         }
 
+        renderSortDropdown() {
+            var html = '<div class="ed-sort-dropdown' + (this._sortOpen ? ' ed-sort-dropdown--open' : '') + '">';
+            var opts = [
+                { value: 'newest', label: 'Newest first' },
+                { value: 'oldest', label: 'Oldest first' },
+            ];
+            for (var i = 0; i < opts.length; i++) {
+                var isActive = this.state.sort === opts[i].value;
+                html += '<button class="ed-sort-dropdown__item' + (isActive ? ' ed-sort-dropdown__item--active' : '') +
+                    '" data-action="set-sort" data-sort="' + opts[i].value + '">' +
+                    escapeHtml(opts[i].label) +
+                    '</button>';
+            }
+            html += '</div>';
+            return html;
+        }
+
         renderFilterChips() {
             var existing = document.getElementById('ed-filter-chips');
             if (existing) existing.remove();
@@ -947,7 +975,7 @@
             var activeFilters = Object.keys(this.state.filters).filter(
                 function (k) { return this.state.filters[k]; }.bind(this)
             );
-            var visibleFilters = activeFilters.filter(function (k) { return k !== 'category' && k !== 'subcategory'; });
+            var visibleFilters = activeFilters;
             if (!visibleFilters.length && !this.state.search) return;
 
             var chipContainer = document.createElement('div');
@@ -1013,7 +1041,6 @@
             var html = '<div class="ed-refine-menu' + (this._refineOpen ? ' ed-refine-menu--open' : '') + '" id="ed-refine-menu">';
             if (!this._refineSection) {
                 html += '<div class="ed-refine-menu__list">';
-                html += this.renderRefineMenuItem('sort', 'Sort', this.state.sort === 'oldest' ? 'Oldest' : 'Newest');
 
                 var sources = filters.source || filters.content_source || [];
                 if (sources.length > 1) {
@@ -1065,12 +1092,7 @@
             html += '</div>';
             html += '<div class="ed-refine-submenu__list">';
 
-            if (section === 'sort') {
-                html += '<button class="ed-refine-menu__button' + (this.state.sort === 'newest' ? ' ed-refine-menu__button--active' : '') +
-                    '" data-action="refine-sort" data-sort="newest">Newest</button>';
-                html += '<button class="ed-refine-menu__button' + (this.state.sort === 'oldest' ? ' ed-refine-menu__button--active' : '') +
-                    '" data-action="refine-sort" data-sort="oldest">Oldest</button>';
-            } else if (section === 'source') {
+            if (section === 'source') {
                 html += '<button class="ed-refine-menu__button' + (!this.state.filters.source ? ' ed-refine-menu__button--active' : '') +
                     '" data-filter-type="source" data-filter-value="">Any source</button>';
                 var sources = filters.source || filters.content_source || [];
@@ -1107,6 +1129,7 @@
             this._topicsSection = '';
             this._refineSection = '';
             this._settingsOpen = false;
+            this._sortOpen = false;
             this.renderTopbar();
         }
 
@@ -1229,6 +1252,7 @@
                     this._topicsOpen = false;
                     this._topicsSection = '';
                     this._refineOpen = false;
+                    this._sortOpen = false;
                     this._refineSection = '';
                     this.renderTopbar();
                     return;
@@ -1295,7 +1319,7 @@
                     return;
                 }
 
-                // Nav: Recent
+                // Nav: Recent / clear topic (used by "All topics" in dropdown)
                 if (e.target.closest('[data-action="nav-recent"]')) {
                     delete this.state.filters.category;
                     delete this.state.filters.subcategory;
@@ -1306,10 +1330,42 @@
                     return;
                 }
 
+                // Sort dropdown toggle
+                if (e.target.closest('[data-action="toggle-sort"]')) {
+                    this._sortOpen = !this._sortOpen;
+                    this._topicsOpen = false;
+                    this._topicsSection = '';
+                    this._refineOpen = false;
+                    this._refineSection = '';
+                    this._settingsOpen = false;
+                    this.renderTopbar();
+                    return;
+                }
+
+                // Sort selection
+                var sortBtn = e.target.closest('[data-action="set-sort"]');
+                if (sortBtn) {
+                    this.state.sort = sortBtn.dataset.sort;
+                    this._sortOpen = false;
+                    this.state.page = 1;
+                    this.loadContent();
+                    return;
+                }
+
+                // Close sort dropdown on outside click
+                if (this._sortOpen) {
+                    var sortWrap = document.querySelector('.ed-nav__sort-wrap');
+                    if (sortWrap && !sortWrap.contains(e.target)) {
+                        this._sortOpen = false;
+                        this.renderTopbar();
+                    }
+                }
+
                 // Nav: Topics dropdown toggle
                 if (e.target.closest('[data-action="toggle-topics"]')) {
                     this._topicsOpen = !this._topicsOpen;
                     this._topicsSection = '';
+                    this._sortOpen = false;
                     this._refineOpen = false;
                     this._refineSection = '';
                     this._settingsOpen = false;
@@ -1443,6 +1499,7 @@
                             if (input) input.value = '';
                         } else {
                             delete this.state.filters[key];
+                            if (key === 'category') delete this.state.filters.subcategory;
                         }
                         this.state.page = 1;
                         this.loadContent();
