@@ -1869,7 +1869,7 @@
                 var truncTitle = title.length > 40 ? title.substring(0, 40).replace(/\s+\S*$/, '') + '...' : title;
                 html += '<span class="ed-reader__related-label">Related</span>';
                 html += '<span class="ed-reader__related-title">' + escapeHtml(truncTitle) + '</span>';
-                html += '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="exit-related">Back to Recent</button>';
+                html += '<button class="ed-btn ed-btn--ghost ed-btn--sm ed-btn--exit-related" data-action="exit-related">Back to Recent</button>';
             } else {
                 html += '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="toggle-related">Related</button>';
             }

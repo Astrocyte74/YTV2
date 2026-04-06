@@ -1158,17 +1158,21 @@ body {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
+    padding: 0.4rem 0.75rem;
+    padding-right: 4.5rem; /* clear the close (right:0.75rem, 2rem wide) + admin (right:3rem, 2rem wide) buttons */
     border-bottom: 1px solid var(--ed-color-border);
     background: var(--ed-color-surface);
+    min-height: 2rem;
+    flex-shrink: 0;
 }
 
 .ed-reader__related-label {
     color: var(--ed-color-accent);
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
 }
 
 .ed-reader__related-title {
@@ -1180,6 +1184,19 @@ body {
     font-size: 0.8rem;
     color: var(--ed-color-muted);
     font-style: italic;
+}
+
+.ed-reader__related-bar .ed-btn--exit-related {
+    color: var(--ed-color-accent);
+    border-color: var(--ed-color-accent);
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.ed-reader__related-bar .ed-btn--exit-related:hover {
+    background: var(--ed-color-accent);
+    color: #fff;
 }
 
 .ed-reader__body {
