@@ -1153,12 +1153,12 @@ body {
 }
 .ed-reader__close:hover { color: var(--ed-color-text); border-color: var(--ed-color-muted); }
 
-/* ---- Reader View Mode Segmented Control ---- */
+/* ---- Reader View Mode Underline Tabs ---- */
 .ed-reader__view-bar {
     display: flex;
     align-items: center;
     gap: 0;
-    padding: 0.35rem 0.75rem;
+    padding: 0 0.75rem;
     padding-right: 4.5rem; /* clear the close + admin buttons */
     border-bottom: 1px solid var(--ed-color-border);
     background: var(--ed-color-surface);
@@ -1167,41 +1167,44 @@ body {
 }
 
 .ed-view-tab {
-    padding: 0.3rem 0.75rem;
+    position: relative;
+    padding: 0.45rem 0.75rem;
     font-size: 0.78rem;
     font-weight: 500;
     color: var(--ed-color-muted);
     background: transparent;
-    border: 1px solid var(--ed-color-border);
+    border: none;
     cursor: pointer;
-    transition: all var(--ed-transition-fast);
+    transition: color var(--ed-transition-fast);
     line-height: 1.3;
 }
 
-.ed-view-tab:first-child {
-    border-radius: var(--ed-radius-sm) 0 0 var(--ed-radius-sm);
-    border-right: none;
-}
-
-.ed-view-tab:last-child {
-    border-radius: 0 var(--ed-radius-sm) var(--ed-radius-sm) 0;
+.ed-view-tab::after {
+    content: '';
+    position: absolute;
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: -1px;
+    height: 2px;
+    background: transparent;
+    border-radius: 1px;
+    transition: background var(--ed-transition-fast);
 }
 
 .ed-view-tab:hover {
     color: var(--ed-color-text);
-    background: var(--ed-color-surface-hover);
 }
 
 .ed-view-tab--active {
+    color: var(--ed-color-accent);
+}
+
+.ed-view-tab--active::after {
     background: var(--ed-color-accent);
-    color: #fff;
-    border-color: var(--ed-color-accent);
 }
 
 .ed-view-tab--active:hover {
-    background: var(--ed-color-accent-hover);
-    border-color: var(--ed-color-accent-hover);
-    color: #fff;
+    color: var(--ed-color-accent-hover);
 }
 
 .ed-reader__body {

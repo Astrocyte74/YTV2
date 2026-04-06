@@ -415,11 +415,9 @@
                         '</div>';
                 }
 
-                // Block 1: Hero — first item (always re-render in related mode)
+                // Block 1: Hero — always re-render (banner appears/disappears with related mode)
                 var hero = items[0];
-                if (this.state.page === 1 || this.mounts.hero.children.length === 0 || this._relatedMode) {
-                    this.mounts.hero.innerHTML = bannerHtml + renderHeroCard(hero);
-                }
+                this.mounts.hero.innerHTML = bannerHtml + renderHeroCard(hero);
             }
 
             if (this.mounts.sections) {
