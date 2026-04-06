@@ -2286,3 +2286,101 @@ body {
         display: none;
     }
 }
+
+/* ---- Related Mode: Selected Card ---- */
+.ed-card--selected {
+    outline: 2px solid var(--ed-color-accent);
+    outline-offset: -1px;
+    box-shadow: 0 0 0 4px rgba(124, 140, 248, 0.18);
+}
+
+.ed-card.ed-card-hero.ed-card--selected {
+    outline-offset: 0;
+}
+
+/* ---- Related Mode: Toggle Button ---- */
+.ed-related-toggle-wrap {
+    display: inline-flex;
+    align-items: center;
+}
+
+.ed-related-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.8rem;
+    border: 1px solid var(--ed-color-accent);
+    border-radius: var(--ed-radius-sm);
+    background: transparent;
+    color: var(--ed-color-accent);
+    font-family: var(--ed-font-body);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--ed-transition-fast), color var(--ed-transition-fast);
+    white-space: nowrap;
+}
+
+.ed-related-toggle:hover {
+    background: var(--ed-color-accent);
+    color: #fff;
+}
+
+.ed-related-toggle--active {
+    background: var(--ed-color-accent);
+    color: #fff;
+}
+
+.ed-related-toggle--active:hover {
+    background: var(--ed-color-accent-hover);
+    border-color: var(--ed-color-accent-hover);
+}
+
+/* ---- Related Mode: Banner ---- */
+.ed-related-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.75rem;
+    margin-bottom: 0.75rem;
+    background: rgba(124, 140, 248, 0.08);
+    border: 1px solid rgba(124, 140, 248, 0.2);
+    border-radius: var(--ed-radius-sm);
+    font-size: 0.8rem;
+    color: var(--ed-color-text);
+}
+
+.ed-related-banner__label {
+    color: var(--ed-color-accent);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.ed-related-banner__title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-style: italic;
+    opacity: 0.85;
+}
+
+.ed-related-banner__close {
+    margin-left: auto;
+    padding: 0.2rem 0.55rem;
+    border: 1px solid var(--ed-color-border);
+    border-radius: var(--ed-radius-sm);
+    background: transparent;
+    color: var(--ed-color-muted);
+    font-family: var(--ed-font-body);
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: color var(--ed-transition-fast), border-color var(--ed-transition-fast);
+    white-space: nowrap;
+}
+
+.ed-related-banner__close:hover {
+    color: var(--ed-color-text);
+    border-color: var(--ed-color-muted);
+}

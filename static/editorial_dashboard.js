@@ -280,6 +280,12 @@
             this._refineOpen = false;
             this._refineSection = '';
             this._settingsOpen = false;
+
+            // Related mode state
+            this._selectedItemId = null;
+            this._relatedMode = false;
+            this._baseOrderedItems = null;
+            this._relatedAnchorIndex = -1;
         }
 
         // ---- URL state ----
@@ -330,6 +336,10 @@
             if (this.state.page === 1) {
                 this.state.allItems = [];
                 this.renderLoading();
+                // Clear related mode when reloading from page 1
+                this._relatedMode = false;
+                this._baseOrderedItems = null;
+                this._relatedAnchorIndex = -1;
             }
 
             var params = {
@@ -390,11 +400,24 @@
                 return;
             }
 
-            // Block 1: Hero — first item
-            if (this.state.page === 1 || this.mounts.hero.children.length === 0) {
+            // Related-mode banner (above hero)
+            if (this.mounts.hero) {
+                var bannerHtml = '';
+                if (this._relatedMode && this._selectedItemId) {
+                    var anchor = this._getSelectedItem();
+                    var anchorTitle = anchor ? (anchor.title || '') : '';
+                    var truncatedTitle = anchorTitle.length > 50 ? anchorTitle.substring(0, 50).replace(/\s+\S*$/, '') + '...' : anchorTitle;
+                    bannerHtml = '<div class="ed-related-banner">' +
+                        '<span class="ed-related-banner__label">Related to:</span> ' +
+                        '<span class="ed-related-banner__title">' + escapeHtml(truncatedTitle) + '</span>' +
+                        '<button class="ed-related-banner__close" data-action="exit-related">Back to Recent</button>' +
+                        '</div>';
+                }
+
+                // Block 1: Hero — first item (always re-render in related mode)
                 var hero = items[0];
-                if (this.mounts.hero) {
-                    this.mounts.hero.innerHTML = renderHeroCard(hero);
+                if (this.state.page === 1 || this.mounts.hero.children.length === 0 || this._relatedMode) {
+                    this.mounts.hero.innerHTML = bannerHtml + renderHeroCard(hero);
                 }
             }
 
@@ -546,6 +569,218 @@
             return buttons;
         }
 
+        // ---- Related mode: heuristic similarity (ported from dashboard_v3.js) ----
+
+        _tokenizeTitle(text) {
+            try {
+                var stop = { the: 1, a: 1, an: 1, and: 1, or: 1, of: 1, to: 1, in: 1, on: 1, for: 1, with: 1, from: 1, by: 1, at: 1, is: 1, are: 1, be: 1, this: 1, that: 1, it: 1, as: 1, vs: 1, 'vs.': 1, you: 1, your: 1 };
+                return String(text || '')
+                    .toLowerCase()
+                    .replace(/[^a-z0-9\s]+/g, ' ')
+                    .split(/\s+/)
+                    .filter(function (t) { return t && !stop[t]; });
+            } catch (_) { return []; }
+        }
+
+        _jaccard(a, b) {
+            var A = {};
+            var B = {};
+            for (var i = 0; i < a.length; i++) A[a[i]] = true;
+            for (var j = 0; j < b.length; j++) B[b[j]] = true;
+            var inter = 0;
+            var keysA = Object.keys(A);
+            for (var k = 0; k < keysA.length; k++) {
+                if (B[keysA[k]]) inter++;
+            }
+            var uniSize = keysA.length + Object.keys(B).length - inter;
+            return uniSize > 0 ? inter / uniSize : 0;
+        }
+
+        _extractCatsAndSubcats(item) {
+            if (!item) return { categories: [], subcats: [], subcatPairs: [] };
+
+            var subcategoriesStructure = null;
+
+            // Check for new structured subcategories_json field first
+            if (item.subcategories_json) {
+                try {
+                    subcategoriesStructure = JSON.parse(item.subcategories_json);
+                } catch (e) { /* ignore */ }
+            }
+
+            // Also check for pre-parsed categories from analysis
+            if (!subcategoriesStructure && item.analysis && Array.isArray(item.analysis.categories) && item.analysis.categories.length) {
+                subcategoriesStructure = { categories: item.analysis.categories };
+            }
+
+            // Use structured data if available
+            if (subcategoriesStructure && subcategoriesStructure.categories && subcategoriesStructure.categories.length) {
+                var categories = subcategoriesStructure.categories
+                    .map(function (c) { return c && c.category; })
+                    .filter(Boolean);
+
+                var subcatPairs = [];
+                for (var ci = 0; ci < subcategoriesStructure.categories.length; ci++) {
+                    var cat = subcategoriesStructure.categories[ci];
+                    var parent = cat && cat.category;
+                    if (!parent || !Array.isArray(cat.subcategories)) continue;
+                    for (var si = 0; si < cat.subcategories.length; si++) {
+                        subcatPairs.push([parent, cat.subcategories[si]]);
+                    }
+                }
+
+                var seen = {};
+                var subcats = [];
+                for (var pi = 0; pi < subcatPairs.length; pi++) {
+                    var s = subcatPairs[pi][1];
+                    if (!seen[s]) { seen[s] = true; subcats.push(s); }
+                }
+
+                return { categories: categories, subcats: subcats, subcatPairs: subcatPairs };
+            }
+
+            // Fallback: legacy logic
+            var analysis = item.analysis || {};
+            var cats = [];
+            if (analysis.schema_version >= 2 && Array.isArray(analysis.categories)) {
+                cats = analysis.categories.map(function (c) { return c && c.category; }).filter(Boolean);
+            } else if (Array.isArray(analysis.category)) {
+                cats = analysis.category.slice();
+            }
+            return { categories: cats, subcats: [], subcatPairs: [] };
+        }
+
+        _computeHeuristicSimilarity(baseItem, candItem) {
+            if (!baseItem || !candItem || baseItem === candItem) return 0;
+            var score = 0;
+            try {
+                var info1 = this._extractCatsAndSubcats(baseItem);
+                var info2 = this._extractCatsAndSubcats(candItem);
+
+                // Category overlap
+                var catSet1 = {};
+                for (var c1 = 0; c1 < info1.categories.length; c1++) catSet1[info1.categories[c1]] = true;
+                var catInter = 0;
+                for (var c2 = 0; c2 < info2.categories.length; c2++) {
+                    if (catSet1[info2.categories[c2]]) catInter++;
+                }
+                score += catInter * 2.0;
+
+                // Subcategory pair overlap
+                var pairSet1 = {};
+                for (var p1 = 0; p1 < info1.subcatPairs.length; p1++) {
+                    pairSet1[info1.subcatPairs[p1].join('>')] = true;
+                }
+                var pairInter = 0;
+                for (var p2 = 0; p2 < info2.subcatPairs.length; p2++) {
+                    if (pairSet1[info2.subcatPairs[p2].join('>')]) pairInter++;
+                }
+                score += pairInter * 4.0;
+
+                // Channel/source boost
+                var ch1 = (baseItem.channel || '').toLowerCase().trim();
+                var ch2 = (candItem.channel || '').toLowerCase().trim();
+                if (ch1 && ch2 && ch1 === ch2) score += 1.5;
+
+                // Title token overlap
+                var t1 = this._tokenizeTitle(baseItem.title);
+                var t2 = this._tokenizeTitle(candItem.title);
+                score += 0.8 * this._jaccard(t1, t2);
+            } catch (_) { /* no-op */ }
+            return score;
+        }
+
+        // ---- Related mode: state management ----
+
+        _selectItem(videoId) {
+            if (!videoId) return;
+            if (this._selectedItemId === videoId) {
+                // Deselect
+                this._selectedItemId = null;
+                if (this._relatedMode) {
+                    this._exitRelatedMode();
+                }
+            } else {
+                this._selectedItemId = videoId;
+            }
+            this._updateSelectedVisualState();
+            this.renderTopbar();
+        }
+
+        _updateSelectedVisualState() {
+            // Remove all existing selected states
+            var prev = document.querySelectorAll('.ed-card--selected');
+            for (var i = 0; i < prev.length; i++) {
+                prev[i].classList.remove('ed-card--selected');
+            }
+            // Apply to matching card
+            if (this._selectedItemId) {
+                var card = document.querySelector('.ed-card[data-video-id="' + CSS.escape(this._selectedItemId) + '"]');
+                if (card) card.classList.add('ed-card--selected');
+            }
+        }
+
+        _getSelectedItem() {
+            if (!this._selectedItemId) return null;
+            var items = (this._relatedMode && this._baseOrderedItems) ? this._baseOrderedItems : (this.state.items || []);
+            for (var i = 0; i < items.length; i++) {
+                var id = items[i].video_id || items[i].id;
+                if (id === this._selectedItemId) return items[i];
+            }
+            return null;
+        }
+
+        _enterRelatedMode() {
+            var items = this.state.items || [];
+            if (!items.length || !this._selectedItemId) return;
+
+            // Snapshot current order
+            this._baseOrderedItems = items.slice();
+
+            // Find anchor's original index
+            this._relatedAnchorIndex = -1;
+            for (var i = 0; i < this._baseOrderedItems.length; i++) {
+                var id = this._baseOrderedItems[i].video_id || this._baseOrderedItems[i].id;
+                if (id === this._selectedItemId) {
+                    this._relatedAnchorIndex = i;
+                    break;
+                }
+            }
+            if (this._relatedAnchorIndex === -1) return;
+
+            var anchor = this._baseOrderedItems[this._relatedAnchorIndex];
+
+            // Score all other items against anchor
+            var scored = [];
+            for (var j = 0; j < this._baseOrderedItems.length; j++) {
+                if (j === this._relatedAnchorIndex) continue;
+                var sc = this._computeHeuristicSimilarity(anchor, this._baseOrderedItems[j]);
+                scored.push({ item: this._baseOrderedItems[j], score: sc });
+            }
+            scored.sort(function (a, b) { return b.score - a.score; });
+
+            // Build derived order: [anchor, ...rest by score]
+            var derived = [anchor];
+            for (var k = 0; k < scored.length; k++) {
+                derived.push(scored[k].item);
+            }
+
+            this._relatedMode = true;
+            this.state.items = derived;
+            this.render();
+            this._updateSelectedVisualState();
+        }
+
+        _exitRelatedMode() {
+            if ((this._baseOrderedItems || []).length > 0) {
+                this.state.items = this._baseOrderedItems.slice();
+            }
+            this._relatedMode = false;
+            this._baseOrderedItems = null;
+            this._relatedAnchorIndex = -1;
+            this.render();
+        }
+
         renderTopbar() {
             var search = this.mounts.topbar;
             if (!search) return;
@@ -584,6 +819,16 @@
                     (hasFilters ? ' (' + Object.keys(this.state.filters).filter(function (k) { return k !== 'category' && k !== 'subcategory' && this.state.filters[k]; }.bind(this)).length + ')' : '') + '</button>';
                 navHtml += this.renderRefineMenu();
                 navHtml += '</div>';
+
+                // Related toggle — only when a story is selected
+                if (this._selectedItemId) {
+                    navHtml += '<div class="ed-related-toggle-wrap">';
+                    navHtml += '<button class="ed-related-toggle' + (this._relatedMode ? ' ed-related-toggle--active' : '') +
+                        '" data-action="toggle-related">' +
+                        (this._relatedMode ? 'Exit Related' : 'Related') + '</button>';
+                    navHtml += '</div>';
+                }
+
                 navHtml += '<div class="ed-settings-wrap">';
                 navHtml += '<button class="ed-refine-btn" data-action="toggle-settings">Settings</button>';
                 navHtml += this.renderSettingsPanel();
@@ -897,6 +1142,39 @@
 
             // Click delegation
             document.addEventListener('click', function (e) {
+                // Related toggle
+                if (e.target.closest('[data-action="toggle-related"]')) {
+                    if (this._relatedMode) {
+                        this._exitRelatedMode();
+                        this._selectedItemId = null;
+                        this._updateSelectedVisualState();
+                        this.renderTopbar();
+                    } else {
+                        this._enterRelatedMode();
+                        this.renderTopbar();
+                    }
+                    return;
+                }
+
+                // Exit related mode (Back to Recent)
+                if (e.target.closest('[data-action="exit-related"]')) {
+                    this._exitRelatedMode();
+                    this._selectedItemId = null;
+                    this._updateSelectedVisualState();
+                    this.renderTopbar();
+                    return;
+                }
+
+                // Card selection (support/feed cards, not hero)
+                var featureCard = e.target.closest('.ed-card-feature[data-video-id]');
+                if (featureCard && !e.target.closest('[data-action]')) {
+                    var cardId = featureCard.getAttribute('data-video-id');
+                    if (cardId) {
+                        this._selectItem(cardId);
+                    }
+                    return;
+                }
+
                 // Refine toggle
                 if (e.target.closest('[data-action="toggle-refine"]')) {
                     this.toggleRefine();
