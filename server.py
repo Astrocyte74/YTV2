@@ -1939,8 +1939,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     
     def do_DELETE(self):
         """Handle DELETE requests for the new delete API endpoint"""
+        path = self.path.split('?', 1)[0]
         if self.path.startswith('/api/delete/'):
             self.handle_delete_request()
+        elif path == '/api/research/follow-up/chat-turns':
+            self.handle_follow_up_delete_chat_turns_by_run_request()
+        elif path.startswith('/api/research/follow-up/chat-turns/'):
+            self.handle_follow_up_delete_chat_turn_request()
         elif self.path.startswith('/api/quiz/'):
             self.handle_delete_quiz()
         elif self.path.startswith('/api/my/quiz/'):
@@ -6244,6 +6249,88 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def handle_follow_up_cached_request(self):
         """GET /api/research/follow-up/cached — admin-only dashboard proxy."""
         self._proxy_follow_up_get_request('/api/research/follow-up/cached')
+
+    def _proxy_follow_up_delete_request(self, endpoint_path: str):
+        """Proxy a DELETE follow-up research request to the backend FastAPI service."""
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            query_params = getattr(self, '_query_params', {})
+
+            base_url = self._get_follow_up_api_base_url()
+            if not base_url:
+                self.send_response(503)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "backend_not_configured",
+                    "message": "Deep Research requires YTV2_API_URL or BACKEND_API_URL."
+                }).encode())
+                return
+
+            target = base_url.rstrip('/') + endpoint_path
+            headers = {
+                'Accept': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
+            }
+            secret = self._get_follow_up_api_secret()
+            if secret:
+                headers['Authorization'] = f'Bearer {secret}'
+
+            user = os.getenv('NGROK_BASIC_USER', '')
+            pwd = os.getenv('NGROK_BASIC_PASS', '')
+            auth = (user, pwd) if (user or pwd) else None
+
+            # Forward query params to backend
+            backend_params = {}
+            for key in ('video_id', 'follow_up_run_id'):
+                vals = query_params.get(key)
+                if vals and vals[0]:
+                    backend_params[key] = vals[0]
+
+            try:
+                resp = requests.delete(target, headers=headers, params=backend_params, auth=auth, timeout=30)
+            except RequestException as e:
+                logger.warning("Follow-up DELETE proxy request failed for %s: %s", endpoint_path, e)
+                self.send_response(502)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "follow_up_upstream_unavailable"}).encode())
+                return
+
+            self.send_response(resp.status_code)
+            self.set_cors_headers()
+            self.send_header('Content-type', resp.headers.get('Content-Type', 'application/json'))
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(resp.content)
+        except Exception as e:
+            logger.exception("Follow-up DELETE proxy failed for %s", endpoint_path)
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "follow_up_proxy_error", "message": str(e)}).encode())
+
+    def handle_follow_up_delete_chat_turn_request(self):
+        """DELETE /api/research/follow-up/chat-turns/{turn_id} — admin-only dashboard proxy."""
+        # Extract turn_id from the path
+        path = self.path.split('?')[0]
+        parts = path.rstrip('/').split('/')
+        turn_id = parts[-1] if parts else None
+        self._proxy_follow_up_delete_request(f'/api/research/follow-up/chat-turns/{turn_id}')
+
+    def handle_follow_up_delete_chat_turns_by_run_request(self):
+        """DELETE /api/research/follow-up/chat-turns — admin-only dashboard proxy."""
+        self._proxy_follow_up_delete_request('/api/research/follow-up/chat-turns')
 
     def handle_backfill_original_prompts(self):
         """POST /api/admin/backfill-original-prompts — admin-only (DEBUG_TOKEN).
