@@ -1824,6 +1824,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.serve_audio_migration()
         elif path == '/editorial':
             self.serve_dashboard_editorial()
+        elif path == '/api/research/follow-up/thread':
+            self.handle_follow_up_thread_request()
+        elif path == '/api/research/follow-up/cached':
+            self.handle_follow_up_cached_request()
         elif path.startswith('/api/'):
             self.serve_api()
         elif path.endswith('.css'):
@@ -1886,6 +1890,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_follow_up_suggestions_request()
         elif self.path == '/api/research/follow-up/run':
             self.handle_follow_up_run_request()
+        elif self.path == '/api/research/follow-up/chat':
+            self.handle_follow_up_chat_request()
         # New ingest endpoints for NAS sync (T-Y020C)
         elif self.path == '/ingest/report':
             self.handle_ingest_report()
@@ -6141,6 +6147,84 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"error": "follow_up_proxy_error", "message": str(e)}).encode())
 
+    def _proxy_follow_up_get_request(self, endpoint_path: str):
+        """Proxy a GET follow-up research request to the backend FastAPI service."""
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            query_params = getattr(self, '_query_params', {})
+            video_id = str((query_params.get('video_id') or [''])[0]).strip()
+            if not video_id:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id required"}).encode())
+                return
+
+            base_url = self._get_follow_up_api_base_url()
+            if not base_url:
+                self.send_response(503)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "backend_not_configured",
+                    "message": "Deep Research requires YTV2_API_URL or BACKEND_API_URL."
+                }).encode())
+                return
+
+            target = base_url.rstrip('/') + endpoint_path
+            headers = {
+                'Accept': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
+            }
+            secret = self._get_follow_up_api_secret()
+            if secret:
+                headers['Authorization'] = f'Bearer {secret}'
+
+            user = os.getenv('NGROK_BASIC_USER', '')
+            pwd = os.getenv('NGROK_BASIC_PASS', '')
+            auth = (user, pwd) if (user or pwd) else None
+
+            # Forward query params to backend
+            backend_params = {}
+            for key in ('video_id', 'follow_up_run_id', 'summary_id', 'preferred_variant', 'cache_key'):
+                vals = query_params.get(key)
+                if vals and vals[0]:
+                    backend_params[key] = vals[0]
+
+            try:
+                resp = requests.get(target, headers=headers, params=backend_params, auth=auth, timeout=90)
+            except RequestException as e:
+                logger.warning("Follow-up GET proxy request failed for %s: %s", endpoint_path, e)
+                self.send_response(502)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "follow_up_upstream_unavailable"}).encode())
+                return
+
+            self.send_response(resp.status_code)
+            self.set_cors_headers()
+            self.send_header('Content-type', resp.headers.get('Content-Type', 'application/json'))
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(resp.content)
+        except Exception as e:
+            logger.exception("Follow-up GET proxy failed for %s", endpoint_path)
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "follow_up_proxy_error", "message": str(e)}).encode())
+
     def handle_follow_up_suggestions_request(self):
         """POST /api/research/follow-up/suggestions — admin-only dashboard proxy."""
         self._proxy_follow_up_request('/api/research/follow-up/suggestions')
@@ -6148,6 +6232,18 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def handle_follow_up_run_request(self):
         """POST /api/research/follow-up/run — admin-only dashboard proxy."""
         self._proxy_follow_up_request('/api/research/follow-up/run')
+
+    def handle_follow_up_chat_request(self):
+        """POST /api/research/follow-up/chat — admin-only dashboard proxy."""
+        self._proxy_follow_up_request('/api/research/follow-up/chat')
+
+    def handle_follow_up_thread_request(self):
+        """GET /api/research/follow-up/thread — admin-only dashboard proxy."""
+        self._proxy_follow_up_get_request('/api/research/follow-up/thread')
+
+    def handle_follow_up_cached_request(self):
+        """GET /api/research/follow-up/cached — admin-only dashboard proxy."""
+        self._proxy_follow_up_get_request('/api/research/follow-up/cached')
 
     def handle_backfill_original_prompts(self):
         """POST /api/admin/backfill-original-prompts — admin-only (DEBUG_TOKEN).

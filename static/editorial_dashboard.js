@@ -17,6 +17,41 @@
             .replace(/'/g, '&#039;');
     }
 
+    function renderMarkdown(text) {
+        if (!text) return '';
+        var html = escapeHtml(text);
+        // Headings: ### text
+        html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
+        html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
+        html = html.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
+        // Unordered list items: * text or - text (must come before italic/bold)
+        html = html.replace(/^[*\-]\s+(.+)$/gm, '\x01li\x02$1\x01/li\x02');
+        // Numbered list items: 1. text
+        html = html.replace(/^\d+\.\s+(.+)$/gm, '\x01li\x02$1\x01/li\x02');
+        // Collapse blank lines between consecutive list items into single newline
+        html = html.replace(/(\x01\/li\x02)\n+\x01li\x02/g, '$1\n\x01li\x02');
+        // Bold: **text**
+        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        // Italic: *text*
+        html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+        // Wrap consecutive list items in <ul>
+        html = html.replace(/(\x01li\x02[\s\S]*?\x01\/li\x02(?:\n?))+/g, function (match) {
+            return '<ul>' + match.replace(/\x01/g, '<').replace(/\x02/g, '>') + '</ul>';
+        });
+        html = html.replace(/\x01/g, '<').replace(/\x02/g, '>');
+        // Paragraphs: double newline
+        html = html.replace(/\n{2,}/g, '</p><p>');
+        // Single newline to <br>
+        html = html.replace(/\n/g, '<br>');
+        // Wrap in paragraph
+        html = '<p>' + html + '</p>';
+        // Clean up paragraphs around block elements
+        html = html.replace(/<p>\s*<(h[234]|ul)/g, '<$1');
+        html = html.replace(/<\/(h[234]|ul)>\s*<\/p>/g, '</$1>');
+        html = html.replace(/<p>\s*<\/p>/g, '');
+        return html;
+    }
+
     function formatDuration(seconds) {
         if (!seconds || seconds <= 0) return '';
         var h = Math.floor(seconds / 3600);
@@ -1689,6 +1724,47 @@
                     return;
                 }
 
+                // Research tab
+                if (e.target.closest('[data-action="show-research"]')) {
+                    this._showResearch();
+                    return;
+                }
+
+                // Research: Start Research button (empty state)
+                if (e.target.closest('[data-action="research-start"]')) {
+                    this._openResearchSuggestions();
+                    return;
+                }
+
+                // Research: Ask button (composer)
+                if (e.target.closest('[data-action="research-ask"]')) {
+                    var composer = document.querySelector('[data-research-composer]');
+                    var question = composer ? composer.value.trim() : '';
+                    if (question) this._sendResearchChat(question);
+                    return;
+                }
+
+                // Research: Run Research button (composer)
+                if (e.target.closest('[data-action="research-run"]')) {
+                    this._openResearchSuggestions();
+                    return;
+                }
+
+                // Research: Sign In button (401 state)
+                if (e.target.closest('[data-action="research-sign-in"]')) {
+                    var self = this;
+                    this.requireAdminToken(function() {
+                        self._loadResearchThread();
+                    });
+                    return;
+                }
+
+                // Research: Execute research run (modal)
+                if (e.target.closest('[data-action="research-execute"]')) {
+                    this._executeResearchRun();
+                    return;
+                }
+
                 // Transcript search
                 var transcriptSearch = e.target.closest('.ed-transcript__search-input');
                 if (transcriptSearch) {
@@ -1784,6 +1860,25 @@
                 }
             }.bind(this);
             window.addEventListener('scroll', this._scrollHandler, { passive: true });
+
+            // Research composer input — enable/disable Ask button
+            document.addEventListener('input', function (e) {
+                if (e.target.matches('[data-research-composer]')) {
+                    var askBtn = document.querySelector('[data-action="research-ask"]');
+                    if (askBtn) askBtn.disabled = !e.target.value.trim();
+                }
+            }.bind(this));
+
+            // Research composer: Enter to send (Shift+Enter for newline)
+            document.addEventListener('keydown', function (e) {
+                if (e.target.matches('[data-research-composer]') && e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    var askBtn = document.querySelector('[data-action="research-ask"]');
+                    if (askBtn && !askBtn.disabled) {
+                        askBtn.click();
+                    }
+                }
+            }.bind(this));
         }
 
         debounceSearch(query) {
@@ -1875,8 +1970,9 @@
                 summaryEl.innerHTML = v.html || v.text || '<p>No summary available.</p>';
             }
 
-            // Hide transcript, show summary
+            // Hide transcript and research, show summary
             this._hideTranscript();
+            this._hideResearch();
 
             // Update active tab
             var tabs = document.querySelectorAll('.ed-reader__variant');
@@ -1953,6 +2049,9 @@
             if (transcriptEl) transcriptEl.style.display = 'block';
             if (thumbEl) thumbEl.style.display = 'none';
 
+            // Hide research panel
+            this._hideResearch();
+
             // Update tab active states
             var tabs = document.querySelectorAll('.ed-reader__variant');
             for (var t = 0; t < tabs.length; t++) {
@@ -1983,6 +2082,577 @@
                     rows[i].style.display = 'none';
                 }
             }
+        }
+
+        // ---- Research Mode ----
+
+        _renderResearchPanel(data) {
+            var videoId = (data.video || {}).video_id || '';
+            var variants = data.summary_variants || [];
+            var hasResearch = false;
+            var researchHtml = '';
+            for (var i = 0; i < variants.length; i++) {
+                if (variants[i].variant === 'deep-research') {
+                    hasResearch = true;
+                    researchHtml = variants[i].html || variants[i].text || '';
+                    break;
+                }
+            }
+
+            var html = '<div class="ed-research" style="display:none" data-research-panel data-video-id="' + escapeHtml(videoId) + '">';
+
+            // Loading indicator
+            html += '<div class="ed-research__loading" data-research-loading style="display:none">';
+            html += '<div class="ed-research__loading-inner">Loading research...</div>';
+            html += '</div>';
+
+            // State A: Empty state (no research variant exists)
+            html += '<div class="ed-research__empty" data-research-empty' + (hasResearch ? ' style="display:none"' : '') + '>';
+            html += '<div class="ed-research__empty-inner">';
+            html += '<h3 class="ed-research__empty-title">Deep Research hasn\'t been generated yet</h3>';
+            html += '<p class="ed-research__empty-text">Deep Research turns this summary into a deeper follow-up report — digging into claims, evidence, and context. You can start from suggested questions or write your own.</p>';
+            html += '<div class="ed-research__empty-actions">';
+            html += '<button class="ed-btn ed-btn--primary" data-action="research-start">Start Research</button>';
+            html += '</div>';
+            html += '</div>';
+            html += '</div>';
+
+            // State B: Research content view (shown when variant exists)
+            html += '<div class="ed-research__thread" data-research-thread' + (!hasResearch ? ' style="display:none"' : '') + '>';
+
+            // Main research report — the variant HTML (rich formatted)
+            if (researchHtml) {
+                html += '<div class="ed-research__report">' + researchHtml + '</div>';
+            }
+
+            // Follow-up Q&A turns (loaded from thread endpoint)
+            html += '<div class="ed-research__followups" data-research-turns></div>';
+
+            // Composer bar
+            html += '<div class="ed-research__composer">';
+            html += '<textarea class="ed-research__composer-input" data-research-composer placeholder="Ask about this report..." rows="2"></textarea>';
+            html += '<div class="ed-research__composer-actions">';
+            html += '<button class="ed-btn ed-btn--primary ed-btn--sm" data-action="research-ask" disabled>Ask</button>';
+            html += '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="research-run">Run Research</button>';
+            html += '</div>';
+            html += '</div>';
+            html += '<div class="ed-research__error" data-research-error style="display:none"></div>';
+            html += '</div>';
+
+            html += '</div>';
+            return html;
+        }
+
+        _showResearch() {
+            var summaryEl = document.querySelector('.ed-reader__summary');
+            var researchEl = document.querySelector('[data-research-panel]');
+            var transcriptEl = document.querySelector('.ed-transcript');
+            var thumbEl = document.querySelector('.ed-reader__thumb');
+            if (summaryEl) summaryEl.style.display = 'none';
+            if (researchEl) researchEl.style.display = 'block';
+            if (transcriptEl) transcriptEl.style.display = 'none';
+            if (thumbEl) thumbEl.style.display = 'none';
+
+            // Update tab active states
+            var tabs = document.querySelectorAll('.ed-reader__variant');
+            for (var t = 0; t < tabs.length; t++) {
+                var isResearch = tabs[t].dataset.action === 'show-research';
+                tabs[t].classList.toggle('ed-reader__variant--active', isResearch);
+            }
+
+            // Load thread if research may exist
+            this._loadResearchThread();
+        }
+
+        _hideResearch() {
+            var researchEl = document.querySelector('[data-research-panel]');
+            if (researchEl) researchEl.style.display = 'none';
+        }
+
+        _loadResearchThread() {
+            var self = this;
+            var panel = document.querySelector('[data-research-panel]');
+            if (!panel) return;
+            var videoId = panel.dataset.videoId || '';
+            if (!videoId) return;
+
+            var loadingEl = panel.querySelector('[data-research-loading]');
+            var emptyEl = panel.querySelector('[data-research-empty]');
+            var threadEl = panel.querySelector('[data-research-thread]');
+            var reportEl = panel.querySelector('.ed-research__report');
+
+            // If we already have variant HTML, the thread view is visible from the start
+            var hasVariantReport = !!(reportEl && reportEl.innerHTML.trim());
+            if (hasVariantReport) {
+                if (threadEl) threadEl.style.display = 'block';
+                if (emptyEl) emptyEl.style.display = 'none';
+            }
+
+            if (loadingEl) loadingEl.style.display = 'block';
+
+            var token = this.getAdminToken();
+            var headers = { 'Accept': 'application/json' };
+            if (token) headers['Authorization'] = 'Bearer ' + token;
+
+            var params = new URLSearchParams({ video_id: videoId, preferred_variant: 'deep-research' });
+            fetch('/api/research/follow-up/thread?' + params.toString(), { headers: headers })
+                .then(function (resp) {
+                    if (resp.status === 401) {
+                        if (loadingEl) loadingEl.style.display = 'none';
+                        if (!hasVariantReport) {
+                            if (emptyEl) {
+                                emptyEl.style.display = 'block';
+                                emptyEl.innerHTML = '<h3 class="ed-research__empty-title">Sign in to view research</h3>' +
+                                    '<p class="ed-research__empty-text">Authenticate to access deep research for this report.</p>' +
+                                    '<div class="ed-research__empty-actions">' +
+                                    '<button class="ed-btn ed-btn--primary" data-action="research-sign-in">Sign In</button>' +
+                                    '</div>';
+                            }
+                        }
+                        return { turns: [], _auth: true };
+                    }
+                    if (resp.status === 404) return { turns: [], _notFound: true };
+                    return resp.json().then(function (data) {
+                        data._ok = resp.ok;
+                        return data;
+                    });
+                })
+                .then(function (data) {
+                    if (loadingEl) loadingEl.style.display = 'none';
+
+                    // Auth failure with no variant report → show sign-in state
+                    if (data && data._auth && !hasVariantReport) {
+                        if (emptyEl) emptyEl.style.display = 'block';
+                        if (threadEl) threadEl.style.display = 'none';
+                        return;
+                    }
+
+                    // No variant and no thread turns → show empty state
+                    if (!hasVariantReport && (!data || data._notFound || !Array.isArray(data.turns) || data.turns.length === 0)) {
+                        if (emptyEl) emptyEl.style.display = 'block';
+                        if (threadEl) threadEl.style.display = 'none';
+                        return;
+                    }
+
+                    // We have content (variant report, thread turns, or both)
+                    if (data && Array.isArray(data.turns) && data.turns.length > 0) {
+                        self._researchThreadData = data;
+                        self._researchVideoId = videoId;
+                        self._renderResearchTurns(data);
+                    }
+
+                    if (emptyEl) emptyEl.style.display = 'none';
+                    if (threadEl) threadEl.style.display = 'block';
+                })
+                .catch(function (err) {
+                    console.warn('Research thread load failed:', err);
+                    if (loadingEl) loadingEl.style.display = 'none';
+                    if (!hasVariantReport) {
+                        if (emptyEl) emptyEl.style.display = 'block';
+                    }
+                });
+        }
+
+        _renderResearchTurns(threadData) {
+            var turns = (threadData && threadData.turns) || [];
+            var turnsEl = document.querySelector('[data-research-turns]');
+            if (!turnsEl) return;
+
+            // If the variant report HTML is already shown, skip the first turn
+            // (it's the original research run — its answer duplicates the variant HTML)
+            var reportEl = document.querySelector('.ed-research__report');
+            var hasVariantReport = reportEl && reportEl.innerHTML.trim().length > 0;
+            var startIndex = hasVariantReport ? 1 : 0;
+
+            var html = '';
+            for (var i = startIndex; i < turns.length; i++) {
+                var turn = turns[i];
+                var questions = turn.approved_questions || [];
+                var answer = turn.answer || '';
+                var sources = turn.sources || [];
+                var status = turn.status || '';
+
+                if (status === 'running') {
+                    html += '<div class="ed-research__turn ed-research__turn--running">';
+                    html += '<div class="ed-research__turn-label">Research in progress</div>';
+                    html += '</div>';
+                    continue;
+                }
+
+                html += '<div class="ed-research__turn">';
+
+                // Questions as header
+                if (questions.length > 0) {
+                    html += '<div class="ed-research__turn-questions">';
+                    for (var q = 0; q < questions.length; q++) {
+                        html += '<div class="ed-research__turn-question">' + escapeHtml(questions[q]) + '</div>';
+                    }
+                    html += '</div>';
+                }
+
+                // Answer as body
+                if (answer) {
+                    html += '<div class="ed-research__turn-answer">' + renderMarkdown(answer) + '</div>';
+                }
+
+                // Sources
+                if (sources.length > 0) {
+                    html += '<div class="ed-research__turn-sources">';
+                    html += '<span class="ed-research__sources-label">Sources</span>';
+                    for (var s = 0; s < sources.length; s++) {
+                        var src = sources[s];
+                        var srcTitle = src.title || src.url || 'Source';
+                        var srcUrl = src.url || '';
+                        if (srcUrl) {
+                            html += '<a class="ed-research__source-link" href="' + escapeHtml(srcUrl) + '" target="_blank" rel="noopener">' + escapeHtml(srcTitle) + '</a>';
+                        } else {
+                            html += '<span class="ed-research__source-item">' + escapeHtml(srcTitle) + '</span>';
+                        }
+                    }
+                    html += '</div>';
+                }
+
+                html += '</div>';
+            }
+
+            turnsEl.innerHTML = html;
+        }
+
+        _sendResearchChat(question) {
+            var self = this;
+            if (!question || !question.trim()) return;
+
+            this.requireAdminToken(function (token) {
+                self._sendResearchChatWithToken(question, token);
+            });
+        }
+
+        _sendResearchChatWithToken(question, token) {
+            var self = this;
+            var panel = document.querySelector('[data-research-panel]');
+            if (!panel) return;
+            var videoId = this._researchVideoId || (panel.dataset && panel.dataset.videoId) || '';
+            var threadData = this._researchThreadData || {};
+            var currentRunId = threadData.current_follow_up_run_id || threadData.root_follow_up_run_id || null;
+
+            var askBtn = panel.querySelector('[data-action="research-ask"]');
+            var composer = panel.querySelector('[data-research-composer]');
+            var errorEl = panel.querySelector('[data-research-error]');
+            var turnsEl = panel.querySelector('[data-research-turns]');
+
+            // Disable controls
+            if (askBtn) { askBtn.disabled = true; askBtn.textContent = 'Thinking...'; }
+            if (composer) composer.disabled = true;
+            if (errorEl) errorEl.style.display = 'none';
+
+            // Show user question immediately
+            if (turnsEl) {
+                var userTurn = document.createElement('div');
+                userTurn.className = 'ed-research__turn ed-research__turn--user';
+                userTurn.innerHTML = '<div class="ed-research__turn-question">' + escapeHtml(question) + '</div>';
+                turnsEl.appendChild(userTurn);
+
+                var loadingTurn = document.createElement('div');
+                loadingTurn.className = 'ed-research__turn ed-research__turn--loading';
+                loadingTurn.innerHTML = '<div class="ed-research__turn-answer"><em>Answering...</em></div>';
+                loadingTurn.setAttribute('data-research-pending', '');
+                turnsEl.appendChild(loadingTurn);
+
+                turnsEl.scrollTop = turnsEl.scrollHeight;
+            }
+
+            // Build history from existing turns
+            var history = [];
+            var existingTurns = (threadData.turns) || [];
+            for (var h = 0; h < existingTurns.length; h++) {
+                if (existingTurns[h].answer) {
+                    if (existingTurns[h].approved_questions && existingTurns[h].approved_questions.length > 0) {
+                        history.push({ role: 'user', content: existingTurns[h].approved_questions[0] });
+                    }
+                    history.push({ role: 'assistant', content: existingTurns[h].answer });
+                }
+            }
+
+            var body = {
+                video_id: videoId,
+                preferred_variant: 'deep-research',
+                question: question,
+                history: history
+            };
+            if (currentRunId) body.follow_up_run_id = currentRunId;
+
+            fetch('/api/research/follow-up/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify(body)
+            })
+                .then(function (resp) {
+                    return resp.json().then(function (data) {
+                        data._ok = resp.ok;
+                        return data;
+                    });
+                })
+                .then(function (data) {
+                    // Remove loading indicator
+                    var pending = panel.querySelector('[data-research-pending]');
+                    if (pending) pending.remove();
+
+                    if (!data._ok) {
+                        throw new Error(data.detail || data.error || 'Chat failed');
+                    }
+
+                    // Append assistant turn
+                    if (turnsEl) {
+                        var answerTurn = document.createElement('div');
+                        answerTurn.className = 'ed-research__turn';
+                        answerTurn.innerHTML = '<div class="ed-research__turn-answer">' + renderMarkdown(data.answer || '') + '</div>';
+                        turnsEl.appendChild(answerTurn);
+                        turnsEl.scrollTop = turnsEl.scrollHeight;
+                    }
+
+                    // Update thread data for future history
+                    if (self._researchThreadData && Array.isArray(self._researchThreadData.turns)) {
+                        self._researchThreadData.turns.push({
+                            approved_questions: [question],
+                            answer: data.answer || '',
+                            sources: data.sources || []
+                        });
+                    }
+
+                    if (composer) composer.value = '';
+                })
+                .catch(function (err) {
+                    var pending = panel.querySelector('[data-research-pending]');
+                    if (pending) pending.remove();
+
+                    if (errorEl) {
+                        errorEl.textContent = err.message || 'Unable to answer.';
+                        errorEl.style.display = 'block';
+                    }
+                })
+                .finally(function () {
+                    if (askBtn) { askBtn.disabled = false; askBtn.textContent = 'Ask'; }
+                    if (composer) composer.disabled = false;
+                });
+        }
+
+        _openResearchSuggestions() {
+            var self = this;
+            var data = this._readerData || {};
+            var videoId = (data.video || {}).video_id || '';
+            if (!videoId) return;
+
+            this.requireAdminToken(function (token) {
+                self._openResearchSuggestionsWithToken(token);
+            });
+        }
+
+        _openResearchSuggestionsWithToken(token) {
+            var self = this;
+            var data = this._readerData || {};
+            var videoId = (data.video || {}).video_id || '';
+
+            var variants = data.summary_variants || [];
+            var summaryText = '';
+            for (var i = 0; i < variants.length; i++) {
+                if (variants[i].variant !== 'deep-research' && (variants[i].text || variants[i].html)) {
+                    summaryText = variants[i].text || variants[i].html;
+                    break;
+                }
+            }
+            if (!summaryText) {
+                var summary = data.summary || {};
+                summaryText = summary.text || summary.html || '';
+            }
+
+            var sourceContext = {};
+            var video = data.video || {};
+            if (video.channel) sourceContext.channel = video.channel;
+            if (video.url) sourceContext.source_url = video.url;
+            // Derive content type from URL rather than hard-coding youtube
+            var sourceUrl = video.url || '';
+            if (sourceUrl.indexOf('youtube.com') !== -1 || sourceUrl.indexOf('youtu.be') !== -1) {
+                sourceContext.content_type = 'youtube';
+            } else {
+                sourceContext.content_type = 'web';
+            }
+
+            var modalHtml = '<div class="ed-research-modal" data-research-modal>';
+            modalHtml += '<div class="ed-research-modal__header">';
+            modalHtml += '<div class="ed-research-modal__header-text">';
+            modalHtml += '<h3 class="ed-research-modal__title">Deep Research</h3>';
+            modalHtml += '<p class="ed-research-modal__subtitle">Select questions to investigate, or add your own.</p>';
+            modalHtml += '</div>';
+            modalHtml += '<button class="ed-research-modal__close" data-action="modal-cancel">&times;</button>';
+            modalHtml += '</div>';
+            modalHtml += '<div class="ed-research-modal__body">';
+            modalHtml += '<div class="ed-research-modal__status" data-research-suggest-status>Loading suggestions...</div>';
+            modalHtml += '<div class="ed-research-modal__suggestions" data-research-suggestions></div>';
+            modalHtml += '<div class="ed-research-modal__custom">';
+            modalHtml += '<label class="ed-research-modal__label">Your own question</label>';
+            modalHtml += '<textarea class="ed-research-modal__textarea" data-research-custom placeholder="What do you want to investigate?" rows="3"></textarea>';
+            modalHtml += '</div>';
+            modalHtml += '</div>';
+            modalHtml += '<div class="ed-research-modal__footer">';
+            modalHtml += '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="modal-cancel">Cancel</button>';
+            modalHtml += '<button class="ed-btn ed-btn--primary ed-btn--sm" data-action="research-execute" disabled>Run Deep Research</button>';
+            modalHtml += '</div>';
+            modalHtml += '</div>';
+
+            this.showModal(modalHtml);
+
+            // Fetch suggestions
+            var statusEl = document.querySelector('[data-research-suggest-status]');
+            var suggestEl = document.querySelector('[data-research-suggestions]');
+            var runBtn = document.querySelector('[data-action="research-execute"]');
+
+            var selectedQuestions = {};
+
+            fetch('/api/research/follow-up/suggestions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({
+                    video_id: videoId,
+                    summary: summaryText,
+                    preferred_variant: 'deep-research',
+                    source_context: sourceContext,
+                    max_suggestions: 4
+                })
+            })
+                .then(function (resp) {
+                    return resp.json().then(function (payload) {
+                        payload._ok = resp.ok;
+                        return payload;
+                    });
+                })
+                .then(function (payload) {
+                    if (!payload._ok) throw new Error(payload.detail || 'Suggestions failed');
+                    var suggestions = Array.isArray(payload.suggestions) ? payload.suggestions : [];
+                    if (statusEl) statusEl.style.display = 'none';
+
+                    if (suggestEl && suggestions.length > 0) {
+                        var shtml = '';
+                        for (var s = 0; s < suggestions.length; s++) {
+                            var sug = suggestions[s];
+                            var qText = sug.question || sug.label || '';
+                            var isSelected = sug.default_selected;
+                            if (isSelected) selectedQuestions[qText] = true;
+                            shtml += '<label class="ed-research-modal__suggestion">';
+                            shtml += '<input type="checkbox" data-research-sug value="' + escapeHtml(qText) + '"' + (isSelected ? ' checked' : '') + '>';
+                            shtml += '<span>' + escapeHtml(qText) + '</span>';
+                            shtml += '</label>';
+                        }
+                        suggestEl.innerHTML = shtml;
+                    } else if (statusEl) {
+                        statusEl.textContent = 'No suggestions available. Write your own question below.';
+                        statusEl.style.display = 'block';
+                    }
+
+                    // Enable run button if any selected
+                    if (runBtn) runBtn.disabled = Object.keys(selectedQuestions).length === 0;
+
+                    // Wire checkbox changes
+                    var checkboxes = document.querySelectorAll('[data-research-sug]');
+                    for (var c = 0; c < checkboxes.length; c++) {
+                        checkboxes[c].addEventListener('change', function () {
+                            if (this.checked) {
+                                selectedQuestions[this.value] = true;
+                            } else {
+                                delete selectedQuestions[this.value];
+                            }
+                            if (runBtn) runBtn.disabled = Object.keys(selectedQuestions).length === 0;
+                        });
+                    }
+
+                    // Wire custom textarea to enable run button
+                    var customArea = document.querySelector('[data-research-custom]');
+                    if (customArea) {
+                        customArea.addEventListener('input', function () {
+                            var hasCustom = this.value.trim().length > 0;
+                            var hasSelected = Object.keys(selectedQuestions).length > 0;
+                            if (runBtn) runBtn.disabled = !hasSelected && !hasCustom;
+                        });
+                    }
+                })
+                .catch(function (err) {
+                    if (statusEl) {
+                        statusEl.textContent = 'Could not load suggestions. Write your own question below.';
+                        statusEl.style.display = 'block';
+                    }
+                });
+
+            // Wire run button via delegated handler (see bindEvents)
+            this._researchModalState = {
+                videoId: videoId,
+                summaryText: summaryText,
+                sourceContext: sourceContext,
+                selectedQuestions: selectedQuestions,
+                token: token
+            };
+        }
+
+        _executeResearchRun() {
+            var self = this;
+            var state = this._researchModalState || {};
+            var videoId = state.videoId || '';
+            var summaryText = state.summaryText || '';
+            var sourceContext = state.sourceContext || {};
+            var selectedQuestions = state.selectedQuestions || {};
+            var token = state.token || '';
+
+            var customEl = document.querySelector('[data-research-custom]');
+            var customText = customEl ? customEl.value.trim() : '';
+
+            var questions = Object.keys(selectedQuestions);
+            var provenance = questions.map(function () { return 'suggested'; });
+            if (customText) {
+                questions.push(customText);
+                provenance.push('custom');
+            }
+
+            if (questions.length === 0) return;
+
+            var runBtn = document.querySelector('[data-action="research-execute"]');
+            if (runBtn) { runBtn.disabled = true; runBtn.textContent = 'Running...'; }
+
+            fetch('/api/research/follow-up/run', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({
+                    video_id: videoId,
+                    summary: summaryText,
+                    preferred_variant: 'deep-research',
+                    source_context: sourceContext,
+                    approved_questions: questions,
+                    question_provenance: provenance,
+                    provider_mode: 'auto',
+                    depth: 'balanced'
+                })
+            })
+                .then(function (resp) {
+                    return resp.json().then(function (data) {
+                        data._ok = resp.ok;
+                        return data;
+                    });
+                })
+                .then(function (data) {
+                    if (!data._ok) throw new Error(data.detail || data.error || 'Research failed');
+                    self.closeModal();
+                    self.showToast('Deep Research started — it will appear here when ready.', 'success');
+                })
+                .catch(function (err) {
+                    if (runBtn) { runBtn.disabled = false; runBtn.textContent = 'Run Deep Research'; }
+                    self.showToast('Research failed: ' + err.message, 'error');
+                });
         }
 
         renderReaderContent(data) {
@@ -2087,16 +2757,30 @@
                 html += '<button class="ed-btn ed-btn--ghost ed-btn--sm ed-reader__listen-btn" data-action="play-audio" data-audio-url="' + escapeHtml(audioUrl) + '">▶ Listen</button>';
             }
 
-            // Variant tabs + Transcript tab
-            var showTabs = this._readerVariants.length > 1 || this._readerHasTranscript;
+            // Variant tabs + Research tab + Transcript tab
+            // Filter out deep-research variant — it gets its own dedicated Research tab
+            var displayVariants = [];
+            for (var fi = 0; fi < this._readerVariants.length; fi++) {
+                if (this._readerVariants[fi].variant !== 'deep-research') {
+                    displayVariants.push(this._readerVariants[fi]);
+                }
+            }
+            // Always show tabs (Research tab is always present)
+            var showTabs = true;
             if (showTabs) {
                 html += '<div class="ed-reader__variants">';
+                // Remap variant indices to display-only (skip deep-research)
+                var displayIdx = 0;
                 for (var ti = 0; ti < this._readerVariants.length; ti++) {
+                    if (this._readerVariants[ti].variant === 'deep-research') continue;
                     var vSlug = this._readerVariants[ti].variant || '';
                     var vLabel = humanizeVariant(vSlug);
-                    html += '<button class="ed-reader__variant' + (ti === 0 ? ' ed-reader__variant--active' : '') +
+                    html += '<button class="ed-reader__variant' + (displayIdx === 0 ? ' ed-reader__variant--active' : '') +
                         '" data-action="switch-variant" data-variant-idx="' + ti + '">' + escapeHtml(vLabel) + '</button>';
+                    displayIdx++;
                 }
+                // Always add Research tab
+                html += '<button class="ed-reader__variant" data-action="show-research">Research</button>';
                 if (this._readerHasTranscript) {
                     html += '<button class="ed-reader__variant" data-action="show-transcript">Transcript</button>';
                 }
@@ -2110,6 +2794,9 @@
 
             // Summary content
             html += '<div class="ed-reader__summary">' + summaryHtml + '</div>';
+
+            // Research panel (hidden by default, shown when Research tab clicked)
+            html += this._renderResearchPanel(data);
 
             // Transcript content (hidden by default, shown when tab clicked)
             if (this._readerHasTranscript) {
