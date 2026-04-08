@@ -2648,6 +2648,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "variants": enriched_variants
                 },
                 "thumbnail_url": report_data.get('thumbnail_url', ''),
+                "summary_image_url": report_data.get('summary_image_url') or None,
                 "analysis": report_data.get('analysis_json') or report_data.get('analysis', {}),
                 "subcategories_json": report_data.get('subcategories_json'),
                 "has_audio": bool(computed_has_audio),

@@ -1769,6 +1769,14 @@ body {
 .ed-modal--admin .ed-modal__footer {
     background: rgba(255, 255, 255, 0.01);
 }
+.ed-modal--admin .ed-modal__title {
+    color: #e2e8f0;
+}
+.ed-modal--admin .ed-modal__body,
+.ed-modal--admin .ed-confirm-body,
+.ed-modal--admin .ed-modal__body p {
+    color: #94a3b8;
+}
 .ed-modal__body {
     padding: var(--ed-space-sm) var(--ed-space-md);
     overflow-y: auto;
@@ -2936,6 +2944,27 @@ body {
 }
 .ed-research__turn-menu-item:hover {
     background: rgba(248, 113, 113, 0.1);
+}
+
+/* ---- Markdown Tables ---- */
+.md-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: var(--ed-space-xs) 0;
+    font-size: 0.85em;
+}
+.md-table th,
+.md-table td {
+    border: 1px solid var(--ed-color-border);
+    padding: 6px 10px;
+    text-align: left;
+}
+.md-table th {
+    background: var(--ed-color-bg-subtle, rgba(0,0,0,0.04));
+    font-weight: 600;
+}
+.md-table tr:nth-child(even) td {
+    background: var(--ed-color-bg-subtle, rgba(0,0,0,0.02));
 }
 
 /* ---- Composer Bar ---- */

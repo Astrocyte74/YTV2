@@ -20,6 +20,27 @@
     function renderMarkdown(text) {
         if (!text) return '';
         var html = escapeHtml(text);
+
+        // Markdown tables: | col | col |\n|---|---|\n| cell | cell |
+        html = html.replace(/((?:^\|.+\|[ ]*\n)+)/gm, function (block) {
+            var rows = block.trim().split('\n');
+            var tableHtml = '<table class="md-table"><tbody>';
+            var isHeader = true;
+            for (var r = 0; r < rows.length; r++) {
+                var row = rows[r].trim();
+                var cells = row.replace(/^\|/, '').replace(/\|$/, '').split('|');
+                // Skip separator row: all cells are only dashes, colons, or spaces
+                var allSep = cells.every(function (c) { return /^[\s\-:]+$/.test(c); });
+                if (allSep) { isHeader = false; continue; }
+                var tag = isHeader ? 'th' : 'td';
+                tableHtml += '<tr>' + cells.map(function (c) {
+                    return '<' + tag + '>' + c.trim() + '</' + tag + '>';
+                }).join('') + '</tr>';
+            }
+            tableHtml += '</tbody></table>';
+            return tableHtml + '\n';
+        });
+
         // Headings: ### text
         html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
         html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
@@ -46,8 +67,8 @@
         // Wrap in paragraph
         html = '<p>' + html + '</p>';
         // Clean up paragraphs around block elements
-        html = html.replace(/<p>\s*<(h[234]|ul)/g, '<$1');
-        html = html.replace(/<\/(h[234]|ul)>\s*<\/p>/g, '</$1>');
+        html = html.replace(/<p>\s*<(h[234]|ul|table)/g, '<$1');
+        html = html.replace(/<\/(h[234]|ul|table)>\s*<\/p>/g, '</$1>');
         html = html.replace(/<p>\s*<\/p>/g, '');
         return html;
     }
@@ -1664,6 +1685,10 @@
                     this.executeDelete();
                     return;
                 }
+                if (e.target.closest('[data-action="confirm-clear-chat"]')) {
+                    this._executeClearChat();
+                    return;
+                }
                 if (e.target.closest('[data-action="confirm-regenerate"]')) {
                     this.executeRegenerate();
                     return;
@@ -2389,7 +2414,7 @@
             var self = this;
             var panel = document.querySelector('[data-research-panel]');
             if (!panel) return;
-            var videoId = this._researchVideoId || (panel.dataset && panel.dataset.videoId) || '';
+            var videoId = (panel.dataset && panel.dataset.videoId) || this._researchVideoId || '';
             var threadData = this._researchThreadData || {};
             var currentRunId = threadData.current_follow_up_run_id || threadData.root_follow_up_run_id || null;
 
@@ -2560,21 +2585,43 @@
         }
 
         _clearAllChatTurns() {
+            var threadData = this._researchThreadData || {};
+            var runId = threadData.current_follow_up_run_id || threadData.root_follow_up_run_id;
+            var videoId = threadData.video_id || this._currentVideoId;
+            if (!runId && !videoId) return;
+
+            this.showConfirm(
+                'Clear chat history',
+                '<p>Delete all chat history for this thread? This cannot be undone.</p>',
+                'confirm-clear-chat',
+                'Clear All'
+            );
+        }
+
+        _executeClearChat() {
             var self = this;
             var threadData = this._researchThreadData || {};
             var runId = threadData.current_follow_up_run_id || threadData.root_follow_up_run_id;
-            if (!runId) return;
+            var videoId = threadData.video_id || this._currentVideoId;
 
-            if (!confirm('Delete all chat history for this research thread?')) return;
+            var btn = document.querySelector('[data-action="confirm-clear-chat"]');
+            if (btn) { btn.disabled = true; btn.textContent = 'Clearing...'; }
 
             this.requireAdminToken(function (token) {
-                fetch('/api/research/follow-up/chat-turns?follow_up_run_id=' + runId, {
+                var url = '/api/research/follow-up/chat-turns?';
+                if (runId) {
+                    url += 'follow_up_run_id=' + runId;
+                } else {
+                    url += 'video_id=' + videoId;
+                }
+                fetch(url, {
                     method: 'DELETE',
                     headers: { 'Authorization': 'Bearer ' + token }
                 })
                     .then(function (resp) { return resp.json(); })
                     .then(function (data) {
                         if (data.deleted) {
+                            self.closeModal();
                             // Remove all chat pair elements from DOM
                             var pairs = document.querySelectorAll('.ed-research__chat-pair');
                             for (var p = 0; p < pairs.length; p++) pairs[p].remove();
