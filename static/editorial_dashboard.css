@@ -2867,6 +2867,77 @@ body {
     font-style: italic;
 }
 
+/* ---- Research Hint (no research yet) ---- */
+.ed-research__hint {
+    padding: var(--ed-space-sm) 0;
+}
+.ed-research__hint-text {
+    font-size: 0.85rem;
+    color: var(--ed-color-muted);
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* ---- Chat Turn Delete UI ---- */
+.ed-research__chat-pair {
+    /* Wrapper for a user Q + assistant A pair */
+}
+
+.ed-research__turn--assistant {
+    position: relative;
+}
+
+.ed-research__turn-menu {
+    position: absolute;
+    top: var(--ed-space-xs);
+    right: var(--ed-space-xs);
+    background: none;
+    border: none;
+    color: var(--ed-color-muted);
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0.15rem 0.35rem;
+    border-radius: var(--ed-radius-sm);
+    opacity: 0;
+    transition: opacity var(--ed-transition-fast);
+}
+.ed-research__turn--assistant:hover .ed-research__turn-menu {
+    opacity: 1;
+}
+.ed-research__turn-menu:hover {
+    background: var(--ed-color-border);
+    color: var(--ed-color-text);
+}
+
+.ed-research__turn-menu-dropdown {
+    position: absolute;
+    top: 1.6rem;
+    right: var(--ed-space-xs);
+    z-index: 10;
+    background: var(--ed-color-surface);
+    border: 1px solid var(--ed-color-border);
+    border-radius: var(--ed-radius-sm);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+.ed-research__turn-menu-item {
+    display: block;
+    width: 100%;
+    padding: 0.35rem 0.7rem;
+    background: none;
+    border: none;
+    color: #f87171;
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+}
+.ed-research__turn-menu-item:hover {
+    background: rgba(248, 113, 113, 0.1);
+}
+
 /* ---- Composer Bar ---- */
 .ed-research__composer {
     margin-top: var(--ed-space-sm);

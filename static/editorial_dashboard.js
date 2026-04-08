@@ -1765,6 +1765,35 @@
                     return;
                 }
 
+                // Chat turn menu toggle
+                if (e.target.closest('[data-action="chat-turn-menu"]')) {
+                    var menuBtn = e.target.closest('[data-action="chat-turn-menu"]');
+                    var dropdown = menuBtn.parentElement.querySelector('.ed-research__turn-menu-dropdown');
+                    if (dropdown) {
+                        // Close all other dropdowns first
+                        var allDropdowns = document.querySelectorAll('.ed-research__turn-menu-dropdown');
+                        for (var dd = 0; dd < allDropdowns.length; dd++) {
+                            if (allDropdowns[dd] !== dropdown) allDropdowns[dd].style.display = 'none';
+                        }
+                        dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+                    }
+                    return;
+                }
+
+                // Chat turn delete
+                if (e.target.closest('[data-action="delete-chat-turn"]')) {
+                    var delBtn = e.target.closest('[data-action="delete-chat-turn"]');
+                    var turnId = delBtn.dataset.turnId;
+                    if (turnId) this._deleteChatTurn(turnId);
+                    return;
+                }
+
+                // Clear all chat
+                if (e.target.closest('[data-action="clear-chat-history"]')) {
+                    this._clearAllChatTurns();
+                    return;
+                }
+
                 // Transcript search
                 var transcriptSearch = e.target.closest('.ed-transcript__search-input');
                 if (transcriptSearch) {
@@ -1839,6 +1868,12 @@
                             this._enterRelatedMode();
                         }
                     }
+                }
+
+                // Close any open chat turn menus on outside click
+                if (!e.target.closest('[data-action="chat-turn-menu"]') && !e.target.closest('.ed-research__turn-menu-dropdown')) {
+                    var openMenus = document.querySelectorAll('.ed-research__turn-menu-dropdown');
+                    for (var om = 0; om < openMenus.length; om++) openMenus[om].style.display = 'none';
                 }
             }.bind(this));
 
@@ -2106,18 +2141,7 @@
             html += '<div class="ed-research__loading-inner">Loading research...</div>';
             html += '</div>';
 
-            // State A: Empty state (no research variant exists)
-            html += '<div class="ed-research__empty" data-research-empty' + (hasResearch ? ' style="display:none"' : '') + '>';
-            html += '<div class="ed-research__empty-inner">';
-            html += '<h3 class="ed-research__empty-title">Deep Research hasn\'t been generated yet</h3>';
-            html += '<p class="ed-research__empty-text">Deep Research turns this summary into a deeper follow-up report — digging into claims, evidence, and context. You can start from suggested questions or write your own.</p>';
-            html += '<div class="ed-research__empty-actions">';
-            html += '<button class="ed-btn ed-btn--primary" data-action="research-start">Start Research</button>';
-            html += '</div>';
-            html += '</div>';
-            html += '</div>';
-
-            // State B: Research content view (shown when variant exists)
+            // Research report + turns (hidden until thread loads)
             html += '<div class="ed-research__thread" data-research-thread' + (!hasResearch ? ' style="display:none"' : '') + '>';
 
             // Main research report — the variant HTML (rich formatted)
@@ -2128,16 +2152,23 @@
             // Follow-up Q&A turns (loaded from thread endpoint)
             html += '<div class="ed-research__followups" data-research-turns></div>';
 
-            // Composer bar
+            html += '</div>'; // .ed-research__thread
+
+            // Lightweight hint when no research exists yet
+            html += '<div class="ed-research__hint" data-research-hint' + (hasResearch ? ' style="display:none"' : '') + '>';
+            html += '<p class="ed-research__hint-text">Ask questions about this report. Run deeper research anytime.</p>';
+            html += '</div>';
+
+            // Composer bar — always visible
             html += '<div class="ed-research__composer">';
             html += '<textarea class="ed-research__composer-input" data-research-composer placeholder="Ask about this report..." rows="2"></textarea>';
             html += '<div class="ed-research__composer-actions">';
             html += '<button class="ed-btn ed-btn--primary ed-btn--sm" data-action="research-ask" disabled>Ask</button>';
             html += '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="research-run">Run Research</button>';
+            html += '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="clear-chat-history" style="display:none">Clear Chat</button>';
             html += '</div>';
             html += '</div>';
             html += '<div class="ed-research__error" data-research-error style="display:none"></div>';
-            html += '</div>';
 
             html += '</div>';
             return html;
@@ -2177,15 +2208,15 @@
             if (!videoId) return;
 
             var loadingEl = panel.querySelector('[data-research-loading]');
-            var emptyEl = panel.querySelector('[data-research-empty]');
             var threadEl = panel.querySelector('[data-research-thread]');
+            var hintEl = panel.querySelector('[data-research-hint]');
             var reportEl = panel.querySelector('.ed-research__report');
 
             // If we already have variant HTML, the thread view is visible from the start
             var hasVariantReport = !!(reportEl && reportEl.innerHTML.trim());
             if (hasVariantReport) {
                 if (threadEl) threadEl.style.display = 'block';
-                if (emptyEl) emptyEl.style.display = 'none';
+                if (hintEl) hintEl.style.display = 'none';
             }
 
             if (loadingEl) loadingEl.style.display = 'block';
@@ -2198,17 +2229,7 @@
             fetch('/api/research/follow-up/thread?' + params.toString(), { headers: headers })
                 .then(function (resp) {
                     if (resp.status === 401) {
-                        if (loadingEl) loadingEl.style.display = 'none';
-                        if (!hasVariantReport) {
-                            if (emptyEl) {
-                                emptyEl.style.display = 'block';
-                                emptyEl.innerHTML = '<h3 class="ed-research__empty-title">Sign in to view research</h3>' +
-                                    '<p class="ed-research__empty-text">Authenticate to access deep research for this report.</p>' +
-                                    '<div class="ed-research__empty-actions">' +
-                                    '<button class="ed-btn ed-btn--primary" data-action="research-sign-in">Sign In</button>' +
-                                    '</div>';
-                            }
-                        }
+                        // Composer stays visible; just note auth is needed
                         return { turns: [], _auth: true };
                     }
                     if (resp.status === 404) return { turns: [], _notFound: true };
@@ -2220,41 +2241,33 @@
                 .then(function (data) {
                     if (loadingEl) loadingEl.style.display = 'none';
 
-                    // Auth failure with no variant report → show sign-in state
-                    if (data && data._auth && !hasVariantReport) {
-                        if (emptyEl) emptyEl.style.display = 'block';
-                        if (threadEl) threadEl.style.display = 'none';
-                        return;
-                    }
-
-                    // No variant and no thread turns → show empty state
-                    if (!hasVariantReport && (!data || data._notFound || !Array.isArray(data.turns) || data.turns.length === 0)) {
-                        if (emptyEl) emptyEl.style.display = 'block';
-                        if (threadEl) threadEl.style.display = 'none';
-                        return;
-                    }
-
-                    // We have content (variant report, thread turns, or both)
-                    if (data && Array.isArray(data.turns) && data.turns.length > 0) {
+                    // We have content (variant report, thread turns, or chat turns)
+                    var hasTurns = data && Array.isArray(data.turns) && data.turns.length > 0;
+                    var hasChatTurns = data && Array.isArray(data.chat_turns) && data.chat_turns.length > 0;
+                    if (hasTurns || hasChatTurns || hasVariantReport) {
                         self._researchThreadData = data;
                         self._researchVideoId = videoId;
-                        self._renderResearchTurns(data);
+                        if (hasTurns || hasChatTurns) {
+                            self._renderResearchTurns(data);
+                            self._updateClearChatButton();
+                        }
+                        if (threadEl) threadEl.style.display = 'block';
+                        if (hintEl) hintEl.style.display = 'none';
+                    } else {
+                        // No research yet — show the hint, composer stays visible
+                        if (threadEl) threadEl.style.display = 'none';
+                        if (hintEl) hintEl.style.display = 'block';
                     }
-
-                    if (emptyEl) emptyEl.style.display = 'none';
-                    if (threadEl) threadEl.style.display = 'block';
                 })
                 .catch(function (err) {
                     console.warn('Research thread load failed:', err);
                     if (loadingEl) loadingEl.style.display = 'none';
-                    if (!hasVariantReport) {
-                        if (emptyEl) emptyEl.style.display = 'block';
-                    }
                 });
         }
 
         _renderResearchTurns(threadData) {
             var turns = (threadData && threadData.turns) || [];
+            var chatTurns = (threadData && threadData.chat_turns) || [];
             var turnsEl = document.querySelector('[data-research-turns]');
             if (!turnsEl) return;
 
@@ -2315,6 +2328,51 @@
                 html += '</div>';
             }
 
+            // Render persisted chat turns (user Q + assistant A pairs)
+            for (var c = 0; c < chatTurns.length; c++) {
+                var ct = chatTurns[c];
+                var ctId = ct.id || '';
+                var ctQuestion = ct.question || '';
+                var ctAnswer = ct.answer || '';
+                var ctSources = ct.sources || [];
+
+                // Wrap pair in a container for grouping
+                html += '<div class="ed-research__chat-pair" data-chat-turn-id="' + ctId + '">';
+
+                // User question
+                html += '<div class="ed-research__turn ed-research__turn--user">';
+                html += '<div class="ed-research__turn-question">' + escapeHtml(ctQuestion) + '</div>';
+                html += '</div>';
+
+                // Assistant answer
+                html += '<div class="ed-research__turn ed-research__turn--assistant">';
+                html += '<button class="ed-research__turn-menu" data-action="chat-turn-menu" title="Options">&hellip;</button>';
+                html += '<div class="ed-research__turn-menu-dropdown" style="display:none">';
+                html += '<button class="ed-research__turn-menu-item" data-action="delete-chat-turn" data-turn-id="' + ctId + '">Delete</button>';
+                html += '</div>';
+                if (ctAnswer) {
+                    html += '<div class="ed-research__turn-answer">' + renderMarkdown(ctAnswer) + '</div>';
+                }
+                if (ctSources.length > 0) {
+                    html += '<div class="ed-research__turn-sources">';
+                    html += '<span class="ed-research__sources-label">Sources</span>';
+                    for (var cs = 0; cs < ctSources.length; cs++) {
+                        var ctSrc = ctSources[cs];
+                        var ctSrcTitle = ctSrc.title || ctSrc.url || ctSrc.name || 'Source';
+                        var ctSrcUrl = ctSrc.url || '';
+                        if (ctSrcUrl) {
+                            html += '<a class="ed-research__source-link" href="' + escapeHtml(ctSrcUrl) + '" target="_blank" rel="noopener">' + escapeHtml(ctSrcTitle) + '</a>';
+                        } else {
+                            html += '<span class="ed-research__source-item">' + escapeHtml(ctSrcTitle) + '</span>';
+                        }
+                    }
+                    html += '</div>';
+                }
+                html += '</div>'; // .ed-research__turn--assistant
+
+                html += '</div>'; // .ed-research__chat-pair
+            }
+
             turnsEl.innerHTML = html;
         }
 
@@ -2345,6 +2403,12 @@
             if (composer) composer.disabled = true;
             if (errorEl) errorEl.style.display = 'none';
 
+            // Make sure thread container is visible and hint is hidden
+            var threadContainer = panel.querySelector('[data-research-thread]');
+            if (threadContainer) threadContainer.style.display = 'block';
+            var hintEl = panel.querySelector('[data-research-hint]');
+            if (hintEl) hintEl.style.display = 'none';
+
             // Show user question immediately
             if (turnsEl) {
                 var userTurn = document.createElement('div');
@@ -2361,7 +2425,7 @@
                 turnsEl.scrollTop = turnsEl.scrollHeight;
             }
 
-            // Build history from existing turns
+            // Build history from research turns and persisted chat turns
             var history = [];
             var existingTurns = (threadData.turns) || [];
             for (var h = 0; h < existingTurns.length; h++) {
@@ -2370,6 +2434,16 @@
                         history.push({ role: 'user', content: existingTurns[h].approved_questions[0] });
                     }
                     history.push({ role: 'assistant', content: existingTurns[h].answer });
+                }
+            }
+            // Include persisted chat turns in history
+            var existingChatTurns = (threadData.chat_turns) || [];
+            for (var ct = 0; ct < existingChatTurns.length; ct++) {
+                if (existingChatTurns[ct].question) {
+                    history.push({ role: 'user', content: existingChatTurns[ct].question });
+                }
+                if (existingChatTurns[ct].answer) {
+                    history.push({ role: 'assistant', content: existingChatTurns[ct].answer });
                 }
             }
 
@@ -2381,62 +2455,148 @@
             };
             if (currentRunId) body.follow_up_run_id = currentRunId;
 
-            fetch('/api/research/follow-up/chat', {
-                method: 'POST',
+            // Streaming fetch with Mercury 2 diffusing
+            // NOTE: SimpleHTTP proxy buffers SSE, so we use non-streaming endpoint
+            // and render the full answer when it arrives.
+            var streamUrl = '/api/research/follow-up/chat/stream';
+            var useStream = false; // TODO: enable when dashboard moves to ASGI
+
+            var fetchUrl = useStream ? streamUrl : '/api/research/follow-up/chat';
+            var fetchMethod = 'POST';
+
+            fetch(fetchUrl, {
+                method: fetchMethod,
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': 'Bearer ' + token
                 },
                 body: JSON.stringify(body)
-            })
-                .then(function (resp) {
-                    return resp.json().then(function (data) {
-                        data._ok = resp.ok;
-                        return data;
+            }).then(function (resp) {
+                if (!resp.ok) {
+                    return resp.text().then(function (text) {
+                        var msg = 'Chat failed';
+                        try { msg = JSON.parse(text).detail || JSON.parse(text).error || msg; } catch (e) {}
+                        throw new Error(msg);
                     });
-                })
-                .then(function (data) {
+                }
+
+                if (useStream && resp.body && resp.body.getReader) {
+                    // Streaming path — will be enabled with ASGI server
+                    return handleStreamResponse(resp);
+                }
+
+                // Standard JSON response path
+                return resp.json().then(function (data) {
                     // Remove loading indicator
                     var pending = panel.querySelector('[data-research-pending]');
                     if (pending) pending.remove();
 
-                    if (!data._ok) {
-                        throw new Error(data.detail || data.error || 'Chat failed');
-                    }
-
                     // Append assistant turn
                     if (turnsEl) {
                         var answerTurn = document.createElement('div');
-                        answerTurn.className = 'ed-research__turn';
+                        answerTurn.className = 'ed-research__turn ed-research__turn--assistant';
                         answerTurn.innerHTML = '<div class="ed-research__turn-answer">' + renderMarkdown(data.answer || '') + '</div>';
                         turnsEl.appendChild(answerTurn);
                         turnsEl.scrollTop = turnsEl.scrollHeight;
                     }
 
                     // Update thread data for future history
-                    if (self._researchThreadData && Array.isArray(self._researchThreadData.turns)) {
-                        self._researchThreadData.turns.push({
-                            approved_questions: [question],
+                    if (self._researchThreadData) {
+                        if (!Array.isArray(self._researchThreadData.chat_turns)) {
+                            self._researchThreadData.chat_turns = [];
+                        }
+                        self._researchThreadData.chat_turns.push({
+                            question: question,
                             answer: data.answer || '',
                             sources: data.sources || []
                         });
                     }
 
                     if (composer) composer.value = '';
-                })
-                .catch(function (err) {
-                    var pending = panel.querySelector('[data-research-pending]');
-                    if (pending) pending.remove();
-
-                    if (errorEl) {
-                        errorEl.textContent = err.message || 'Unable to answer.';
-                        errorEl.style.display = 'block';
-                    }
-                })
-                .finally(function () {
                     if (askBtn) { askBtn.disabled = false; askBtn.textContent = 'Ask'; }
                     if (composer) composer.disabled = false;
                 });
+            }).catch(function (err) {
+                var pending = panel.querySelector('[data-research-pending]');
+                if (pending) pending.remove();
+
+                if (errorEl) {
+                    errorEl.textContent = err.message || 'Unable to answer.';
+                    errorEl.style.display = 'block';
+                }
+                if (askBtn) { askBtn.disabled = false; askBtn.textContent = 'Ask'; }
+                if (composer) composer.disabled = false;
+            });
+        }
+
+        _deleteChatTurn(turnId) {
+            var self = this;
+            this.requireAdminToken(function (token) {
+                fetch('/api/research/follow-up/chat-turns/' + turnId, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                })
+                    .then(function (resp) { return resp.json(); })
+                    .then(function (data) {
+                        if (data.deleted) {
+                            // Remove from DOM
+                            var pair = document.querySelector('[data-chat-turn-id="' + turnId + '"]');
+                            if (pair) pair.remove();
+
+                            // Remove from local state
+                            if (self._researchThreadData && Array.isArray(self._researchThreadData.chat_turns)) {
+                                self._researchThreadData.chat_turns = self._researchThreadData.chat_turns.filter(function (ct) {
+                                    return String(ct.id) !== String(turnId);
+                                });
+                            }
+
+                            self._updateClearChatButton();
+                        }
+                    })
+                    .catch(function (err) {
+                        console.warn('Failed to delete chat turn:', err);
+                    });
+            });
+        }
+
+        _clearAllChatTurns() {
+            var self = this;
+            var threadData = this._researchThreadData || {};
+            var runId = threadData.current_follow_up_run_id || threadData.root_follow_up_run_id;
+            if (!runId) return;
+
+            if (!confirm('Delete all chat history for this research thread?')) return;
+
+            this.requireAdminToken(function (token) {
+                fetch('/api/research/follow-up/chat-turns?follow_up_run_id=' + runId, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                })
+                    .then(function (resp) { return resp.json(); })
+                    .then(function (data) {
+                        if (data.deleted) {
+                            // Remove all chat pair elements from DOM
+                            var pairs = document.querySelectorAll('.ed-research__chat-pair');
+                            for (var p = 0; p < pairs.length; p++) pairs[p].remove();
+
+                            // Clear local state
+                            if (self._researchThreadData) {
+                                self._researchThreadData.chat_turns = [];
+                            }
+
+                            self._updateClearChatButton();
+                        }
+                    })
+                    .catch(function (err) {
+                        console.warn('Failed to clear chat history:', err);
+                    });
+            });
+        }
+
+        _updateClearChatButton() {
+            var chatTurns = (this._researchThreadData && this._researchThreadData.chat_turns) || [];
+            var btn = document.querySelector('[data-action="clear-chat-history"]');
+            if (btn) btn.style.display = chatTurns.length > 0 ? '' : 'none';
         }
 
         _openResearchSuggestions() {

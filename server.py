@@ -1892,6 +1892,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_follow_up_run_request()
         elif self.path == '/api/research/follow-up/chat':
             self.handle_follow_up_chat_request()
+        elif self.path == '/api/research/follow-up/chat/stream':
+            self.handle_follow_up_chat_stream_request()
         # New ingest endpoints for NAS sync (T-Y020C)
         elif self.path == '/ingest/report':
             self.handle_ingest_report()
@@ -1939,7 +1941,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     
     def do_DELETE(self):
         """Handle DELETE requests for the new delete API endpoint"""
-        path = self.path.split('?', 1)[0]
+        parsed_url = urlparse(self.path)
+        path = parsed_url.path
+        self._query_params = parse_qs(parsed_url.query)
         if self.path.startswith('/api/delete/'):
             self.handle_delete_request()
         elif path == '/api/research/follow-up/chat-turns':
@@ -6241,6 +6245,81 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def handle_follow_up_chat_request(self):
         """POST /api/research/follow-up/chat — admin-only dashboard proxy."""
         self._proxy_follow_up_request('/api/research/follow-up/chat')
+
+    def handle_follow_up_chat_stream_request(self):
+        """POST /api/research/follow-up/chat/stream — streaming proxy for Mercury 2 diffusing."""
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            data = self._read_json_body()
+            if data is None:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "invalid_json"}).encode())
+                return
+
+            base_url = self._get_follow_up_api_base_url()
+            if not base_url:
+                self.send_response(503)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "backend_not_configured"}).encode())
+                return
+
+            target = base_url.rstrip('/') + '/api/research/follow-up/chat/stream'
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'text/event-stream',
+                'ngrok-skip-browser-warning': 'true',
+            }
+            secret = self._get_follow_up_api_secret()
+            if secret:
+                headers['Authorization'] = f'Bearer {secret}'
+
+            user = os.getenv('NGROK_BASIC_USER', '')
+            pwd = os.getenv('NGROK_BASIC_PASS', '')
+            auth = (user, pwd) if (user or pwd) else None
+
+            resp = requests.post(target, headers=headers, json=data, auth=auth, timeout=120, stream=True)
+            if resp.status_code != 200:
+                self.send_response(resp.status_code)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(resp.content)
+                return
+
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'text/event-stream')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Connection', 'keep-alive')
+            self.end_headers()
+
+            for chunk in resp.iter_content(chunk_size=None):
+                if chunk:
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+
+        except Exception as e:
+            logger.exception("Follow-up stream proxy failed: %s", e)
+            try:
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "stream_proxy_error", "message": str(e)}).encode())
+            except Exception:
+                pass
 
     def handle_follow_up_thread_request(self):
         """GET /api/research/follow-up/thread — admin-only dashboard proxy."""
