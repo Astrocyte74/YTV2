@@ -2537,6 +2537,8 @@
                         });
                     }
 
+                    self._updateClearChatButton();
+
                     if (composer) composer.value = '';
                     if (askBtn) { askBtn.disabled = false; askBtn.textContent = 'Ask'; }
                     if (composer) composer.disabled = false;
