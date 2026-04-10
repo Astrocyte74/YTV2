@@ -17,60 +17,96 @@
             .replace(/'/g, '&#039;');
     }
 
+    // Configure markdown-it once (table support, no raw HTML for safety)
+    var _mdInstance = null;
+    function _getMdInstance() {
+        if (!_mdInstance) {
+            _mdInstance = window.markdownit({
+                html: false,
+                linkify: true,
+                typographer: false,
+                breaks: false
+            });
+            _mdInstance.enable('table');
+
+            // Add md-table class to rendered tables for existing CSS
+            var defaultTableOpen = _mdInstance.renderer.rules.table_open;
+            _mdInstance.renderer.rules.table_open = function (tokens, idx, options, env, self) {
+                tokens[idx].attrPush(['class', 'md-table']);
+                if (defaultTableOpen) {
+                    return defaultTableOpen(tokens, idx, options, env, self);
+                }
+                return self.renderToken(tokens, idx, options);
+            };
+
+            // Auto-add target="_blank" rel="noopener" to all links
+            var defaultLinkOpen = _mdInstance.renderer.rules.link_open || function (tokens, idx, options, env, self) {
+                return self.renderToken(tokens, idx, options);
+            };
+            _mdInstance.renderer.rules.link_open = function (tokens, idx, options, env, self) {
+                tokens[idx].attrPush(['target', '_blank']);
+                tokens[idx].attrPush(['rel', 'noopener']);
+                return defaultLinkOpen(tokens, idx, options, env, self);
+            };
+        }
+        return _mdInstance;
+    }
+
     function renderMarkdown(text) {
         if (!text) return '';
-        var html = escapeHtml(text);
+        try {
+            var preprocessed = _fixMalformedTables(text);
+            return _getMdInstance().render(preprocessed);
+        } catch (e) {
+            return '<p>' + escapeHtml(text) + '</p>';
+        }
+    }
 
-        // Markdown tables: | col | col |\n|---|---|\n| cell | cell |
-        html = html.replace(/((?:^\|.+\|[ ]*\n)+)/gm, function (block) {
-            var rows = block.trim().split('\n');
-            var tableHtml = '<table class="md-table"><tbody>';
-            var isHeader = true;
-            for (var r = 0; r < rows.length; r++) {
-                var row = rows[r].trim();
-                var cells = row.replace(/^\|/, '').replace(/\|$/, '').split('|');
-                // Skip separator row: all cells are only dashes, colons, or spaces
-                var allSep = cells.every(function (c) { return /^[\s\-:]+$/.test(c); });
-                if (allSep) { isHeader = false; continue; }
-                var tag = isHeader ? 'th' : 'td';
-                tableHtml += '<tr>' + cells.map(function (c) {
-                    return '<' + tag + '>' + c.trim() + '</' + tag + '>';
-                }).join('') + '</tr>';
+    function _fixMalformedTables(text) {
+        var lines = text.split('\n');
+        var result = [];
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+
+            // Step 1: Split inline rows within pipe-delimited blocks.
+            // LLM output sometimes puts all rows on one line: | data | | data | | data |
+            // Convert " | | " row boundaries to newlines, but only within pipe blocks.
+            if (/^\|/.test(line.trim()) && (line.match(/\|/g) || []).length > 4) {
+                // Check if this line has multiple rows packed inline
+                // Pattern: ...content... | | content...  (pipe-space-pipe = row boundary)
+                var split = line.replace(/\| \|/g, '|\n|');
+                var subLines = split.split('\n');
+                for (var s = 0; s < subLines.length; s++) {
+                    result.push(subLines[s]);
+                }
+            } else {
+                result.push(line);
             }
-            tableHtml += '</tbody></table>';
-            return tableHtml + '\n';
-        });
+        }
 
-        // Headings: ### text
-        html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
-        html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
-        html = html.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
-        // Unordered list items: * text or - text (must come before italic/bold)
-        html = html.replace(/^[*\-]\s+(.+)$/gm, '\x01li\x02$1\x01/li\x02');
-        // Numbered list items: 1. text
-        html = html.replace(/^\d+\.\s+(.+)$/gm, '\x01li\x02$1\x01/li\x02');
-        // Collapse blank lines between consecutive list items into single newline
-        html = html.replace(/(\x01\/li\x02)\n+\x01li\x02/g, '$1\n\x01li\x02');
-        // Bold: **text**
-        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        // Italic: *text*
-        html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
-        // Wrap consecutive list items in <ul>
-        html = html.replace(/(\x01li\x02[\s\S]*?\x01\/li\x02(?:\n?))+/g, function (match) {
-            return '<ul>' + match.replace(/\x01/g, '<').replace(/\x02/g, '>') + '</ul>';
-        });
-        html = html.replace(/\x01/g, '<').replace(/\x02/g, '>');
-        // Paragraphs: double newline
-        html = html.replace(/\n{2,}/g, '</p><p>');
-        // Single newline to <br>
-        html = html.replace(/\n/g, '<br>');
-        // Wrap in paragraph
-        html = '<p>' + html + '</p>';
-        // Clean up paragraphs around block elements
-        html = html.replace(/<p>\s*<(h[234]|ul|table)/g, '<$1');
-        html = html.replace(/<\/(h[234]|ul|table)>\s*<\/p>/g, '</$1>');
-        html = html.replace(/<p>\s*<\/p>/g, '');
-        return html;
+        // Step 2: Fix missing header rows (separator without header above)
+        var fixed = [];
+        for (var j = 0; j < result.length; j++) {
+            var trimmed = result[j].trim();
+            if (/^\|/.test(trimmed) && /\|$/.test(trimmed) && _isSeparatorRow(trimmed)) {
+                var nextTrimmed = (j + 1 < result.length) ? result[j + 1].trim() : '';
+                var prevTrimmed = (fixed.length > 0) ? fixed[fixed.length - 1].trim() : '';
+                var hasHeaderAbove = /^\|/.test(prevTrimmed) && !_isSeparatorRow(prevTrimmed);
+                if (!hasHeaderAbove && /^\|/.test(nextTrimmed)) {
+                    var cols = trimmed.replace(/^\|/, '').replace(/\|$/, '').split('|').length;
+                    var headerCells = [];
+                    for (var c = 0; c < cols; c++) headerCells.push('');
+                    fixed.push('| ' + headerCells.join(' | ') + ' |');
+                }
+            }
+            fixed.push(result[j]);
+        }
+        return fixed.join('\n');
+    }
+
+    function _isSeparatorRow(line) {
+        var cells = line.replace(/^\|/, '').replace(/\|$/, '').split('|');
+        return cells.every(function (c) { return /^[\s\-:]+$/.test(c); });
     }
 
     function formatDuration(seconds) {
@@ -352,6 +388,11 @@
             this._relatedMode = false;
             this._baseOrderedItems = null;
             this._relatedAnchorIndex = -1;
+
+            // Research polling state
+            this._researchPollTimer = null;
+            this._researchPollInFlight = false;
+            this._researchPollingVideoId = null;
         }
 
         // ---- URL state ----
@@ -1769,17 +1810,41 @@
                     return;
                 }
 
-                // Research: Run Research button (composer)
+                // Research: Run Research inline from composer
                 if (e.target.closest('[data-action="research-run"]')) {
-                    this._openResearchSuggestions();
+                    var runComposer = document.querySelector('[data-research-composer]');
+                    var customQuestion = runComposer ? runComposer.value.trim() : '';
+                    if (customQuestion) {
+                        this._executeInlineResearch(customQuestion, null, 'custom');
+                    }
                     return;
                 }
 
-                // Research: Sign In button (401 state)
+                // Research: Run suggested research (Dig Deeper card)
+                if (e.target.closest('[data-action="run-suggested-research"]')) {
+                    var card = e.target.closest('[data-action="run-suggested-research"]');
+                    var suggestedQ = card.dataset.question || '';
+                    if (suggestedQ) this._executeInlineResearch(suggestedQ, card);
+                    return;
+                }
+
+                // Dig Deeper: expand collapsed section
+                if (e.target.closest('[data-dig-deeper-collapsed]')) {
+                    var ddBody = document.querySelector('[data-dig-deeper-body]');
+                    var ddHeader = document.querySelector('.ed-research__dig-deeper-header');
+                    var ddCollapsed = document.querySelector('[data-dig-deeper-collapsed]');
+                    if (ddBody) ddBody.style.display = '';
+                    if (ddHeader) ddHeader.style.display = '';
+                    if (ddCollapsed) ddCollapsed.style.display = 'none';
+                    return;
+                }
+
+                // Research: Sign In button (401 state / Dig Deeper inline)
                 if (e.target.closest('[data-action="research-sign-in"]')) {
                     var self = this;
                     this.requireAdminToken(function() {
                         self._loadResearchThread();
+                        self._loadDigDeeperSuggestions();
                     });
                     return;
                 }
@@ -1921,11 +1986,14 @@
             }.bind(this);
             window.addEventListener('scroll', this._scrollHandler, { passive: true });
 
-            // Research composer input — enable/disable Ask button
+            // Research composer input — enable/disable Ask button, show/hide Research this
             document.addEventListener('input', function (e) {
                 if (e.target.matches('[data-research-composer]')) {
+                    var hasText = !!e.target.value.trim();
                     var askBtn = document.querySelector('[data-action="research-ask"]');
-                    if (askBtn) askBtn.disabled = !e.target.value.trim();
+                    if (askBtn) askBtn.disabled = !hasText;
+                    var runBtn = document.querySelector('[data-action="research-run"]');
+                    if (runBtn) runBtn.style.display = hasText ? '' : 'none';
                 }
             }.bind(this));
 
@@ -2009,6 +2077,7 @@
         }
 
         closeReader() {
+            this._stopResearchPolling();
             var panel = document.getElementById('ed-reader');
             if (panel) {
                 panel.classList.remove('ed-reader--open');
@@ -2146,6 +2215,37 @@
 
         // ---- Research Mode ----
 
+        _getResearchSourceContext() {
+            var data = this._readerData || {};
+            var videoId = (data.video || {}).video_id || '';
+
+            var variants = data.summary_variants || [];
+            var summaryText = '';
+            for (var i = 0; i < variants.length; i++) {
+                if (variants[i].variant !== 'deep-research' && (variants[i].text || variants[i].html)) {
+                    summaryText = variants[i].text || variants[i].html;
+                    break;
+                }
+            }
+            if (!summaryText) {
+                var summary = data.summary || {};
+                summaryText = summary.text || summary.html || '';
+            }
+
+            var sourceContext = {};
+            var video = data.video || {};
+            if (video.channel) sourceContext.channel = video.channel;
+            if (video.url) sourceContext.source_url = video.url;
+            var sourceUrl = video.url || '';
+            if (sourceUrl.indexOf('youtube.com') !== -1 || sourceUrl.indexOf('youtu.be') !== -1) {
+                sourceContext.content_type = 'youtube';
+            } else {
+                sourceContext.content_type = 'web';
+            }
+
+            return { summaryText: summaryText, sourceContext: sourceContext, videoId: videoId };
+        }
+
         _renderResearchPanel(data) {
             var videoId = (data.video || {}).video_id || '';
             var variants = data.summary_variants || [];
@@ -2154,7 +2254,14 @@
             for (var i = 0; i < variants.length; i++) {
                 if (variants[i].variant === 'deep-research') {
                     hasResearch = true;
-                    researchHtml = variants[i].html || variants[i].text || '';
+                    // Prefer .text rendered client-side (server .html can contain
+                    // duplicate content with broken table formatting)
+                    var variant = variants[i];
+                    if (variant.text) {
+                        researchHtml = renderMarkdown(variant.text);
+                    } else {
+                        researchHtml = variant.html || '';
+                    }
                     break;
                 }
             }
@@ -2165,6 +2272,21 @@
             html += '<div class="ed-research__loading" data-research-loading style="display:none">';
             html += '<div class="ed-research__loading-inner">Loading research...</div>';
             html += '</div>';
+
+            // Dig Deeper section — suggested questions (collapsible, top of tab)
+            html += '<div class="ed-research__dig-deeper" data-dig-deeper-section>';
+            html += '<div class="ed-research__dig-deeper-header">';
+            html += '<span class="ed-research__dig-deeper-title">DIG DEEPER</span>';
+            html += '</div>';
+            html += '<div class="ed-research__dig-deeper-collapsed" data-dig-deeper-collapsed style="display:none"></div>';
+            html += '<div class="ed-research__dig-deeper-body" data-dig-deeper-body>';
+            html += '<div class="ed-research__dig-deeper-status" data-dig-deeper-status></div>';
+            html += '<div class="ed-research__dig-deeper-cards" data-dig-deeper-cards></div>';
+            html += '</div>';
+            html += '</div>'; // .ed-research__dig-deeper
+
+            // Chat section
+            html += '<div class="ed-research__chat-section">';
 
             // Research report + turns (hidden until thread loads)
             html += '<div class="ed-research__thread" data-research-thread' + (!hasResearch ? ' style="display:none"' : '') + '>';
@@ -2181,18 +2303,20 @@
 
             // Lightweight hint when no research exists yet
             html += '<div class="ed-research__hint" data-research-hint' + (hasResearch ? ' style="display:none"' : '') + '>';
-            html += '<p class="ed-research__hint-text">Ask questions about this report. Run deeper research anytime.</p>';
+            html += '<p class="ed-research__hint-text">Ask questions about this report or run deeper research anytime.</p>';
             html += '</div>';
 
             // Composer bar — always visible
             html += '<div class="ed-research__composer">';
             html += '<textarea class="ed-research__composer-input" data-research-composer placeholder="Ask about this report..." rows="2"></textarea>';
             html += '<div class="ed-research__composer-actions">';
-            html += '<button class="ed-btn ed-btn--primary ed-btn--sm" data-action="research-ask" disabled>Ask</button>';
-            html += '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="research-run">Run Research</button>';
+            html += '<button class="ed-btn ed-btn--primary ed-btn--sm" data-action="research-ask" disabled title="Ask a grounded question about this report">Ask About Report</button>';
+            html += '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="research-run" style="display:none" title="Run deep web research on this topic">Run Deep Research</button>';
             html += '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="clear-chat-history" style="display:none">Clear Chat</button>';
             html += '</div>';
             html += '</div>';
+            html += '</div>'; // .ed-research__chat-section
+
             html += '<div class="ed-research__error" data-research-error style="display:none"></div>';
 
             html += '</div>';
@@ -2218,9 +2342,26 @@
 
             // Load thread if research may exist
             this._loadResearchThread();
+
+            // Load dig deeper suggestions
+            this._loadDigDeeperSuggestions();
+
+            // Resume polling if any turn is still running
+            var threadData = this._researchThreadData;
+            if (threadData && threadData.turns) {
+                var hasRunning = false;
+                for (var r = 0; r < threadData.turns.length; r++) {
+                    if (threadData.turns[r].status === 'running') { hasRunning = true; break; }
+                }
+                if (hasRunning) {
+                    var pollVideoId = (threadData.video_id || (document.querySelector('[data-research-panel]') || {}).dataset || {}).videoId || '';
+                    if (pollVideoId) this._startResearchPolling(pollVideoId);
+                }
+            }
         }
 
         _hideResearch() {
+            this._stopResearchPolling();
             var researchEl = document.querySelector('[data-research-panel]');
             if (researchEl) researchEl.style.display = 'none';
         }
@@ -2275,6 +2416,7 @@
                         if (hasTurns || hasChatTurns) {
                             self._renderResearchTurns(data);
                             self._updateClearChatButton();
+                            self._updateDigDeeperCollapse();
                         }
                         if (threadEl) threadEl.style.display = 'block';
                         if (hintEl) hintEl.style.display = 'none';
@@ -2288,6 +2430,121 @@
                     console.warn('Research thread load failed:', err);
                     if (loadingEl) loadingEl.style.display = 'none';
                 });
+        }
+
+        _loadDigDeeperSuggestions() {
+            var self = this;
+            var panel = document.querySelector('[data-research-panel]');
+            if (!panel) return;
+            var videoId = panel.dataset.videoId || '';
+            if (!videoId) return;
+
+            // Use cached suggestions if same video
+            if (this._ponderingsSuggestionsVideoId === videoId && this._ponderingsSuggestions && this._ponderingsSuggestions.length > 0) {
+                this._renderDigDeeperCards(this._ponderingsSuggestions);
+                this._updateDigDeeperCollapse();
+                return;
+            }
+
+            var statusEl = panel.querySelector('[data-dig-deeper-status]');
+            var cardsEl = panel.querySelector('[data-dig-deeper-cards]');
+
+            // Use getAdminToken (non-blocking) — do not force auth prompt on tab open
+            var token = this.getAdminToken();
+            if (!token) {
+                if (statusEl) {
+                    statusEl.innerHTML = 'Sign in to load suggested prompts and run deeper research. <button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="research-sign-in">Sign in</button>';
+                    statusEl.style.display = '';
+                }
+                if (cardsEl) cardsEl.innerHTML = '';
+                return;
+            }
+
+            if (statusEl) statusEl.textContent = 'Loading suggestions...';
+            if (statusEl) statusEl.style.display = '';
+            if (cardsEl) cardsEl.innerHTML = '';
+
+            var ctx = this._getResearchSourceContext();
+
+            fetch('/api/research/follow-up/suggestions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({
+                    video_id: ctx.videoId,
+                    summary: ctx.summaryText,
+                    preferred_variant: 'deep-research',
+                    source_context: ctx.sourceContext,
+                    max_suggestions: 4
+                })
+            })
+            .then(function (resp) {
+                return resp.json().then(function (payload) {
+                    payload._ok = resp.ok;
+                    return payload;
+                });
+            })
+            .then(function (payload) {
+                if (!payload._ok) throw new Error(payload.detail || 'Suggestions failed');
+                var suggestions = Array.isArray(payload.suggestions) ? payload.suggestions : [];
+
+                // Cache suggestions
+                self._ponderingsSuggestions = suggestions;
+                self._ponderingsSuggestionsVideoId = videoId;
+
+                if (statusEl) statusEl.style.display = 'none';
+
+                if (suggestions.length > 0) {
+                    self._renderDigDeeperCards(suggestions);
+                } else if (statusEl) {
+                    statusEl.textContent = 'No prompts yet. Ask about this report or start a custom research run.';
+                    statusEl.style.display = '';
+                }
+
+                self._updateDigDeeperCollapse();
+            })
+            .catch(function (err) {
+                console.warn('Dig deeper suggestions failed:', err);
+                if (statusEl) {
+                    statusEl.textContent = 'No prompts yet. Ask about this report or start a custom research run.';
+                    statusEl.style.display = '';
+                }
+                if (cardsEl) cardsEl.innerHTML = '';
+            });
+        }
+
+        _renderDigDeeperCards(suggestions) {
+            var cardsEl = document.querySelector('[data-dig-deeper-cards]');
+            if (!cardsEl) return;
+
+            var html = '';
+            for (var s = 0; s < suggestions.length; s++) {
+                var qText = suggestions[s].question || suggestions[s].label || '';
+                if (!qText) continue;
+                var state = this._getSuggestionState(qText);
+                var cls = 'ed-research__dig-deeper-card';
+                var arrowHtml = '&#x25B8;';
+                var textContent = qText;
+                var disabled = '';
+
+                if (state === 'running') {
+                    cls += ' ed-research__dig-deeper-card--running';
+                    arrowHtml = '<span class="ed-research__dig-deeper-spinner"></span>';
+                    textContent = qText + ' (Researching...)';
+                    disabled = ' disabled';
+                } else if (state === 'done') {
+                    cls += ' ed-research__dig-deeper-card--done';
+                    arrowHtml = '&#x2713;';
+                }
+
+                html += '<button class="' + cls + '" data-action="run-suggested-research" data-question="' + escapeHtml(qText) + '"' + disabled + '>';
+                html += '<span class="ed-research__dig-deeper-arrow">' + arrowHtml + '</span>';
+                html += '<span class="ed-research__dig-deeper-card-text">' + escapeHtml(textContent) + '</span>';
+                html += '</button>';
+            }
+            cardsEl.innerHTML = html;
         }
 
         _renderResearchTurns(threadData) {
@@ -2312,7 +2569,9 @@
 
                 if (status === 'running') {
                     html += '<div class="ed-research__turn ed-research__turn--running">';
-                    html += '<div class="ed-research__turn-label">Research in progress</div>';
+                    html += '<span class="ed-research__dig-deeper-spinner"></span>';
+                    html += '<div class="ed-research__turn-label">Research running</div>';
+                    html += '<div class="ed-research__turn-meta">Last checked ' + new Date().toLocaleTimeString() + '</div>';
                     html += '</div>';
                     continue;
                 }
@@ -2399,6 +2658,7 @@
             }
 
             turnsEl.innerHTML = html;
+            this._updateDigDeeperCollapse();
         }
 
         _sendResearchChat(question) {
@@ -2538,9 +2798,10 @@
                     }
 
                     self._updateClearChatButton();
+                    self._updateDigDeeperCollapse();
 
                     if (composer) composer.value = '';
-                    if (askBtn) { askBtn.disabled = false; askBtn.textContent = 'Ask'; }
+                    if (askBtn) { askBtn.disabled = false; askBtn.textContent = 'Ask About Report'; }
                     if (composer) composer.disabled = false;
                 });
             }).catch(function (err) {
@@ -2551,7 +2812,7 @@
                     errorEl.textContent = err.message || 'Unable to answer.';
                     errorEl.style.display = 'block';
                 }
-                if (askBtn) { askBtn.disabled = false; askBtn.textContent = 'Ask'; }
+                if (askBtn) { askBtn.disabled = false; askBtn.textContent = 'Ask About Report'; }
                 if (composer) composer.disabled = false;
             });
         }
@@ -2624,15 +2885,15 @@
                     .then(function (data) {
                         if (data.deleted) {
                             self.closeModal();
-                            // Remove all chat pair elements from DOM
-                            var pairs = document.querySelectorAll('.ed-research__chat-pair');
-                            for (var p = 0; p < pairs.length; p++) pairs[p].remove();
 
                             // Clear local state
                             if (self._researchThreadData) {
                                 self._researchThreadData.chat_turns = [];
                             }
 
+                            // Re-render from clean state (catches persisted + dynamic turns)
+                            self._renderResearchTurns(self._researchThreadData);
+                            self._updateDigDeeperCollapse();
                             self._updateClearChatButton();
                         }
                     })
@@ -2648,205 +2909,133 @@
             if (btn) btn.style.display = chatTurns.length > 0 ? '' : 'none';
         }
 
-        _openResearchSuggestions() {
-            var self = this;
-            var data = this._readerData || {};
-            var videoId = (data.video || {}).video_id || '';
+        _startResearchPolling(videoId) {
+            if (this._researchPollTimer) return; // already polling
             if (!videoId) return;
-
-            this.requireAdminToken(function (token) {
-                self._openResearchSuggestionsWithToken(token);
-            });
+            this._researchPollingVideoId = videoId;
+            this._pollResearchThread(); // immediate first poll
         }
 
-        _openResearchSuggestionsWithToken(token) {
+        _pollResearchThread() {
             var self = this;
-            var data = this._readerData || {};
-            var videoId = (data.video || {}).video_id || '';
+            var videoId = this._researchPollingVideoId;
+            if (!videoId) return;
 
-            var variants = data.summary_variants || [];
-            var summaryText = '';
-            for (var i = 0; i < variants.length; i++) {
-                if (variants[i].variant !== 'deep-research' && (variants[i].text || variants[i].html)) {
-                    summaryText = variants[i].text || variants[i].html;
-                    break;
-                }
-            }
-            if (!summaryText) {
-                var summary = data.summary || {};
-                summaryText = summary.text || summary.html || '';
-            }
+            // Guard against overlapping requests
+            if (this._researchPollInFlight) return;
+            this._researchPollInFlight = true;
 
-            var sourceContext = {};
-            var video = data.video || {};
-            if (video.channel) sourceContext.channel = video.channel;
-            if (video.url) sourceContext.source_url = video.url;
-            // Derive content type from URL rather than hard-coding youtube
-            var sourceUrl = video.url || '';
-            if (sourceUrl.indexOf('youtube.com') !== -1 || sourceUrl.indexOf('youtu.be') !== -1) {
-                sourceContext.content_type = 'youtube';
-            } else {
-                sourceContext.content_type = 'web';
-            }
+            var token = this.getAdminToken();
+            var headers = { 'Accept': 'application/json' };
+            if (token) headers['Authorization'] = 'Bearer ' + token;
 
-            var modalHtml = '<div class="ed-research-modal" data-research-modal>';
-            modalHtml += '<div class="ed-research-modal__header">';
-            modalHtml += '<div class="ed-research-modal__header-text">';
-            modalHtml += '<h3 class="ed-research-modal__title">Deep Research</h3>';
-            modalHtml += '<p class="ed-research-modal__subtitle">Select questions to investigate, or add your own.</p>';
-            modalHtml += '</div>';
-            modalHtml += '<button class="ed-research-modal__close" data-action="modal-cancel">&times;</button>';
-            modalHtml += '</div>';
-            modalHtml += '<div class="ed-research-modal__body">';
-            modalHtml += '<div class="ed-research-modal__status" data-research-suggest-status>Loading suggestions...</div>';
-            modalHtml += '<div class="ed-research-modal__suggestions" data-research-suggestions></div>';
-            modalHtml += '<div class="ed-research-modal__custom">';
-            modalHtml += '<label class="ed-research-modal__label">Your own question</label>';
-            modalHtml += '<textarea class="ed-research-modal__textarea" data-research-custom placeholder="What do you want to investigate?" rows="3"></textarea>';
-            modalHtml += '</div>';
-            modalHtml += '</div>';
-            modalHtml += '<div class="ed-research-modal__footer">';
-            modalHtml += '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="modal-cancel">Cancel</button>';
-            modalHtml += '<button class="ed-btn ed-btn--primary ed-btn--sm" data-action="research-execute" disabled>Run Deep Research</button>';
-            modalHtml += '</div>';
-            modalHtml += '</div>';
-
-            this.showModal(modalHtml);
-
-            // Fetch suggestions
-            var statusEl = document.querySelector('[data-research-suggest-status]');
-            var suggestEl = document.querySelector('[data-research-suggestions]');
-            var runBtn = document.querySelector('[data-action="research-execute"]');
-
-            var selectedQuestions = {};
-
-            fetch('/api/research/follow-up/suggestions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + token
-                },
-                body: JSON.stringify({
-                    video_id: videoId,
-                    summary: summaryText,
-                    preferred_variant: 'deep-research',
-                    source_context: sourceContext,
-                    max_suggestions: 4
-                })
-            })
+            var params = new URLSearchParams({ video_id: videoId, preferred_variant: 'deep-research' });
+            fetch('/api/research/follow-up/thread?' + params.toString(), { headers: headers })
                 .then(function (resp) {
-                    return resp.json().then(function (payload) {
-                        payload._ok = resp.ok;
-                        return payload;
+                    if (resp.status === 401 || resp.status === 404) return null;
+                    return resp.json().then(function (data) {
+                        data._ok = resp.ok;
+                        return data;
                     });
                 })
-                .then(function (payload) {
-                    if (!payload._ok) throw new Error(payload.detail || 'Suggestions failed');
-                    var suggestions = Array.isArray(payload.suggestions) ? payload.suggestions : [];
-                    if (statusEl) statusEl.style.display = 'none';
+                .then(function (data) {
+                    self._researchPollInFlight = false;
 
-                    if (suggestEl && suggestions.length > 0) {
-                        var shtml = '';
-                        for (var s = 0; s < suggestions.length; s++) {
-                            var sug = suggestions[s];
-                            var qText = sug.question || sug.label || '';
-                            var isSelected = sug.default_selected;
-                            if (isSelected) selectedQuestions[qText] = true;
-                            shtml += '<label class="ed-research-modal__suggestion">';
-                            shtml += '<input type="checkbox" data-research-sug value="' + escapeHtml(qText) + '"' + (isSelected ? ' checked' : '') + '>';
-                            shtml += '<span>' + escapeHtml(qText) + '</span>';
-                            shtml += '</label>';
-                        }
-                        suggestEl.innerHTML = shtml;
-                    } else if (statusEl) {
-                        statusEl.textContent = 'No suggestions available. Write your own question below.';
-                        statusEl.style.display = 'block';
+                    if (!data || !data._ok) {
+                        // Auth or not-found — schedule next poll anyway
+                        self._researchPollTimer = setTimeout(function () { self._pollResearchThread(); }, 10000);
+                        return;
                     }
 
-                    // Enable run button if any selected
-                    if (runBtn) runBtn.disabled = Object.keys(selectedQuestions).length === 0;
-
-                    // Wire checkbox changes
-                    var checkboxes = document.querySelectorAll('[data-research-sug]');
-                    for (var c = 0; c < checkboxes.length; c++) {
-                        checkboxes[c].addEventListener('change', function () {
-                            if (this.checked) {
-                                selectedQuestions[this.value] = true;
-                            } else {
-                                delete selectedQuestions[this.value];
-                            }
-                            if (runBtn) runBtn.disabled = Object.keys(selectedQuestions).length === 0;
-                        });
+                    // Ignore stale responses if video changed
+                    var panel = document.querySelector('[data-research-panel]');
+                    var currentVideoId = panel ? (panel.dataset.videoId || '') : '';
+                    if (currentVideoId !== videoId) {
+                        self._stopResearchPolling();
+                        return;
                     }
 
-                    // Wire custom textarea to enable run button
-                    var customArea = document.querySelector('[data-research-custom]');
-                    if (customArea) {
-                        customArea.addEventListener('input', function () {
-                            var hasCustom = this.value.trim().length > 0;
-                            var hasSelected = Object.keys(selectedQuestions).length > 0;
-                            if (runBtn) runBtn.disabled = !hasSelected && !hasCustom;
-                        });
+                    // Update state and re-render
+                    self._researchThreadData = data;
+                    self._renderResearchTurns(data);
+                    self._updateClearChatButton();
+                    self._updateDigDeeperCollapse();
+
+                    // Check if any turn is still running
+                    var stillRunning = false;
+                    var turns = data.turns || [];
+                    for (var i = 0; i < turns.length; i++) {
+                        if (turns[i].status === 'running') { stillRunning = true; break; }
+                    }
+
+                    if (stillRunning) {
+                        self._researchPollTimer = setTimeout(function () { self._pollResearchThread(); }, 10000);
+                    } else {
+                        self._stopResearchPolling();
+                        self.showToast('Deep research complete.', 'success');
                     }
                 })
                 .catch(function (err) {
-                    if (statusEl) {
-                        statusEl.textContent = 'Could not load suggestions. Write your own question below.';
-                        statusEl.style.display = 'block';
-                    }
+                    console.warn('Research poll failed:', err);
+                    self._researchPollInFlight = false;
+                    // Schedule next poll despite error
+                    self._researchPollTimer = setTimeout(function () { self._pollResearchThread(); }, 10000);
                 });
-
-            // Wire run button via delegated handler (see bindEvents)
-            this._researchModalState = {
-                videoId: videoId,
-                summaryText: summaryText,
-                sourceContext: sourceContext,
-                selectedQuestions: selectedQuestions,
-                token: token
-            };
         }
 
-        _executeResearchRun() {
+        _stopResearchPolling() {
+            if (this._researchPollTimer) {
+                clearTimeout(this._researchPollTimer);
+                this._researchPollTimer = null;
+            }
+            this._researchPollInFlight = false;
+            this._researchPollingVideoId = null;
+        }
+
+        _openResearchSuggestions() {
+            return;
+        }
+
+        _openResearchSuggestionsWithToken(token) {
+            return;
+        }
+
+        _executeInlineResearch(question, cardEl, provenance) {
             var self = this;
-            var state = this._researchModalState || {};
-            var videoId = state.videoId || '';
-            var summaryText = state.summaryText || '';
-            var sourceContext = state.sourceContext || {};
-            var selectedQuestions = state.selectedQuestions || {};
-            var token = state.token || '';
+            if (!question) return;
 
-            var customEl = document.querySelector('[data-research-custom]');
-            var customText = customEl ? customEl.value.trim() : '';
+            var ctx = this._getResearchSourceContext();
+            var questionProvenance = provenance === 'custom' ? ['custom'] : ['suggested'];
 
-            var questions = Object.keys(selectedQuestions);
-            var provenance = questions.map(function () { return 'suggested'; });
-            if (customText) {
-                questions.push(customText);
-                provenance.push('custom');
+            // If card element, set to running state and track in state model
+            if (cardEl) {
+                cardEl.classList.add('ed-research__dig-deeper-card--running');
+                cardEl.disabled = true;
+                var arrowEl = cardEl.querySelector('.ed-research__dig-deeper-arrow');
+                if (arrowEl) arrowEl.innerHTML = '<span class="ed-research__dig-deeper-spinner"></span>';
+                var textEl = cardEl.querySelector('.ed-research__dig-deeper-card-text');
+                if (textEl) textEl.textContent = question + ' (Researching...)';
+                this._setSuggestionState(question, 'running');
             }
 
-            if (questions.length === 0) return;
-
-            var runBtn = document.querySelector('[data-action="research-execute"]');
-            if (runBtn) { runBtn.disabled = true; runBtn.textContent = 'Running...'; }
-
-            fetch('/api/research/follow-up/run', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + token
-                },
-                body: JSON.stringify({
-                    video_id: videoId,
-                    summary: summaryText,
-                    preferred_variant: 'deep-research',
-                    source_context: sourceContext,
-                    approved_questions: questions,
-                    question_provenance: provenance,
-                    provider_mode: 'auto',
-                    depth: 'balanced'
+            this.requireAdminToken(function (token) {
+                fetch('/api/research/follow-up/run', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify({
+                        video_id: ctx.videoId,
+                        summary: ctx.summaryText,
+                        preferred_variant: 'deep-research',
+                        source_context: ctx.sourceContext,
+                        approved_questions: [question],
+                        question_provenance: questionProvenance,
+                        provider_mode: 'auto',
+                        depth: 'balanced'
+                    })
                 })
-            })
                 .then(function (resp) {
                     return resp.json().then(function (data) {
                         data._ok = resp.ok;
@@ -2855,13 +3044,101 @@
                 })
                 .then(function (data) {
                     if (!data._ok) throw new Error(data.detail || data.error || 'Research failed');
-                    self.closeModal();
-                    self.showToast('Deep Research started — it will appear here when ready.', 'success');
+
+                    // Card → completed state
+                    if (cardEl) {
+                        cardEl.classList.remove('ed-research__dig-deeper-card--running');
+                        cardEl.classList.add('ed-research__dig-deeper-card--done');
+                        var doneArrow = cardEl.querySelector('.ed-research__dig-deeper-arrow');
+                        if (doneArrow) doneArrow.innerHTML = '&#x2713;';
+                        var doneText = cardEl.querySelector('.ed-research__dig-deeper-card-text');
+                        if (doneText) doneText.textContent = question;
+                        self._setSuggestionState(question, 'done');
+                    }
+
+                    // Clear composer only on success (custom research)
+                    if (provenance === 'custom') {
+                        var composer = document.querySelector('[data-research-composer]');
+                        if (composer) composer.value = '';
+                        var askBtn = document.querySelector('[data-action="research-ask"]');
+                        if (askBtn) askBtn.disabled = true;
+                        var runBtn = document.querySelector('[data-action="research-run"]');
+                        if (runBtn) runBtn.style.display = 'none';
+                    }
+
+                    self.showToast('Research started — results will appear below.', 'success');
+
+                    // Show running placeholder in thread area immediately
+                    var threadEl = document.querySelector('[data-research-thread]');
+                    var turnsEl = document.querySelector('[data-research-turns]');
+                    if (threadEl) threadEl.style.display = 'block';
+                    var hintEl = document.querySelector('[data-research-hint]');
+                    if (hintEl) hintEl.style.display = 'none';
+                    if (turnsEl) {
+                        var runningHtml = '<div class="ed-research__turn ed-research__turn--running">';
+                        runningHtml += '<span class="ed-research__dig-deeper-spinner"></span>';
+                        runningHtml += '<div class="ed-research__turn-label">Research running</div>';
+                        runningHtml += '<div class="ed-research__turn-meta">Starting research...</div>';
+                        runningHtml += '</div>';
+                        turnsEl.insertAdjacentHTML('beforeend', runningHtml);
+                    }
+
+                    // Start polling for completion
+                    self._startResearchPolling(ctx.videoId);
                 })
                 .catch(function (err) {
-                    if (runBtn) { runBtn.disabled = false; runBtn.textContent = 'Run Deep Research'; }
+                    // Card → restore to available state
+                    if (cardEl) {
+                        cardEl.classList.remove('ed-research__dig-deeper-card--running');
+                        cardEl.disabled = false;
+                        var restoreArrow = cardEl.querySelector('.ed-research__dig-deeper-arrow');
+                        if (restoreArrow) restoreArrow.innerHTML = '&#x25B8;';
+                        var restoreText = cardEl.querySelector('.ed-research__dig-deeper-card-text');
+                        if (restoreText) restoreText.textContent = question;
+                        self._setSuggestionState(question, 'failed');
+                    }
                     self.showToast('Research failed: ' + err.message, 'error');
                 });
+            });
+        }
+
+        _setSuggestionState(question, state) {
+            var videoId = this._ponderingsSuggestionsVideoId || '';
+            if (!this._ponderingsSuggestionStateByQuestion) this._ponderingsSuggestionStateByQuestion = {};
+            var key = videoId + '::' + question;
+            this._ponderingsSuggestionStateByQuestion[key] = state;
+        }
+
+        _getSuggestionState(question) {
+            var videoId = this._ponderingsSuggestionsVideoId || '';
+            var states = this._ponderingsSuggestionStateByQuestion || {};
+            var key = videoId + '::' + question;
+            return states[key] || 'available';
+        }
+
+        _updateDigDeeperCollapse() {
+            var chatTurns = (this._researchThreadData && this._researchThreadData.chat_turns) || [];
+            var suggestions = this._ponderingsSuggestions || [];
+            var bodyEl = document.querySelector('[data-dig-deeper-body]');
+            var headerEl = document.querySelector('.ed-research__dig-deeper-header');
+            var collapsedEl = document.querySelector('[data-dig-deeper-collapsed]');
+
+            if (!bodyEl || !collapsedEl) return;
+
+            if (chatTurns.length >= 2 && suggestions.length > 0) {
+                if (bodyEl) bodyEl.style.display = 'none';
+                if (headerEl) headerEl.style.display = 'none';
+                collapsedEl.textContent = '\u25B8 Dig Deeper: ' + suggestions.length + ' prompt' + (suggestions.length !== 1 ? 's' : '');
+                collapsedEl.style.display = '';
+            } else {
+                if (bodyEl) bodyEl.style.display = '';
+                if (headerEl) headerEl.style.display = '';
+                collapsedEl.style.display = 'none';
+            }
+        }
+
+        _executeResearchRun() {
+            return;
         }
 
         renderReaderContent(data) {
@@ -2988,8 +3265,8 @@
                         '" data-action="switch-variant" data-variant-idx="' + ti + '">' + escapeHtml(vLabel) + '</button>';
                     displayIdx++;
                 }
-                // Always add Research tab
-                html += '<button class="ed-reader__variant" data-action="show-research">Research</button>';
+                // Always add Ponderings tab
+                html += '<button class="ed-reader__variant" data-action="show-research">Ponderings</button>';
                 if (this._readerHasTranscript) {
                     html += '<button class="ed-reader__variant" data-action="show-transcript">Transcript</button>';
                 }

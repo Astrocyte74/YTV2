@@ -2775,6 +2775,20 @@ body {
 .ed-research__turn--running {
     text-align: center;
     padding: var(--ed-space-sm);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+}
+.ed-research__turn--running .ed-research__dig-deeper-spinner {
+    width: 1rem;
+    height: 1rem;
+    border-width: 2px;
+}
+.ed-research__turn-meta {
+    color: var(--ed-color-muted);
+    font-size: 0.8rem;
+    margin-top: var(--ed-space-xs);
 }
 
 /* Questions header within a turn */
@@ -3016,6 +3030,111 @@ body {
     background: rgba(248, 113, 113, 0.08);
     border-radius: var(--ed-radius-sm);
     margin-top: var(--ed-space-xs);
+}
+
+/* ---- Dig Deeper Section ---- */
+.ed-research__dig-deeper {
+    margin-bottom: var(--ed-space-sm);
+    padding-bottom: var(--ed-space-sm);
+    border-bottom: 1px solid var(--ed-color-border);
+}
+.ed-research__dig-deeper-header {
+    margin-bottom: var(--ed-space-xs);
+}
+.ed-research__dig-deeper-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--ed-color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+/* Collapsed bar */
+.ed-research__dig-deeper-collapsed {
+    display: flex;
+    align-items: center;
+    padding: var(--ed-space-xs) var(--ed-space-sm);
+    background: var(--ed-color-surface);
+    border: 1px solid var(--ed-color-border);
+    border-radius: var(--ed-radius-sm);
+    cursor: pointer;
+    font-size: 0.82rem;
+    color: var(--ed-color-muted);
+}
+.ed-research__dig-deeper-collapsed:hover {
+    border-color: var(--ed-color-accent);
+    color: var(--ed-color-text);
+}
+/* Cards */
+.ed-research__dig-deeper-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+.ed-research__dig-deeper-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.55rem 0.75rem;
+    background: transparent;
+    border: 1px solid var(--ed-color-border);
+    border-radius: var(--ed-radius-sm);
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    font-family: var(--ed-font-body);
+    font-size: 0.85rem;
+    color: var(--ed-color-text);
+    line-height: 1.4;
+}
+.ed-research__dig-deeper-card:hover {
+    border-color: var(--ed-color-accent);
+    background: var(--ed-color-surface-hover);
+}
+.ed-research__dig-deeper-card:disabled {
+    cursor: default;
+    opacity: 0.7;
+}
+.ed-research__dig-deeper-arrow {
+    flex-shrink: 0;
+    color: var(--ed-color-accent);
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+/* Running state */
+.ed-research__dig-deeper-card--running {
+    border-style: dashed;
+}
+.ed-research__dig-deeper-spinner {
+    display: inline-block;
+    width: 0.8rem;
+    height: 0.8rem;
+    border: 2px solid var(--ed-color-border);
+    border-top-color: var(--ed-color-accent);
+    border-radius: 50%;
+    animation: ed-spin 0.8s linear infinite;
+}
+@keyframes ed-spin {
+    to { transform: rotate(360deg); }
+}
+/* Done state */
+.ed-research__dig-deeper-card--done {
+    opacity: 0.55;
+}
+.ed-research__dig-deeper-card--done .ed-research__dig-deeper-arrow {
+    color: #34d399;
+}
+/* Status text */
+.ed-research__dig-deeper-status {
+    font-size: 0.82rem;
+    color: var(--ed-color-muted);
+    font-style: italic;
+}
+/* Chat section wrapper */
+.ed-research__chat-section {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
 }
 
 /* ---- Research Suggestions Modal ---- */
