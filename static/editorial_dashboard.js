@@ -1689,6 +1689,34 @@
                     return;
                 }
 
+                // Audio on-demand: audio_current
+                if (e.target.closest('[data-action="audio-current"]')) {
+                    var acOpts = this._audioOptions || {};
+                    var acCurrent = acOpts.audio_current || {};
+                    if (acCurrent.status === 'ready' && acCurrent.audio_url) {
+                        this.stopTTS();
+                        this.closeAudioPopover();
+                        this.playAudio(acCurrent.audio_url, 'Audio version');
+                    } else if (acCurrent.status === 'missing' || acCurrent.status === 'stale' || acCurrent.status === 'failed') {
+                        this.showToast('Audio generation coming soon');
+                    }
+                    return;
+                }
+
+                // Audio on-demand: audio_briefing
+                if (e.target.closest('[data-action="audio-briefing"]')) {
+                    var abOpts = this._audioOptions || {};
+                    var abCurrent = abOpts.audio_briefing || {};
+                    if (abCurrent.status === 'ready' && abCurrent.audio_url) {
+                        this.stopTTS();
+                        this.closeAudioPopover();
+                        this.playAudio(abCurrent.audio_url, 'Full briefing');
+                    } else if (abCurrent.status === 'missing' || abCurrent.status === 'stale' || abCurrent.status === 'failed') {
+                        this.showToast('Briefing generation coming soon');
+                    }
+                    return;
+                }
+
                 // Close admin menu on outside click
                 var adminMenuEl = document.querySelector('.ed-reader__admin-menu--open');
                 if (adminMenuEl) {
@@ -2073,6 +2101,7 @@
                 if (this._readerShowAudioMenu) {
                     this.toggleAudioPopover();
                 }
+                this.fetchAudioOptions(videoId, 0);
             } catch (err) {
                 console.error('[Editorial] Reader failed:', err);
                 this.showReaderPanel('<div class="ed-loading" style="color:#ef4444">Error: ' + escapeHtml(err.message) + '</div>');
@@ -2248,6 +2277,11 @@
                     audioPlayBtn.classList.add('ed-reader__audio-item--disabled');
                     audioPlayBtn.style.display = 'none';
                 }
+            }
+
+            // Refetch audio options for the new variant
+            if (this._activeReaderId) {
+                this.fetchAudioOptions(this._activeReaderId, idx);
             }
         }
 
@@ -3358,6 +3392,22 @@
                 html += '</span>';
                 html += '</button>';
             }
+            // Audio version (on-demand)
+            html += '<button class="ed-reader__audio-item ed-reader__audio-item--disabled" data-action="audio-current">';
+            html += '<span class="ed-reader__audio-item__icon">&#x2728;</span>';
+            html += '<span class="ed-reader__audio-item__text">';
+            html += '<span class="ed-reader__audio-item__label">Create audio version</span>';
+            html += '<span class="ed-reader__audio-item__sub">Checking...</span>';
+            html += '</span>';
+            html += '</button>';
+            // Full briefing (on-demand)
+            html += '<button class="ed-reader__audio-item ed-reader__audio-item--disabled" data-action="audio-briefing">';
+            html += '<span class="ed-reader__audio-item__icon">&#x1F4E2;</span>';
+            html += '<span class="ed-reader__audio-item__text">';
+            html += '<span class="ed-reader__audio-item__label">Create full briefing</span>';
+            html += '<span class="ed-reader__audio-item__sub">Checking...</span>';
+            html += '</span>';
+            html += '</button>';
             html += '</div>';
 
             html += '<div class="ed-reader__body">';
@@ -4470,6 +4520,95 @@
         closeAudioPopover() {
             var popover = document.querySelector('.ed-reader__audio-popover');
             if (popover) popover.classList.remove('ed-reader__audio-popover--open');
+        }
+
+        async fetchAudioOptions(videoId, variantIdx) {
+            try {
+                var params = 'video_id=' + encodeURIComponent(videoId);
+                if (typeof variantIdx === 'number') {
+                    params += '&variant_idx=' + variantIdx;
+                }
+                var resp = await fetch('/api/audio/options?' + params);
+                if (!resp.ok) return;
+                this._audioOptions = await resp.json();
+                this._updateAudioPopover();
+            } catch (err) {
+                // Silently fail — popover just stays in "Checking..." state
+            }
+        }
+
+        _updateAudioPopover() {
+            var opts = this._audioOptions;
+            if (!opts) return;
+
+            // Update audio_current row
+            var acBtn = document.querySelector('[data-action="audio-current"]');
+            if (acBtn) {
+                var ac = opts.audio_current || {};
+                var acLabel = acBtn.querySelector('.ed-reader__audio-item__label');
+                var acSub = acBtn.querySelector('.ed-reader__audio-item__sub');
+
+                // Clear all state classes
+                acBtn.classList.remove('ed-reader__audio-item--disabled', 'ed-reader__audio-item--generating', 'ed-reader__audio-item--stale', 'ed-reader__audio-item--failed');
+
+                if (ac.status === 'ready' && ac.audio_url) {
+                    if (acLabel) acLabel.textContent = 'Play audio version';
+                    if (acSub) acSub.textContent = ac.source_label || ('Ready' + (ac.duration_seconds ? ' \u00B7 ' + Math.round(ac.duration_seconds / 60) + ' min' : ''));
+                    acBtn.classList.remove('ed-reader__audio-item--disabled');
+                } else if (ac.status === 'queued' || ac.status === 'generating') {
+                    if (acLabel) acLabel.textContent = 'Generating audio...';
+                    if (acSub) acSub.textContent = ac.status === 'queued' ? 'Queued' : 'In progress';
+                    acBtn.classList.add('ed-reader__audio-item--generating');
+                } else if (ac.status === 'stale') {
+                    if (acLabel) acLabel.textContent = 'Create audio version';
+                    if (acSub) acSub.textContent = 'Source changed';
+                    acBtn.classList.remove('ed-reader__audio-item--disabled');
+                    acBtn.classList.add('ed-reader__audio-item--stale');
+                } else if (ac.status === 'failed') {
+                    if (acLabel) acLabel.textContent = 'Create audio version';
+                    if (acSub) acSub.textContent = 'Generation failed';
+                    acBtn.classList.remove('ed-reader__audio-item--disabled');
+                    acBtn.classList.add('ed-reader__audio-item--failed');
+                } else {
+                    if (acLabel) acLabel.textContent = 'Create audio version';
+                    if (acSub) acSub.textContent = 'Not yet generated';
+                    acBtn.classList.remove('ed-reader__audio-item--disabled');
+                }
+            }
+
+            // Update audio_briefing row
+            var abBtn = document.querySelector('[data-action="audio-briefing"]');
+            if (abBtn) {
+                var ab = opts.audio_briefing || {};
+                var abLabel = abBtn.querySelector('.ed-reader__audio-item__label');
+                var abSub = abBtn.querySelector('.ed-reader__audio-item__sub');
+
+                abBtn.classList.remove('ed-reader__audio-item--disabled', 'ed-reader__audio-item--generating', 'ed-reader__audio-item--stale', 'ed-reader__audio-item--failed');
+
+                if (ab.status === 'ready' && ab.audio_url) {
+                    if (abLabel) abLabel.textContent = 'Play full briefing';
+                    if (abSub) abSub.textContent = 'Ready' + (ab.duration_seconds ? ' \u00B7 ' + Math.round(ab.duration_seconds / 60) + ' min' : '');
+                    abBtn.classList.remove('ed-reader__audio-item--disabled');
+                } else if (ab.status === 'queued' || ab.status === 'generating') {
+                    if (abLabel) abLabel.textContent = 'Generating briefing...';
+                    if (abSub) abSub.textContent = ab.status === 'queued' ? 'Queued' : 'In progress';
+                    abBtn.classList.add('ed-reader__audio-item--generating');
+                } else if (ab.status === 'stale') {
+                    if (abLabel) abLabel.textContent = 'Create full briefing';
+                    if (abSub) abSub.textContent = 'Source changed';
+                    abBtn.classList.remove('ed-reader__audio-item--disabled');
+                    abBtn.classList.add('ed-reader__audio-item--stale');
+                } else if (ab.status === 'failed') {
+                    if (abLabel) abLabel.textContent = 'Create full briefing';
+                    if (abSub) abSub.textContent = 'Generation failed';
+                    abBtn.classList.remove('ed-reader__audio-item--disabled');
+                    abBtn.classList.add('ed-reader__audio-item--failed');
+                } else {
+                    if (abLabel) abLabel.textContent = 'Create full briefing';
+                    if (abSub) abSub.textContent = 'Summary + research';
+                    abBtn.classList.remove('ed-reader__audio-item--disabled');
+                }
+            }
         }
 
         _getVisibleReaderText() {

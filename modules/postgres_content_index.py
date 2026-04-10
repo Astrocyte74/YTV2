@@ -2368,6 +2368,99 @@ class PostgreSQLContentIndex:
             if conn:
                 conn.close()
 
+    # ---- Audio Artifacts (On-Demand) ----
+
+    def _has_audio_artifacts_table(self, conn=None) -> bool:
+        """Detect whether audio_artifacts table exists in this database."""
+        return self._table_exists('audio_artifacts', conn=conn)
+
+    def get_audio_artifacts_for_video(self, video_id: str) -> list:
+        """Return all audio artifacts for a given video_id."""
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """SELECT mode, scope, source_hash, status, audio_url,
+                          duration_seconds, provider, source_label, error_message,
+                          metadata, created_at, updated_at
+                   FROM audio_artifacts
+                   WHERE video_id = %s""",
+                [video_id],
+            )
+            return [dict(r) for r in cur.fetchall()]
+        except Exception as e:
+            logger.error(f"Error fetching audio artifacts for {video_id}: {e}")
+            return []
+        finally:
+            if conn:
+                conn.close()
+
+    def get_audio_artifact(self, video_id: str, mode: str, scope: str) -> dict:
+        """Return a single audio artifact or None."""
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """SELECT id, video_id, mode, scope, source_hash, status,
+                          audio_url, duration_seconds, provider, source_label,
+                          error_message, metadata, created_at, updated_at
+                   FROM audio_artifacts
+                   WHERE video_id = %s AND mode = %s AND scope = %s""",
+                [video_id, mode, scope],
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error fetching audio artifact {video_id}/{mode}/{scope}: {e}")
+            return None
+        finally:
+            if conn:
+                conn.close()
+
+    def upsert_audio_artifact(self, video_id: str, mode: str, scope: str,
+                              source_hash: str, status: str = 'queued',
+                              audio_url: str = None, duration_seconds: int = None,
+                              provider: str = None, source_label: str = None,
+                              error_message: str = None, metadata: dict = None) -> int:
+        """Insert or update an audio artifact. Returns the row id."""
+        import json as _json
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """INSERT INTO audio_artifacts
+                       (video_id, mode, scope, source_hash, status, audio_url,
+                        duration_seconds, provider, source_label, error_message, metadata)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (video_id, mode, scope)
+                   DO UPDATE SET
+                       source_hash = EXCLUDED.source_hash,
+                       status = EXCLUDED.status,
+                       audio_url = EXCLUDED.audio_url,
+                       duration_seconds = EXCLUDED.duration_seconds,
+                       provider = EXCLUDED.provider,
+                       source_label = EXCLUDED.source_label,
+                       error_message = EXCLUDED.error_message,
+                       metadata = EXCLUDED.metadata,
+                       updated_at = NOW()
+                   RETURNING id""",
+                [video_id, mode, scope, source_hash, status, audio_url,
+                 duration_seconds, provider, source_label, error_message,
+                 _json.dumps(metadata) if metadata else None],
+            )
+            row = cur.fetchone()
+            conn.commit()
+            return row['id'] if row else None
+        except Exception as e:
+            logger.error(f"Error upserting audio artifact {video_id}/{mode}/{scope}: {e}")
+            return None
+        finally:
+            if conn:
+                conn.close()
+
     def update_summary_image_prompt(self, video_id: str, prompt: str) -> None:
         """Set analysis_json.summary_image_prompt for a content row.
 

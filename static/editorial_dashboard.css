@@ -1795,6 +1795,24 @@ body {
     cursor: not-allowed;
     pointer-events: none;
 }
+.ed-reader__audio-item--generating {
+    opacity: 0.6;
+    cursor: wait;
+}
+.ed-reader__audio-item--generating .ed-reader__audio-item__icon {
+    display: inline-block;
+    animation: ed-audio-spin 1s linear infinite;
+}
+@keyframes ed-audio-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+.ed-reader__audio-item--stale .ed-reader__audio-item__sub {
+    color: #f59e0b;
+}
+.ed-reader__audio-item--failed .ed-reader__audio-item__sub {
+    color: #ef4444;
+}
 
 .ed-reader__audio-item__icon {
     width: 1.2rem;

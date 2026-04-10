@@ -3240,7 +3240,212 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps(error_data).encode())
-    
+
+    # ---- Audio On-Demand: Options Endpoint ----
+
+    def _compute_audio_source_hash(self, video_id, mode, scope, variant_idx=0):
+        """Compute SHA-256 source hash for a given video+mode+scope from DB content."""
+        conn = None
+        try:
+            conn = get_postgres_connection()
+            cur = conn.cursor()
+            source_text = ''
+
+            if scope == 'summary_active':
+                # Get variant text from content_summaries
+                cur.execute(
+                    """SELECT cs.summary_text
+                       FROM content_summaries cs
+                       JOIN v_latest_summaries vls ON cs.id = vls.latest_summary_id
+                       WHERE vls.video_id = %s
+                       ORDER BY cs.id
+                       OFFSET %s LIMIT 1""",
+                    [video_id, variant_idx],
+                )
+                row = cur.fetchone()
+                if row and row.get('summary_text'):
+                    source_text = row['summary_text']
+
+            elif scope == 'transcript_visible':
+                cur.execute(
+                    "SELECT transcript_text FROM content WHERE video_id = %s",
+                    [video_id],
+                )
+                row = cur.fetchone()
+                if row and row.get('transcript_text'):
+                    source_text = row['transcript_text']
+
+            elif scope == 'ponderings_visible':
+                # Get research response from follow_up_research_runs if available
+                cur.execute(
+                    """SELECT research_response FROM follow_up_research_runs
+                       WHERE video_id = %s
+                       ORDER BY created_at DESC LIMIT 1""",
+                    [video_id],
+                )
+                row = cur.fetchone()
+                if row and row.get('research_response'):
+                    source_text = row['research_response']
+
+            elif mode == 'audio_briefing':
+                # Combined: summary + research hashes
+                parts = []
+                cur.execute(
+                    """SELECT cs.summary_text
+                       FROM content_summaries cs
+                       JOIN v_latest_summaries vls ON cs.id = vls.latest_summary_id
+                       WHERE vls.video_id = %s
+                       ORDER BY cs.id LIMIT 1""",
+                    [video_id],
+                )
+                row = cur.fetchone()
+                if row and row.get('summary_text'):
+                    parts.append(row['summary_text'][:2000])
+
+                cur.execute(
+                    """SELECT research_response FROM follow_up_research_runs
+                       WHERE video_id = %s
+                       ORDER BY created_at DESC LIMIT 1""",
+                    [video_id],
+                )
+                row = cur.fetchone()
+                if row and row.get('research_response'):
+                    parts.append(row['research_response'][:2000])
+
+                source_text = '|BRIEFING|'.join(parts)
+
+            canonical = (mode + ':' + scope + ':' + (source_text or '')).encode('utf-8')
+            return hashlib.sha256(canonical).hexdigest()
+
+        except Exception as e:
+            logger.error(f"Error computing audio source hash for {video_id}: {e}")
+            return ''
+        finally:
+            if conn:
+                conn.close()
+
+    def serve_audio_options(self, query_params):
+        """GET /api/audio/options — returns audio availability for a video (public read-only)."""
+        try:
+            video_id = (query_params.get('video_id') or [''])[0]
+            if not video_id:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id required"}).encode())
+                return
+
+            variant_idx = int((query_params.get('variant_idx') or ['0'])[0])
+
+            # Check if audio_artifacts table exists
+            if not content_index._has_audio_artifacts_table():
+                self._send_audio_options_fallback(video_id)
+                return
+
+            # Query artifacts for this video
+            artifacts = content_index.get_audio_artifacts_for_video(video_id)
+            artifact_map = {}
+            for a in artifacts:
+                key = a['mode'] + ':' + a['scope']
+                artifact_map[key] = a
+
+            # Determine current scope
+            scope = 'summary_active'
+
+            # Compute source hashes and compare
+            response = {
+                "read_aloud": {"available": True, "kind": "device_tts"},
+            }
+
+            # audio_current
+            current_hash = self._compute_audio_source_hash(video_id, 'audio_current', scope, variant_idx)
+            current_artifact = artifact_map.get('audio_current:' + scope)
+            if current_artifact and current_artifact.get('status') == 'ready':
+                if current_artifact.get('source_hash') == current_hash and current_hash:
+                    response["audio_current"] = {
+                        "status": "ready",
+                        "audio_url": current_artifact.get('audio_url'),
+                        "duration_seconds": current_artifact.get('duration_seconds'),
+                        "cached": True,
+                        "source_label": current_artifact.get('source_label'),
+                    }
+                else:
+                    response["audio_current"] = {"status": "stale", "cached": False}
+            elif current_artifact:
+                response["audio_current"] = {"status": current_artifact.get('status', 'missing')}
+            else:
+                response["audio_current"] = {"status": "missing"}
+
+            # audio_briefing
+            briefing_hash = self._compute_audio_source_hash(video_id, 'audio_briefing', 'summary_active', variant_idx)
+            briefing_artifact = artifact_map.get('audio_briefing:summary_active')
+            if briefing_artifact and briefing_artifact.get('status') == 'ready':
+                if briefing_artifact.get('source_hash') == briefing_hash and briefing_hash:
+                    response["audio_briefing"] = {
+                        "status": "ready",
+                        "audio_url": briefing_artifact.get('audio_url'),
+                        "duration_seconds": briefing_artifact.get('duration_seconds'),
+                        "cached": True,
+                    }
+                else:
+                    response["audio_briefing"] = {"status": "stale", "cached": False}
+            elif briefing_artifact:
+                response["audio_briefing"] = {"status": briefing_artifact.get('status', 'missing')}
+            else:
+                response["audio_briefing"] = {"status": "missing", "estimated_seconds": 480}
+
+            # legacy audio
+            legacy_info = self._get_legacy_audio_info(video_id)
+            response["legacy_audio"] = legacy_info
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(json.dumps(response, default=str).encode())
+
+        except Exception as e:
+            logger.error(f"Error serving audio options: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+
+    def _send_audio_options_fallback(self, video_id):
+        """Return audio options when audio_artifacts table doesn't exist yet."""
+        response = {
+            "read_aloud": {"available": True, "kind": "device_tts"},
+            "audio_current": {"status": "missing"},
+            "audio_briefing": {"status": "missing"},
+            "legacy_audio": self._get_legacy_audio_info(video_id),
+        }
+        self.send_response(200)
+        self.send_header('Content-type', 'application/json')
+        self.send_header('Cache-Control', 'no-cache')
+        self.end_headers()
+        self.wfile.write(json.dumps(response, default=str).encode())
+
+    def _get_legacy_audio_info(self, video_id):
+        """Get legacy MP3 audio info from the content table."""
+        try:
+            report = content_index.get_by_video_id(video_id)
+            if not report:
+                return {"available": False}
+            has_audio = report.get('has_audio', False)
+            media = report.get('media', {}) or {}
+            audio_url = media.get('audio_url')
+            media_meta = report.get('media_metadata', {}) or {}
+            duration = media_meta.get('mp3_duration_seconds')
+            if has_audio and audio_url:
+                return {
+                    "available": True,
+                    "audio_url": audio_url,
+                    "duration_seconds": duration,
+                }
+            return {"available": False}
+        except Exception:
+            return {"available": False}
+
     def serve_api(self):
         """Serve Phase 2 API endpoints with enhanced filtering and search"""
         try:
@@ -3283,6 +3488,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_semantic_search(query_params)
             elif path == '/api/semantic-similar':
                 self.serve_api_semantic_similar(query_params)
+            elif path == '/api/audio/options':
+                self.serve_audio_options(query_params)
             elif path == '/api/version':
                 self.serve_api_version()
             elif path.startswith('/api/backup/'):
