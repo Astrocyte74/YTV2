@@ -1676,12 +1676,34 @@
                     return;
                 }
 
+                // Audio popover toggle
+                if (e.target.closest('[data-action="toggle-audio-popover"]')) {
+                    this.toggleAudioPopover();
+                    return;
+                }
+
+                // TTS: Read aloud
+                if (e.target.closest('[data-action="tts-read-aloud"]')) {
+                    this.toggleTTS();
+                    this.closeAudioPopover();
+                    return;
+                }
+
                 // Close admin menu on outside click
                 var adminMenuEl = document.querySelector('.ed-reader__admin-menu--open');
                 if (adminMenuEl) {
                     var adminToggle = document.querySelector('.ed-reader__admin-toggle');
                     if (adminToggle && !adminToggle.contains(e.target) && !adminMenuEl.contains(e.target)) {
                         adminMenuEl.classList.remove('ed-reader__admin-menu--open');
+                    }
+                }
+
+                // Close audio popover on outside click
+                var audioPopoverEl = document.querySelector('.ed-reader__audio-popover--open');
+                if (audioPopoverEl) {
+                    var audioBtn = document.querySelector('.ed-reader__audio-btn');
+                    if (audioBtn && !audioBtn.contains(e.target) && !audioPopoverEl.contains(e.target)) {
+                        audioPopoverEl.classList.remove('ed-reader__audio-popover--open');
                     }
                 }
 
@@ -1919,6 +1941,8 @@
                 if (playBtn) {
                     var audioUrl = playBtn.dataset.audioUrl;
                     if (audioUrl) {
+                        this.stopTTS();
+                        this.closeAudioPopover();
                         var readerTitle = document.querySelector('.ed-reader__title');
                         this.playAudio(audioUrl, readerTitle ? readerTitle.textContent : '');
                     }
@@ -2085,6 +2109,8 @@
 
         closeReader() {
             this._stopResearchPolling();
+            this.stopTTS();
+            this.closeAudioPopover();
             var panel = document.getElementById('ed-reader');
             if (panel) {
                 panel.classList.remove('ed-reader--open');
@@ -2101,6 +2127,7 @@
                 'button, a, input, textarea, select, label, [contenteditable="true"], ' +
                 '.ed-reader__variants, .ed-transcript__list, .ed-transcript__plain, ' +
                 '.ed-modal, .ed-audio-bar, .ed-reader__admin-menu, ' +
+                '.ed-reader__audio-popover, ' +
                 '.ed-research__turn-menu-dropdown, [data-research-composer]'
             );
         }
@@ -2203,17 +2230,19 @@
                 tabs[t].classList.toggle('ed-reader__variant--active', tabIdx === idx);
             }
 
-            // Update listen button audio URL
-            var listenBtn = document.querySelector('[data-action="play-audio"]');
-            if (listenBtn) {
+            // Update audio popover play-existing row
+            var audioPlayBtn = document.querySelector('.ed-reader__audio-popover [data-action="play-audio"]');
+            if (audioPlayBtn) {
                 if (v.audio_url) {
-                    listenBtn.dataset.audioUrl = v.audio_url;
-                    listenBtn.disabled = false;
-                    listenBtn.classList.remove('ed-btn--disabled');
+                    audioPlayBtn.dataset.audioUrl = v.audio_url;
+                    audioPlayBtn.disabled = false;
+                    audioPlayBtn.classList.remove('ed-reader__audio-item--disabled');
+                    audioPlayBtn.style.display = '';
                 } else {
-                    listenBtn.dataset.audioUrl = '';
-                    listenBtn.disabled = true;
-                    listenBtn.classList.add('ed-btn--disabled');
+                    audioPlayBtn.dataset.audioUrl = '';
+                    audioPlayBtn.disabled = true;
+                    audioPlayBtn.classList.add('ed-reader__audio-item--disabled');
+                    audioPlayBtn.style.display = 'none';
                 }
             }
         }
@@ -3306,6 +3335,27 @@
             html += '<button class="ed-reader__admin-item ed-reader__admin-item--danger" data-action="admin-delete">Delete...</button>';
             html += '</div>';
 
+            // Audio On-Demand button + popover
+            html += '<button class="ed-reader__audio-btn" data-action="toggle-audio-popover" title="Audio">&#9835;</button>';
+            html += '<div class="ed-reader__audio-popover">';
+            html += '<button class="ed-reader__audio-item" data-action="tts-read-aloud">';
+            html += '<span class="ed-reader__audio-item__icon">&#x1F5E3;</span>';
+            html += '<span class="ed-reader__audio-item__text">';
+            html += '<span class="ed-reader__audio-item__label">Read this aloud</span>';
+            html += '<span class="ed-reader__audio-item__sub">Device voice</span>';
+            html += '</span>';
+            html += '</button>';
+            if (hasAudio && audioUrl) {
+                html += '<button class="ed-reader__audio-item" data-action="play-audio" data-audio-url="' + escapeHtml(audioUrl) + '">';
+                html += '<span class="ed-reader__audio-item__icon">&#9654;</span>';
+                html += '<span class="ed-reader__audio-item__text">';
+                html += '<span class="ed-reader__audio-item__label">Play existing audio</span>';
+                html += '<span class="ed-reader__audio-item__sub">Saved audio</span>';
+                html += '</span>';
+                html += '</button>';
+            }
+            html += '</div>';
+
             html += '<div class="ed-reader__body">';
 
             // Meta bar
@@ -3331,9 +3381,6 @@
             // Source link + audio (inline, minimal)
             if (canonicalUrl) {
                 html += '<div class="ed-reader__source-link"><a href="' + escapeHtml(canonicalUrl) + '" target="_blank" rel="noopener">↗ View source</a></div>';
-            }
-            if (hasAudio && audioUrl) {
-                html += '<button class="ed-btn ed-btn--ghost ed-btn--sm ed-reader__listen-btn" data-action="play-audio" data-audio-url="' + escapeHtml(audioUrl) + '">▶ Listen</button>';
             }
 
             // Variant tabs + Research tab + Transcript tab
@@ -3393,6 +3440,7 @@
         // ---- Audio Player ----
 
         playAudio(url, title) {
+            this.stopTTS();
             var player = this.mounts.player;
             if (!player) return;
 
@@ -4405,6 +4453,141 @@
             } catch (err) {
                 this.showToast('Failed: ' + err.message, 'error');
                 this.closeModal();
+            }
+        }
+
+        // ---- Audio On-Demand ----
+
+        toggleAudioPopover() {
+            var popover = document.querySelector('.ed-reader__audio-popover');
+            if (popover) popover.classList.toggle('ed-reader__audio-popover--open');
+        }
+
+        closeAudioPopover() {
+            var popover = document.querySelector('.ed-reader__audio-popover');
+            if (popover) popover.classList.remove('ed-reader__audio-popover--open');
+        }
+
+        _getVisibleReaderText() {
+            var transcriptEl = document.querySelector('.ed-transcript');
+            var isTranscriptVisible = transcriptEl && transcriptEl.style.display !== 'none';
+
+            var researchEl = document.querySelector('[data-research-panel]');
+            var isResearchVisible = researchEl && researchEl.style.display !== 'none';
+
+            var text = '';
+
+            if (isTranscriptVisible) {
+                text = this._readerTranscriptText || '';
+                if (!text) {
+                    var rows = document.querySelectorAll('.ed-transcript__row');
+                    for (var i = 0; i < rows.length; i++) {
+                        text += (rows[i].textContent || '') + ' ';
+                    }
+                }
+            } else if (isResearchVisible) {
+                var researchBody = document.querySelector('.ed-research__thread');
+                if (researchBody) {
+                    text = researchBody.textContent || '';
+                } else {
+                    text = researchEl ? researchEl.textContent : '';
+                }
+            } else {
+                var variantIdx = this._readerActiveVariant || 0;
+                var variants = this._readerVariants || [];
+                if (variants[variantIdx] && variants[variantIdx].text) {
+                    text = variants[variantIdx].text;
+                } else {
+                    var summaryEl = document.querySelector('.ed-reader__summary');
+                    text = summaryEl ? summaryEl.textContent : '';
+                }
+            }
+
+            return (text || '').trim();
+        }
+
+        toggleTTS() {
+            if (!window.speechSynthesis) {
+                this.showToast('Text-to-speech not supported in this browser', 'error');
+                return;
+            }
+
+            if (this._ttsSpeaking) {
+                this.stopTTS();
+                return;
+            }
+
+            // Pause MP3 if playing (mutual exclusion)
+            var audio = document.getElementById('ed-audio-element');
+            if (audio && !audio.paused) {
+                audio.pause();
+            }
+
+            var text = this._getVisibleReaderText();
+            if (!text) {
+                this.showToast('No text to read', 'error');
+                return;
+            }
+
+            // Cap length for browser TTS safety
+            var maxLen = 5000;
+            if (text.length > maxLen) {
+                text = text.substring(0, maxLen);
+            }
+
+            var utterance = new SpeechSynthesisUtterance(text);
+            var self = this;
+
+            utterance.onstart = function () {
+                self._ttsSpeaking = true;
+                self._updateTTSUI();
+            };
+
+            utterance.onend = function () {
+                self._ttsSpeaking = false;
+                self._updateTTSUI();
+            };
+
+            utterance.onerror = function () {
+                self._ttsSpeaking = false;
+                self._updateTTSUI();
+            };
+
+            this._ttsUtterance = utterance;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        stopTTS() {
+            if (window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+            }
+            this._ttsSpeaking = false;
+            this._updateTTSUI();
+        }
+
+        _updateTTSUI() {
+            var audioBtn = document.querySelector('.ed-reader__audio-btn');
+            if (audioBtn) {
+                if (this._ttsSpeaking) {
+                    audioBtn.classList.add('ed-reader__audio-btn--active');
+                    audioBtn.title = 'Stop reading';
+                } else {
+                    audioBtn.classList.remove('ed-reader__audio-btn--active');
+                    audioBtn.title = 'Audio';
+                }
+            }
+
+            var ttsBtn = document.querySelector('[data-action="tts-read-aloud"]');
+            if (ttsBtn) {
+                var label = ttsBtn.querySelector('.ed-reader__audio-item__label');
+                if (label) {
+                    label.textContent = this._ttsSpeaking ? 'Stop reading' : 'Read this aloud';
+                }
+                if (this._ttsSpeaking) {
+                    ttsBtn.classList.add('ed-reader__audio-item--speaking');
+                } else {
+                    ttsBtn.classList.remove('ed-reader__audio-item--speaking');
+                }
             }
         }
     }
