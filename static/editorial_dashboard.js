@@ -1698,7 +1698,7 @@
                         this.closeAudioPopover();
                         this.playAudio(acCurrent.audio_url, 'Audio version');
                     } else if (acCurrent.status === 'missing' || acCurrent.status === 'stale' || acCurrent.status === 'failed') {
-                        this.showToast('Audio generation coming soon');
+                        this._triggerAudioGenerate('audio_current');
                     }
                     return;
                 }
@@ -1712,7 +1712,7 @@
                         this.closeAudioPopover();
                         this.playAudio(abCurrent.audio_url, 'Full briefing');
                     } else if (abCurrent.status === 'missing' || abCurrent.status === 'stale' || abCurrent.status === 'failed') {
-                        this.showToast('Briefing generation coming soon');
+                        this._triggerAudioGenerate('audio_briefing');
                     }
                     return;
                 }
@@ -2142,6 +2142,7 @@
 
         closeReader() {
             this._stopResearchPolling();
+            this._stopAudioPolling();
             this.stopTTS();
             this.closeAudioPopover();
             var panel = document.getElementById('ed-reader');
@@ -4611,6 +4612,105 @@
                     abBtn.classList.remove('ed-reader__audio-item--disabled');
                 }
             }
+        }
+
+        async _triggerAudioGenerate(mode) {
+            var videoId = this._activeReaderId;
+            if (!videoId) return;
+
+            var scope = 'summary_active';
+            var variantSlug = '';
+            var variants = this._readerVariants || [];
+            var activeIdx = this._readerActiveVariant || 0;
+            if (variants[activeIdx] && variants[activeIdx].variant) {
+                variantSlug = variants[activeIdx].variant;
+            }
+
+            // Optimistically update UI to generating
+            this._audioOptions = this._audioOptions || {};
+            this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'queued'};
+            this._updateAudioPopover();
+
+            try {
+                var token = localStorage.getItem('ed_debug_token') || '';
+                var resp = await fetch('/api/audio/generate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
+                    body: JSON.stringify({video_id: videoId, mode: mode, scope: scope, variant_slug: variantSlug || undefined})
+                });
+
+                var data = await resp.json();
+
+                if (resp.ok && data.status === 'ready') {
+                    // Fast generation — update immediately
+                    this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {
+                        status: 'ready',
+                        audio_url: data.audio_url,
+                        duration_seconds: data.duration_seconds,
+                        cached: false,
+                        source_label: data.source_label
+                    };
+                    this._updateAudioPopover();
+                    this.showToast('Audio ready');
+                } else if (resp.ok && (data.status === 'queued' || data.status === 'generating')) {
+                    // Slow generation — start polling
+                    this._startAudioPolling(videoId);
+                    this.showToast('Generating audio...');
+                } else {
+                    this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'failed'};
+                    this._updateAudioPopover();
+                    this.showToast('Generation failed: ' + (data.error || 'Unknown error'), 'error');
+                }
+            } catch (err) {
+                this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'failed'};
+                this._updateAudioPopover();
+                this.showToast('Generation failed', 'error');
+            }
+        }
+
+        _startAudioPolling(videoId) {
+            this._stopAudioPolling();
+            this._audioPollVideoId = videoId;
+            this._audioPollInFlight = false;
+            var self = this;
+            this._audioPollTimer = setTimeout(function () { self._pollAudioStatus(); }, 5000);
+        }
+
+        _pollAudioStatus() {
+            if (this._audioPollInFlight) return;
+            var videoId = this._audioPollVideoId;
+            if (!videoId) { this._stopAudioPolling(); return; }
+
+            this._audioPollInFlight = true;
+            var self = this;
+            this.fetchAudioOptions(videoId, this._readerActiveVariant || 0).then(function () {
+                self._audioPollInFlight = false;
+                var opts = self._audioOptions || {};
+                var ac = opts.audio_current || {};
+                var ab = opts.audio_briefing || {};
+                var stillRunning = (ac.status === 'queued' || ac.status === 'generating' ||
+                                    ab.status === 'queued' || ab.status === 'generating');
+                if (stillRunning) {
+                    self._audioPollTimer = setTimeout(function () { self._pollAudioStatus(); }, 5000);
+                } else {
+                    self._stopAudioPolling();
+                    if (ac.status === 'ready' || ab.status === 'ready') {
+                        self.showToast('Audio ready');
+                    }
+                }
+            }).catch(function () {
+                self._audioPollInFlight = false;
+                self._audioPollTimer = setTimeout(function () { self._pollAudioStatus(); }, 5000);
+            });
+        }
+
+        _stopAudioPolling() {
+            if (this._audioPollTimer) {
+                clearTimeout(this._audioPollTimer);
+            }
+            this._audioPollTimer = null;
+            this._audioPollVideoId = null;
+            this._audioPollInFlight = false;
         }
 
         _getVisibleReaderText() {

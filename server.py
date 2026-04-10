@@ -1894,6 +1894,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_follow_up_chat_request()
         elif self.path == '/api/research/follow-up/chat/stream':
             self.handle_follow_up_chat_stream_request()
+        elif self.path == '/api/audio/generate':
+            self.handle_audio_generate_request()
         # New ingest endpoints for NAS sync (T-Y020C)
         elif self.path == '/ingest/report':
             self.handle_ingest_report()
@@ -6532,6 +6534,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "stream_proxy_error", "message": str(e)}).encode())
             except Exception:
                 pass
+
+    def handle_audio_generate_request(self):
+        """POST /api/audio/generate — proxy to backend FastAPI for TTS generation."""
+        self._proxy_follow_up_request('/api/audio/generate')
 
     def handle_follow_up_thread_request(self):
         """GET /api/research/follow-up/thread — admin-only dashboard proxy."""
