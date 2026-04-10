@@ -3243,7 +3243,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
     # ---- Audio On-Demand: Options Endpoint ----
 
-    def _compute_audio_source_hash(self, video_id, mode, scope, variant_idx=0):
+    def _compute_audio_source_hash(self, video_id, mode, scope, variant_slug=None):
         """Compute SHA-256 source hash for a given video+mode+scope from DB content."""
         conn = None
         try:
@@ -3251,56 +3251,19 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             cur = conn.cursor()
             source_text = ''
 
-            if scope == 'summary_active':
-                # Get variant text from content_summaries
-                cur.execute(
-                    """SELECT cs.summary_text
-                       FROM content_summaries cs
-                       JOIN v_latest_summaries vls ON cs.id = vls.latest_summary_id
-                       WHERE vls.video_id = %s
-                       ORDER BY cs.id
-                       OFFSET %s LIMIT 1""",
-                    [video_id, variant_idx],
-                )
-                row = cur.fetchone()
-                if row and row.get('summary_text'):
-                    source_text = row['summary_text']
-
-            elif scope == 'transcript_visible':
-                cur.execute(
-                    "SELECT transcript_text FROM content WHERE video_id = %s",
-                    [video_id],
-                )
-                row = cur.fetchone()
-                if row and row.get('transcript_text'):
-                    source_text = row['transcript_text']
-
-            elif scope == 'ponderings_visible':
-                # Get research response from follow_up_research_runs if available
-                cur.execute(
-                    """SELECT research_response FROM follow_up_research_runs
-                       WHERE video_id = %s
-                       ORDER BY created_at DESC LIMIT 1""",
-                    [video_id],
-                )
-                row = cur.fetchone()
-                if row and row.get('research_response'):
-                    source_text = row['research_response']
-
-            elif mode == 'audio_briefing':
-                # Combined: summary + research hashes
+            # audio_briefing is a combined mode — check it BEFORE scope-specific branches
+            if mode == 'audio_briefing':
                 parts = []
                 cur.execute(
-                    """SELECT cs.summary_text
-                       FROM content_summaries cs
-                       JOIN v_latest_summaries vls ON cs.id = vls.latest_summary_id
-                       WHERE vls.video_id = %s
-                       ORDER BY cs.id LIMIT 1""",
+                    """SELECT text FROM v_latest_summaries
+                       WHERE video_id = %s AND variant NOT LIKE 'audio%%'
+                       AND variant != 'deep-research'
+                       ORDER BY variant LIMIT 1""",
                     [video_id],
                 )
                 row = cur.fetchone()
-                if row and row.get('summary_text'):
-                    parts.append(row['summary_text'][:2000])
+                if row and row.get('text'):
+                    parts.append(row['text'][:2000])
 
                 cur.execute(
                     """SELECT research_response FROM follow_up_research_runs
@@ -3313,6 +3276,47 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     parts.append(row['research_response'][:2000])
 
                 source_text = '|BRIEFING|'.join(parts)
+
+            elif scope == 'summary_active':
+                # Get variant text using stable slug, not integer offset
+                if variant_slug:
+                    cur.execute(
+                        """SELECT text FROM v_latest_summaries
+                           WHERE video_id = %s AND variant = %s LIMIT 1""",
+                        [video_id, variant_slug],
+                    )
+                else:
+                    # Fallback: first non-audio, non-deep-research variant
+                    cur.execute(
+                        """SELECT text FROM v_latest_summaries
+                           WHERE video_id = %s AND variant NOT LIKE 'audio%%'
+                           AND variant != 'deep-research'
+                           ORDER BY variant LIMIT 1""",
+                        [video_id],
+                    )
+                row = cur.fetchone()
+                if row and row.get('text'):
+                    source_text = row['text']
+
+            elif scope == 'transcript_visible':
+                cur.execute(
+                    "SELECT transcript_text FROM content WHERE video_id = %s",
+                    [video_id],
+                )
+                row = cur.fetchone()
+                if row and row.get('transcript_text'):
+                    source_text = row['transcript_text']
+
+            elif scope == 'ponderings_visible':
+                cur.execute(
+                    """SELECT research_response FROM follow_up_research_runs
+                       WHERE video_id = %s
+                       ORDER BY created_at DESC LIMIT 1""",
+                    [video_id],
+                )
+                row = cur.fetchone()
+                if row and row.get('research_response'):
+                    source_text = row['research_response']
 
             canonical = (mode + ':' + scope + ':' + (source_text or '')).encode('utf-8')
             return hashlib.sha256(canonical).hexdigest()
@@ -3335,7 +3339,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "video_id required"}).encode())
                 return
 
-            variant_idx = int((query_params.get('variant_idx') or ['0'])[0])
+            variant_slug = (query_params.get('variant_slug') or [''])[0] or None
 
             # Check if audio_artifacts table exists
             if not content_index._has_audio_artifacts_table():
@@ -3358,7 +3362,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             }
 
             # audio_current
-            current_hash = self._compute_audio_source_hash(video_id, 'audio_current', scope, variant_idx)
+            current_hash = self._compute_audio_source_hash(video_id, 'audio_current', scope, variant_slug)
             current_artifact = artifact_map.get('audio_current:' + scope)
             if current_artifact and current_artifact.get('status') == 'ready':
                 if current_artifact.get('source_hash') == current_hash and current_hash:
@@ -3377,7 +3381,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 response["audio_current"] = {"status": "missing"}
 
             # audio_briefing
-            briefing_hash = self._compute_audio_source_hash(video_id, 'audio_briefing', 'summary_active', variant_idx)
+            briefing_hash = self._compute_audio_source_hash(video_id, 'audio_briefing', 'summary_active', variant_slug)
             briefing_artifact = artifact_map.get('audio_briefing:summary_active')
             if briefing_artifact and briefing_artifact.get('status') == 'ready':
                 if briefing_artifact.get('source_hash') == briefing_hash and briefing_hash:

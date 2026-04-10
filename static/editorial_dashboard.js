@@ -4525,8 +4525,10 @@
         async fetchAudioOptions(videoId, variantIdx) {
             try {
                 var params = 'video_id=' + encodeURIComponent(videoId);
-                if (typeof variantIdx === 'number') {
-                    params += '&variant_idx=' + variantIdx;
+                // Resolve stable variant slug from index
+                var variants = this._readerVariants || [];
+                if (typeof variantIdx === 'number' && variants[variantIdx] && variants[variantIdx].variant) {
+                    params += '&variant_slug=' + encodeURIComponent(variants[variantIdx].variant);
                 }
                 var resp = await fetch('/api/audio/options?' + params);
                 if (!resp.ok) return;
