@@ -393,6 +393,8 @@
             this._researchPollTimer = null;
             this._researchPollInFlight = false;
             this._researchPollingVideoId = null;
+
+            this._readerSwipe = null;
         }
 
         // ---- URL state ----
@@ -1986,6 +1988,11 @@
             }.bind(this);
             window.addEventListener('scroll', this._scrollHandler, { passive: true });
 
+            document.addEventListener('touchstart', this._handleReaderTouchStart.bind(this), { passive: true });
+            document.addEventListener('touchmove', this._handleReaderTouchMove.bind(this), { passive: true });
+            document.addEventListener('touchend', this._handleReaderTouchEnd.bind(this), { passive: true });
+            document.addEventListener('touchcancel', this._handleReaderTouchCancel.bind(this), { passive: true });
+
             // Research composer input — enable/disable Ask button, show/hide Research this
             document.addEventListener('input', function (e) {
                 if (e.target.matches('[data-research-composer]')) {
@@ -2086,6 +2093,92 @@
             this._selectedItemId = null;
             this._updateSelectedVisualState();
             this.renderTopbar();
+        }
+
+        _readerSwipeTargetIsInteractive(target) {
+            if (!target || !target.closest) return true;
+            return !!target.closest(
+                'button, a, input, textarea, select, label, [contenteditable="true"], ' +
+                '.ed-reader__variants, .ed-transcript__list, .ed-transcript__plain, ' +
+                '.ed-modal, .ed-audio-bar, .ed-reader__admin-menu, ' +
+                '.ed-research__turn-menu-dropdown, [data-research-composer]'
+            );
+        }
+
+        _handleReaderTouchStart(e) {
+            if (!this._activeReaderId) return;
+            var panel = document.getElementById('ed-reader');
+            if (!panel || !panel.classList.contains('ed-reader--open') || !panel.contains(e.target)) return;
+            if (this._readerSwipeTargetIsInteractive(e.target)) {
+                this._readerSwipe = null;
+                return;
+            }
+            if (!e.touches || e.touches.length !== 1) return;
+            var touch = e.touches[0];
+            this._readerSwipe = {
+                startX: touch.clientX,
+                startY: touch.clientY,
+                lastX: touch.clientX,
+                lastY: touch.clientY
+            };
+        }
+
+        _handleReaderTouchMove(e) {
+            if (!this._readerSwipe || !e.touches || e.touches.length !== 1) return;
+            var touch = e.touches[0];
+            this._readerSwipe.lastX = touch.clientX;
+            this._readerSwipe.lastY = touch.clientY;
+        }
+
+        _handleReaderTouchEnd(e) {
+            var swipe = this._readerSwipe;
+            this._readerSwipe = null;
+            if (!swipe || !e.changedTouches || !e.changedTouches.length) return;
+
+            var touch = e.changedTouches[0];
+            var dx = touch.clientX - swipe.startX;
+            var dy = touch.clientY - swipe.startY;
+            var absX = Math.abs(dx);
+            var absY = Math.abs(dy);
+
+            if (absX < 70 || absX < absY * 1.35 || absY > 140) return;
+            this._navigateReaderByOffset(dx < 0 ? 1 : -1);
+        }
+
+        _handleReaderTouchCancel() {
+            this._readerSwipe = null;
+        }
+
+        _getReaderOrderedItems() {
+            var items = this.state.items || this.state.allItems || [];
+            return Array.isArray(items) ? items : [];
+        }
+
+        _getReaderItemId(item) {
+            return item ? (item.video_id || item.id || '') : '';
+        }
+
+        _getActiveReaderIndex(items) {
+            var activeId = this._activeReaderId || '';
+            for (var i = 0; i < items.length; i++) {
+                if (this._getReaderItemId(items[i]) === activeId) return i;
+            }
+            return -1;
+        }
+
+        _navigateReaderByOffset(offset) {
+            var items = this._getReaderOrderedItems();
+            var currentIndex = this._getActiveReaderIndex(items);
+            var nextIndex = currentIndex + offset;
+            if (currentIndex < 0 || nextIndex < 0 || nextIndex >= items.length) {
+                this.showToast(offset > 0 ? 'No next story loaded' : 'No previous story loaded');
+                return;
+            }
+
+            var nextId = this._getReaderItemId(items[nextIndex]);
+            if (!nextId || nextId === this._activeReaderId) return;
+            this.showToast(offset > 0 ? 'Next story' : 'Previous story');
+            this.openReader(nextId);
         }
 
         switchReaderVariant(idx) {
