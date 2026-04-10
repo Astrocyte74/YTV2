@@ -1961,14 +1961,14 @@
                     }
                 }
 
-                // Listen button on card
+                // Listen button on card — open reader and show audio menu
                 var listenBtn = e.target.closest('[data-action="listen"]');
                 if (listenBtn) {
                     var listenCard = listenBtn.closest('.ed-card');
                     var listenVid = listenCard ? listenCard.dataset.videoId : null;
                     if (listenVid) {
                         e.preventDefault();
-                        this.openReader(listenVid, { autoPlayAudio: true });
+                        this.openReader(listenVid, { showAudioMenu: true });
                         return;
                     }
                 }
@@ -2057,6 +2057,7 @@
             this._activeReaderId = videoId;
             this._selectedItemId = videoId;
             this._readerAutoPlayAudio = !!opts.autoPlayAudio;
+            this._readerShowAudioMenu = !!opts.showAudioMenu;
             this.showReaderPanel('<div class="ed-loading">Loading...</div>');
 
             try {
@@ -2068,6 +2069,9 @@
                 if (this._readerAutoPlayAudio && this._readerAudioUrl) {
                     var readerTitle = document.querySelector('.ed-reader__title');
                     this.playAudio(this._readerAudioUrl, readerTitle ? readerTitle.textContent : '');
+                }
+                if (this._readerShowAudioMenu) {
+                    this.toggleAudioPopover();
                 }
             } catch (err) {
                 console.error('[Editorial] Reader failed:', err);
@@ -4532,7 +4536,9 @@
             // Cap length for browser TTS safety
             var maxLen = 5000;
             if (text.length > maxLen) {
+                var originalLen = text.length;
                 text = text.substring(0, maxLen);
+                this.showToast('Reading excerpt (' + Math.round(maxLen / originalLen * 100) + '% of content)');
             }
 
             var utterance = new SpeechSynthesisUtterance(text);
