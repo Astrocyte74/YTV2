@@ -1896,6 +1896,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_follow_up_chat_stream_request()
         elif self.path == '/api/audio/generate':
             self.handle_audio_generate_request()
+        elif self.path == '/api/audio/generate/stream':
+            self.handle_audio_generate_stream_request()
         # New ingest endpoints for NAS sync (T-Y020C)
         elif self.path == '/ingest/report':
             self.handle_ingest_report()
@@ -6483,6 +6485,18 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
     def handle_follow_up_chat_stream_request(self):
         """POST /api/research/follow-up/chat/stream — streaming proxy for Mercury 2 diffusing."""
+        self._proxy_follow_up_stream_request('/api/research/follow-up/chat/stream')
+
+    def handle_audio_generate_request(self):
+        """POST /api/audio/generate — proxy to backend FastAPI for TTS generation."""
+        self._proxy_follow_up_request('/api/audio/generate')
+
+    def handle_audio_generate_stream_request(self):
+        """POST /api/audio/generate/stream — proxy streaming TTS to backend."""
+        self._proxy_follow_up_stream_request('/api/audio/generate/stream')
+
+    def _proxy_follow_up_stream_request(self, endpoint_path: str):
+        """Proxy a streaming SSE request to the backend, forwarding events chunk by chunk."""
         try:
             if not self._debug_auth_ok():
                 self.send_response(401)
@@ -6510,7 +6524,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "backend_not_configured"}).encode())
                 return
 
-            target = base_url.rstrip('/') + '/api/research/follow-up/chat/stream'
+            target = base_url.rstrip('/') + endpoint_path
             headers = {
                 'Content-Type': 'application/json',
                 'Accept': 'text/event-stream',
@@ -6546,7 +6560,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     self.wfile.flush()
 
         except Exception as e:
-            logger.exception("Follow-up stream proxy failed: %s", e)
+            logger.exception("Stream proxy failed for %s: %s", endpoint_path, e)
             try:
                 self.send_response(500)
                 self.set_cors_headers()
@@ -6555,10 +6569,6 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "stream_proxy_error", "message": str(e)}).encode())
             except Exception:
                 pass
-
-    def handle_audio_generate_request(self):
-        """POST /api/audio/generate — proxy to backend FastAPI for TTS generation."""
-        self._proxy_follow_up_request('/api/audio/generate')
 
     def handle_follow_up_thread_request(self):
         """GET /api/research/follow-up/thread — admin-only dashboard proxy."""

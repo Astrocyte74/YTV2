@@ -4633,38 +4633,96 @@
 
             try {
                 var token = this.getAdminToken();
-                var resp = await fetch('/api/audio/generate', {
+                var resp = await fetch('/api/audio/generate/stream', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
                     body: JSON.stringify({video_id: videoId, mode: mode, scope: scope, variant_slug: variantSlug || undefined})
                 });
 
-                var data = await resp.json();
+                var contentType = resp.headers.get('Content-Type') || '';
 
-                if (resp.ok && data.status === 'ready') {
-                    // Fast generation — update immediately
-                    this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {
-                        status: 'ready',
-                        audio_url: data.audio_url,
-                        duration_seconds: data.duration_seconds,
-                        cached: false,
-                        source_label: data.source_label
-                    };
+                if (resp.ok && contentType.indexOf('application/json') !== -1) {
+                    // Cached result — JSON response with audio_url
+                    var data = await resp.json();
+                    if (data.status === 'ready') {
+                        this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {
+                            status: 'ready',
+                            audio_url: data.audio_url,
+                            duration_seconds: data.duration_seconds,
+                            cached: true,
+                            source_label: data.source_label
+                        };
+                        this._updateAudioPopover();
+                        this.showToast('Audio ready (cached)');
+                    } else {
+                        this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'failed'};
+                        this._updateAudioPopover();
+                        this.showToast('Generation failed: ' + (data.error || 'Unknown error'), 'error');
+                    }
+                } else if (resp.ok && contentType.indexOf('text/event-stream') !== -1) {
+                    // Streaming — process SSE events
+                    this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'generating'};
                     this._updateAudioPopover();
-                    this.showToast('Audio ready');
-                } else if (resp.ok && (data.status === 'queued' || data.status === 'generating')) {
-                    // Slow generation — start polling
-                    this._startAudioPolling(videoId);
-                    this.showToast('Generating audio...');
-                } else {
+                    this._handleAudioSSE(resp, mode);
+                } else if (!resp.ok) {
+                    var errData = await resp.json().catch(function() { return {error: 'Unknown error'}; });
                     this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'failed'};
                     this._updateAudioPopover();
-                    this.showToast('Generation failed: ' + (data.error || 'Unknown error'), 'error');
+                    this.showToast('Generation failed: ' + (errData.error || resp.status), 'error');
                 }
             } catch (err) {
                 this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'failed'};
                 this._updateAudioPopover();
                 this.showToast('Generation failed', 'error');
+            }
+        }
+
+        async _handleAudioSSE(resp, mode) {
+            var self = this;
+            var key = mode === 'audio_current' ? 'audio_current' : 'audio_briefing';
+            var reader = resp.body.getReader();
+            var decoder = new TextDecoder();
+            var buffer = '';
+
+            try {
+                while (true) {
+                    var result = await reader.read();
+                    if (result.done) break;
+                    buffer += decoder.decode(result.value, {stream: true});
+
+                    var lines = buffer.split('\n');
+                    buffer = lines.pop(); // keep incomplete line
+
+                    for (var i = 0; i < lines.length; i++) {
+                        var line = lines[i].trim();
+                        if (!line.startsWith('data: ')) continue;
+                        try {
+                            var evt = JSON.parse(line.substring(6));
+                            if (evt.type === 'done') {
+                                self._audioOptions[key] = {
+                                    status: 'ready',
+                                    audio_url: evt.audio_url,
+                                    duration_seconds: evt.duration_seconds,
+                                    cached: false,
+                                    source_label: evt.source_label
+                                };
+                                self._updateAudioPopover();
+                                self.showToast('Audio ready');
+                            } else if (evt.type === 'error') {
+                                self._audioOptions[key] = {status: 'failed'};
+                                self._updateAudioPopover();
+                                self.showToast('Generation failed: ' + (evt.message || ''), 'error');
+                            }
+                            // audio_chunk events are collected server-side; no client action needed
+                        } catch (parseErr) {
+                            // ignore malformed SSE lines
+                        }
+                    }
+                }
+            } catch (err) {
+                self._audioOptions[key] = {status: 'failed'};
+                self._updateAudioPopover();
+                self.showToast('Streaming failed', 'error');
             }
         }
 
