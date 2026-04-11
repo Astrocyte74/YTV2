@@ -2001,6 +2001,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     alt2 = (root / 'audio' / f"yt:{rel_norm}").resolve()
                     if str(alt2).startswith(str(root)) and alt2.is_file():
                         fs_path = alt2
+                # Backend-generated audio: /app/backend-data/exports/audio/<file>
+                if not fs_path.is_file():
+                    backend_audio = Path("/app/backend-data/exports/audio")
+                    candidate = (backend_audio / rel_norm.split("/")[-1]).resolve()
+                    if str(candidate).startswith(str(backend_audio)) and candidate.is_file():
+                        fs_path = candidate
             if fs_path.is_file():
                 ctype, _ = mimetypes.guess_type(str(fs_path))
                 ctype = ctype or 'application/octet-stream'
@@ -2029,8 +2035,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             clean_id = video_id.replace('yt:', '').replace(':', '')
             search_dirs = [Path('/app/data/exports')]
             audio_subdir = Path('/app/data/exports/audio')
+            backend_audio_dir = Path('/app/backend-data/exports/audio')
             if audio_subdir.exists():
                 search_dirs.append(audio_subdir)
+            if backend_audio_dir.exists():
+                search_dirs.append(backend_audio_dir)
             patterns = [
                 f'{clean_id}.mp3',
                 f'audio_{video_id}_*.mp3',
@@ -2865,7 +2874,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(403, "Forbidden")
                 return
 
-            # If the direct path is missing, try the persistent audio/ subdir for legacy mp3 paths
+            # If the direct path is missing, try fallback locations
             if not fs_path.is_file():
                 rel_norm = rel.replace("\\", "/").lstrip("/")
                 # Legacy flat path: /exports/<id>.mp3 → /app/data/exports/audio/<id>.mp3
@@ -2881,6 +2890,14 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     if str(alt2).startswith(str(root)) and alt2.is_file():
                         fs_path = alt2
                         logger.info(f"🎧 Legacy yt: fallback found: {fs_path}")
+
+                # Backend-generated audio: /app/backend-data/exports/audio/<file>
+                if not fs_path.is_file():
+                    backend_audio = Path("/app/backend-data/exports/audio")
+                    candidate = (backend_audio / rel_norm.split("/")[-1]).resolve()
+                    if str(candidate).startswith(str(backend_audio)) and candidate.is_file():
+                        fs_path = candidate
+                        logger.info(f"🎧 Backend audio fallback: {fs_path}")
 
             if fs_path.is_file():
                 # Guess Content-Type (default octet-stream)
@@ -2923,8 +2940,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             exports_path = _get_exports_path()
             search_dirs = [exports_path]
             audio_subdir = exports_path / "audio"
+            backend_audio_dir = Path('/app/backend-data/exports/audio')
             if audio_subdir.exists():
                 search_dirs.append(audio_subdir)
+            if backend_audio_dir.exists():
+                search_dirs.append(backend_audio_dir)
             patterns = [
                 f'{clean_id}.mp3',           # exact sanitized filename saved by /ingest/audio
                 f'audio_{video_id}_*.mp3',   # standard new pattern
@@ -4550,6 +4570,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             audio_dirs = self._candidate_paths(
                 Path("/app/data/exports/audio"),
                 Path("/app/data/exports"),
+                Path("/app/backend-data/exports/audio"),
                 Path("./exports/audio"),
                 Path("./exports"),
                 self._dashboard_root() / "exports" / "audio",

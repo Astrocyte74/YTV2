@@ -4632,7 +4632,7 @@
             this._updateAudioPopover();
 
             try {
-                var token = localStorage.getItem('ed_debug_token') || '';
+                var token = this.getAdminToken();
                 var resp = await fetch('/api/audio/generate', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
