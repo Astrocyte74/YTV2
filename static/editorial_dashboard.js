@@ -2374,10 +2374,8 @@
             // Hide summary, show transcript
             var summaryEl = document.querySelector('.ed-reader__summary');
             var transcriptEl = document.querySelector('.ed-transcript');
-            var thumbEl = document.querySelector('.ed-reader__thumb');
             if (summaryEl) summaryEl.style.display = 'none';
             if (transcriptEl) transcriptEl.style.display = 'block';
-            if (thumbEl) thumbEl.style.display = 'none';
 
             // Hide research panel
             this._hideResearch();
@@ -2393,10 +2391,8 @@
         _hideTranscript() {
             var summaryEl = document.querySelector('.ed-reader__summary');
             var transcriptEl = document.querySelector('.ed-transcript');
-            var thumbEl = document.querySelector('.ed-reader__thumb');
             if (summaryEl) summaryEl.style.display = '';
             if (transcriptEl) transcriptEl.style.display = 'none';
-            if (thumbEl) thumbEl.style.display = '';
         }
 
         _filterTranscript(query) {
@@ -2528,11 +2524,9 @@
             var summaryEl = document.querySelector('.ed-reader__summary');
             var researchEl = document.querySelector('[data-research-panel]');
             var transcriptEl = document.querySelector('.ed-transcript');
-            var thumbEl = document.querySelector('.ed-reader__thumb');
             if (summaryEl) summaryEl.style.display = 'none';
             if (researchEl) researchEl.style.display = 'block';
             if (transcriptEl) transcriptEl.style.display = 'none';
-            if (thumbEl) thumbEl.style.display = 'none';
 
             // Update tab active states
             var tabs = document.querySelectorAll('.ed-reader__variant');
