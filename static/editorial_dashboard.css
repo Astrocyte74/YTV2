@@ -2962,13 +2962,9 @@ body {
 
     .ed-reader__summary {
         max-width: none;
-        font-size: 0.98rem;
-        line-height: 1.76;
     }
 
     .ed-reader__summary > p:first-child {
-        font-size: 1.08rem;
-        line-height: 1.64;
     }
 
     #ed-player.active {
