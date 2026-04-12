@@ -1364,6 +1364,11 @@ body {
     position: relative;
 }
 
+.ed-reader__action-group--inline {
+    display: inline-flex;
+    align-items: center;
+}
+
 .ed-reader__close,
 .ed-reader .ed-reader__close,
 .ed-reader__admin-toggle,
@@ -1389,7 +1394,7 @@ body {
 }
 
 .ed-reader__admin-toggle {
-    font-size: 1.05rem;
+    font-size: 1.3rem;
     font-weight: 700;
 }
 
@@ -1519,6 +1524,28 @@ body {
     text-transform: uppercase;
     color: var(--ed-color-muted);
 }
+
+.ed-reader__source-separator {
+    color: rgba(128, 128, 128, 0.7);
+}
+
+.ed-reader__inline-action {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    color: var(--ed-color-accent);
+    font: inherit;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.16em;
+}
+
+.ed-reader__inline-action:hover {
+    color: var(--ed-color-accent-hover);
+}
+
 .ed-reader__source-link a {
     color: var(--ed-color-accent);
     text-decoration: underline;
@@ -1557,7 +1584,7 @@ body {
 }
 
 .ed-reader__variants-label {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -1571,12 +1598,12 @@ body {
     border: none;
     border-radius: 0;
     color: var(--ed-color-muted);
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     font-family: var(--ed-font-body);
     font-weight: 500;
     cursor: pointer;
     transition: color var(--ed-transition-fast), opacity var(--ed-transition-fast);
-    opacity: 0.84;
+    opacity: 0.72;
 }
 
 .ed-reader__variant:hover {
@@ -1708,24 +1735,6 @@ body {
     padding-top: 0;
     margin: 0 0 0.95rem;
     border-top: none;
-}
-
-.ed-reader__utility--top {
-    justify-content: flex-start;
-    gap: 0.45rem;
-    padding-bottom: 0.15rem;
-}
-
-.ed-reader__utility-btn.ed-reader__audio-btn,
-.ed-reader__utility-btn.ed-reader__admin-toggle {
-    width: auto;
-    height: auto;
-    padding: 0.36rem 0.72rem;
-    border-radius: 999px;
-    font-size: 0.74rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
 }
 
 /* Backdrop overlay when reader is open */
@@ -2871,11 +2880,6 @@ body {
     .ed-reader__source-link {
         padding: 0.8rem 0.9rem;
         font-size: 0.9rem;
-    }
-
-    .ed-reader__utility--top {
-        flex-wrap: wrap;
-        margin-bottom: 0.75rem;
     }
 
     .ed-reader__summary {

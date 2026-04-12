@@ -3390,6 +3390,14 @@
             html += '<span class="ed-reader__publication-name">Editorial</span>';
             html += '</div>';
             html += '<div class="ed-reader__masthead-actions">';
+            html += '<div class="ed-reader__action-group">';
+            html += '<button class="ed-reader__admin-toggle" data-action="toggle-admin-menu" aria-label="More actions">&#8230;</button>';
+            html += '<div class="ed-reader__admin-menu">';
+            html += '<button class="ed-reader__admin-item" data-action="admin-regenerate">Regenerate...</button>';
+            html += '<button class="ed-reader__admin-item" data-action="admin-images">Manage Images...</button>';
+            html += '<button class="ed-reader__admin-item ed-reader__admin-item--danger" data-action="admin-delete">Delete...</button>';
+            html += '</div>';
+            html += '</div>';
             html += '<button class="ed-reader__close" data-action="close-reader" aria-label="Close article">&times;</button>';
             html += '</div>';
             html += '</div>';
@@ -3423,56 +3431,44 @@
                 html += '<div class="ed-reader__source-link">';
                 html += '<span class="ed-reader__source-link-label">Read more</span>';
                 html += '<a href="' + escapeHtml(canonicalUrl) + '" target="_blank" rel="noopener">' + escapeHtml(sourceHost || canonicalUrl) + '</a>';
-                html += '</div>';
-            }
-
-            // Utility actions stay near the top, but outside the masthead so they do not dominate.
-            html += '<div class="ed-reader__utility ed-reader__utility--top">';
-            html += '<div class="ed-reader__action-group">';
-            html += '<button class="ed-reader__audio-btn ed-reader__utility-btn" data-action="toggle-audio-popover" title="Audio">Listen</button>';
-            html += '<div class="ed-reader__audio-popover">';
-            html += '<button class="ed-reader__audio-item" data-action="tts-read-aloud">';
-            html += '<span class="ed-reader__audio-item__icon">&#x1F5E3;</span>';
-            html += '<span class="ed-reader__audio-item__text">';
-            html += '<span class="ed-reader__audio-item__label">Read this aloud</span>';
-            html += '<span class="ed-reader__audio-item__sub">Device voice</span>';
-            html += '</span>';
-            html += '</button>';
-            if (hasAudio && audioUrl) {
-                html += '<button class="ed-reader__audio-item" data-action="play-audio" data-audio-url="' + escapeHtml(audioUrl) + '">';
-                html += '<span class="ed-reader__audio-item__icon">&#9654;</span>';
+                html += '<span class="ed-reader__source-separator">&middot;</span>';
+                html += '<div class="ed-reader__action-group ed-reader__action-group--inline">';
+                html += '<button class="ed-reader__inline-action" data-action="toggle-audio-popover">Listen</button>';
+                html += '<div class="ed-reader__audio-popover">';
+                html += '<button class="ed-reader__audio-item" data-action="tts-read-aloud">';
+                html += '<span class="ed-reader__audio-item__icon">&#x1F5E3;</span>';
                 html += '<span class="ed-reader__audio-item__text">';
-                html += '<span class="ed-reader__audio-item__label">Play existing audio</span>';
-                html += '<span class="ed-reader__audio-item__sub">Saved audio</span>';
+                html += '<span class="ed-reader__audio-item__label">Read this aloud</span>';
+                html += '<span class="ed-reader__audio-item__sub">Device voice</span>';
                 html += '</span>';
                 html += '</button>';
+                if (hasAudio && audioUrl) {
+                    html += '<button class="ed-reader__audio-item" data-action="play-audio" data-audio-url="' + escapeHtml(audioUrl) + '">';
+                    html += '<span class="ed-reader__audio-item__icon">&#9654;</span>';
+                    html += '<span class="ed-reader__audio-item__text">';
+                    html += '<span class="ed-reader__audio-item__label">Play existing audio</span>';
+                    html += '<span class="ed-reader__audio-item__sub">Saved audio</span>';
+                    html += '</span>';
+                    html += '</button>';
+                }
+                html += '<button class="ed-reader__audio-item ed-reader__audio-item--disabled" data-action="audio-current">';
+                html += '<span class="ed-reader__audio-item__icon">&#x2728;</span>';
+                html += '<span class="ed-reader__audio-item__text">';
+                html += '<span class="ed-reader__audio-item__label">Create audio version</span>';
+                html += '<span class="ed-reader__audio-item__sub">Checking...</span>';
+                html += '</span>';
+                html += '</button>';
+                html += '<button class="ed-reader__audio-item ed-reader__audio-item--disabled" data-action="audio-briefing">';
+                html += '<span class="ed-reader__audio-item__icon">&#x1F4E2;</span>';
+                html += '<span class="ed-reader__audio-item__text">';
+                html += '<span class="ed-reader__audio-item__label">Create full briefing</span>';
+                html += '<span class="ed-reader__audio-item__sub">Checking...</span>';
+                html += '</span>';
+                html += '</button>';
+                html += '</div>';
+                html += '</div>';
+                html += '</div>';
             }
-            html += '<button class="ed-reader__audio-item ed-reader__audio-item--disabled" data-action="audio-current">';
-            html += '<span class="ed-reader__audio-item__icon">&#x2728;</span>';
-            html += '<span class="ed-reader__audio-item__text">';
-            html += '<span class="ed-reader__audio-item__label">Create audio version</span>';
-            html += '<span class="ed-reader__audio-item__sub">Checking...</span>';
-            html += '</span>';
-            html += '</button>';
-            html += '<button class="ed-reader__audio-item ed-reader__audio-item--disabled" data-action="audio-briefing">';
-            html += '<span class="ed-reader__audio-item__icon">&#x1F4E2;</span>';
-            html += '<span class="ed-reader__audio-item__text">';
-            html += '<span class="ed-reader__audio-item__label">Create full briefing</span>';
-            html += '<span class="ed-reader__audio-item__sub">Checking...</span>';
-            html += '</span>';
-            html += '</button>';
-            html += '</div>';
-            html += '</div>';
-
-            html += '<div class="ed-reader__action-group">';
-            html += '<button class="ed-reader__admin-toggle ed-reader__utility-btn" data-action="toggle-admin-menu" aria-label="More actions">More</button>';
-            html += '<div class="ed-reader__admin-menu">';
-            html += '<button class="ed-reader__admin-item" data-action="admin-regenerate">Regenerate...</button>';
-            html += '<button class="ed-reader__admin-item" data-action="admin-images">Manage Images...</button>';
-            html += '<button class="ed-reader__admin-item ed-reader__admin-item--danger" data-action="admin-delete">Delete...</button>';
-            html += '</div>';
-            html += '</div>';
-            html += '</div>';
 
             if (showTabs) {
                 html += '<div class="ed-reader__variants">';
