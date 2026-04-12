@@ -3472,7 +3472,6 @@
 
             if (showTabs) {
                 html += '<div class="ed-reader__variants">';
-                html += '<span class="ed-reader__variants-label">Views</span>';
                 var displayIdx = 0;
                 for (var ti = 0; ti < this._readerVariants.length; ti++) {
                     if (this._readerVariants[ti].variant === 'deep-research') continue;
