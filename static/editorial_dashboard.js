@@ -163,6 +163,25 @@
         localStorage.setItem('ytv2.theme', _theme);
     }
 
+    var READER_TYPOGRAPHY_DEFAULTS = {
+        size: 'default',
+        spacing: 'comfortable'
+    };
+
+    function getStoredReaderTypographyPrefs() {
+        var prefs = null;
+        try {
+            prefs = JSON.parse(localStorage.getItem('ytv2.readerTypography') || '{}');
+        } catch (_) {
+            prefs = {};
+        }
+        var size = (prefs && prefs.size) || READER_TYPOGRAPHY_DEFAULTS.size;
+        var spacing = (prefs && prefs.spacing) || READER_TYPOGRAPHY_DEFAULTS.spacing;
+        if (['small', 'default', 'large'].indexOf(size) === -1) size = READER_TYPOGRAPHY_DEFAULTS.size;
+        if (['compact', 'comfortable'].indexOf(spacing) === -1) spacing = READER_TYPOGRAPHY_DEFAULTS.spacing;
+        return { size: size, spacing: spacing };
+    }
+
     function getThumbnail(item) {
         if (_imageMode === 'ai1') {
             return item.summary_image_url ||
@@ -395,6 +414,7 @@
             this._researchPollingVideoId = null;
 
             this._readerSwipe = null;
+            this._readerTypographyPrefs = getStoredReaderTypographyPrefs();
         }
 
         // ---- URL state ----
@@ -1662,6 +1682,12 @@
                     return;
                 }
 
+                if (e.target.closest('[data-action="set-reader-pref"]')) {
+                    var prefBtn = e.target.closest('[data-action="set-reader-pref"]');
+                    this.setReaderTypographyPref(prefBtn.dataset.pref || '', prefBtn.dataset.value || '');
+                    return;
+                }
+
                 // Admin actions
                 if (e.target.closest('[data-action="admin-delete"]')) {
                     this.showDeleteConfirm();
@@ -2120,6 +2146,7 @@
             }
             panel.innerHTML = contentHtml;
             panel.classList.add('ed-reader--open');
+            this.applyReaderTypographyPrefs();
         }
 
         _swapCardImages() {
@@ -3380,6 +3407,7 @@
             var showTabs = displayVariants.length > 0;
             var sourceHost = getHostLabel(canonicalUrl);
             var publicationLabel = channel || sourceHost || 'YTV2 Source';
+            var readerPrefs = this.getReaderTypographyPrefs();
 
             var html = '';
 
@@ -3393,6 +3421,21 @@
             html += '<div class="ed-reader__action-group">';
             html += '<button class="ed-reader__admin-toggle" data-action="toggle-admin-menu" aria-label="More actions">&#8230;</button>';
             html += '<div class="ed-reader__admin-menu">';
+            html += '<div class="ed-reader__admin-section">';
+            html += '<div class="ed-reader__admin-label">Text size</div>';
+            html += '<div class="ed-reader__admin-segment">';
+            html += '<button class="ed-reader__admin-option' + (readerPrefs.size === 'small' ? ' ed-reader__admin-option--active' : '') + '" data-action="set-reader-pref" data-pref="size" data-value="small" aria-pressed="' + (readerPrefs.size === 'small' ? 'true' : 'false') + '">Small</button>';
+            html += '<button class="ed-reader__admin-option' + (readerPrefs.size === 'default' ? ' ed-reader__admin-option--active' : '') + '" data-action="set-reader-pref" data-pref="size" data-value="default" aria-pressed="' + (readerPrefs.size === 'default' ? 'true' : 'false') + '">Default</button>';
+            html += '<button class="ed-reader__admin-option' + (readerPrefs.size === 'large' ? ' ed-reader__admin-option--active' : '') + '" data-action="set-reader-pref" data-pref="size" data-value="large" aria-pressed="' + (readerPrefs.size === 'large' ? 'true' : 'false') + '">Large</button>';
+            html += '</div>';
+            html += '</div>';
+            html += '<div class="ed-reader__admin-section">';
+            html += '<div class="ed-reader__admin-label">Line spacing</div>';
+            html += '<div class="ed-reader__admin-segment">';
+            html += '<button class="ed-reader__admin-option' + (readerPrefs.spacing === 'compact' ? ' ed-reader__admin-option--active' : '') + '" data-action="set-reader-pref" data-pref="spacing" data-value="compact" aria-pressed="' + (readerPrefs.spacing === 'compact' ? 'true' : 'false') + '">Compact</button>';
+            html += '<button class="ed-reader__admin-option' + (readerPrefs.spacing === 'comfortable' ? ' ed-reader__admin-option--active' : '') + '" data-action="set-reader-pref" data-pref="spacing" data-value="comfortable" aria-pressed="' + (readerPrefs.spacing === 'comfortable' ? 'true' : 'false') + '">Comfortable</button>';
+            html += '</div>';
+            html += '</div>';
             html += '<button class="ed-reader__admin-item" data-action="admin-regenerate">Regenerate...</button>';
             html += '<button class="ed-reader__admin-item" data-action="admin-images">Manage Images...</button>';
             html += '<button class="ed-reader__admin-item ed-reader__admin-item--danger" data-action="admin-delete">Delete...</button>';
@@ -3404,7 +3447,7 @@
             html += '</div>';
 
             html += '<div class="ed-reader__body">';
-            html += '<article class="ed-reader__article">';
+            html += '<article class="ed-reader__article" data-reader-size="' + escapeHtml(readerPrefs.size) + '" data-reader-spacing="' + escapeHtml(readerPrefs.spacing) + '">';
 
             // Story meta
             html += '<div class="ed-reader__meta">';
@@ -3797,6 +3840,45 @@
             var toggle = document.querySelector('.ed-reader__admin-toggle');
             if (menu) menu.classList.remove('ed-reader__admin-menu--open');
             if (toggle) toggle.classList.remove('ed-reader__admin-toggle--open');
+        }
+
+        getReaderTypographyPrefs() {
+            if (!this._readerTypographyPrefs) this._readerTypographyPrefs = getStoredReaderTypographyPrefs();
+            return this._readerTypographyPrefs;
+        }
+
+        setReaderTypographyPref(pref, value) {
+            var prefs = this.getReaderTypographyPrefs();
+            if (pref === 'size') {
+                if (['small', 'default', 'large'].indexOf(value) === -1) return;
+                prefs.size = value;
+            } else if (pref === 'spacing') {
+                if (['compact', 'comfortable'].indexOf(value) === -1) return;
+                prefs.spacing = value;
+            } else {
+                return;
+            }
+            this._readerTypographyPrefs = prefs;
+            localStorage.setItem('ytv2.readerTypography', JSON.stringify(prefs));
+            this.applyReaderTypographyPrefs();
+        }
+
+        applyReaderTypographyPrefs() {
+            var prefs = this.getReaderTypographyPrefs();
+            var article = document.querySelector('.ed-reader__article');
+            if (article) {
+                article.dataset.readerSize = prefs.size;
+                article.dataset.readerSpacing = prefs.spacing;
+            }
+            var buttons = document.querySelectorAll('[data-action="set-reader-pref"]');
+            for (var i = 0; i < buttons.length; i++) {
+                var btn = buttons[i];
+                var isActive = btn.dataset.pref === 'size'
+                    ? btn.dataset.value === prefs.size
+                    : btn.dataset.value === prefs.spacing;
+                btn.classList.toggle('ed-reader__admin-option--active', isActive);
+                btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            }
         }
 
         showModal(html, cssClass) {
