@@ -3879,7 +3879,7 @@
                 '<div class="ed-modal__body">' +
                     errorHtml +
                     '<input type="password" class="ed-token-input" placeholder="Token" autocomplete="off">' +
-                    '<p class="ed-token-helper">Stored locally for future admin actions.</p>' +
+                    '<p class="ed-token-helper">Matches the <code>DEBUG_TOKEN</code> value in your <code>.env</code>. Stored locally for future actions.</p>' +
                 '</div>' +
                 '<div class="ed-modal__footer">' +
                     '<button class="ed-btn ed-btn--ghost" data-action="modal-cancel">Cancel</button>' +
