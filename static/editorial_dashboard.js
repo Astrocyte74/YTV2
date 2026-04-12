@@ -1755,8 +1755,8 @@
                 // Close audio popover on outside click
                 var audioPopoverEl = document.querySelector('.ed-reader__audio-popover--open');
                 if (audioPopoverEl) {
-                    var audioBtn = document.querySelector('.ed-reader__audio-btn');
-                    if (audioBtn && !audioBtn.contains(e.target) && !audioPopoverEl.contains(e.target)) {
+                    var audioBtn = document.querySelector('.ed-reader__audio-btn') || document.querySelector('[data-action="toggle-audio-popover"]');
+                    if (!audioPopoverEl.contains(e.target) && !(audioBtn && audioBtn.contains(e.target))) {
                         this.closeAudioPopover();
                     }
                 }
