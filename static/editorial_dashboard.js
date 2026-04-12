@@ -3353,6 +3353,15 @@
                 return slug.replace(/-/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
             }
 
+            function getHostLabel(url) {
+                if (!url) return '';
+                try {
+                    return new URL(url, window.location.origin).hostname.replace(/^www\./, '');
+                } catch (_) {
+                    return '';
+                }
+            }
+
             // Categories
             var categories = [];
             if (Array.isArray(analysis.categories)) {
@@ -3361,21 +3370,101 @@
                 }
             }
 
+            // Filter out deep-research variant — it gets its own dedicated Ponderings tab
+            var displayVariants = [];
+            for (var fi = 0; fi < this._readerVariants.length; fi++) {
+                if (this._readerVariants[fi].variant !== 'deep-research') {
+                    displayVariants.push(this._readerVariants[fi]);
+                }
+            }
+            var showTabs = displayVariants.length > 0;
+            var sourceHost = getHostLabel(canonicalUrl);
+            var publicationLabel = channel || sourceHost || 'YTV2 Source';
+
             var html = '';
 
-            // Close button — absolutely positioned, no header row
-            html += '<button class="ed-reader__close" data-action="close-reader">&times;</button>';
-
-            // Admin menu (...)
-            html += '<button class="ed-reader__admin-toggle" data-action="toggle-admin-menu">...</button>';
-            html += '<div class="ed-reader__admin-menu">';
-            html += '<button class="ed-reader__admin-item" data-action="admin-regenerate">Regenerate...</button>';
-            html += '<button class="ed-reader__admin-item" data-action="admin-images">Manage Images...</button>';
-            html += '<button class="ed-reader__admin-item ed-reader__admin-item--danger" data-action="admin-delete">Delete...</button>';
+            html += '<div class="ed-reader__chrome">';
+            html += '<div class="ed-reader__masthead">';
+            html += '<div class="ed-reader__publication">';
+            html += '<span class="ed-reader__publication-mark">YTV2</span>';
+            html += '<span class="ed-reader__publication-name">Editorial</span>';
+            html += '</div>';
+            html += '<div class="ed-reader__masthead-actions">';
+            html += '<button class="ed-reader__close" data-action="close-reader" aria-label="Close article">&times;</button>';
+            html += '</div>';
+            html += '</div>';
             html += '</div>';
 
-            // Audio On-Demand button + popover
-            html += '<button class="ed-reader__audio-btn" data-action="toggle-audio-popover" title="Audio">&#9835;</button>';
+            html += '<div class="ed-reader__body">';
+            html += '<article class="ed-reader__article">';
+
+            // Story meta
+            html += '<div class="ed-reader__meta">';
+            html += '<span class="ed-reader__meta-source">' + escapeHtml(publicationLabel) + '</span>';
+            if (categories.length) html += '<span class="ed-reader__meta-detail">' + escapeHtml(categories[0]) + '</span>';
+            if (duration) html += '<span class="ed-reader__meta-detail">' + duration + '</span>';
+            html += '</div>';
+
+            // Date line
+            html += '<div class="ed-reader__dates">';
+            if (publishedAt) {
+                html += '<span class="ed-reader__date">Published ' + formatDate(publishedAt) + '</span>';
+            }
+            if (indexedAt) {
+                html += '<span class="ed-reader__date ed-reader__date--sub">Added ' + formatDate(indexedAt) + '</span>';
+            }
+            html += '</div>';
+
+            // Title
+            html += '<h1 class="ed-reader__title">' + escapeHtml(title) + '</h1>';
+
+            // Read more callout
+            if (canonicalUrl) {
+                html += '<div class="ed-reader__source-link">';
+                html += '<span class="ed-reader__source-link-label">Read more</span>';
+                html += '<a href="' + escapeHtml(canonicalUrl) + '" target="_blank" rel="noopener">' + escapeHtml(sourceHost || canonicalUrl) + '</a>';
+                html += '</div>';
+            }
+
+            if (showTabs) {
+                html += '<div class="ed-reader__variants">';
+                html += '<span class="ed-reader__variants-label">Views</span>';
+                var displayIdx = 0;
+                for (var ti = 0; ti < this._readerVariants.length; ti++) {
+                    if (this._readerVariants[ti].variant === 'deep-research') continue;
+                    var vSlug = this._readerVariants[ti].variant || '';
+                    var vLabel = humanizeVariant(vSlug);
+                    html += '<button class="ed-reader__variant' + (displayIdx === 0 ? ' ed-reader__variant--active' : '') +
+                        '" data-action="switch-variant" data-variant-idx="' + ti + '">' + escapeHtml(vLabel) + '</button>';
+                    displayIdx++;
+                }
+                html += '<button class="ed-reader__variant" data-action="show-research">Ponderings</button>';
+                if (this._readerHasTranscript) {
+                    html += '<button class="ed-reader__variant" data-action="show-transcript">Transcript</button>';
+                }
+                html += '</div>';
+            }
+
+            // Summary content
+            html += '<div class="ed-reader__summary">' + summaryHtml + '</div>';
+
+            // Thumbnail lower in the flow so the story starts with text.
+            if (thumb) {
+                html += '<div class="ed-reader__thumb"><img src="' + escapeHtml(thumb) + '" alt=""></div>';
+            }
+
+            // Research panel (hidden by default, shown when Research tab clicked)
+            html += this._renderResearchPanel(data);
+
+            // Transcript content (hidden by default, shown when tab clicked)
+            if (this._readerHasTranscript) {
+                html += this._renderTranscriptPanel(video.video_id || '', canonicalUrl);
+            }
+
+            // Utility actions live at the bottom of the article, not in the reading path.
+            html += '<div class="ed-reader__utility">';
+            html += '<div class="ed-reader__action-group">';
+            html += '<button class="ed-reader__audio-btn ed-reader__utility-btn" data-action="toggle-audio-popover" title="Audio">Listen</button>';
             html += '<div class="ed-reader__audio-popover">';
             html += '<button class="ed-reader__audio-item" data-action="tts-read-aloud">';
             html += '<span class="ed-reader__audio-item__icon">&#x1F5E3;</span>';
@@ -3393,7 +3482,6 @@
                 html += '</span>';
                 html += '</button>';
             }
-            // Audio version (on-demand)
             html += '<button class="ed-reader__audio-item ed-reader__audio-item--disabled" data-action="audio-current">';
             html += '<span class="ed-reader__audio-item__icon">&#x2728;</span>';
             html += '<span class="ed-reader__audio-item__text">';
@@ -3401,7 +3489,6 @@
             html += '<span class="ed-reader__audio-item__sub">Checking...</span>';
             html += '</span>';
             html += '</button>';
-            // Full briefing (on-demand)
             html += '<button class="ed-reader__audio-item ed-reader__audio-item--disabled" data-action="audio-briefing">';
             html += '<span class="ed-reader__audio-item__icon">&#x1F4E2;</span>';
             html += '<span class="ed-reader__audio-item__text">';
@@ -3410,80 +3497,19 @@
             html += '</span>';
             html += '</button>';
             html += '</div>';
-
-            html += '<div class="ed-reader__body">';
-
-            // Meta bar
-            html += '<div class="ed-reader__meta">';
-            if (channel) html += '<span class="ed-card__channel">' + escapeHtml(channel) + '</span>';
-            if (duration) html += '<span class="ed-card__time">' + duration + '</span>';
-            if (categories.length) html += '<span class="ed-card__category-chip">' + escapeHtml(categories[0]) + '</span>';
             html += '</div>';
 
-            // Date line
-            html += '<div class="ed-reader__dates">';
-            if (publishedAt) {
-                html += '<span class="ed-reader__date">Published ' + formatDate(publishedAt) + '</span>';
-            }
-            if (indexedAt) {
-                html += '<span class="ed-reader__date ed-reader__date--sub">Added ' + formatDate(indexedAt) + '</span>';
-            }
+            html += '<div class="ed-reader__action-group">';
+            html += '<button class="ed-reader__admin-toggle ed-reader__utility-btn" data-action="toggle-admin-menu" aria-label="More actions">More</button>';
+            html += '<div class="ed-reader__admin-menu">';
+            html += '<button class="ed-reader__admin-item" data-action="admin-regenerate">Regenerate...</button>';
+            html += '<button class="ed-reader__admin-item" data-action="admin-images">Manage Images...</button>';
+            html += '<button class="ed-reader__admin-item ed-reader__admin-item--danger" data-action="admin-delete">Delete...</button>';
+            html += '</div>';
+            html += '</div>';
             html += '</div>';
 
-            // Title
-            html += '<h1 class="ed-reader__title">' + escapeHtml(title) + '</h1>';
-
-            // Source link + audio (inline, minimal)
-            if (canonicalUrl) {
-                html += '<div class="ed-reader__source-link"><a href="' + escapeHtml(canonicalUrl) + '" target="_blank" rel="noopener">↗ View source</a></div>';
-            }
-
-            // Variant tabs + Research tab + Transcript tab
-            // Filter out deep-research variant — it gets its own dedicated Research tab
-            var displayVariants = [];
-            for (var fi = 0; fi < this._readerVariants.length; fi++) {
-                if (this._readerVariants[fi].variant !== 'deep-research') {
-                    displayVariants.push(this._readerVariants[fi]);
-                }
-            }
-            // Always show tabs (Research tab is always present)
-            var showTabs = true;
-            if (showTabs) {
-                html += '<div class="ed-reader__variants">';
-                // Remap variant indices to display-only (skip deep-research)
-                var displayIdx = 0;
-                for (var ti = 0; ti < this._readerVariants.length; ti++) {
-                    if (this._readerVariants[ti].variant === 'deep-research') continue;
-                    var vSlug = this._readerVariants[ti].variant || '';
-                    var vLabel = humanizeVariant(vSlug);
-                    html += '<button class="ed-reader__variant' + (displayIdx === 0 ? ' ed-reader__variant--active' : '') +
-                        '" data-action="switch-variant" data-variant-idx="' + ti + '">' + escapeHtml(vLabel) + '</button>';
-                    displayIdx++;
-                }
-                // Always add Ponderings tab
-                html += '<button class="ed-reader__variant" data-action="show-research">Ponderings</button>';
-                if (this._readerHasTranscript) {
-                    html += '<button class="ed-reader__variant" data-action="show-transcript">Transcript</button>';
-                }
-                html += '</div>';
-            }
-
-            // Thumbnail (after variant tabs — image as supporting content)
-            if (thumb) {
-                html += '<div class="ed-reader__thumb"><img src="' + escapeHtml(thumb) + '" alt=""></div>';
-            }
-
-            // Summary content
-            html += '<div class="ed-reader__summary">' + summaryHtml + '</div>';
-
-            // Research panel (hidden by default, shown when Research tab clicked)
-            html += this._renderResearchPanel(data);
-
-            // Transcript content (hidden by default, shown when tab clicked)
-            if (this._readerHasTranscript) {
-                html += this._renderTranscriptPanel(video.video_id || '', canonicalUrl);
-            }
-
+            html += '</article>';
             html += '</div>'; // ed-reader__body
 
             // Store audio URL for auto-play
