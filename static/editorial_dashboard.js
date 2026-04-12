@@ -3098,8 +3098,8 @@
                         if (resp.status === 401) { self.handleAuthError({ interactive: true, retry: function (t) { self._executeClearChat(videoId, runId); } }); return null; }
                         return resp.json();
                     })
-                    .then(function (resp) { return resp.json(); })
                     .then(function (data) {
+                        if (!data) return;
                         if (data.deleted) {
                             self.closeModal();
 
@@ -3159,8 +3159,14 @@
                 .then(function (data) {
                     self._researchPollInFlight = false;
 
-                    if (!data || !data._ok) {
-                        // Auth or not-found — schedule next poll anyway
+                    if (!data) {
+                        // 401 or 404 — don't reschedule if token was just cleared
+                        if (!self.getAdminToken()) return;
+                        self._researchPollTimer = setTimeout(function () { self._pollResearchThread(); }, 10000);
+                        return;
+                    }
+
+                    if (!data._ok) {
                         self._researchPollTimer = setTimeout(function () { self._pollResearchThread(); }, 10000);
                         return;
                     }
@@ -3255,7 +3261,7 @@
                     })
                 })
                 .then(function (resp) {
-                    if (resp.status === 401) { self.handleAuthError({ interactive: true, retry: function (t) { self._executeInlineResearch(question, cardEl, t); } }); return null; }
+                    if (resp.status === 401) { self.handleAuthError({ interactive: true, retry: function (t) { self._executeInlineResearch(question, cardEl, questionProvenance); } }); return null; }
                     return resp.json().then(function (data) {
                         data._ok = resp.ok;
                         return data;
@@ -4531,16 +4537,17 @@
             var videoId = this._activeReaderId;
             if (!videoId) return;
 
-            var self = this;
-            this.requireAdminToken(function (token) { self._doSetImagePrompt(token); });
-        }
-
-        async _doSetImagePrompt(token) {
             var textarea = document.querySelector('[data-prompt-input]');
             var newPrompt = textarea ? textarea.value.trim() : '';
             if (!newPrompt) { this.showToast('Enter a prompt', 'error'); return; }
 
             var mode = this._imageMode || 'ai1';
+            var self = this;
+            this.requireAdminToken(function (token) { self._doSetImagePrompt(token, newPrompt, mode); });
+        }
+
+        async _doSetImagePrompt(token, newPrompt, mode) {
+            var self = this;
             var btn = document.querySelector('[data-action="save-image-prompt"]');
             if (btn) {
                 btn.disabled = true;
@@ -4552,7 +4559,7 @@
                     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                     body: JSON.stringify({ video_id: this._activeReaderId, prompt: newPrompt, mode: mode })
                 });
-                if (resp.status === 401) { this.handleAuthError({ interactive: true, retry: function (t) { self._doSetImagePrompt(t); } }); return; }
+                if (resp.status === 401) { this.handleAuthError({ interactive: true, retry: function (t) { self._doSetImagePrompt(t, newPrompt, mode); } }); return; }
                 if (!resp.ok) throw new Error('Failed (' + resp.status + ')');
                 this._pendingImageGeneration = { mode: mode, prompt: newPrompt, startedAt: Date.now() };
                 this.showToast('Image generation started');
