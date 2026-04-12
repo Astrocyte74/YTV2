@@ -3420,6 +3420,7 @@
             var showTabs = displayVariants.length > 0;
             var sourceHost = getHostLabel(canonicalUrl);
             var publicationLabel = channel || sourceHost || 'YTV2 Source';
+            var kickerLabel = categories.length ? categories[0] : '';
             var readerPrefs = this.getReaderTypographyPrefs();
 
             var html = '';
@@ -3431,9 +3432,72 @@
             html += '<span class="ed-reader__publication-name">Editorial</span>';
             html += '</div>';
             html += '<div class="ed-reader__masthead-actions">';
+            if (canonicalUrl) {
+                html += '<a class="ed-reader__source-btn" href="' + escapeHtml(canonicalUrl) + '" target="_blank" rel="noopener" aria-label="Open original article">&#8599;</a>';
+            }
+            html += '<div class="ed-reader__action-group">';
+            html += '<button class="ed-reader__audio-btn" data-action="toggle-audio-popover" aria-label="Listen options">&#9835;</button>';
+            html += '<div class="ed-reader__audio-popover">';
+            html += '<button class="ed-reader__audio-item" data-action="tts-read-aloud">';
+            html += '<span class="ed-reader__audio-item__icon">&#x1F5E3;</span>';
+            html += '<span class="ed-reader__audio-item__text">';
+            html += '<span class="ed-reader__audio-item__label">Read this aloud</span>';
+            html += '<span class="ed-reader__audio-item__sub">Device voice</span>';
+            html += '</span>';
+            html += '</button>';
+            if (hasAudio && audioUrl) {
+                html += '<button class="ed-reader__audio-item" data-action="play-audio" data-audio-url="' + escapeHtml(audioUrl) + '">';
+                html += '<span class="ed-reader__audio-item__icon">&#9654;</span>';
+                html += '<span class="ed-reader__audio-item__text">';
+                html += '<span class="ed-reader__audio-item__label">Play existing audio</span>';
+                html += '<span class="ed-reader__audio-item__sub">Saved audio</span>';
+                html += '</span>';
+                html += '</button>';
+            }
+            html += '<button class="ed-reader__audio-item ed-reader__audio-item--disabled" data-action="audio-current">';
+            html += '<span class="ed-reader__audio-item__icon">&#x2728;</span>';
+            html += '<span class="ed-reader__audio-item__text">';
+            html += '<span class="ed-reader__audio-item__label">Create audio version</span>';
+            html += '<span class="ed-reader__audio-item__sub">Checking...</span>';
+            html += '</span>';
+            html += '</button>';
+            html += '<button class="ed-reader__audio-item ed-reader__audio-item--disabled" data-action="audio-briefing">';
+            html += '<span class="ed-reader__audio-item__icon">&#x1F4E2;</span>';
+            html += '<span class="ed-reader__audio-item__text">';
+            html += '<span class="ed-reader__audio-item__label">Create full briefing</span>';
+            html += '<span class="ed-reader__audio-item__sub">Checking...</span>';
+            html += '</span>';
+            html += '</button>';
+            html += '</div>';
+            html += '</div>';
             html += '<div class="ed-reader__action-group">';
             html += '<button class="ed-reader__admin-toggle" data-action="toggle-admin-menu" aria-label="More actions">&#8230;</button>';
             html += '<div class="ed-reader__admin-menu">';
+            if (publicationLabel || kickerLabel || sourceHost || publishedAt || indexedAt) {
+                html += '<div class="ed-reader__admin-section ed-reader__admin-section--about">';
+                html += '<div class="ed-reader__admin-label">About this article</div>';
+                html += '<div class="ed-reader__admin-meta">';
+                if (publicationLabel) {
+                    html += '<div class="ed-reader__admin-meta-item"><span class="ed-reader__admin-meta-key">Publisher</span><span class="ed-reader__admin-meta-value">' + escapeHtml(publicationLabel) + '</span></div>';
+                }
+                if (kickerLabel) {
+                    html += '<div class="ed-reader__admin-meta-item"><span class="ed-reader__admin-meta-key">Category</span><span class="ed-reader__admin-meta-value">' + escapeHtml(kickerLabel) + '</span></div>';
+                }
+                if (sourceHost && sourceHost !== publicationLabel) {
+                    html += '<div class="ed-reader__admin-meta-item"><span class="ed-reader__admin-meta-key">Source</span><span class="ed-reader__admin-meta-value">' + escapeHtml(sourceHost) + '</span></div>';
+                }
+                if (publishedAt) {
+                    html += '<div class="ed-reader__admin-meta-item"><span class="ed-reader__admin-meta-key">Published</span><span class="ed-reader__admin-meta-value">' + formatDate(publishedAt) + '</span></div>';
+                }
+                if (indexedAt) {
+                    html += '<div class="ed-reader__admin-meta-item"><span class="ed-reader__admin-meta-key">Added</span><span class="ed-reader__admin-meta-value">' + formatDate(indexedAt) + '</span></div>';
+                }
+                html += '</div>';
+                if (canonicalUrl) {
+                    html += '<a class="ed-reader__admin-link" href="' + escapeHtml(canonicalUrl) + '" target="_blank" rel="noopener">Open original article</a>';
+                }
+                html += '</div>';
+            }
             html += '<div class="ed-reader__admin-section">';
             html += '<div class="ed-reader__admin-label">Text size</div>';
             html += '<div class="ed-reader__admin-stepper">';
@@ -3462,72 +3526,24 @@
             html += '<div class="ed-reader__body">';
             html += '<article class="ed-reader__article" data-reader-size="' + readerPrefs.sizeStep + '" data-reader-spacing="' + escapeHtml(readerPrefs.spacing) + '">';
 
-            // Story meta
-            html += '<div class="ed-reader__meta">';
-            html += '<span class="ed-reader__meta-source">' + escapeHtml(publicationLabel) + '</span>';
-            if (categories.length) html += '<span class="ed-reader__meta-detail">' + escapeHtml(categories[0]) + '</span>';
-            if (duration) html += '<span class="ed-reader__meta-detail">' + duration + '</span>';
-            html += '</div>';
-
-            // Date line
-            html += '<div class="ed-reader__dates">';
-            if (publishedAt) {
-                html += '<span class="ed-reader__date">Published ' + formatDate(publishedAt) + '</span>';
+            if (kickerLabel) {
+                html += '<div class="ed-reader__kicker">' + escapeHtml(kickerLabel) + '</div>';
             }
-            if (indexedAt) {
-                html += '<span class="ed-reader__date ed-reader__date--sub">Added ' + formatDate(indexedAt) + '</span>';
-            }
-            html += '</div>';
 
             // Title
             html += '<h1 class="ed-reader__title">' + escapeHtml(title) + '</h1>';
 
-            // Read more callout
-            if (canonicalUrl) {
-                html += '<div class="ed-reader__source-link">';
-                html += '<span class="ed-reader__source-link-label">Read more</span>';
-                html += '<a href="' + escapeHtml(canonicalUrl) + '" target="_blank" rel="noopener">' + escapeHtml(sourceHost || canonicalUrl) + '</a>';
-                html += '<span class="ed-reader__source-separator">&middot;</span>';
-                html += '<div class="ed-reader__action-group ed-reader__action-group--inline">';
-                html += '<button class="ed-reader__inline-action" data-action="toggle-audio-popover">Listen</button>';
-                html += '<div class="ed-reader__audio-popover">';
-                html += '<button class="ed-reader__audio-item" data-action="tts-read-aloud">';
-                html += '<span class="ed-reader__audio-item__icon">&#x1F5E3;</span>';
-                html += '<span class="ed-reader__audio-item__text">';
-                html += '<span class="ed-reader__audio-item__label">Read this aloud</span>';
-                html += '<span class="ed-reader__audio-item__sub">Device voice</span>';
-                html += '</span>';
-                html += '</button>';
-                if (hasAudio && audioUrl) {
-                    html += '<button class="ed-reader__audio-item" data-action="play-audio" data-audio-url="' + escapeHtml(audioUrl) + '">';
-                    html += '<span class="ed-reader__audio-item__icon">&#9654;</span>';
-                    html += '<span class="ed-reader__audio-item__text">';
-                    html += '<span class="ed-reader__audio-item__label">Play existing audio</span>';
-                    html += '<span class="ed-reader__audio-item__sub">Saved audio</span>';
-                    html += '</span>';
-                    html += '</button>';
+            if (thumb) {
+                html += '<figure class="ed-reader__thumb">';
+                html += '<img src="' + escapeHtml(thumb) + '" alt="">';
+                if (publicationLabel || sourceHost) {
+                    html += '<figcaption class="ed-reader__caption">' + escapeHtml(publicationLabel || sourceHost) + '</figcaption>';
                 }
-                html += '<button class="ed-reader__audio-item ed-reader__audio-item--disabled" data-action="audio-current">';
-                html += '<span class="ed-reader__audio-item__icon">&#x2728;</span>';
-                html += '<span class="ed-reader__audio-item__text">';
-                html += '<span class="ed-reader__audio-item__label">Create audio version</span>';
-                html += '<span class="ed-reader__audio-item__sub">Checking...</span>';
-                html += '</span>';
-                html += '</button>';
-                html += '<button class="ed-reader__audio-item ed-reader__audio-item--disabled" data-action="audio-briefing">';
-                html += '<span class="ed-reader__audio-item__icon">&#x1F4E2;</span>';
-                html += '<span class="ed-reader__audio-item__text">';
-                html += '<span class="ed-reader__audio-item__label">Create full briefing</span>';
-                html += '<span class="ed-reader__audio-item__sub">Checking...</span>';
-                html += '</span>';
-                html += '</button>';
-                html += '</div>';
-                html += '</div>';
-                html += '</div>';
+                html += '</figure>';
             }
 
             if (showTabs) {
-                html += '<div class="ed-reader__variants">';
+                html += '<div class="ed-reader__variants' + (thumb ? ' ed-reader__variants--after-image' : ' ed-reader__variants--after-title') + '">';
                 var displayIdx = 0;
                 for (var ti = 0; ti < this._readerVariants.length; ti++) {
                     if (this._readerVariants[ti].variant === 'deep-research') continue;
@@ -3546,11 +3562,6 @@
 
             // Summary content
             html += '<div class="ed-reader__summary">' + summaryHtml + '</div>';
-
-            // Thumbnail lower in the flow so the story starts with text.
-            if (thumb) {
-                html += '<div class="ed-reader__thumb"><img src="' + escapeHtml(thumb) + '" alt=""></div>';
-            }
 
             // Research panel (hidden by default, shown when Research tab clicked)
             html += this._renderResearchPanel(data);
