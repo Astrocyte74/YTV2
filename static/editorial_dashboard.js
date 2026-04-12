@@ -3426,43 +3426,8 @@
                 html += '</div>';
             }
 
-            if (showTabs) {
-                html += '<div class="ed-reader__variants">';
-                html += '<span class="ed-reader__variants-label">Views</span>';
-                var displayIdx = 0;
-                for (var ti = 0; ti < this._readerVariants.length; ti++) {
-                    if (this._readerVariants[ti].variant === 'deep-research') continue;
-                    var vSlug = this._readerVariants[ti].variant || '';
-                    var vLabel = humanizeVariant(vSlug);
-                    html += '<button class="ed-reader__variant' + (displayIdx === 0 ? ' ed-reader__variant--active' : '') +
-                        '" data-action="switch-variant" data-variant-idx="' + ti + '">' + escapeHtml(vLabel) + '</button>';
-                    displayIdx++;
-                }
-                html += '<button class="ed-reader__variant" data-action="show-research">Ponderings</button>';
-                if (this._readerHasTranscript) {
-                    html += '<button class="ed-reader__variant" data-action="show-transcript">Transcript</button>';
-                }
-                html += '</div>';
-            }
-
-            // Summary content
-            html += '<div class="ed-reader__summary">' + summaryHtml + '</div>';
-
-            // Thumbnail lower in the flow so the story starts with text.
-            if (thumb) {
-                html += '<div class="ed-reader__thumb"><img src="' + escapeHtml(thumb) + '" alt=""></div>';
-            }
-
-            // Research panel (hidden by default, shown when Research tab clicked)
-            html += this._renderResearchPanel(data);
-
-            // Transcript content (hidden by default, shown when tab clicked)
-            if (this._readerHasTranscript) {
-                html += this._renderTranscriptPanel(video.video_id || '', canonicalUrl);
-            }
-
-            // Utility actions live at the bottom of the article, not in the reading path.
-            html += '<div class="ed-reader__utility">';
+            // Utility actions stay near the top, but outside the masthead so they do not dominate.
+            html += '<div class="ed-reader__utility ed-reader__utility--top">';
             html += '<div class="ed-reader__action-group">';
             html += '<button class="ed-reader__audio-btn ed-reader__utility-btn" data-action="toggle-audio-popover" title="Audio">Listen</button>';
             html += '<div class="ed-reader__audio-popover">';
@@ -3508,6 +3473,41 @@
             html += '</div>';
             html += '</div>';
             html += '</div>';
+
+            if (showTabs) {
+                html += '<div class="ed-reader__variants">';
+                html += '<span class="ed-reader__variants-label">Views</span>';
+                var displayIdx = 0;
+                for (var ti = 0; ti < this._readerVariants.length; ti++) {
+                    if (this._readerVariants[ti].variant === 'deep-research') continue;
+                    var vSlug = this._readerVariants[ti].variant || '';
+                    var vLabel = humanizeVariant(vSlug);
+                    html += '<button class="ed-reader__variant' + (displayIdx === 0 ? ' ed-reader__variant--active' : '') +
+                        '" data-action="switch-variant" data-variant-idx="' + ti + '">' + escapeHtml(vLabel) + '</button>';
+                    displayIdx++;
+                }
+                html += '<button class="ed-reader__variant" data-action="show-research">Ponderings</button>';
+                if (this._readerHasTranscript) {
+                    html += '<button class="ed-reader__variant" data-action="show-transcript">Transcript</button>';
+                }
+                html += '</div>';
+            }
+
+            // Summary content
+            html += '<div class="ed-reader__summary">' + summaryHtml + '</div>';
+
+            // Thumbnail lower in the flow so the story starts with text.
+            if (thumb) {
+                html += '<div class="ed-reader__thumb"><img src="' + escapeHtml(thumb) + '" alt=""></div>';
+            }
+
+            // Research panel (hidden by default, shown when Research tab clicked)
+            html += this._renderResearchPanel(data);
+
+            // Transcript content (hidden by default, shown when tab clicked)
+            if (this._readerHasTranscript) {
+                html += this._renderTranscriptPanel(video.video_id || '', canonicalUrl);
+            }
 
             html += '</article>';
             html += '</div>'; // ed-reader__body
