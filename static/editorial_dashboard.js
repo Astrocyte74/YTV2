@@ -1722,7 +1722,7 @@
                 if (adminMenuEl) {
                     var adminToggle = document.querySelector('.ed-reader__admin-toggle');
                     if (adminToggle && !adminToggle.contains(e.target) && !adminMenuEl.contains(e.target)) {
-                        adminMenuEl.classList.remove('ed-reader__admin-menu--open');
+                        this.closeAdminMenu();
                     }
                 }
 
@@ -1731,7 +1731,7 @@
                 if (audioPopoverEl) {
                     var audioBtn = document.querySelector('.ed-reader__audio-btn');
                     if (audioBtn && !audioBtn.contains(e.target) && !audioPopoverEl.contains(e.target)) {
-                        audioPopoverEl.classList.remove('ed-reader__audio-popover--open');
+                        this.closeAudioPopover();
                     }
                 }
 
@@ -3785,12 +3785,19 @@
 
         toggleAdminMenu() {
             var menu = document.querySelector('.ed-reader__admin-menu');
-            if (menu) menu.classList.toggle('ed-reader__admin-menu--open');
+            var toggle = document.querySelector('.ed-reader__admin-toggle');
+            if (!menu) return;
+            var willOpen = !menu.classList.contains('ed-reader__admin-menu--open');
+            this.closeAudioPopover();
+            menu.classList.toggle('ed-reader__admin-menu--open', willOpen);
+            if (toggle) toggle.classList.toggle('ed-reader__admin-toggle--open', willOpen);
         }
 
         closeAdminMenu() {
             var menu = document.querySelector('.ed-reader__admin-menu');
+            var toggle = document.querySelector('.ed-reader__admin-toggle');
             if (menu) menu.classList.remove('ed-reader__admin-menu--open');
+            if (toggle) toggle.classList.remove('ed-reader__admin-toggle--open');
         }
 
         showModal(html, cssClass) {
@@ -4537,12 +4544,21 @@
 
         toggleAudioPopover() {
             var popover = document.querySelector('.ed-reader__audio-popover');
-            if (popover) popover.classList.toggle('ed-reader__audio-popover--open');
+            var button = document.querySelector('.ed-reader__audio-btn, .ed-reader__inline-action');
+            if (!popover) return;
+            var willOpen = !popover.classList.contains('ed-reader__audio-popover--open');
+            this.closeAdminMenu();
+            popover.classList.toggle('ed-reader__audio-popover--open', willOpen);
+            if (button && button.classList.contains('ed-reader__audio-btn')) {
+                button.classList.toggle('ed-reader__audio-btn--active', willOpen);
+            }
         }
 
         closeAudioPopover() {
             var popover = document.querySelector('.ed-reader__audio-popover');
+            var button = document.querySelector('.ed-reader__audio-btn');
             if (popover) popover.classList.remove('ed-reader__audio-popover--open');
+            if (button) button.classList.remove('ed-reader__audio-btn--active');
         }
 
         async fetchAudioOptions(videoId, variantIdx) {
