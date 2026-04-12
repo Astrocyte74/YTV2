@@ -1458,14 +1458,24 @@ body {
     padding: 1.45rem 0 0;
 }
 
-.ed-reader__article[data-reader-size="small"] {
-    --ed-reader-body-size: 0.96rem;
-    --ed-reader-lead-size: 1.08rem;
+.ed-reader__article[data-reader-size="0"] {
+    --ed-reader-body-size: 0.78rem;
+    --ed-reader-lead-size: 0.86rem;
 }
 
-.ed-reader__article[data-reader-size="large"] {
-    --ed-reader-body-size: 1.08rem;
-    --ed-reader-lead-size: 1.22rem;
+.ed-reader__article[data-reader-size="1"] {
+    --ed-reader-body-size: 0.88rem;
+    --ed-reader-lead-size: 0.96rem;
+}
+
+.ed-reader__article[data-reader-size="3"] {
+    --ed-reader-body-size: 1.06rem;
+    --ed-reader-lead-size: 1.18rem;
+}
+
+.ed-reader__article[data-reader-size="4"] {
+    --ed-reader-body-size: 1.18rem;
+    --ed-reader-lead-size: 1.32rem;
 }
 
 .ed-reader__article[data-reader-spacing="compact"] {
@@ -1915,6 +1925,54 @@ body {
     color: var(--ed-color-text);
     border-color: var(--ed-color-accent);
     background: rgba(59, 130, 246, 0.08);
+}
+
+/* Text size stepper */
+.ed-reader__admin-stepper {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+}
+
+.ed-reader__admin-stepper-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--ed-color-border);
+    background: transparent;
+    color: var(--ed-color-muted);
+    border-radius: 999px;
+    width: 2rem;
+    height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    font-family: var(--ed-font-body);
+    cursor: pointer;
+    transition: color var(--ed-transition-fast), background var(--ed-transition-fast), border-color var(--ed-transition-fast);
+}
+
+.ed-reader__admin-stepper-btn:hover:not(:disabled) {
+    color: var(--ed-color-text);
+    border-color: rgba(128, 128, 128, 0.4);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.ed-reader__admin-stepper-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.ed-reader__admin-stepper-btn--up {
+    font-size: 0.92rem;
+}
+
+.ed-reader__admin-stepper-indicator {
+    width: 1.8rem;
+    height: 3px;
+    background: var(--ed-color-border);
+    border-radius: 2px;
 }
 
 .ed-reader__admin-item {

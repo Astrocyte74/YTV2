@@ -163,8 +163,11 @@
         localStorage.setItem('ytv2.theme', _theme);
     }
 
+    var READER_SIZE_STEPS = [0.78, 0.88, 0.96, 1.06, 1.18];
+    var READER_SIZE_DEFAULT = 2; // index into STEPS
+
     var READER_TYPOGRAPHY_DEFAULTS = {
-        size: 'default',
+        sizeStep: READER_SIZE_DEFAULT,
         spacing: 'comfortable'
     };
 
@@ -175,11 +178,11 @@
         } catch (_) {
             prefs = {};
         }
-        var size = (prefs && prefs.size) || READER_TYPOGRAPHY_DEFAULTS.size;
+        var sizeStep = (prefs && typeof prefs.sizeStep === 'number') ? prefs.sizeStep : READER_TYPOGRAPHY_DEFAULTS.sizeStep;
+        if (sizeStep < 0 || sizeStep >= READER_SIZE_STEPS.length) sizeStep = READER_TYPOGRAPHY_DEFAULTS.sizeStep;
         var spacing = (prefs && prefs.spacing) || READER_TYPOGRAPHY_DEFAULTS.spacing;
-        if (['small', 'default', 'large'].indexOf(size) === -1) size = READER_TYPOGRAPHY_DEFAULTS.size;
         if (['compact', 'comfortable'].indexOf(spacing) === -1) spacing = READER_TYPOGRAPHY_DEFAULTS.spacing;
-        return { size: size, spacing: spacing };
+        return { sizeStep: sizeStep, spacing: spacing };
     }
 
     function getThumbnail(item) {
@@ -1679,6 +1682,16 @@
                 // Admin menu toggle
                 if (e.target.closest('[data-action="toggle-admin-menu"]')) {
                     this.toggleAdminMenu();
+                    return;
+                }
+
+                if (e.target.closest('[data-action="reader-size-down"]')) {
+                    this.stepReaderSize(-1);
+                    return;
+                }
+
+                if (e.target.closest('[data-action="reader-size-up"]')) {
+                    this.stepReaderSize(1);
                     return;
                 }
 
@@ -3423,10 +3436,10 @@
             html += '<div class="ed-reader__admin-menu">';
             html += '<div class="ed-reader__admin-section">';
             html += '<div class="ed-reader__admin-label">Text size</div>';
-            html += '<div class="ed-reader__admin-segment">';
-            html += '<button class="ed-reader__admin-option' + (readerPrefs.size === 'small' ? ' ed-reader__admin-option--active' : '') + '" data-action="set-reader-pref" data-pref="size" data-value="small" aria-pressed="' + (readerPrefs.size === 'small' ? 'true' : 'false') + '">Small</button>';
-            html += '<button class="ed-reader__admin-option' + (readerPrefs.size === 'default' ? ' ed-reader__admin-option--active' : '') + '" data-action="set-reader-pref" data-pref="size" data-value="default" aria-pressed="' + (readerPrefs.size === 'default' ? 'true' : 'false') + '">Default</button>';
-            html += '<button class="ed-reader__admin-option' + (readerPrefs.size === 'large' ? ' ed-reader__admin-option--active' : '') + '" data-action="set-reader-pref" data-pref="size" data-value="large" aria-pressed="' + (readerPrefs.size === 'large' ? 'true' : 'false') + '">Large</button>';
+            html += '<div class="ed-reader__admin-stepper">';
+            html += '<button class="ed-reader__admin-stepper-btn" data-action="reader-size-down"' + (readerPrefs.sizeStep <= 0 ? ' disabled' : '') + ' aria-label="Decrease text size">A</button>';
+            html += '<span class="ed-reader__admin-stepper-indicator"></span>';
+            html += '<button class="ed-reader__admin-stepper-btn ed-reader__admin-stepper-btn--up" data-action="reader-size-up"' + (readerPrefs.sizeStep >= 4 ? ' disabled' : '') + ' aria-label="Increase text size">A</button>';
             html += '</div>';
             html += '</div>';
             html += '<div class="ed-reader__admin-section">';
@@ -3447,7 +3460,7 @@
             html += '</div>';
 
             html += '<div class="ed-reader__body">';
-            html += '<article class="ed-reader__article" data-reader-size="' + escapeHtml(readerPrefs.size) + '" data-reader-spacing="' + escapeHtml(readerPrefs.spacing) + '">';
+            html += '<article class="ed-reader__article" data-reader-size="' + readerPrefs.sizeStep + '" data-reader-spacing="' + escapeHtml(readerPrefs.spacing) + '">';
 
             // Story meta
             html += '<div class="ed-reader__meta">';
@@ -3849,10 +3862,7 @@
 
         setReaderTypographyPref(pref, value) {
             var prefs = this.getReaderTypographyPrefs();
-            if (pref === 'size') {
-                if (['small', 'default', 'large'].indexOf(value) === -1) return;
-                prefs.size = value;
-            } else if (pref === 'spacing') {
+            if (pref === 'spacing') {
                 if (['compact', 'comfortable'].indexOf(value) === -1) return;
                 prefs.spacing = value;
             } else {
@@ -3863,19 +3873,31 @@
             this.applyReaderTypographyPrefs();
         }
 
+        stepReaderSize(direction) {
+            var prefs = this.getReaderTypographyPrefs();
+            var next = prefs.sizeStep + direction;
+            if (next < 0 || next >= READER_SIZE_STEPS.length) return;
+            prefs.sizeStep = next;
+            this._readerTypographyPrefs = prefs;
+            localStorage.setItem('ytv2.readerTypography', JSON.stringify(prefs));
+            this.applyReaderTypographyPrefs();
+        }
+
         applyReaderTypographyPrefs() {
             var prefs = this.getReaderTypographyPrefs();
             var article = document.querySelector('.ed-reader__article');
             if (article) {
-                article.dataset.readerSize = prefs.size;
+                article.dataset.readerSize = prefs.sizeStep;
                 article.dataset.readerSpacing = prefs.spacing;
             }
+            var downBtn = document.querySelector('[data-action="reader-size-down"]');
+            var upBtn = document.querySelector('[data-action="reader-size-up"]');
+            if (downBtn) downBtn.disabled = (prefs.sizeStep <= 0);
+            if (upBtn) upBtn.disabled = (prefs.sizeStep >= READER_SIZE_STEPS.length - 1);
             var buttons = document.querySelectorAll('[data-action="set-reader-pref"]');
             for (var i = 0; i < buttons.length; i++) {
                 var btn = buttons[i];
-                var isActive = btn.dataset.pref === 'size'
-                    ? btn.dataset.value === prefs.size
-                    : btn.dataset.value === prefs.spacing;
+                var isActive = btn.dataset.value === prefs.spacing;
                 btn.classList.toggle('ed-reader__admin-option--active', isActive);
                 btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
             }
