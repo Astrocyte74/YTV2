@@ -1790,6 +1790,14 @@
                     return;
                 }
 
+                // Forget token
+                if (e.target.closest('[data-action="forget-token"]')) {
+                    this.clearAdminToken();
+                    this.closeAdminMenu();
+                    this.showToast('Admin token forgotten');
+                    return;
+                }
+
                 // Proficiency toggle (within regenerate modal)
                 var profBtnEl = e.target.closest('.ed-proficiency-btn');
                 if (profBtnEl) {
@@ -2590,8 +2598,8 @@
             fetch('/api/research/follow-up/thread?' + params.toString(), { headers: headers })
                 .then(function (resp) {
                     if (resp.status === 401) {
-                        // Composer stays visible; just note auth is needed
-                        return { turns: [], _auth: true };
+                        self.handleAuthError({ interactive: false });
+                        return null;
                     }
                     if (resp.status === 404) return { turns: [], _notFound: true };
                     return resp.json().then(function (data) {
@@ -2676,12 +2684,14 @@
                 })
             })
             .then(function (resp) {
+                if (resp.status === 401) { self.handleAuthError({ interactive: true, retry: function (t) { self._loadDigDeeperSuggestions(t); } }); return null; }
                 return resp.json().then(function (payload) {
                     payload._ok = resp.ok;
                     return payload;
                 });
             })
             .then(function (payload) {
+                if (!payload) return;
                 if (!payload._ok) throw new Error(payload.detail || 'Suggestions failed');
                 var suggestions = Array.isArray(payload.suggestions) ? payload.suggestions : [];
 
@@ -2952,6 +2962,10 @@
                 },
                 body: JSON.stringify(body)
             }).then(function (resp) {
+                if (resp.status === 401) {
+                    self.handleAuthError({ interactive: true, retry: function (t) { self._sendResearchChatWithToken(question, t); } });
+                    return;
+                }
                 if (!resp.ok) {
                     return resp.text().then(function (text) {
                         var msg = 'Chat failed';
@@ -3019,6 +3033,10 @@
                     method: 'DELETE',
                     headers: { 'Authorization': 'Bearer ' + token }
                 })
+                    .then(function (resp) {
+                        if (resp.status === 401) { self.handleAuthError({ interactive: true, retry: function (t) { self._deleteChatTurn(turnId); } }); return null; }
+                        return resp.json();
+                    })
                     .then(function (resp) { return resp.json(); })
                     .then(function (data) {
                         if (data.deleted) {
@@ -3076,6 +3094,10 @@
                     method: 'DELETE',
                     headers: { 'Authorization': 'Bearer ' + token }
                 })
+                    .then(function (resp) {
+                        if (resp.status === 401) { self.handleAuthError({ interactive: true, retry: function (t) { self._executeClearChat(videoId, runId); } }); return null; }
+                        return resp.json();
+                    })
                     .then(function (resp) { return resp.json(); })
                     .then(function (data) {
                         if (data.deleted) {
@@ -3127,7 +3149,8 @@
             var params = new URLSearchParams({ video_id: videoId, preferred_variant: 'deep-research' });
             fetch('/api/research/follow-up/thread?' + params.toString(), { headers: headers })
                 .then(function (resp) {
-                    if (resp.status === 401 || resp.status === 404) return null;
+                    if (resp.status === 401) { self.handleAuthError({ interactive: false }); return null; }
+                    if (resp.status === 404) return null;
                     return resp.json().then(function (data) {
                         data._ok = resp.ok;
                         return data;
@@ -3232,12 +3255,14 @@
                     })
                 })
                 .then(function (resp) {
+                    if (resp.status === 401) { self.handleAuthError({ interactive: true, retry: function (t) { self._executeInlineResearch(question, cardEl, t); } }); return null; }
                     return resp.json().then(function (data) {
                         data._ok = resp.ok;
                         return data;
                     });
                 })
                 .then(function (data) {
+                    if (!data) return;
                     if (!data._ok) throw new Error(data.detail || data.error || 'Research failed');
 
                     // Card → completed state
@@ -3510,6 +3535,10 @@
             html += '<button class="ed-reader__admin-item" data-action="admin-regenerate">Regenerate...</button>';
             html += '<button class="ed-reader__admin-item" data-action="admin-images">Manage Images...</button>';
             html += '<button class="ed-reader__admin-item ed-reader__admin-item--danger" data-action="admin-delete">Delete...</button>';
+            if (this.getAdminToken()) {
+                html += '<div class="ed-reader__admin-divider"></div>';
+                html += '<button class="ed-reader__admin-item" data-action="forget-token">Forget admin token</button>';
+            }
             html += '</div>';
             html += '</div>';
             html += '<button class="ed-reader__close" data-action="close-reader" aria-label="Close article">&times;</button>';
@@ -3806,21 +3835,43 @@
             return localStorage.getItem('ytv2.reprocessToken') || '';
         }
 
+        clearAdminToken() {
+            localStorage.removeItem('ytv2.reprocessToken');
+        }
+
+        handleAuthError(opts) {
+            this.clearAdminToken();
+            if (opts && opts.interactive) {
+                this.closeModal();
+                var retryFn = opts.retry || null;
+                this.showTokenPrompt(retryFn, 'That token didn\u2019t match. Try again.');
+            } else {
+                if (this._researchPollTimer) {
+                    clearTimeout(this._researchPollTimer);
+                    this._researchPollTimer = null;
+                }
+                var composer = document.querySelector('.ed-research__composer-input');
+                if (composer) composer.disabled = true;
+            }
+        }
+
         requireAdminToken(callback) {
             var token = this.getAdminToken();
             if (token) { callback(token); return; }
             this.showTokenPrompt(callback);
         }
 
-        showTokenPrompt(callback) {
+        showTokenPrompt(callback, errorMessage) {
+            var errorHtml = errorMessage ? '<p class="ed-token-error">' + escapeHtml(errorMessage) + '</p>' : '';
             this.showModal(
                 '<div class="ed-modal__header">' +
                     '<h2 class="ed-modal__title">Admin token required</h2>' +
-                    '<p class="ed-modal__subtitle">Enter your reprocess token to perform admin actions.</p>' +
+                    '<p class="ed-modal__subtitle">Enter your admin token to perform this action.</p>' +
                 '</div>' +
                 '<div class="ed-modal__body">' +
+                    errorHtml +
                     '<input type="password" class="ed-token-input" placeholder="Token" autocomplete="off">' +
-                    '<p class="ed-token-helper">The token is stored locally and reused for future actions.</p>' +
+                    '<p class="ed-token-helper">Stored locally for future admin actions.</p>' +
                 '</div>' +
                 '<div class="ed-modal__footer">' +
                     '<button class="ed-btn ed-btn--ghost" data-action="modal-cancel">Cancel</button>' +
@@ -4131,6 +4182,7 @@
         }
 
         async _doRegenerate(token) {
+            var self = this;
             var checkboxes = document.querySelectorAll('.ed-regen-card__check:checked');
             if (!checkboxes.length) { this.showToast('Select at least one variant', 'error'); return; }
 
@@ -4169,6 +4221,7 @@
                         summary_types: summaryTypes
                     })
                 });
+                if (resp.status === 401) { this.handleAuthError({ interactive: true, retry: function (t) { self._doRegenerate(t); } }); return; }
                 if (!resp.ok) throw new Error('Regenerate failed (' + resp.status + ')');
                 this.closeModal();
                 this.showToast('Regeneration started');
@@ -4499,6 +4552,7 @@
                     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                     body: JSON.stringify({ video_id: this._activeReaderId, prompt: newPrompt, mode: mode })
                 });
+                if (resp.status === 401) { this.handleAuthError({ interactive: true, retry: function (t) { self._doSetImagePrompt(t); } }); return; }
                 if (!resp.ok) throw new Error('Failed (' + resp.status + ')');
                 this._pendingImageGeneration = { mode: mode, prompt: newPrompt, startedAt: Date.now() };
                 this.showToast('Image generation started');
@@ -4529,6 +4583,7 @@
                     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                     body: JSON.stringify({ video_id: this._activeReaderId, url: url, mode: mode })
                 });
+                if (resp.status === 401) { this.handleAuthError({ interactive: true, retry: function (t) { self._doSelectImage(t, url); } }); return; }
                 if (!resp.ok) throw new Error('Failed (' + resp.status + ')');
                 this.showToast('Image selected');
                 // Update local data — AI1 must update BOTH fields
@@ -4571,12 +4626,14 @@
         }
 
         async _doDeleteImage(token, url) {
+            var self = this;
             try {
                 var resp = await fetch('/api/delete-image-variant', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                     body: JSON.stringify({ video_id: this._activeReaderId, url: url })
                 });
+                if (resp.status === 401) { this.handleAuthError({ interactive: true, retry: function (t) { self._doDeleteImage(t, url); } }); return; }
                 if (!resp.ok) throw new Error('Failed (' + resp.status + ')');
                 this.showToast('Variant deleted');
 
@@ -4625,12 +4682,14 @@
         }
 
         async _doDeleteAllImages(token) {
+            var self = this;
             try {
                 var resp = await fetch('/api/delete-all-ai-images', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                     body: JSON.stringify({ video_id: this._activeReaderId, modes: ['ai1', 'ai2'] })
                 });
+                if (resp.status === 401) { this.handleAuthError({ interactive: true, retry: function (t) { self._doDeleteAllImages(t); } }); return; }
                 if (!resp.ok) throw new Error('Failed (' + resp.status + ')');
                 this.showToast('All AI images deleted');
                 if (this._readerData && this._readerData.analysis) {
@@ -4760,7 +4819,16 @@
             }
         }
 
-        async _triggerAudioGenerate(mode) {
+        _triggerAudioGenerate(mode) {
+            var self = this;
+            var videoId = this._activeReaderId;
+            if (!videoId) return;
+
+            this.requireAdminToken(function (token) { self._doAudioGenerate(token, mode); });
+        }
+
+        async _doAudioGenerate(token, mode) {
+            var self = this;
             var videoId = this._activeReaderId;
             if (!videoId) return;
 
@@ -4778,7 +4846,6 @@
             this._updateAudioPopover();
 
             try {
-                var token = this.getAdminToken();
                 var resp = await fetch('/api/audio/generate/stream', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
@@ -4810,6 +4877,10 @@
                     this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'generating'};
                     this._updateAudioPopover();
                     this._handleAudioSSE(resp, mode);
+                } else if (resp.status === 401) {
+                    this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'failed'};
+                    this._updateAudioPopover();
+                    this.handleAuthError({ interactive: true, retry: function (t) { self._doAudioGenerate(t, mode); } });
                 } else if (!resp.ok) {
                     var errData = await resp.json().catch(function() { return {error: 'Unknown error'}; });
                     this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'failed'};

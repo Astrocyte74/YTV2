@@ -1858,6 +1858,11 @@ body {
     color: var(--ed-color-accent-hover);
 }
 
+.ed-reader__admin-divider {
+    border-top: 1px solid var(--ed-color-border);
+    margin: 0.3rem 0;
+}
+
 .ed-reader__admin-segment {
     display: flex;
     gap: 0.38rem;
@@ -2432,6 +2437,12 @@ body {
     color: var(--ed-color-muted);
     opacity: 0.7;
     margin-top: 0.3rem;
+}
+
+.ed-token-error {
+    font-size: 0.82rem;
+    color: #f87171;
+    margin-bottom: 0.5rem;
 }
 
 /* ---- Images Modal ---- */
