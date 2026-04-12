@@ -1942,6 +1942,8 @@
                 if (e.target.closest('[data-action="research-sign-in"]')) {
                     var self = this;
                     this.requireAdminToken(function() {
+                        var composer = document.querySelector('.ed-research__composer-input');
+                        if (composer) composer.disabled = false;
                         self._loadResearchThread();
                         self._loadDigDeeperSuggestions();
                     });
@@ -3229,7 +3231,7 @@
             if (!question) return;
 
             var ctx = this._getResearchSourceContext();
-            var questionProvenance = provenance === 'custom' ? ['custom'] : ['suggested'];
+            var questionProvenance = Array.isArray(provenance) ? provenance : (provenance === 'custom' ? ['custom'] : ['suggested']);
 
             // If card element, set to running state and track in state model
             if (cardEl) {
