@@ -3360,13 +3360,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
         MUST stay in sync with backend build_tts_config_tag() in
         ytv2_api/audio_store.py — same env vars, same defaults, same order.
+        Reasoning effort is NOT included (briefings hardcode medium).
         """
         parts = [
             os.getenv("TTS_PROVIDER", "openai"),
             os.getenv("FISH_TTS_MODEL", ""),
             os.getenv("FISH_VOICE_MODEL", ""),
             os.getenv("OPENAI_TTS_VOICE", ""),
-            os.getenv("AUDIO_LLM_REASONING_EFFORT", "low"),
         ]
         return "|".join(p for p in parts if p)
 
