@@ -465,6 +465,7 @@
 
         async loadContent() {
             this.state.loading = true;
+            this._isSemanticSearch = false;
             if (this.state.page === 1) {
                 this.state.allItems = [];
                 this.renderLoading();
@@ -473,6 +474,11 @@
                 this._baseOrderedItems = null;
                 this._relatedAnchorIndex = -1;
                 this._selectedItemId = null;
+            }
+
+            // Use semantic search when there's a search query on page 1
+            if (this.state.search && this.state.page === 1) {
+                return this.performSemanticSearch();
             }
 
             var params = {
@@ -518,6 +524,100 @@
             }
         }
 
+        async performSemanticSearch() {
+            try {
+                // Call semantic search API (hybrid = semantic + keyword via RRF)
+                var searchResp = await fetch('/api/semantic-search?q=' +
+                    encodeURIComponent(this.state.search) + '&topk=50&mode=hybrid');
+                var searchData = await searchResp.json();
+
+                if (!searchData.available || !searchData.results || !searchData.results.length) {
+                    // Fall back to keyword search
+                    this._isSemanticSearch = false;
+                    return this._keywordSearch();
+                }
+
+                // Fetch full item data for the matched IDs
+                var self = this;
+                var ids = searchData.results.map(function(r) { return r.id; });
+                var itemsResp = await fetch('/api/reports?ids=' + ids.join(',') + '&size=' + ids.length);
+                var itemsData = await itemsResp.json();
+                var itemsMap = {};
+                (itemsData.reports || []).forEach(function(item) {
+                    itemsMap[item.video_id || item.file_stem || item.id] = item;
+                });
+
+                // Merge scores, preserve semantic result order
+                var merged = [];
+                searchData.results.forEach(function(result) {
+                    var item = itemsMap[result.id];
+                    if (item) {
+                        item._semanticScore = result.score;
+                        merged.push(item);
+                    }
+                });
+
+                this.state.allItems = merged;
+                this.state.items = merged;
+                this.state.total = merged.length;
+                this.state.hasMore = false;
+                this._isSemanticSearch = true;
+
+                console.log('[Editorial] Semantic search:', merged.length, 'results for "' + this.state.search + '"');
+
+                this.writeStateToURL();
+                this.render();
+            } catch (err) {
+                console.error('[Editorial] Semantic search failed:', err);
+                this._isSemanticSearch = false;
+                this._keywordSearch();
+            } finally {
+                this.state.loading = false;
+            }
+        }
+
+        async _keywordSearch() {
+            // Keyword-only fallback: original /api/reports?q=... search
+            var params = {
+                page: this.state.page,
+                size: this.state.size,
+                sort: this.state.sort,
+            };
+            if (this.state.search) {
+                params.q = this.state.search;
+            }
+            Object.keys(this.state.filters).forEach(function (key) {
+                var val = this.state.filters[key];
+                if (val) params[key] = val;
+            }.bind(this));
+
+            var url = '/api/reports' + buildFilterQuery(params);
+            try {
+                var resp = await fetch(url);
+                if (!resp.ok) throw new Error('API returned ' + resp.status);
+                var data = await resp.json();
+                var newItems = data.reports || data.items || [];
+                this.state.total = data.total_count || (data.pagination && data.pagination.total) || 0;
+
+                if (this.state.page === 1) {
+                    this.state.allItems = newItems;
+                } else {
+                    this.state.allItems = this.state.allItems.concat(newItems);
+                }
+                this.state.items = this.state.allItems;
+                this.state.hasMore = this.state.allItems.length < this.state.total;
+
+                this.writeStateToURL();
+                this.render();
+            } catch (err) {
+                this.state.error = err.message;
+                console.error('[Editorial] Keyword search failed:', err);
+                this.renderError();
+            } finally {
+                this.state.loading = false;
+            }
+        }
+
         async loadMore() {
             if (this.state.loading || !this.state.hasMore) return;
             this.state.page++;
@@ -544,6 +644,12 @@
                         '<span class="ed-related-banner__label">Related to:</span> ' +
                         '<span class="ed-related-banner__title">' + escapeHtml(truncatedTitle) + '</span>' +
                         '<button class="ed-related-banner__close" data-action="exit-related">Back to Recent</button>' +
+                        '</div>';
+                } else if (this._isSemanticSearch && this.state.search) {
+                    bannerHtml = '<div class="ed-related-banner">' +
+                        '<span class="ed-related-banner__label">AI search:</span> ' +
+                        '<span class="ed-related-banner__title">' + items.length + ' results for "' + escapeHtml(this.state.search) + '"</span>' +
+                        '<button class="ed-related-banner__close" data-action="clear-search">Clear search</button>' +
                         '</div>';
                 }
 
@@ -1390,6 +1496,19 @@
                 if (e.target.closest('[data-action="exit-related"]')) {
                     this._exitRelatedMode();
                     this.renderTopbar();
+                    return;
+                }
+
+                // Clear semantic search
+                if (e.target.closest('[data-action="clear-search"]')) {
+                    this.state.search = '';
+                    var searchInput = document.querySelector('.ed-search__input');
+                    if (searchInput) searchInput.value = '';
+                    this.state.page = 1;
+                    this._isSemanticSearch = false;
+                    this.loadContent();
+                    this.renderTopbar();
+                    this.renderContextBar();
                     return;
                 }
 

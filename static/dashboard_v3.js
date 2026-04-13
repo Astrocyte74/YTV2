@@ -10950,7 +10950,7 @@ class AudioDashboard {
                 this.contentGrid.innerHTML = `
                     <div class="col-span-full text-center py-8 text-slate-500">
                         <div class="text-lg mb-2">Semantic search unavailable</div>
-                        <div class="text-sm">${data.error || 'ChromaDB not initialized'}</div>
+                        <div class="text-sm">${data.error || 'Semantic search unavailable'}</div>
                     </div>`;
                 return;
             }
@@ -10967,7 +10967,7 @@ class AudioDashboard {
 
             // Get full item data from backend for the matched IDs
             const ids = data.results.map(r => r.id);
-            const itemsResponse = await fetch(`/api/reports?ids=${ids.join(',')}`);
+            const itemsResponse = await fetch(`/api/reports?ids=${ids.join(',')}&size=${ids.length}`);
             const itemsData = await itemsResponse.json();
             const itemsMap = new Map((itemsData.reports || []).map(item => [item.video_id || item.file_stem || item.id, item]));
 
