@@ -68,31 +68,35 @@ def get_postgres_content() -> List[Dict[str, Any]]:
                 c.title,
                 c.channel_name,
                 {source_case} AS normalized_source,
-                ls.text AS summary_text
+                COALESCE(cs.text, ls.text) AS summary_text
             FROM content c
+            LEFT JOIN LATERAL (
+                SELECT cs.text
+                FROM content_summaries cs
+                WHERE cs.video_id = c.video_id
+                  AND cs.is_latest = true
+                  AND cs.text IS NOT NULL
+                ORDER BY array_position(
+                  ARRAY[
+                    'comprehensive', 'key-insights', 'bullet-points',
+                    'key-points', 'executive', 'audio',
+                    'reddit-discussion', 'audio-fr'
+                  ]::text[],
+                  cs.variant
+                )
+                LIMIT 1
+            ) cs ON true
             LEFT JOIN LATERAL (
                 SELECT s.text
                 FROM v_latest_summaries s
                 WHERE s.video_id = c.video_id
                   AND s.text IS NOT NULL
-                  AND s.variant IN (
-                    'comprehensive', 'key-points', 'bullet-points',
-                    'executive', 'key-insights', 'audio',
-                    'reddit-discussion', 'audio-fr'
-                  )
-                ORDER BY array_position(
-                  ARRAY[
-                    'comprehensive', 'key-points', 'bullet-points',
-                    'executive', 'key-insights', 'audio',
-                    'reddit-discussion', 'audio-fr'
-                  ]::text[],
-                  s.variant
-                )
+                ORDER BY s.created_at DESC
                 LIMIT 1
             ) ls ON true
             WHERE c.embedding IS NULL
-              AND ls.text IS NOT NULL
-              AND LENGTH(TRIM(ls.text)) > 10
+              AND COALESCE(cs.text, ls.text) IS NOT NULL
+              AND LENGTH(TRIM(COALESCE(cs.text, ls.text))) > 10
             ORDER BY c.indexed_at DESC NULLS LAST
         """
 
