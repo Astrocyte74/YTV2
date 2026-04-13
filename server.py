@@ -766,6 +766,58 @@ def _start_backend_sse_subscriber():
                                     payload = {}
                                 logger.info("Backend SSE forwarding event: %s video_id=%s", event_name, payload.get('video_id', ''))
                                 report_event_stream.broadcast(event_name, payload)
+
+                                # Auto-embed new/updated content from backend sync
+                                if event_name == 'report-synced' and payload.get('video_id'):
+                                    try:
+                                        video_id = payload['video_id']
+                                        # Strip backend prefixes (web:, reddit: etc.) for DB lookup
+                                        if ':' in video_id and not video_id.startswith('http'):
+                                            video_id = video_id.split(':', 1)[1]
+                                        import psycopg2
+                                        pg_conn = psycopg2.connect(os.getenv('DATABASE_URL_POSTGRES_NEW'))
+                                        pg_cur = pg_conn.cursor()
+                                        pg_cur.execute("""
+                                            SELECT c.video_id, c.title, c.channel_name,
+                                                   COALESCE(cs.text, ls.text) AS summary_text,
+                                                   CASE
+                                                       WHEN LOWER(COALESCE(c.canonical_url::text, '')) LIKE '%%wikipedia.org%%' THEN 'wikipedia'
+                                                       WHEN LOWER(COALESCE(c.canonical_url::text, '')) LIKE '%%churchofjesuschrist.org%%'
+                                                           OR LOWER(COALESCE(c.canonical_url::text, '')) LIKE '%%lds.org%%' THEN 'lds'
+                                                       WHEN LOWER(COALESCE(c.canonical_url::text, '')) LIKE '%%youtube.com%%'
+                                                           OR LOWER(COALESCE(c.canonical_url::text, '')) LIKE '%%youtu.be%%' THEN 'youtube'
+                                                       WHEN LOWER(COALESCE(c.canonical_url::text, '')) LIKE '%%reddit.com%%'
+                                                           OR LOWER(COALESCE(c.video_id::text, '')) LIKE 'reddit:%%' THEN 'reddit'
+                                                       WHEN LOWER(COALESCE(c.id::text, '')) LIKE '%%-web-%%' THEN 'web'
+                                                       ELSE 'web'
+                                                   END AS normalized_source
+                                            FROM content c
+                                            LEFT JOIN LATERAL (
+                                                SELECT cs.text FROM content_summaries cs
+                                                WHERE cs.video_id = c.video_id AND cs.is_latest = true AND cs.text IS NOT NULL
+                                                LIMIT 1
+                                            ) cs ON true
+                                            LEFT JOIN LATERAL (
+                                                SELECT s.text FROM v_latest_summaries s
+                                                WHERE s.video_id = c.video_id AND s.text IS NOT NULL
+                                                LIMIT 1
+                                            ) ls ON true
+                                            WHERE c.video_id = %s
+                                        """, [video_id])
+                                        row = pg_cur.fetchone()
+                                        pg_conn.close()
+                                        if row and row[3]:
+                                            from modules.semantic_search import upsert_document as semantic_upsert
+                                            semantic_upsert(
+                                                video_id=row[0], title=row[1] or '',
+                                                summary=row[3], channel=row[2] or '',
+                                                source=row[4] or 'web'
+                                            )
+                                            logger.info("Auto-embedded synced content: %s", video_id)
+                                        else:
+                                            logger.debug("Skipping auto-embed for %s: no summary text", video_id)
+                                    except Exception as emb_err:
+                                        logger.warning("Auto-embed failed for %s: %s", payload.get('video_id'), emb_err)
                     except (_socket.timeout, OSError):
                         # Read timeout — check if connection is still alive
                         if _chunk_count == 0:
