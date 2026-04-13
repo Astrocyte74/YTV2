@@ -233,7 +233,7 @@ def search(
 
         # Build WHERE conditions
         where_clauses = ["c.embedding IS NOT NULL"]
-        params: list = [str(query_embedding)]
+        params: list = []
 
         if filters:
             if filters.get('source'):
@@ -254,7 +254,6 @@ def search(
                 params.append(filters['channel'])
 
         where_sql = " AND ".join(where_clauses)
-        params.append(topk)
 
         sql = f"""
             SELECT
@@ -281,11 +280,8 @@ def search(
             LIMIT %s
         """
 
-        # Need the embedding vector twice (WHERE distance + ORDER BY)
-        # Insert it again after the first %s placeholder for ORDER BY
-        params_with_embedding = [str(query_embedding)] + params[1:]
-
-        cur.execute(sql, params_with_embedding)
+        # Params: embedding (for score calc), embedding (for ORDER BY), filter values, topk
+        cur.execute(sql, [str(query_embedding), str(query_embedding)] + params + [topk])
         rows = cur.fetchall()
 
         formatted_results = []
