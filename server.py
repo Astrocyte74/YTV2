@@ -671,6 +671,126 @@ class ReportEventStream:
 report_event_stream = ReportEventStream()
 
 
+def _start_backend_sse_subscriber():
+    """Background thread that subscribes to the backend SSE stream and
+    re-broadcasts events to local dashboard clients.
+
+    urllib.request.urlopen buffers HTTP/1.0 streaming responses, so we use
+    http.client directly which supports incremental reads.
+    """
+    import http.client
+    import time
+
+    backend_url = os.getenv('BACKEND_API_URL', '').rstrip('/')
+    if not backend_url:
+        return
+
+    # Parse host:port from BACKEND_API_URL (e.g. "http://youtube-summarizer-bot:6452")
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(backend_url)
+        host = parsed.hostname or 'localhost'
+        port = parsed.port or 80
+    except Exception:
+        logger.warning("Cannot parse BACKEND_API_URL for SSE subscriber: %s", backend_url)
+        return
+
+    def _subscriber_loop():
+        import socket as _socket
+        while True:
+            sock = None
+            try:
+                sock = _socket.create_connection((host, port), timeout=30)
+                # Manual HTTP request to avoid http.client buffering
+                req = (
+                    'GET /api/report-events HTTP/1.1\r\n'
+                    f'Host: {host}:{port}\r\n'
+                    'Accept: text/event-stream\r\n'
+                    'Connection: keep-alive\r\n'
+                    '\r\n'
+                )
+                sock.sendall(req.encode('utf-8'))
+                sock.settimeout(20)  # read timeout
+
+                # Read HTTP response headers
+                header_buf = b''
+                while b'\r\n\r\n' not in header_buf:
+                    chunk = sock.recv(4096)
+                    if not chunk:
+                        raise OSError('Connection closed while reading headers')
+                    header_buf += chunk
+
+                header_end = header_buf.index(b'\r\n\r\n')
+                headers_raw = header_buf[:header_end].decode('utf-8', errors='replace')
+                body_start = header_buf[header_end + 4:]
+
+                # Check status
+                status_line = headers_raw.split('\r\n')[0]
+                if '200' not in status_line:
+                    logger.warning("Backend SSE returned non-200: %s; retrying", status_line)
+                    sock.close()
+                    time.sleep(10)
+                    continue
+
+                logger.info("Backend SSE subscriber connected to %s:%s", host, port)
+                buf = body_start.decode('utf-8', errors='replace')
+                _chunk_count = 0
+
+                while True:
+                    try:
+                        chunk = sock.recv(4096)
+                        if not chunk:
+                            break
+                        _chunk_count += 1
+                        if _chunk_count <= 5 or _chunk_count % 20 == 0:
+                            logger.info("Backend SSE chunk #%d (%d bytes)", _chunk_count, len(chunk))
+                        buf += chunk.decode('utf-8', errors='replace')
+
+                        # Process complete SSE messages (ended by \n\n)
+                        while '\n\n' in buf:
+                            raw, buf = buf.split('\n\n', 1)
+                            event_name = None
+                            data_str = None
+                            for line in raw.split('\n'):
+                                if line.startswith('event: '):
+                                    event_name = line[7:].strip()
+                                elif line.startswith('data: '):
+                                    data_str = line[6:]
+                                elif line.startswith(':'):
+                                    pass
+
+                            if event_name and data_str:
+                                try:
+                                    payload = json.loads(data_str)
+                                except (json.JSONDecodeError, TypeError):
+                                    payload = {}
+                                logger.info("Backend SSE forwarding event: %s video_id=%s", event_name, payload.get('video_id', ''))
+                                report_event_stream.broadcast(event_name, payload)
+                    except (_socket.timeout, OSError):
+                        # Read timeout — check if connection is still alive
+                        if _chunk_count == 0:
+                            logger.warning("Backend SSE no data received; reconnecting")
+                            break
+                        continue
+                    except Exception:
+                        break
+
+                logger.info("Backend SSE connection closed; reconnecting in 5s")
+            except Exception as e:
+                logger.warning("Backend SSE subscriber error: %s; retrying in 10s", e)
+            finally:
+                if sock:
+                    try:
+                        sock.close()
+                    except Exception:
+                        pass
+            time.sleep(5)
+
+    t = threading.Thread(target=_subscriber_loop, daemon=True, name='backend-sse-subscriber')
+    t.start()
+    logger.info("Backend SSE subscriber thread started for %s:%s", host, port)
+
+
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     """HTTP server that handles each request in its own thread."""
 
@@ -1702,6 +1822,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_error(410, "Endpoint removed (SQLite diagnostics)")
         elif path == '/api/migrate-audio':
             self.serve_audio_migration()
+        elif path == '/editorial':
+            self.serve_dashboard_editorial()
+        elif path == '/api/research/follow-up/thread':
+            self.handle_follow_up_thread_request()
+        elif path == '/api/research/follow-up/cached':
+            self.handle_follow_up_cached_request()
         elif path.startswith('/api/'):
             self.serve_api()
         elif path.endswith('.css'):
@@ -1764,6 +1890,14 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.handle_follow_up_suggestions_request()
         elif self.path == '/api/research/follow-up/run':
             self.handle_follow_up_run_request()
+        elif self.path == '/api/research/follow-up/chat':
+            self.handle_follow_up_chat_request()
+        elif self.path == '/api/research/follow-up/chat/stream':
+            self.handle_follow_up_chat_stream_request()
+        elif self.path == '/api/audio/generate':
+            self.handle_audio_generate_request()
+        elif self.path == '/api/audio/generate/stream':
+            self.handle_audio_generate_stream_request()
         # New ingest endpoints for NAS sync (T-Y020C)
         elif self.path == '/ingest/report':
             self.handle_ingest_report()
@@ -1811,8 +1945,15 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     
     def do_DELETE(self):
         """Handle DELETE requests for the new delete API endpoint"""
+        parsed_url = urlparse(self.path)
+        path = parsed_url.path
+        self._query_params = parse_qs(parsed_url.query)
         if self.path.startswith('/api/delete/'):
             self.handle_delete_request()
+        elif path == '/api/research/follow-up/chat-turns':
+            self.handle_follow_up_delete_chat_turns_by_run_request()
+        elif path.startswith('/api/research/follow-up/chat-turns/'):
+            self.handle_follow_up_delete_chat_turn_request()
         elif self.path.startswith('/api/quiz/'):
             self.handle_delete_quiz()
         elif self.path.startswith('/api/my/quiz/'):
@@ -1862,6 +2003,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     alt2 = (root / 'audio' / f"yt:{rel_norm}").resolve()
                     if str(alt2).startswith(str(root)) and alt2.is_file():
                         fs_path = alt2
+                # Backend-generated audio: /app/backend-data/exports/audio/<file>
+                if not fs_path.is_file():
+                    backend_audio = Path("/app/backend-data/exports/audio")
+                    candidate = (backend_audio / rel_norm.split("/")[-1]).resolve()
+                    if str(candidate).startswith(str(backend_audio)) and candidate.is_file():
+                        fs_path = candidate
             if fs_path.is_file():
                 ctype, _ = mimetypes.guess_type(str(fs_path))
                 ctype = ctype or 'application/octet-stream'
@@ -1890,8 +2037,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             clean_id = video_id.replace('yt:', '').replace(':', '')
             search_dirs = [Path('/app/data/exports')]
             audio_subdir = Path('/app/data/exports/audio')
+            backend_audio_dir = Path('/app/backend-data/exports/audio')
             if audio_subdir.exists():
                 search_dirs.append(audio_subdir)
+            if backend_audio_dir.exists():
+                search_dirs.append(backend_audio_dir)
             patterns = [
                 f'{clean_id}.mp3',
                 f'audio_{video_id}_*.mp3',
@@ -2113,6 +2263,54 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             logger.error(f"Error serving dashboard: {e}")
             self.send_error(500, "Internal server error")
     
+    def serve_dashboard_editorial(self):
+        """Serve the editorial dashboard on /editorial"""
+        try:
+            template_content = load_template('dashboard_editorial_template.html')
+            if not template_content:
+                self.send_error(404, "Editorial template not found")
+                return
+
+            nas_config = {
+                "base_url": os.getenv('NGROK_BASE_URL') or os.getenv('NGROK_URL') or '',
+                "basic_user": os.getenv('NGROK_BASIC_USER', ''),
+                "basic_pass": os.getenv('NGROK_BASIC_PASS', ''),
+            }
+            dashboard_config = {
+                "autoPlayOnLoad": bool(DASHBOARD_AUTOPLAY_ON_LOAD)
+            }
+            editorial_config = {
+                "features": {
+                    "audio": True,
+                    "search": True,
+                }
+            }
+            editorial_asset_version = compute_asset_version(
+                "dashboard_editorial_template.html",
+                "static/editorial_dashboard.css",
+                "static/editorial_dashboard.js",
+            )
+
+            editorial_html = template_content.replace(
+                '{ nas_config }', json.dumps(nas_config)
+            ).replace(
+                '{ dashboard_config }', json.dumps(dashboard_config)
+            ).replace(
+                '{ editorial_config }', json.dumps(editorial_config)
+            ).replace(
+                '__EDITORIAL_ASSET_VERSION__', editorial_asset_version
+            )
+
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html; charset=utf-8')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(editorial_html.encode('utf-8'))
+
+        except Exception as e:
+            logger.error(f"Error serving editorial dashboard: {e}")
+            self.send_error(500, "Internal server error")
+
     def serve_css(self):
         """Serve CSS files"""
         try:
@@ -2463,6 +2661,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     "variants": enriched_variants
                 },
                 "thumbnail_url": report_data.get('thumbnail_url', ''),
+                "summary_image_url": report_data.get('summary_image_url') or None,
                 "analysis": report_data.get('analysis_json') or report_data.get('analysis', {}),
                 "subcategories_json": report_data.get('subcategories_json'),
                 "has_audio": bool(computed_has_audio),
@@ -2473,7 +2672,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "transcript": report_data.get('transcript', ''),
                 "transcript_segments": report_data.get('transcript_segments', []),
                 # Embed commit for deploy verification (header may be stripped upstream)
-                "deployment_commit": COMMIT_SHA
+                "deployment_commit": COMMIT_SHA,
+                "indexed_at": report_data.get('indexed_at', '')
             }
 
             # Send JSON response
@@ -2676,7 +2876,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.send_error(403, "Forbidden")
                 return
 
-            # If the direct path is missing, try the persistent audio/ subdir for legacy mp3 paths
+            # If the direct path is missing, try fallback locations
             if not fs_path.is_file():
                 rel_norm = rel.replace("\\", "/").lstrip("/")
                 # Legacy flat path: /exports/<id>.mp3 → /app/data/exports/audio/<id>.mp3
@@ -2692,6 +2892,14 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     if str(alt2).startswith(str(root)) and alt2.is_file():
                         fs_path = alt2
                         logger.info(f"🎧 Legacy yt: fallback found: {fs_path}")
+
+                # Backend-generated audio: /app/backend-data/exports/audio/<file>
+                if not fs_path.is_file():
+                    backend_audio = Path("/app/backend-data/exports/audio")
+                    candidate = (backend_audio / rel_norm.split("/")[-1]).resolve()
+                    if str(candidate).startswith(str(backend_audio)) and candidate.is_file():
+                        fs_path = candidate
+                        logger.info(f"🎧 Backend audio fallback: {fs_path}")
 
             if fs_path.is_file():
                 # Guess Content-Type (default octet-stream)
@@ -2734,8 +2942,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             exports_path = _get_exports_path()
             search_dirs = [exports_path]
             audio_subdir = exports_path / "audio"
+            backend_audio_dir = Path('/app/backend-data/exports/audio')
             if audio_subdir.exists():
                 search_dirs.append(audio_subdir)
+            if backend_audio_dir.exists():
+                search_dirs.append(backend_audio_dir)
             patterns = [
                 f'{clean_id}.mp3',           # exact sanitized filename saved by /ingest/audio
                 f'audio_{video_id}_*.mp3',   # standard new pattern
@@ -3053,7 +3264,234 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps(error_data).encode())
-    
+
+    # ---- Audio On-Demand: Options Endpoint ----
+
+    def _compute_audio_source_hash(self, video_id, mode, scope, variant_slug=None):
+        """Compute SHA-256 source hash for a given video+mode+scope from DB content."""
+        conn = None
+        try:
+            conn = get_postgres_connection()
+            cur = conn.cursor()
+            source_text = ''
+
+            # audio_briefing is a combined mode — check it BEFORE scope-specific branches
+            if mode == 'audio_briefing':
+                combined_parts = []
+                cur.execute(
+                    """SELECT text FROM v_latest_summaries
+                       WHERE video_id = %s AND variant NOT LIKE 'audio%%'
+                       AND variant != 'deep-research'
+                       ORDER BY variant LIMIT 1""",
+                    [video_id],
+                )
+                row = cur.fetchone()
+                summary_text = (row.get('text') or '')[:4000] if row else ''
+
+                cur.execute(
+                    """SELECT research_response FROM follow_up_research_runs
+                       WHERE video_id = %s
+                       ORDER BY created_at DESC LIMIT 1""",
+                    [video_id],
+                )
+                row = cur.fetchone()
+                research_text = (row.get('research_response') or '')[:4000] if row else ''
+
+                if summary_text:
+                    combined_parts.append(f"Summary:\n{summary_text}")
+                if research_text:
+                    combined_parts.append(f"Research:\n{research_text}")
+                source_text = '\n\n'.join(combined_parts)
+
+            elif scope == 'summary_active':
+                # Get variant text using stable slug, not integer offset
+                if variant_slug:
+                    cur.execute(
+                        """SELECT text FROM v_latest_summaries
+                           WHERE video_id = %s AND variant = %s LIMIT 1""",
+                        [video_id, variant_slug],
+                    )
+                else:
+                    # Fallback: first non-audio, non-deep-research variant
+                    cur.execute(
+                        """SELECT text FROM v_latest_summaries
+                           WHERE video_id = %s AND variant NOT LIKE 'audio%%'
+                           AND variant != 'deep-research'
+                           ORDER BY variant LIMIT 1""",
+                        [video_id],
+                    )
+                row = cur.fetchone()
+                if row and row.get('text'):
+                    source_text = row['text']
+
+            elif scope == 'transcript_visible':
+                cur.execute(
+                    "SELECT transcript_text FROM content WHERE video_id = %s",
+                    [video_id],
+                )
+                row = cur.fetchone()
+                if row and row.get('transcript_text'):
+                    source_text = row['transcript_text']
+
+            elif scope == 'ponderings_visible':
+                cur.execute(
+                    """SELECT research_response FROM follow_up_research_runs
+                       WHERE video_id = %s
+                       ORDER BY created_at DESC LIMIT 1""",
+                    [video_id],
+                )
+                row = cur.fetchone()
+                if row and row.get('research_response'):
+                    source_text = row['research_response']
+
+            canonical = (mode + ':' + scope + ':' + self._build_tts_config_tag() + ':' + (source_text or '')).encode('utf-8')
+            return hashlib.sha256(canonical).hexdigest()
+
+        except Exception as e:
+            logger.error(f"Error computing audio source hash for {video_id}: {e}")
+            return ''
+        finally:
+            if conn:
+                conn.close()
+
+    @staticmethod
+    def _build_tts_config_tag():
+        """Build TTS config tag for cache key hashing.
+
+        MUST stay in sync with backend build_tts_config_tag() in
+        ytv2_api/audio_store.py — same env vars, same defaults, same order.
+        Reasoning effort is NOT included (briefings hardcode medium).
+        """
+        parts = [
+            os.getenv("TTS_PROVIDER", "openai"),
+            os.getenv("FISH_TTS_MODEL", ""),
+            os.getenv("FISH_VOICE_MODEL", ""),
+            os.getenv("OPENAI_TTS_VOICE", ""),
+        ]
+        return "|".join(p for p in parts if p)
+
+    def serve_audio_options(self, query_params):
+        """GET /api/audio/options — returns audio availability for a video (public read-only)."""
+        try:
+            video_id = (query_params.get('video_id') or [''])[0]
+            if not video_id:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id required"}).encode())
+                return
+
+            variant_slug = (query_params.get('variant_slug') or [''])[0] or None
+
+            # Check if audio_artifacts table exists
+            if not content_index._has_audio_artifacts_table():
+                self._send_audio_options_fallback(video_id)
+                return
+
+            # Query artifacts for this video
+            artifacts = content_index.get_audio_artifacts_for_video(video_id)
+            artifact_map = {}
+            for a in artifacts:
+                key = a['mode'] + ':' + a['scope']
+                artifact_map[key] = a
+
+            # Determine current scope
+            scope = 'summary_active'
+
+            # Compute source hashes and compare
+            response = {
+                "read_aloud": {"available": True, "kind": "device_tts"},
+            }
+
+            # audio_current
+            current_hash = self._compute_audio_source_hash(video_id, 'audio_current', scope, variant_slug)
+            current_artifact = artifact_map.get('audio_current:' + scope)
+            if current_artifact and current_artifact.get('status') == 'ready':
+                if current_artifact.get('source_hash') == current_hash and current_hash:
+                    response["audio_current"] = {
+                        "status": "ready",
+                        "audio_url": current_artifact.get('audio_url'),
+                        "duration_seconds": current_artifact.get('duration_seconds'),
+                        "cached": True,
+                        "source_label": current_artifact.get('source_label'),
+                    }
+                else:
+                    response["audio_current"] = {"status": "stale", "cached": False}
+            elif current_artifact:
+                response["audio_current"] = {"status": current_artifact.get('status', 'missing')}
+            else:
+                response["audio_current"] = {"status": "missing"}
+
+            # audio_briefing
+            briefing_hash = self._compute_audio_source_hash(video_id, 'audio_briefing', 'summary_active', variant_slug)
+            briefing_artifact = artifact_map.get('audio_briefing:summary_active')
+            if briefing_artifact and briefing_artifact.get('status') == 'ready':
+                if briefing_artifact.get('source_hash') == briefing_hash and briefing_hash:
+                    response["audio_briefing"] = {
+                        "status": "ready",
+                        "audio_url": briefing_artifact.get('audio_url'),
+                        "duration_seconds": briefing_artifact.get('duration_seconds'),
+                        "cached": True,
+                    }
+                else:
+                    response["audio_briefing"] = {"status": "stale", "cached": False}
+            elif briefing_artifact:
+                response["audio_briefing"] = {"status": briefing_artifact.get('status', 'missing')}
+            else:
+                response["audio_briefing"] = {"status": "missing", "estimated_seconds": 480}
+
+            # legacy audio
+            legacy_info = self._get_legacy_audio_info(video_id)
+            response["legacy_audio"] = legacy_info
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(json.dumps(response, default=str).encode())
+
+        except Exception as e:
+            logger.error(f"Error serving audio options: {e}")
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
+
+    def _send_audio_options_fallback(self, video_id):
+        """Return audio options when audio_artifacts table doesn't exist yet."""
+        response = {
+            "read_aloud": {"available": True, "kind": "device_tts"},
+            "audio_current": {"status": "missing"},
+            "audio_briefing": {"status": "missing"},
+            "legacy_audio": self._get_legacy_audio_info(video_id),
+        }
+        self.send_response(200)
+        self.send_header('Content-type', 'application/json')
+        self.send_header('Cache-Control', 'no-cache')
+        self.end_headers()
+        self.wfile.write(json.dumps(response, default=str).encode())
+
+    def _get_legacy_audio_info(self, video_id):
+        """Get legacy MP3 audio info from the content table."""
+        try:
+            report = content_index.get_by_video_id(video_id)
+            if not report:
+                return {"available": False}
+            has_audio = report.get('has_audio', False)
+            media = report.get('media', {}) or {}
+            audio_url = media.get('audio_url')
+            media_meta = report.get('media_metadata', {}) or {}
+            duration = media_meta.get('mp3_duration_seconds')
+            if has_audio and audio_url:
+                return {
+                    "available": True,
+                    "audio_url": audio_url,
+                    "duration_seconds": duration,
+                }
+            return {"available": False}
+        except Exception:
+            return {"available": False}
+
     def serve_api(self):
         """Serve Phase 2 API endpoints with enhanced filtering and search"""
         try:
@@ -3096,6 +3534,8 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.serve_api_semantic_search(query_params)
             elif path == '/api/semantic-similar':
                 self.serve_api_semantic_similar(query_params)
+            elif path == '/api/audio/options':
+                self.serve_audio_options(query_params)
             elif path == '/api/version':
                 self.serve_api_version()
             elif path.startswith('/api/backup/'):
@@ -3119,46 +3559,11 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def serve_api_report_events(self):
         """Stream report ingest events to the frontend via Server-Sent Events.
 
-        If BACKEND_API_URL is configured, proxy SSE from the backend to avoid
-        browser CORS issues with direct localhost connections.
+        Uses local SSE broadcaster. A background subscriber thread forwards
+        backend events (report-synced, audio-synced, etc.) into the local
+        stream when BACKEND_API_URL is configured, so clients receive both
+        local and backend events through this single connection.
         """
-        import urllib.request
-        import urllib.error
-
-        backend_url = os.getenv('BACKEND_API_URL', '').rstrip('/')
-        if backend_url:
-            # Proxy SSE from backend to avoid browser CORS issues
-            try:
-                sse_url = f"{backend_url}/api/report-events"
-                req = urllib.request.Request(sse_url)
-                req.add_header('Accept', 'text/event-stream')
-
-                with urllib.request.urlopen(req, timeout=30) as response:
-                    # Send headers to client
-                    self.send_response(200)
-                    self.send_header('Content-type', 'text/event-stream')
-                    self.send_header('Cache-Control', 'no-cache')
-                    self.send_header('Connection', 'keep-alive')
-                    self.send_header('X-Accel-Buffering', 'no')
-                    self.end_headers()
-                    self.close_connection = False
-
-                    # Stream SSE from backend to client
-                    while True:
-                        try:
-                            chunk = response.read(1024)
-                            if not chunk:
-                                break
-                            self.wfile.write(chunk)
-                            self.wfile.flush()
-                        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
-                            break
-                return  # Proxy completed, don't fall through to local SSE
-            except Exception as e:
-                logger.warning(f"SSE proxy to backend failed, falling back to local SSE: {e}")
-                # Fall through to local SSE below
-
-        # Fallback: local SSE (won't receive backend events)
         self.send_response(200)
         self.send_header('Content-type', 'text/event-stream')
         self.send_header('Cache-Control', 'no-cache')
@@ -3599,8 +4004,9 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             # Sorting
             sort = query_params.get('sort', ['newest'])[0]
             valid_sorts = [
-                'newest', 'oldest', 'title', 'title_asc', 'title_desc', 
+                'newest', 'oldest', 'title', 'title_asc', 'title_desc',
                 'duration', 'duration_desc', 'duration_asc',
+                'video_newest', 'video_oldest',
                 # SQLite backend specific sorts
                 'added_desc', 'added_asc', 'video_newest', 'video_oldest',
                 'title_az', 'title_za'
@@ -4184,6 +4590,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             audio_dirs = self._candidate_paths(
                 Path("/app/data/exports/audio"),
                 Path("/app/data/exports"),
+                Path("/app/backend-data/exports/audio"),
                 Path("./exports/audio"),
                 Path("./exports"),
                 self._dashboard_root() / "exports" / "audio",
@@ -6004,6 +6411,84 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"error": "follow_up_proxy_error", "message": str(e)}).encode())
 
+    def _proxy_follow_up_get_request(self, endpoint_path: str):
+        """Proxy a GET follow-up research request to the backend FastAPI service."""
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            query_params = getattr(self, '_query_params', {})
+            video_id = str((query_params.get('video_id') or [''])[0]).strip()
+            if not video_id:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "video_id required"}).encode())
+                return
+
+            base_url = self._get_follow_up_api_base_url()
+            if not base_url:
+                self.send_response(503)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "backend_not_configured",
+                    "message": "Deep Research requires YTV2_API_URL or BACKEND_API_URL."
+                }).encode())
+                return
+
+            target = base_url.rstrip('/') + endpoint_path
+            headers = {
+                'Accept': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
+            }
+            secret = self._get_follow_up_api_secret()
+            if secret:
+                headers['Authorization'] = f'Bearer {secret}'
+
+            user = os.getenv('NGROK_BASIC_USER', '')
+            pwd = os.getenv('NGROK_BASIC_PASS', '')
+            auth = (user, pwd) if (user or pwd) else None
+
+            # Forward query params to backend
+            backend_params = {}
+            for key in ('video_id', 'follow_up_run_id', 'summary_id', 'preferred_variant', 'cache_key'):
+                vals = query_params.get(key)
+                if vals and vals[0]:
+                    backend_params[key] = vals[0]
+
+            try:
+                resp = requests.get(target, headers=headers, params=backend_params, auth=auth, timeout=90)
+            except RequestException as e:
+                logger.warning("Follow-up GET proxy request failed for %s: %s", endpoint_path, e)
+                self.send_response(502)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "follow_up_upstream_unavailable"}).encode())
+                return
+
+            self.send_response(resp.status_code)
+            self.set_cors_headers()
+            self.send_header('Content-type', resp.headers.get('Content-Type', 'application/json'))
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(resp.content)
+        except Exception as e:
+            logger.exception("Follow-up GET proxy failed for %s", endpoint_path)
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "follow_up_proxy_error", "message": str(e)}).encode())
+
     def handle_follow_up_suggestions_request(self):
         """POST /api/research/follow-up/suggestions — admin-only dashboard proxy."""
         self._proxy_follow_up_request('/api/research/follow-up/suggestions')
@@ -6011,6 +6496,187 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
     def handle_follow_up_run_request(self):
         """POST /api/research/follow-up/run — admin-only dashboard proxy."""
         self._proxy_follow_up_request('/api/research/follow-up/run')
+
+    def handle_follow_up_chat_request(self):
+        """POST /api/research/follow-up/chat — admin-only dashboard proxy."""
+        self._proxy_follow_up_request('/api/research/follow-up/chat')
+
+    def handle_follow_up_chat_stream_request(self):
+        """POST /api/research/follow-up/chat/stream — streaming proxy for Mercury 2 diffusing."""
+        self._proxy_follow_up_stream_request('/api/research/follow-up/chat/stream')
+
+    def handle_audio_generate_request(self):
+        """POST /api/audio/generate — proxy to backend FastAPI for TTS generation."""
+        self._proxy_follow_up_request('/api/audio/generate')
+
+    def handle_audio_generate_stream_request(self):
+        """POST /api/audio/generate/stream — proxy streaming TTS to backend."""
+        self._proxy_follow_up_stream_request('/api/audio/generate/stream')
+
+    def _proxy_follow_up_stream_request(self, endpoint_path: str):
+        """Proxy a streaming SSE request to the backend, forwarding events chunk by chunk."""
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            data = self._read_json_body()
+            if data is None:
+                self.send_response(400)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "invalid_json"}).encode())
+                return
+
+            base_url = self._get_follow_up_api_base_url()
+            if not base_url:
+                self.send_response(503)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "backend_not_configured"}).encode())
+                return
+
+            target = base_url.rstrip('/') + endpoint_path
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'text/event-stream',
+                'ngrok-skip-browser-warning': 'true',
+            }
+            secret = self._get_follow_up_api_secret()
+            if secret:
+                headers['Authorization'] = f'Bearer {secret}'
+
+            user = os.getenv('NGROK_BASIC_USER', '')
+            pwd = os.getenv('NGROK_BASIC_PASS', '')
+            auth = (user, pwd) if (user or pwd) else None
+
+            resp = requests.post(target, headers=headers, json=data, auth=auth, timeout=120, stream=True)
+            if resp.status_code != 200:
+                self.send_response(resp.status_code)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(resp.content)
+                return
+
+            self.send_response(200)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'text/event-stream')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Connection', 'keep-alive')
+            self.end_headers()
+
+            for chunk in resp.iter_content(chunk_size=None):
+                if chunk:
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+
+        except Exception as e:
+            logger.exception("Stream proxy failed for %s: %s", endpoint_path, e)
+            try:
+                self.send_response(500)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "stream_proxy_error", "message": str(e)}).encode())
+            except Exception:
+                pass
+
+    def handle_follow_up_thread_request(self):
+        """GET /api/research/follow-up/thread — admin-only dashboard proxy."""
+        self._proxy_follow_up_get_request('/api/research/follow-up/thread')
+
+    def handle_follow_up_cached_request(self):
+        """GET /api/research/follow-up/cached — admin-only dashboard proxy."""
+        self._proxy_follow_up_get_request('/api/research/follow-up/cached')
+
+    def _proxy_follow_up_delete_request(self, endpoint_path: str):
+        """Proxy a DELETE follow-up research request to the backend FastAPI service."""
+        try:
+            if not self._debug_auth_ok():
+                self.send_response(401)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "unauthorized"}).encode())
+                return
+
+            query_params = getattr(self, '_query_params', {})
+
+            base_url = self._get_follow_up_api_base_url()
+            if not base_url:
+                self.send_response(503)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "backend_not_configured",
+                    "message": "Deep Research requires YTV2_API_URL or BACKEND_API_URL."
+                }).encode())
+                return
+
+            target = base_url.rstrip('/') + endpoint_path
+            headers = {
+                'Accept': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
+            }
+            secret = self._get_follow_up_api_secret()
+            if secret:
+                headers['Authorization'] = f'Bearer {secret}'
+
+            user = os.getenv('NGROK_BASIC_USER', '')
+            pwd = os.getenv('NGROK_BASIC_PASS', '')
+            auth = (user, pwd) if (user or pwd) else None
+
+            # Forward query params to backend
+            backend_params = {}
+            for key in ('video_id', 'follow_up_run_id'):
+                vals = query_params.get(key)
+                if vals and vals[0]:
+                    backend_params[key] = vals[0]
+
+            try:
+                resp = requests.delete(target, headers=headers, params=backend_params, auth=auth, timeout=30)
+            except RequestException as e:
+                logger.warning("Follow-up DELETE proxy request failed for %s: %s", endpoint_path, e)
+                self.send_response(502)
+                self.set_cors_headers()
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "follow_up_upstream_unavailable"}).encode())
+                return
+
+            self.send_response(resp.status_code)
+            self.set_cors_headers()
+            self.send_header('Content-type', resp.headers.get('Content-Type', 'application/json'))
+            self.send_header('Cache-Control', 'no-cache')
+            self.end_headers()
+            self.wfile.write(resp.content)
+        except Exception as e:
+            logger.exception("Follow-up DELETE proxy failed for %s", endpoint_path)
+            self.send_response(500)
+            self.set_cors_headers()
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "follow_up_proxy_error", "message": str(e)}).encode())
+
+    def handle_follow_up_delete_chat_turn_request(self):
+        """DELETE /api/research/follow-up/chat-turns/{turn_id} — admin-only dashboard proxy."""
+        # Extract turn_id from the path
+        path = self.path.split('?')[0]
+        parts = path.rstrip('/').split('/')
+        turn_id = parts[-1] if parts else None
+        self._proxy_follow_up_delete_request(f'/api/research/follow-up/chat-turns/{turn_id}')
+
+    def handle_follow_up_delete_chat_turns_by_run_request(self):
+        """DELETE /api/research/follow-up/chat-turns — admin-only dashboard proxy."""
+        self._proxy_follow_up_delete_request('/api/research/follow-up/chat-turns')
 
     def handle_backfill_original_prompts(self):
         """POST /api/admin/backfill-original-prompts — admin-only (DEBUG_TOKEN).
@@ -7842,7 +8508,10 @@ def start_http_server():
         
         server_thread = threading.Thread(target=run_server, daemon=True)
         server_thread.start()
-        
+
+        # Subscribe to backend SSE events and re-broadcast to local clients
+        _start_backend_sse_subscriber()
+
         return httpd, port
         
     except Exception as e:

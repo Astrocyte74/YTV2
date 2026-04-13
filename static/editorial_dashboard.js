@@ -1,0 +1,5149 @@
+/* ============================================================
+   YTV2 Editorial Dashboard — Phase 3
+   ============================================================ */
+
+(function () {
+    'use strict';
+
+    // ---- Inline helpers ----
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    // Configure markdown-it once (table support, no raw HTML for safety)
+    var _mdInstance = null;
+    function _getMdInstance() {
+        if (!_mdInstance) {
+            _mdInstance = window.markdownit({
+                html: false,
+                linkify: true,
+                typographer: false,
+                breaks: false
+            });
+            _mdInstance.enable('table');
+
+            // Add md-table class to rendered tables for existing CSS
+            var defaultTableOpen = _mdInstance.renderer.rules.table_open;
+            _mdInstance.renderer.rules.table_open = function (tokens, idx, options, env, self) {
+                tokens[idx].attrPush(['class', 'md-table']);
+                if (defaultTableOpen) {
+                    return defaultTableOpen(tokens, idx, options, env, self);
+                }
+                return self.renderToken(tokens, idx, options);
+            };
+
+            // Auto-add target="_blank" rel="noopener" to all links
+            var defaultLinkOpen = _mdInstance.renderer.rules.link_open || function (tokens, idx, options, env, self) {
+                return self.renderToken(tokens, idx, options);
+            };
+            _mdInstance.renderer.rules.link_open = function (tokens, idx, options, env, self) {
+                tokens[idx].attrPush(['target', '_blank']);
+                tokens[idx].attrPush(['rel', 'noopener']);
+                return defaultLinkOpen(tokens, idx, options, env, self);
+            };
+        }
+        return _mdInstance;
+    }
+
+    function renderMarkdown(text) {
+        if (!text) return '';
+        try {
+            var preprocessed = _fixMalformedTables(text);
+            return _getMdInstance().render(preprocessed);
+        } catch (e) {
+            return '<p>' + escapeHtml(text) + '</p>';
+        }
+    }
+
+    function _fixMalformedTables(text) {
+        var lines = text.split('\n');
+        var result = [];
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+
+            // Step 1: Split inline rows within pipe-delimited blocks.
+            // LLM output sometimes puts all rows on one line: | data | | data | | data |
+            // Convert " | | " row boundaries to newlines, but only within pipe blocks.
+            if (/^\|/.test(line.trim()) && (line.match(/\|/g) || []).length > 4) {
+                // Check if this line has multiple rows packed inline
+                // Pattern: ...content... | | content...  (pipe-space-pipe = row boundary)
+                var split = line.replace(/\| \|/g, '|\n|');
+                var subLines = split.split('\n');
+                for (var s = 0; s < subLines.length; s++) {
+                    result.push(subLines[s]);
+                }
+            } else {
+                result.push(line);
+            }
+        }
+
+        // Step 2: Fix missing header rows (separator without header above)
+        var fixed = [];
+        for (var j = 0; j < result.length; j++) {
+            var trimmed = result[j].trim();
+            if (/^\|/.test(trimmed) && /\|$/.test(trimmed) && _isSeparatorRow(trimmed)) {
+                var nextTrimmed = (j + 1 < result.length) ? result[j + 1].trim() : '';
+                var prevTrimmed = (fixed.length > 0) ? fixed[fixed.length - 1].trim() : '';
+                var hasHeaderAbove = /^\|/.test(prevTrimmed) && !_isSeparatorRow(prevTrimmed);
+                if (!hasHeaderAbove && /^\|/.test(nextTrimmed)) {
+                    var cols = trimmed.replace(/^\|/, '').replace(/\|$/, '').split('|').length;
+                    var headerCells = [];
+                    for (var c = 0; c < cols; c++) headerCells.push('');
+                    fixed.push('| ' + headerCells.join(' | ') + ' |');
+                }
+            }
+            fixed.push(result[j]);
+        }
+        return fixed.join('\n');
+    }
+
+    function _isSeparatorRow(line) {
+        var cells = line.replace(/^\|/, '').replace(/\|$/, '').split('|');
+        return cells.every(function (c) { return /^[\s\-:]+$/.test(c); });
+    }
+
+    function formatDuration(seconds) {
+        if (!seconds || seconds <= 0) return '';
+        var h = Math.floor(seconds / 3600);
+        var m = Math.floor((seconds % 3600) / 60);
+        var s = Math.floor(seconds % 60);
+        if (h > 0) {
+            return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+        }
+        return m + ':' + String(s).padStart(2, '0');
+    }
+
+    function buildFilterQuery(params) {
+        var parts = [];
+        Object.keys(params).forEach(function (key) {
+            var val = params[key];
+            if (val === undefined || val === null || val === '') return;
+            if (Array.isArray(val)) {
+                val.forEach(function (v) { parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(v)); });
+            } else {
+                parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(val));
+            }
+        });
+        return parts.length ? '?' + parts.join('&') : '';
+    }
+
+    function getCategories(item) {
+        var analysis = item.analysis || {};
+        if (Array.isArray(analysis.categories) && analysis.categories.length > 0) {
+            return analysis.categories.map(function (c) { return c.category; });
+        }
+        if (Array.isArray(analysis.category)) return analysis.category;
+        return [];
+    }
+
+    function getPrimaryCategory(item) {
+        var cats = getCategories(item);
+        return cats.length > 0 ? cats[0] : '';
+    }
+
+    function getExcerpt(text, maxLen) {
+        if (!text) return '';
+        var clean = text.replace(/<[^>]+>/g, '').trim();
+        if (clean.length <= (maxLen || 180)) return clean;
+        return clean.substring(0, maxLen || 180).replace(/\s+\S*$/, '') + '...';
+    }
+
+    var _imageMode = localStorage.getItem('ytv2.imageMode') || 'default';
+    // Migrate old accent-only key to combined theme key
+    var _theme = localStorage.getItem('ytv2.theme') || localStorage.getItem('ytv2.accentTheme') || 'default';
+    if (localStorage.getItem('ytv2.accentTheme')) {
+        localStorage.removeItem('ytv2.accentTheme');
+        localStorage.setItem('ytv2.theme', _theme);
+    }
+
+    var READER_SIZE_STEPS = [0.78, 0.88, 0.96, 1.06, 1.18];
+    var READER_SIZE_DEFAULT = 2; // index into STEPS
+
+    var READER_TYPOGRAPHY_DEFAULTS = {
+        sizeStep: READER_SIZE_DEFAULT,
+        spacing: 'comfortable'
+    };
+
+    function getStoredReaderTypographyPrefs() {
+        var prefs = null;
+        try {
+            prefs = JSON.parse(localStorage.getItem('ytv2.readerTypography') || '{}');
+        } catch (_) {
+            prefs = {};
+        }
+        var sizeStep = (prefs && typeof prefs.sizeStep === 'number') ? prefs.sizeStep : READER_TYPOGRAPHY_DEFAULTS.sizeStep;
+        if (sizeStep < 0 || sizeStep >= READER_SIZE_STEPS.length) sizeStep = READER_TYPOGRAPHY_DEFAULTS.sizeStep;
+        var spacing = (prefs && prefs.spacing) || READER_TYPOGRAPHY_DEFAULTS.spacing;
+        if (['compact', 'comfortable'].indexOf(spacing) === -1) spacing = READER_TYPOGRAPHY_DEFAULTS.spacing;
+        return { sizeStep: sizeStep, spacing: spacing };
+    }
+
+    function getThumbnail(item) {
+        if (_imageMode === 'ai1') {
+            return item.summary_image_url ||
+                item.thumbnail_url ||
+                '/static/placeholder-thumb.png';
+        }
+        if (_imageMode === 'ai2') {
+            var analysis = item.analysis || {};
+            return analysis.summary_image_ai2_url ||
+                item.summary_image_ai2_url ||
+                item.summary_image_url ||
+                item.thumbnail_url ||
+                '/static/placeholder-thumb.png';
+        }
+        return item.thumbnail_url ||
+            item.summary_image_url ||
+            '/static/placeholder-thumb.png';
+    }
+
+    function getSourceLabel(item) {
+        return item.source_label || item.source || '';
+    }
+
+    function timeAgo(dateStr) {
+        if (!dateStr) return '';
+        var d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        var now = new Date();
+        var diffMs = now - d;
+        var diffMins = Math.floor(diffMs / 60000);
+        if (diffMins < 60) return diffMins + 'm ago';
+        var diffHrs = Math.floor(diffMins / 60);
+        if (diffHrs < 24) return diffHrs + 'h ago';
+        var diffDays = Math.floor(diffHrs / 24);
+        if (diffDays < 30) return diffDays + 'd ago';
+        var diffMonths = Math.floor(diffDays / 30);
+        return diffMonths + 'mo ago';
+    }
+
+    function formatDate(dateStr) {
+        if (!dateStr) return '';
+        var d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '';
+        var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+    }
+
+    // ---- Image helpers (ported from classic) ----
+
+    function isAi2Variant(v) {
+        var m = (v.image_mode || '').toLowerCase();
+        var tmpl = (v.template || '').toLowerCase();
+        var ps = (v.prompt_source || '').toLowerCase();
+        var url = v.url || '';
+        return m === 'ai2' || tmpl === 'ai2_freestyle' || (ps && ps.startsWith('ai2')) || /(?:^|\/)AI2_/i.test(url);
+    }
+
+    function normalizeAssetUrl(u) {
+        if (!u || typeof u !== 'string') return u || '';
+        var trimmed = u.trim();
+        if (!trimmed) return '';
+        if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+        if (trimmed.startsWith('/')) return trimmed;
+        return '/' + trimmed;
+    }
+
+    function urlPath(url) {
+        if (!url) return '';
+        try { return new URL(url, 'http://x').pathname; }
+        catch (_) { return url.replace(/^https?:\/\/[^\/]+/, ''); }
+    }
+
+    function getAi2VariantUrls(analysis) {
+        var urls = [];
+        var seen = {};
+        function push(u) {
+            var n = normalizeAssetUrl(u);
+            if (n && !seen[n]) { seen[n] = true; urls.push(n); }
+        }
+        var direct = (analysis && analysis.summary_image_ai2_url) || '';
+        push(direct);
+        var variants = (analysis && Array.isArray(analysis.summary_image_variants)) ? analysis.summary_image_variants : [];
+        for (var i = 0; i < variants.length; i++) {
+            var v = variants[i] || {};
+            var u = v.url || '';
+            if (isAi2Variant(v)) push(u);
+        }
+        return urls;
+    }
+
+    // ---- Card factories ----
+
+    function renderHeroCard(item) {
+        var media = item.media || {};
+        var hasAudio = !!media.has_audio;
+        var duration = formatDuration(item.duration_seconds);
+        var excerpt = getExcerpt(item.summary_text, 240);
+        var thumb = getThumbnail(item);
+        var sourceLabel = getSourceLabel(item);
+        var channel = item.channel || item.channel_name || '';
+        var category = getPrimaryCategory(item);
+        var ago = timeAgo(item.indexed_at);
+
+        return '<article class="ed-card ed-card-hero" data-video-id="' + escapeHtml(item.video_id || item.id) + '">' +
+            '<div class="ed-card-hero__image">' +
+                '<img src="' + escapeHtml(thumb) + '" alt="" loading="eager">' +
+                (duration ? '<span class="ed-card__duration">' + duration + '</span>' : '') +
+                (hasAudio ? '<span class="ed-card__audio-badge">Audio</span>' : '') +
+            '</div>' +
+            '<div class="ed-card-hero__body">' +
+                '<div class="ed-card__meta">' +
+                    (sourceLabel ? '<span class="ed-card__source">' + escapeHtml(sourceLabel) + '</span>' : '') +
+                    (channel ? '<span class="ed-card__channel">' + escapeHtml(channel) + '</span>' : '') +
+                    (ago ? '<span class="ed-card__time">' + ago + '</span>' : '') +
+                '</div>' +
+                '<h2 class="ed-card-hero__title">' + escapeHtml(item.title) + '</h2>' +
+                (excerpt ? '<p class="ed-card-hero__excerpt">' + escapeHtml(excerpt) + '</p>' : '') +
+                (category ? '<span class="ed-card__category-chip">' + escapeHtml(category) + '</span>' : '') +
+                '<div class="ed-card__actions">' +
+                    '<a class="ed-btn ed-btn--primary" href="/' + escapeHtml(item.video_id || item.file_stem) + '" data-action="read">Read</a>' +
+                    (hasAudio ? '<button class="ed-btn ed-btn--secondary" data-action="listen">Listen</button>' : '') +
+                    (item.canonical_url ? '<a class="ed-btn ed-btn--secondary" href="' + escapeHtml(item.canonical_url) + '" target="_blank" rel="noopener" data-action="watch">Watch</a>' : '') +
+                '</div>' +
+            '</div>' +
+        '</article>';
+    }
+
+    function renderFeatureCard(item) {
+        var duration = formatDuration(item.duration_seconds);
+        var thumb = getThumbnail(item);
+        var sourceLabel = getSourceLabel(item);
+        var ago = timeAgo(item.indexed_at);
+
+        return '<article class="ed-card ed-card-feature" data-video-id="' + escapeHtml(item.video_id || item.id) + '">' +
+            '<div class="ed-card-feature__image">' +
+                '<img src="' + escapeHtml(thumb) + '" alt="" loading="lazy">' +
+                (duration ? '<span class="ed-card__duration">' + duration + '</span>' : '') +
+            '</div>' +
+            '<div class="ed-card-feature__body">' +
+                '<h3 class="ed-card-feature__title">' + escapeHtml(item.title) + '</h3>' +
+                '<div class="ed-card__meta">' +
+                    (sourceLabel ? '<span class="ed-card__source">' + escapeHtml(sourceLabel) + '</span>' : '') +
+                    (ago ? '<span class="ed-card__time">' + ago + '</span>' : '') +
+                '</div>' +
+            '</div>' +
+        '</article>';
+    }
+
+    function renderRailCard(item) {
+        var thumb = item.thumbnail_url || item.summary_image_url || '';
+        var sourceLabel = item.source_label || item.source || '';
+        var channel = item.channel || item.channel_name || '';
+        var duration = formatDuration(item.duration_seconds);
+        var ago = timeAgo(item.indexed_at);
+        var hasAudio = item.media && item.media.has_audio;
+
+        return '<a class="ed-rail-card" href="/' + escapeHtml(item.video_id || item.file_stem || '') + '">' +
+            (thumb ? '<div class="ed-rail-card__thumb"><img src="' + escapeHtml(thumb) + '" alt="" loading="lazy"></div>' : '') +
+            '<div class="ed-rail-card__body">' +
+                '<h4 class="ed-rail-card__title">' + escapeHtml(item.title) + '</h4>' +
+                '<div class="ed-rail-card__meta">' +
+                    (sourceLabel ? '<span>' + escapeHtml(sourceLabel) + '</span>' : '') +
+                    (duration ? '<span>' + duration + '</span>' : '') +
+                    (hasAudio ? '<span>&#9835;</span>' : '') +
+                '</div>' +
+            '</div>' +
+        '</a>';
+    }
+
+    // ---- EditorialDashboard class ----
+
+    // Filter keys that map to URL query params
+    var URL_FILTER_KEYS = ['source', 'category', 'subcategory', 'channel', 'language', 'content_type', 'summary_type', 'has_audio'];
+
+    var REPROCESS_VARIANTS = [
+        { id: 'comprehensive', label: 'Comprehensive', kind: 'text', hint: 'Long-form narrative summary' },
+        { id: 'bullet-points', label: 'Key Points', kind: 'text', hint: 'Compact bullet digest' },
+        { id: 'key-insights', label: 'Insights', kind: 'text', hint: 'Higher-level takeaways' },
+        { id: 'audio', label: 'Audio (EN)', kind: 'audio', hint: 'English listening track' },
+        { id: 'audio-fr', label: 'Audio français', kind: 'audio', proficiency: true, hint: 'French audio with level selection' },
+        { id: 'audio-es', label: 'Audio español', kind: 'audio', proficiency: true, hint: 'Spanish audio with level selection' }
+    ];
+
+    class EditorialDashboard {
+        constructor() {
+            this.config = window.EDITORIAL_CONFIG || { features: {} };
+            this.nasConfig = window.NAS_CONFIG || {};
+            this.dashboardConfig = window.DASHBOARD_CONFIG || {};
+
+            this.state = {
+                items: [],
+                allItems: [],       // accumulated items across pages
+                page: 1,
+                size: 50,
+                total: 0,
+                filters: {},
+                search: '',
+                sort: 'newest',
+                loading: false,
+                error: null,
+                filterOptions: null,
+                hasMore: true,
+            };
+
+            this.mounts = {
+                topbar: document.getElementById('ed-topbar'),
+                contextBar: document.getElementById('ed-context-bar'),
+                hero: document.getElementById('ed-hero'),
+                sections: document.getElementById('ed-sections'),
+                rail: document.getElementById('ed-rail'),
+                player: document.getElementById('ed-player'),
+            };
+
+            this._topicsOpen = false;
+            this._topicsSection = '';
+            this._refineOpen = false;
+            this._refineSection = '';
+            this._settingsOpen = false;
+            this._sortOpen = false;
+
+            // Related mode state
+            this._selectedItemId = null;
+            this._relatedMode = false;
+            this._baseOrderedItems = null;
+            this._relatedAnchorIndex = -1;
+
+            // Research polling state
+            this._researchPollTimer = null;
+            this._researchPollInFlight = false;
+            this._researchPollingVideoId = null;
+
+            this._readerSwipe = null;
+            this._readerTypographyPrefs = getStoredReaderTypographyPrefs();
+        }
+
+        // ---- URL state ----
+
+        readStateFromURL() {
+            var params = new URLSearchParams(window.location.search);
+            this.state.search = params.get('q') || '';
+            this.state.sort = params.get('sort') || 'newest';
+            this.state.page = parseInt(params.get('page'), 10) || 1;
+            this.state.filters = {};
+
+            for (var i = 0; i < URL_FILTER_KEYS.length; i++) {
+                var key = URL_FILTER_KEYS[i];
+                var val = params.get(key);
+                if (val !== null && val !== '') {
+                    this.state.filters[key] = val;
+                }
+            }
+        }
+
+        writeStateToURL() {
+            var params = new URLSearchParams();
+            if (this.state.search) params.set('q', this.state.search);
+            if (this.state.sort && this.state.sort !== 'newest') params.set('sort', this.state.sort);
+            for (var i = 0; i < URL_FILTER_KEYS.length; i++) {
+                var key = URL_FILTER_KEYS[i];
+                if (this.state.filters[key]) params.set(key, this.state.filters[key]);
+            }
+            var qs = params.toString();
+            var url = window.location.pathname + (qs ? '?' + qs : '');
+            history.replaceState(null, '', url);
+        }
+
+        // ---- Data loading ----
+
+        async loadFilters() {
+            try {
+                var resp = await fetch('/api/filters');
+                if (!resp.ok) return;
+                this.state.filterOptions = await resp.json();
+            } catch (e) {
+                console.warn('[Editorial] Failed to load filters:', e);
+            }
+        }
+
+        async loadContent() {
+            this.state.loading = true;
+            if (this.state.page === 1) {
+                this.state.allItems = [];
+                this.renderLoading();
+                // Clear related mode when reloading from page 1
+                this._relatedMode = false;
+                this._baseOrderedItems = null;
+                this._relatedAnchorIndex = -1;
+                this._selectedItemId = null;
+            }
+
+            var params = {
+                page: this.state.page,
+                size: this.state.size,
+                sort: this.state.sort,
+            };
+            if (this.state.search) {
+                params.q = this.state.search;
+            }
+            Object.keys(this.state.filters).forEach(function (key) {
+                var val = this.state.filters[key];
+                if (val) params[key] = val;
+            }.bind(this));
+
+            var url = '/api/reports' + buildFilterQuery(params);
+            try {
+                var resp = await fetch(url);
+                if (!resp.ok) throw new Error('API returned ' + resp.status);
+                var data = await resp.json();
+                var newItems = data.reports || data.items || [];
+                this.state.total = data.total_count || (data.pagination && data.pagination.total) || 0;
+
+                if (this.state.page === 1) {
+                    this.state.allItems = newItems;
+                } else {
+                    this.state.allItems = this.state.allItems.concat(newItems);
+                }
+                this.state.items = this.state.allItems;
+                this.state.hasMore = this.state.allItems.length < this.state.total;
+
+                console.log('[Editorial] Loaded', newItems.length, 'page', this.state.page,
+                    '| total accumulated:', this.state.allItems.length, 'of', this.state.total);
+
+                this.writeStateToURL();
+                this.render();
+            } catch (err) {
+                this.state.error = err.message;
+                console.error('[Editorial] loadContent failed:', err);
+                this.renderError();
+            } finally {
+                this.state.loading = false;
+            }
+        }
+
+        async loadMore() {
+            if (this.state.loading || !this.state.hasMore) return;
+            this.state.page++;
+            await this.loadContent();
+        }
+
+        // ---- Rendering ----
+
+        render() {
+            var items = this.state.items;
+            if (!items.length) {
+                this.renderEmpty();
+                return;
+            }
+
+            // Related-mode banner (above hero)
+            if (this.mounts.hero) {
+                var bannerHtml = '';
+                if (this._relatedMode && this._selectedItemId) {
+                    var anchor = this._getSelectedItem();
+                    var anchorTitle = anchor ? (anchor.title || '') : '';
+                    var truncatedTitle = anchorTitle.length > 50 ? anchorTitle.substring(0, 50).replace(/\s+\S*$/, '') + '...' : anchorTitle;
+                    bannerHtml = '<div class="ed-related-banner">' +
+                        '<span class="ed-related-banner__label">Related to:</span> ' +
+                        '<span class="ed-related-banner__title">' + escapeHtml(truncatedTitle) + '</span>' +
+                        '<button class="ed-related-banner__close" data-action="exit-related">Back to Recent</button>' +
+                        '</div>';
+                }
+
+                // Block 1: Hero — always re-render (banner appears/disappears with related mode)
+                var hero = items[0];
+                this.mounts.hero.innerHTML = bannerHtml + renderHeroCard(hero);
+            }
+
+            if (this.mounts.sections) {
+                var html = '';
+
+                // Block 2: Supporting stories — next 2-4 items with source variety
+                var supportPool = items.slice(1, 9);  // scan up to 8
+                var supportItems = this.getSupportItems(supportPool, 3);
+
+                if (supportItems.length > 0) {
+                    html += '<section class="ed-support">';
+                    for (var s = 0; s < supportItems.length; s++) {
+                        html += renderFeatureCard(supportItems[s]);
+                    }
+                    html += '</section>';
+                }
+
+                // Block 3: Main feed — exclude hero and chosen support items by id
+                var supportIds = {};
+                for (var si = 0; si < supportItems.length; si++) {
+                    supportIds[supportItems[si].video_id || supportItems[si].id] = true;
+                }
+                var feedItems = [];
+                for (var fi = 1; fi < items.length; fi++) {
+                    var fid = items[fi].video_id || items[fi].id;
+                    if (!supportIds[fid]) {
+                        feedItems.push(items[fi]);
+                    }
+                }
+
+                if (feedItems.length > 0) {
+                    html += '<section class="ed-feed">';
+                    for (var f = 0; f < feedItems.length; f++) {
+                        html += renderFeatureCard(feedItems[f]);
+                    }
+                    html += '</section>';
+                }
+
+                // Load more trigger
+                if (this.state.hasMore) {
+                    html += '<div id="ed-load-more" class="ed-load-more">';
+                    html += '<button class="ed-btn ed-btn--secondary ed-load-more__btn">Load more</button>';
+                    html += '<span class="ed-load-more__count">' + this.state.allItems.length + ' of ' + this.state.total + '</span>';
+                    html += '</div>';
+                } else if (this.state.total > 0) {
+                    html += '<div class="ed-load-more"><span class="ed-load-more__count">All ' + this.state.total + ' items loaded</span></div>';
+                }
+
+                this.mounts.sections.innerHTML = html;
+            }
+
+            // Hide rail (no longer used on homepage)
+            if (this.mounts.rail) {
+                this.mounts.rail.innerHTML = '';
+            }
+
+            // Sync filter UI state
+            this.renderTopbar();
+            this.renderFilterChips();
+            this.updateFilterButtonStates();
+        }
+
+        getSupportItems(pool, max) {
+            if (!pool || !pool.length) return [];
+            var sourceCounts = {};
+            var picked = [];
+            for (var i = 0; i < pool.length && picked.length < max; i++) {
+                var item = pool[i];
+                var src = item.source || '';
+                var count = sourceCounts[src] || 0;
+                if (count < 2) {
+                    picked.push(item);
+                    sourceCounts[src] = count + 1;
+                }
+            }
+            return picked;
+        }
+
+        updateFilterButtonStates() {
+            var buttons = document.querySelectorAll('.ed-filter-btn');
+            for (var i = 0; i < buttons.length; i++) {
+                var btn = buttons[i];
+                var type = btn.dataset.filterType;
+                var value = btn.dataset.filterValue;
+                var isActive = this.state.filters[type] === value;
+                btn.classList.toggle('ed-filter-btn--active', isActive);
+            }
+        }
+
+        groupByCategory(items) {
+            var groups = {};
+            for (var i = 0; i < items.length; i++) {
+                var cat = getPrimaryCategory(items[i]) || 'Uncategorized';
+                if (!groups[cat]) groups[cat] = [];
+                groups[cat].push(items[i]);
+            }
+            return groups;
+        }
+
+        // ---- Rail module helpers ----
+
+        getRelatedItems(heroItem, max) {
+            if (!heroItem) return [];
+            var allItems = this.state.allItems || [];
+            var heroCategories = getCategories(heroItem);
+            var heroSource = heroItem.source || '';
+            var heroChannel = heroItem.channel || heroItem.channel_name || '';
+            var scored = [];
+            for (var i = 0; i < allItems.length; i++) {
+                var item = allItems[i];
+                if (item.video_id === heroItem.video_id || item.id === heroItem.id) continue;
+                var score = 0;
+                var itemCats = getCategories(item);
+                // Category overlap
+                for (var c = 0; c < itemCats.length; c++) {
+                    if (heroCategories.indexOf(itemCats[c]) !== -1) score += 3;
+                }
+                // Same source
+                if (heroSource && item.source === heroSource) score += 2;
+                // Same channel
+                if (heroChannel && (item.channel || item.channel_name) === heroChannel) score += 2;
+                if (score > 0) scored.push({ item: item, score: score });
+            }
+            scored.sort(function (a, b) { return b.score - a.score; });
+            return scored.slice(0, max || 4).map(function (s) { return s.item; });
+        }
+
+        getPivotButtons() {
+            var opts = this.state.filterOptions || {};
+            var buttons = [];
+            // Top categories
+            var cats = (opts.categories || []).slice(0, 5);
+            for (var i = 0; i < cats.length; i++) {
+                buttons.push({ type: 'category', value: cats[i].value, label: cats[i].value });
+            }
+            // Sources
+            var sources = (opts.source || opts.content_source || []).slice(0, 3);
+            for (var j = 0; j < sources.length; j++) {
+                buttons.push({ type: 'source', value: sources[j].value, label: sources[j].label });
+            }
+            // Audio
+            var audioOpts = opts.has_audio || [];
+            for (var a = 0; a < audioOpts.length; a++) {
+                if (audioOpts[a].value === true) {
+                    buttons.push({ type: 'has_audio', value: 'true', label: 'With Audio' });
+                }
+            }
+            return buttons;
+        }
+
+        // ---- Related mode: heuristic similarity (ported from dashboard_v3.js) ----
+
+        _tokenizeTitle(text) {
+            try {
+                var stop = { the: 1, a: 1, an: 1, and: 1, or: 1, of: 1, to: 1, in: 1, on: 1, for: 1, with: 1, from: 1, by: 1, at: 1, is: 1, are: 1, be: 1, this: 1, that: 1, it: 1, as: 1, vs: 1, 'vs.': 1, you: 1, your: 1 };
+                return String(text || '')
+                    .toLowerCase()
+                    .replace(/[^a-z0-9\s]+/g, ' ')
+                    .split(/\s+/)
+                    .filter(function (t) { return t && !stop[t]; });
+            } catch (_) { return []; }
+        }
+
+        _jaccard(a, b) {
+            var A = {};
+            var B = {};
+            for (var i = 0; i < a.length; i++) A[a[i]] = true;
+            for (var j = 0; j < b.length; j++) B[b[j]] = true;
+            var inter = 0;
+            var keysA = Object.keys(A);
+            for (var k = 0; k < keysA.length; k++) {
+                if (B[keysA[k]]) inter++;
+            }
+            var uniSize = keysA.length + Object.keys(B).length - inter;
+            return uniSize > 0 ? inter / uniSize : 0;
+        }
+
+        _extractCatsAndSubcats(item) {
+            if (!item) return { categories: [], subcats: [], subcatPairs: [] };
+
+            var subcategoriesStructure = null;
+
+            // Check for new structured subcategories_json field first
+            if (item.subcategories_json) {
+                try {
+                    subcategoriesStructure = JSON.parse(item.subcategories_json);
+                } catch (e) { /* ignore */ }
+            }
+
+            // Also check for pre-parsed categories from analysis
+            if (!subcategoriesStructure && item.analysis && Array.isArray(item.analysis.categories) && item.analysis.categories.length) {
+                subcategoriesStructure = { categories: item.analysis.categories };
+            }
+
+            // Use structured data if available
+            if (subcategoriesStructure && subcategoriesStructure.categories && subcategoriesStructure.categories.length) {
+                var categories = subcategoriesStructure.categories
+                    .map(function (c) { return c && c.category; })
+                    .filter(Boolean);
+
+                var subcatPairs = [];
+                for (var ci = 0; ci < subcategoriesStructure.categories.length; ci++) {
+                    var cat = subcategoriesStructure.categories[ci];
+                    var parent = cat && cat.category;
+                    if (!parent || !Array.isArray(cat.subcategories)) continue;
+                    for (var si = 0; si < cat.subcategories.length; si++) {
+                        subcatPairs.push([parent, cat.subcategories[si]]);
+                    }
+                }
+
+                var seen = {};
+                var subcats = [];
+                for (var pi = 0; pi < subcatPairs.length; pi++) {
+                    var s = subcatPairs[pi][1];
+                    if (!seen[s]) { seen[s] = true; subcats.push(s); }
+                }
+
+                return { categories: categories, subcats: subcats, subcatPairs: subcatPairs };
+            }
+
+            // Fallback: legacy logic
+            var analysis = item.analysis || {};
+            var cats = [];
+            if (analysis.schema_version >= 2 && Array.isArray(analysis.categories)) {
+                cats = analysis.categories.map(function (c) { return c && c.category; }).filter(Boolean);
+            } else if (Array.isArray(analysis.category)) {
+                cats = analysis.category.slice();
+            }
+            return { categories: cats, subcats: [], subcatPairs: [] };
+        }
+
+        _computeHeuristicSimilarity(baseItem, candItem) {
+            if (!baseItem || !candItem || baseItem === candItem) return 0;
+            var score = 0;
+            try {
+                var info1 = this._extractCatsAndSubcats(baseItem);
+                var info2 = this._extractCatsAndSubcats(candItem);
+
+                // Category overlap
+                var catSet1 = {};
+                for (var c1 = 0; c1 < info1.categories.length; c1++) catSet1[info1.categories[c1]] = true;
+                var catInter = 0;
+                for (var c2 = 0; c2 < info2.categories.length; c2++) {
+                    if (catSet1[info2.categories[c2]]) catInter++;
+                }
+                score += catInter * 2.0;
+
+                // Subcategory pair overlap
+                var pairSet1 = {};
+                for (var p1 = 0; p1 < info1.subcatPairs.length; p1++) {
+                    pairSet1[info1.subcatPairs[p1].join('>')] = true;
+                }
+                var pairInter = 0;
+                for (var p2 = 0; p2 < info2.subcatPairs.length; p2++) {
+                    if (pairSet1[info2.subcatPairs[p2].join('>')]) pairInter++;
+                }
+                score += pairInter * 4.0;
+
+                // Channel/source boost
+                var ch1 = (baseItem.channel || '').toLowerCase().trim();
+                var ch2 = (candItem.channel || '').toLowerCase().trim();
+                if (ch1 && ch2 && ch1 === ch2) score += 1.5;
+
+                // Title token overlap
+                var t1 = this._tokenizeTitle(baseItem.title);
+                var t2 = this._tokenizeTitle(candItem.title);
+                score += 0.8 * this._jaccard(t1, t2);
+            } catch (_) { /* no-op */ }
+            return score;
+        }
+
+        // ---- Related mode: state management ----
+
+        _selectItem(videoId) {
+            // Selection is now driven by openReader — this is a compatibility shim
+            if (!videoId) return;
+            this._selectedItemId = videoId;
+            this._updateSelectedVisualState();
+            this.renderTopbar();
+        }
+
+        _updateSelectedVisualState() {
+            // Remove all existing selected states
+            var prev = document.querySelectorAll('.ed-card--selected');
+            for (var i = 0; i < prev.length; i++) {
+                prev[i].classList.remove('ed-card--selected');
+            }
+            // Apply to matching card
+            if (this._selectedItemId) {
+                var card = document.querySelector('.ed-card[data-video-id="' + CSS.escape(this._selectedItemId) + '"]');
+                if (card) card.classList.add('ed-card--selected');
+            }
+        }
+
+        _getSelectedItem() {
+            if (!this._selectedItemId) return null;
+            var items = (this._relatedMode && this._baseOrderedItems) ? this._baseOrderedItems : (this.state.items || []);
+            for (var i = 0; i < items.length; i++) {
+                var id = items[i].video_id || items[i].id;
+                if (id === this._selectedItemId) return items[i];
+            }
+            return null;
+        }
+
+        _captureCardRects() {
+            var cards = document.querySelectorAll('.ed-card[data-video-id]');
+            var rects = {};
+            for (var i = 0; i < cards.length; i++) {
+                var vid = cards[i].getAttribute('data-video-id');
+                if (vid) {
+                    rects[vid] = cards[i].getBoundingClientRect();
+                }
+            }
+            return rects;
+        }
+
+        _animateCardReflow(beforeRects) {
+            if (!beforeRects) return;
+            // Respect reduced motion preference
+            if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+            var cards = document.querySelectorAll('.ed-card[data-video-id]');
+            for (var i = 0; i < cards.length; i++) {
+                var vid = cards[i].getAttribute('data-video-id');
+                if (!vid) continue;
+                var from = beforeRects[vid];
+                if (!from) continue;
+                var to = cards[i].getBoundingClientRect();
+                var dx = from.left - to.left;
+                var dy = from.top - to.top;
+                // Skip if barely moved
+                if (Math.abs(dx) < 2 && Math.abs(dy) < 2) continue;
+                try {
+                    cards[i].animate(
+                        [
+                            { transform: 'translate(' + dx + 'px, ' + dy + 'px)' },
+                            { transform: 'translate(0px, 0px)' }
+                        ],
+                        {
+                            duration: 360,
+                            easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+                        }
+                    );
+                } catch (_) { }
+            }
+        }
+
+        _enterRelatedMode() {
+            var items = this.state.items || [];
+            if (!items.length) return;
+
+            // If no card selected, use hero (first item) as anchor
+            if (!this._selectedItemId) {
+                this._selectedItemId = items[0].video_id || items[0].id;
+            }
+
+            // Capture FIRST positions before re-render
+            var beforeRects = this._captureCardRects();
+
+            // Snapshot current order
+            this._baseOrderedItems = items.slice();
+
+            // Find anchor's original index
+            this._relatedAnchorIndex = -1;
+            for (var i = 0; i < this._baseOrderedItems.length; i++) {
+                var id = this._baseOrderedItems[i].video_id || this._baseOrderedItems[i].id;
+                if (id === this._selectedItemId) {
+                    this._relatedAnchorIndex = i;
+                    break;
+                }
+            }
+            if (this._relatedAnchorIndex === -1) return;
+
+            var anchor = this._baseOrderedItems[this._relatedAnchorIndex];
+
+            // Score all other items against anchor
+            var scored = [];
+            for (var j = 0; j < this._baseOrderedItems.length; j++) {
+                if (j === this._relatedAnchorIndex) continue;
+                var sc = this._computeHeuristicSimilarity(anchor, this._baseOrderedItems[j]);
+                scored.push({ item: this._baseOrderedItems[j], score: sc });
+            }
+            scored.sort(function (a, b) { return b.score - a.score; });
+
+            // Build derived order: [anchor, ...rest by score]
+            var derived = [anchor];
+            for (var k = 0; k < scored.length; k++) {
+                derived.push(scored[k].item);
+            }
+
+            this._relatedMode = true;
+            this.state.items = derived;
+            this.render();
+            this._updateSelectedVisualState();
+
+            // Re-render reader to update the related bar
+            if (this._currentReaderData) {
+                this.renderReaderContent(this._currentReaderData);
+            }
+
+            // LAST + INVERT + PLAY
+            this._animateCardReflow(beforeRects);
+
+            // Scroll to top so user sees the new hero
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        _exitRelatedMode() {
+            // Capture FIRST positions before restoring
+            var beforeRects = this._captureCardRects();
+
+            if ((this._baseOrderedItems || []).length > 0) {
+                this.state.items = this._baseOrderedItems.slice();
+            }
+            this._relatedMode = false;
+            this._baseOrderedItems = null;
+            this._relatedAnchorIndex = -1;
+            this.render();
+
+            // Re-render reader to update the related bar
+            if (this._currentReaderData) {
+                this.renderReaderContent(this._currentReaderData);
+            }
+
+            // Animate cards back to their original positions
+            this._animateCardReflow(beforeRects);
+        }
+
+        renderTopbar() {
+            var topbar = this.mounts.topbar;
+            if (!topbar) return;
+
+            var searchInput = topbar.querySelector('.ed-topbar__search');
+            if (searchInput) {
+                searchInput.innerHTML =
+                    '<input type="text" class="ed-search__input" placeholder="Search summaries..." value="' +
+                    escapeHtml(this.state.search) + '">';
+            }
+
+            var navEl = topbar.querySelector('.ed-topbar__nav');
+            if (navEl) {
+                var navHtml = '<div class="ed-settings-wrap">';
+                navHtml += '<button class="ed-topbar__settings-btn" data-action="toggle-settings" title="Settings">&#9881;</button>';
+                navHtml += this.renderSettingsPanel();
+                navHtml += '</div>';
+                navEl.innerHTML = navHtml;
+            }
+
+            this.renderSubnav();
+        }
+
+        renderSubnav() {
+            var bar = this.mounts.contextBar;
+            if (!bar) return;
+
+            var activeCategory = this.state.filters.category || '';
+            var isRelated = this._relatedMode && this._selectedItemId;
+
+            // Sort label
+            var sortLabel;
+            if (isRelated) {
+                sortLabel = 'Related';
+            } else {
+                sortLabel = this.state.sort === 'oldest' ? 'Oldest added' : 'Newest added';
+            }
+
+            var svgSort = '<svg class="ed-nav__svg" viewBox="0 0 16 16" width="14" height="14"><path d="M3 5l2.5-3L8 5M5.5 2v10M13 11l-2.5 3L8 11M10.5 14V4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            var svgTag = '<svg class="ed-nav__svg" viewBox="0 0 16 16" width="14" height="14"><path d="M2 3h3l6 6-3 3-6-6V3zM11 9l2 2-3 3-2-2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            var svgSliders = '<svg class="ed-nav__svg" viewBox="0 0 16 16" width="14" height="14"><path d="M2 4h12M5 4v8M2 12h12M11 12V4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+
+            var html = '<div class="ed-nav">';
+            html += '<div class="ed-nav__sort-wrap">';
+            html += '<button class="ed-nav__tab' + (this._sortOpen ? ' ed-nav__tab--active' : '') +
+                '" data-action="toggle-sort">' + svgSort + ' ' + escapeHtml(sortLabel) + ' ▾</button>';
+            html += this.renderSortDropdown();
+            html += '</div>';
+            html += '<div class="ed-nav__topics-wrap">';
+            html += '<button class="ed-nav__tab' + (activeCategory ? ' ed-nav__tab--active' : '') +
+                '" data-action="toggle-topics">' + svgTag + ' ' +
+                (this.state.filters.subcategory ? escapeHtml(this.state.filters.subcategory) :
+                 (activeCategory ? escapeHtml(activeCategory) : 'Topics')) + ' ▾</button>';
+            html += this.renderTopicsDropdown();
+            html += '</div>';
+            html += '</div>';
+
+            var hasFilters = Object.keys(this.state.filters).some(
+                function (k) { return this.state.filters[k]; }.bind(this)
+            );
+            html += '<div class="ed-refine-wrap">';
+            html += '<button class="ed-refine-btn' + (hasFilters ? ' ed-refine-btn--active' : '') +
+                '" data-action="toggle-refine">' + svgSliders + ' Refine' +
+                (hasFilters ? ' (' + Object.keys(this.state.filters).filter(function (k) { return this.state.filters[k]; }.bind(this)).length + ')' : '') + '</button>';
+            html += this.renderRefineMenu();
+            html += '</div>';
+
+            bar.className = 'ed-subnav' + (this._activeReaderId ? ' ed-subnav--reader-open' : '');
+            bar.innerHTML = html;
+        }
+
+        renderTopicsDropdown() {
+            var opts = this.state.filterOptions || {};
+            var categories = (opts.categories || [])
+                .slice()
+                .sort(function (a, b) { return (b.count || 0) - (a.count || 0); })
+                .slice(0, 8);
+            if (!categories.length) return '';
+
+            var activeCategory = this.state.filters.category || '';
+            var html = '<div class="ed-topics-dropdown' + (this._topicsOpen ? ' ed-topics-dropdown--open' : '') + '">';
+            if (!this._topicsSection) {
+                // First level: "All topics" clear option (only when a filter is active)
+                if (activeCategory) {
+                    html += '<button class="ed-topics-dropdown__item" data-action="nav-recent">' +
+                        '<span>All topics</span>' +
+                        '</button>';
+                }
+                // Category list
+                for (var i = 0; i < categories.length; i++) {
+                    var isSelected = categories[i].value === activeCategory;
+                    html += '<button class="ed-topics-dropdown__item' + (isSelected ? ' ed-topics-dropdown__item--active' : '') +
+                        '" data-action="open-topic-section" data-topic="' + escapeHtml(categories[i].value) + '">' +
+                        '<span>' + escapeHtml(categories[i].value) + '</span>' +
+                        '<span class="ed-topics-dropdown__count">' + (categories[i].count || 0) + '</span>' +
+                        '</button>';
+                }
+            } else {
+                // Second level: "All [Category]" + subcategories
+                html += '<div class="ed-topics-submenu__header">';
+                html += '<button class="ed-topics-submenu__back" data-action="close-topic-section">\u2190 Topics</button>';
+                html += '</div>';
+                html += '<div class="ed-topics-submenu__list">';
+                // "All [Category]" option
+                var allActive = activeCategory === this._topicsSection && !this.state.filters.subcategory;
+                html += '<button class="ed-topics-dropdown__item' + (allActive ? ' ed-topics-dropdown__item--active' : '') +
+                    '" data-action="select-topic" data-topic="' + escapeHtml(this._topicsSection) + '">' +
+                    'All ' + escapeHtml(this._topicsSection) + '</button>';
+                // Subcategories
+                var cat = categories.filter(function (c) { return c.value === this._topicsSection; }.bind(this))[0];
+                var subs = (cat && cat.subcategories) || [];
+                for (var s = 0; s < subs.length; s++) {
+                    var isSubActive = this.state.filters.subcategory === subs[s].value;
+                    html += '<button class="ed-topics-dropdown__item' + (isSubActive ? ' ed-topics-dropdown__item--active' : '') +
+                        '" data-action="select-subtopic" data-topic="' + escapeHtml(this._topicsSection) +
+                        '" data-subtopic="' + escapeHtml(subs[s].value) + '">' +
+                        '<span>' + escapeHtml(subs[s].value) + '</span>' +
+                        '<span class="ed-topics-dropdown__count">' + (subs[s].count || 0) + '</span>' +
+                        '</button>';
+                }
+                html += '</div>';
+            }
+            html += '</div>';
+            return html;
+        }
+
+        renderSortDropdown() {
+            var html = '<div class="ed-sort-dropdown' + (this._sortOpen ? ' ed-sort-dropdown--open' : '') + '">';
+            var opts = [
+                { value: 'newest', label: 'Newest added' },
+                { value: 'oldest', label: 'Oldest added' },
+            ];
+            for (var i = 0; i < opts.length; i++) {
+                var isActive = !this._relatedMode && this.state.sort === opts[i].value;
+                html += '<button class="ed-sort-dropdown__item' + (isActive ? ' ed-sort-dropdown__item--active' : '') +
+                    '" data-action="set-sort" data-sort="' + opts[i].value + '">' +
+                    escapeHtml(opts[i].label) +
+                    '</button>';
+            }
+            html += '<div class="ed-sort-dropdown__divider"></div>';
+            var isRelated = this._relatedMode && this._selectedItemId;
+            html += '<button class="ed-sort-dropdown__item' + (isRelated ? ' ed-sort-dropdown__item--active' : '') +
+                '" data-action="toggle-related">Related</button>';
+            html += '</div>';
+            return html;
+        }
+
+        renderFilterChips() {
+            var existing = document.getElementById('ed-filter-chips');
+            if (existing) existing.remove();
+
+            var activeFilters = Object.keys(this.state.filters).filter(
+                function (k) { return this.state.filters[k]; }.bind(this)
+            );
+            var visibleFilters = activeFilters;
+            if (!visibleFilters.length && !this.state.search) return;
+
+            var chipContainer = document.createElement('div');
+            chipContainer.id = 'ed-filter-chips';
+            chipContainer.className = 'ed-filter-chips';
+
+            if (this.state.search) {
+                chipContainer.innerHTML += '<span class="ed-chip" data-filter-key="search">' +
+                    '"' + escapeHtml(this.state.search) + '" <button class="ed-chip__remove">&times;</button></span>';
+            }
+
+            for (var i = 0; i < visibleFilters.length; i++) {
+                var key = visibleFilters[i];
+                var val = this.state.filters[key];
+                var label = this.getFilterLabel(key, val);
+                chipContainer.innerHTML += '<span class="ed-chip" data-filter-key="' + escapeHtml(key) + '">' +
+                    escapeHtml(label) +
+                    ' <button class="ed-chip__remove">&times;</button></span>';
+            }
+
+            var main = document.getElementById('ed-main');
+            if (main) main.insertBefore(chipContainer, main.firstChild);
+        }
+
+        getFilterLabel(key, value) {
+            var opts = this.state.filterOptions || {};
+            // Try to find the human-readable label from filter options
+            var lists = {
+                source: opts.source || opts.content_source,
+                category: (opts.categories || []).map(function (c) { return { value: c.value, label: c.value }; }),
+                subcategory: this.flattenSubcategories(opts.categories),
+                channel: opts.channels,
+                language: opts.languages,
+                summary_type: opts.summary_type,
+                content_type: opts.content_type,
+            };
+            var list = lists[key];
+            if (list) {
+                for (var i = 0; i < list.length; i++) {
+                    if (String(list[i].value) === String(value)) {
+                        return (list[i].label || list[i].value);
+                    }
+                }
+            }
+            return key + ': ' + value;
+        }
+
+        flattenSubcategories(categories) {
+            if (!categories) return [];
+            var result = [];
+            for (var i = 0; i < categories.length; i++) {
+                var subs = categories[i].subcategories || [];
+                for (var j = 0; j < subs.length; j++) {
+                    result.push(subs[j]);
+                }
+            }
+            return result;
+        }
+
+        renderRefineMenu() {
+            var filters = this.state.filterOptions;
+            if (!filters) return '';
+            var html = '<div class="ed-refine-menu' + (this._refineOpen ? ' ed-refine-menu--open' : '') + '" id="ed-refine-menu">';
+            if (!this._refineSection) {
+                html += '<div class="ed-refine-menu__list">';
+
+                var sources = filters.source || filters.content_source || [];
+                if (sources.length > 1) {
+                    html += this.renderRefineMenuItem(
+                        'source',
+                        'Source',
+                        this.state.filters.source ? this.getFilterLabel('source', this.state.filters.source) : 'Any'
+                    );
+                }
+
+                var contentTypes = filters.content_type || [];
+                if (contentTypes.length > 1) {
+                    html += this.renderRefineMenuItem(
+                        'content_type',
+                        'Type',
+                        this.state.filters.content_type ? this.getFilterLabel('content_type', this.state.filters.content_type) : 'Any'
+                    );
+                }
+
+                var audioOpts = filters.has_audio || [];
+                if (audioOpts.length > 1) {
+                    html += this.renderRefineMenuItem(
+                        'has_audio',
+                        'Audio',
+                        this.state.filters.has_audio === 'true' ? 'With Audio' : 'Any'
+                    );
+                }
+                html += '</div>';
+            } else {
+                html += this.renderRefineSubmenu();
+            }
+            html += '</div>';
+            return html;
+        }
+
+        renderRefineMenuItem(section, label, value) {
+            return '<button class="ed-refine-menu__item" data-action="open-refine-section" data-section="' + escapeHtml(section) + '">' +
+                '<span class="ed-refine-menu__item-label">' + escapeHtml(label) + '</span>' +
+                '<span class="ed-refine-menu__item-value">' + escapeHtml(value) + '</span>' +
+                '</button>';
+        }
+
+        renderRefineSubmenu() {
+            var filters = this.state.filterOptions || {};
+            var section = this._refineSection;
+            var html = '<div class="ed-refine-submenu">';
+            html += '<div class="ed-refine-submenu__header">';
+            html += '<button class="ed-refine-submenu__back" data-action="close-refine-section">← Refine</button>';
+            html += '</div>';
+            html += '<div class="ed-refine-submenu__list">';
+
+            if (section === 'source') {
+                html += '<button class="ed-refine-menu__button' + (!this.state.filters.source ? ' ed-refine-menu__button--active' : '') +
+                    '" data-filter-type="source" data-filter-value="">Any source</button>';
+                var sources = filters.source || filters.content_source || [];
+                for (var i = 0; i < sources.length; i++) {
+                    var isActive = this.state.filters.source === String(sources[i].value);
+                    html += '<button class="ed-refine-menu__button' + (isActive ? ' ed-refine-menu__button--active' : '') +
+                        '" data-filter-type="source" data-filter-value="' + escapeHtml(sources[i].value) + '">' +
+                        escapeHtml(sources[i].label) + '</button>';
+                }
+            } else if (section === 'content_type') {
+                html += '<button class="ed-refine-menu__button' + (!this.state.filters.content_type ? ' ed-refine-menu__button--active' : '') +
+                    '" data-filter-type="content_type" data-filter-value="">Any type</button>';
+                var contentTypes = filters.content_type || [];
+                for (var ct = 0; ct < contentTypes.length; ct++) {
+                    var isTypeActive = this.state.filters.content_type === String(contentTypes[ct].value);
+                    html += '<button class="ed-refine-menu__button' + (isTypeActive ? ' ed-refine-menu__button--active' : '') +
+                        '" data-filter-type="content_type" data-filter-value="' + escapeHtml(contentTypes[ct].value) + '">' +
+                        escapeHtml(contentTypes[ct].value) + '</button>';
+                }
+            } else if (section === 'has_audio') {
+                html += '<button class="ed-refine-menu__button' + (!this.state.filters.has_audio ? ' ed-refine-menu__button--active' : '') +
+                    '" data-filter-type="has_audio" data-filter-value="">Any audio</button>';
+                html += '<button class="ed-refine-menu__button' + (this.state.filters.has_audio === 'true' ? ' ed-refine-menu__button--active' : '') +
+                    '" data-filter-type="has_audio" data-filter-value="true">With Audio</button>';
+            }
+
+            html += '</div></div>';
+            return html;
+        }
+
+        toggleRefine() {
+            this._refineOpen = !this._refineOpen;
+            this._topicsOpen = false;
+            this._topicsSection = '';
+            this._refineSection = '';
+            this._settingsOpen = false;
+            this._sortOpen = false;
+            this.renderTopbar();
+        }
+
+        renderSettingsPanel() {
+            var html = '<div class="ed-settings-panel' + (this._settingsOpen ? ' ed-settings-panel--open' : '') + '">';
+            html += '<div class="ed-settings-section">';
+            html += '<div class="ed-settings-label">Image display</div>';
+            html += '<div class="ed-settings-segmented">';
+            var modes = [
+                { key: 'default', label: 'Default' },
+                { key: 'ai1', label: 'AI 1' },
+                { key: 'ai2', label: 'AI 2' },
+            ];
+            for (var mi = 0; mi < modes.length; mi++) {
+                var isActive = _imageMode === modes[mi].key;
+                html += '<button class="ed-settings-seg' + (isActive ? ' ed-settings-seg--active' : '') +
+                    '" data-action="set-image-mode" data-mode="' + modes[mi].key + '">' + modes[mi].label + '</button>';
+            }
+            html += '</div></div>';
+            html += '<div class="ed-settings-divider"></div>';
+            html += '<div class="ed-settings-section">';
+            html += '<div class="ed-settings-label">Theme</div>';
+            html += '<div class="ed-settings-accent-grid">';
+            var themes = [
+                { key: 'default', label: 'Midnight', color: '#7c8cf8' },
+                { key: 'emerald', label: 'Emerald', color: '#34d399' },
+                { key: 'amber', label: 'Amber', color: '#f59e0b' },
+                { key: 'rose', label: 'Rose', color: '#fb7185' },
+                { key: 'cyan', label: 'Cyan', color: '#22d3ee' },
+                { key: 'slate', label: 'Slate', color: '#818cf8' },
+                { key: 'paper', label: 'Paper', color: '#2563eb' },
+                { key: 'frost', label: 'Frost', color: '#0284c7' },
+                { key: 'sand', label: 'Sand', color: '#c2410c' },
+            ];
+            for (var ai = 0; ai < themes.length; ai++) {
+                var thmActive = _theme === themes[ai].key;
+                html += '<button class="ed-settings-accent-btn' + (thmActive ? ' ed-settings-accent-btn--active' : '') +
+                    '" data-action="set-theme" data-theme="' + themes[ai].key + '">' +
+                    '<span class="ed-accent-dot" style="background:' + themes[ai].color + '"></span>' +
+                    themes[ai].label + '</button>';
+            }
+            html += '</div></div>';
+            html += '<div class="ed-settings-divider"></div>';
+            html += '<a class="ed-settings-link" href="/">Classic dashboard</a>';
+            html += '</div>';
+            return html;
+        }
+
+        renderLoading() {
+            if (this.mounts.hero) {
+                this.mounts.hero.innerHTML = '<div class="ed-loading">Loading...</div>';
+            }
+            if (this.mounts.sections) this.mounts.sections.innerHTML = '';
+            if (this.mounts.rail) this.mounts.rail.innerHTML = '';
+        }
+
+        renderLoadingMore() {
+            var trigger = document.getElementById('ed-load-more');
+            if (trigger) {
+                trigger.innerHTML = '<div class="ed-loading" style="padding:1rem">Loading more...</div>';
+            }
+        }
+
+        renderError() {
+            if (this.mounts.hero) {
+                this.mounts.hero.innerHTML =
+                    '<div class="ed-loading" style="color:#ef4444">Error: ' +
+                    escapeHtml(this.state.error) + '</div>';
+            }
+        }
+
+        renderEmpty() {
+            if (this.mounts.hero) {
+                this.mounts.hero.innerHTML = '<div class="ed-loading">No reports found</div>';
+            }
+        }
+
+        // ---- Event handling ----
+
+        bindEvents() {
+            // Search input
+            document.addEventListener('input', function (e) {
+                if (e.target.classList.contains('ed-search__input')) {
+                    this.debounceSearch(e.target.value);
+                }
+            }.bind(this));
+
+            // Click delegation
+            document.addEventListener('click', function (e) {
+                // Related from sort dropdown — always enter related mode
+                if (e.target.closest('[data-action="toggle-related"]')) {
+                    this._sortOpen = false;
+                    if (!this._relatedMode) {
+                        this._enterRelatedMode();
+                    }
+                    this.renderTopbar();
+                    return;
+                }
+
+                // Exit related mode (from sort label tab)
+                if (e.target.closest('[data-action="exit-related"]')) {
+                    this._exitRelatedMode();
+                    this.renderTopbar();
+                    return;
+                }
+
+                // Refine toggle
+                if (e.target.closest('[data-action="toggle-refine"]')) {
+                    this.toggleRefine();
+                    return;
+                }
+
+                // Settings toggle
+                if (e.target.closest('[data-action="toggle-settings"]')) {
+                    this._settingsOpen = !this._settingsOpen;
+                    this._topicsOpen = false;
+                    this._topicsSection = '';
+                    this._refineOpen = false;
+                    this._sortOpen = false;
+                    this._refineSection = '';
+                    this.renderTopbar();
+                    return;
+                }
+
+                // Image mode change
+                var imgModeBtn = e.target.closest('[data-action="set-image-mode"]');
+                if (imgModeBtn) {
+                    var newMode = imgModeBtn.dataset.mode || 'default';
+                    _imageMode = newMode;
+                    localStorage.setItem('ytv2.imageMode', newMode);
+                    this._swapCardImages();
+                    // Keep settings open so user sees the active state change
+                    this._settingsOpen = true;
+                    this.renderTopbar();
+                    // Update reader thumbnail if open
+                    try {
+                        var readerImg = document.querySelector('.ed-reader__thumb img');
+                        if (readerImg && this._currentReaderData) {
+                            var readerItem = this._currentReaderData;
+                            readerImg.src = getThumbnail(readerItem);
+                        }
+                    } catch (_) {}
+                    return;
+                }
+
+                // Theme change
+                var themeBtn = e.target.closest('[data-action="set-theme"]');
+                if (themeBtn) {
+                    var theme = themeBtn.dataset.theme || 'default';
+                    _theme = theme;
+                    localStorage.setItem('ytv2.theme', theme);
+                    if (theme === 'default') {
+                        document.documentElement.removeAttribute('data-ed-theme');
+                    } else {
+                        document.documentElement.setAttribute('data-ed-theme', theme);
+                    }
+                    this._settingsOpen = true;
+                    this.renderTopbar();
+                    return;
+                }
+
+                // Refine sort buttons
+                var refineSortBtn = e.target.closest('[data-action="refine-sort"]');
+                if (refineSortBtn) {
+                    this.state.sort = refineSortBtn.dataset.sort;
+                    this._refineOpen = false;
+                    this._refineSection = '';
+                    this.state.page = 1;
+                    this.loadContent();
+                    return;
+                }
+
+                var openRefineSectionBtn = e.target.closest('[data-action="open-refine-section"]');
+                if (openRefineSectionBtn) {
+                    this._refineSection = openRefineSectionBtn.dataset.section || '';
+                    this.renderTopbar();
+                    return;
+                }
+
+                if (e.target.closest('[data-action="close-refine-section"]')) {
+                    this._refineSection = '';
+                    this.renderTopbar();
+                    return;
+                }
+
+                // Nav: Recent / clear topic (used by "All topics" in dropdown)
+                if (e.target.closest('[data-action="nav-recent"]')) {
+                    delete this.state.filters.category;
+                    delete this.state.filters.subcategory;
+                    this.state.page = 1;
+                    this._topicsOpen = false;
+                    this._topicsSection = '';
+                    this.loadContent();
+                    return;
+                }
+
+                // Sort dropdown toggle
+                if (e.target.closest('[data-action="toggle-sort"]')) {
+                    this._sortOpen = !this._sortOpen;
+                    this._topicsOpen = false;
+                    this._topicsSection = '';
+                    this._refineOpen = false;
+                    this._refineSection = '';
+                    this._settingsOpen = false;
+                    this.renderTopbar();
+                    return;
+                }
+
+                // Sort selection
+                var sortBtn = e.target.closest('[data-action="set-sort"]');
+                if (sortBtn) {
+                    this.state.sort = sortBtn.dataset.sort;
+                    this._sortOpen = false;
+                    // Exit related mode when choosing a sort
+                    if (this._relatedMode) {
+                        this._relatedMode = false;
+                        this._baseOrderedItems = null;
+                        this._relatedAnchorIndex = -1;
+                    }
+                    this.state.page = 1;
+                    this.loadContent();
+                    return;
+                }
+
+                // Close sort dropdown on outside click
+                if (this._sortOpen) {
+                    var sortWrap = document.querySelector('.ed-nav__sort-wrap');
+                    if (sortWrap && !sortWrap.contains(e.target)) {
+                        this._sortOpen = false;
+                        this.renderTopbar();
+                    }
+                }
+
+                // Nav: Topics dropdown toggle
+                if (e.target.closest('[data-action="toggle-topics"]')) {
+                    this._topicsOpen = !this._topicsOpen;
+                    this._topicsSection = '';
+                    this._sortOpen = false;
+                    this._refineOpen = false;
+                    this._refineSection = '';
+                    this._settingsOpen = false;
+                    this.renderTopbar();
+                    return;
+                }
+
+                // Open topic section (show subcategories)
+                var openTopicBtn = e.target.closest('[data-action="open-topic-section"]');
+                if (openTopicBtn) {
+                    this._topicsSection = openTopicBtn.dataset.topic || '';
+                    this.renderTopbar();
+                    return;
+                }
+
+                if (e.target.closest('[data-action="close-topic-section"]')) {
+                    this._topicsSection = '';
+                    this.renderTopbar();
+                    return;
+                }
+
+                // Nav: Topic selection ("All [Category]")
+                var topicBtn = e.target.closest('[data-action="select-topic"]');
+                if (topicBtn) {
+                    this.state.filters.category = topicBtn.dataset.topic;
+                    delete this.state.filters.subcategory;
+                    this.state.page = 1;
+                    this._topicsOpen = false;
+                    this._topicsSection = '';
+                    this.loadContent();
+                    return;
+                }
+
+                // Nav: Subtopic selection
+                var subtopicBtn = e.target.closest('[data-action="select-subtopic"]');
+                if (subtopicBtn) {
+                    this.state.filters.category = subtopicBtn.dataset.topic;
+                    this.state.filters.subcategory = subtopicBtn.dataset.subtopic;
+                    this.state.page = 1;
+                    this._topicsOpen = false;
+                    this._topicsSection = '';
+                    this.loadContent();
+                    return;
+                }
+
+                // Close topics dropdown on outside click
+                if (this._topicsOpen) {
+                    var topicsWrap = document.querySelector('.ed-nav__topics-wrap');
+                    if (topicsWrap && !topicsWrap.contains(e.target)) {
+                        this._topicsOpen = false;
+                        this._topicsSection = '';
+                        this.renderTopbar();
+                    }
+                }
+
+                // Close refine on outside click
+                if (this._refineOpen) {
+                    var refineWrap = document.querySelector('.ed-refine-wrap');
+                    if (refineWrap && !refineWrap.contains(e.target)) {
+                        this._refineOpen = false;
+                        this._refineSection = '';
+                        this.renderTopbar();
+                    }
+                }
+
+                // Close settings on outside click
+                if (this._settingsOpen) {
+                    var settingsWrap = document.querySelector('.ed-settings-wrap');
+                    if (settingsWrap && !settingsWrap.contains(e.target)) {
+                        this._settingsOpen = false;
+                        this.renderTopbar();
+                    }
+                }
+
+                // Rail pivot buttons (act as filter shortcuts)
+                var pivotBtn = e.target.closest('.ed-rail-pivot-btn');
+                if (pivotBtn) {
+                    var pType = pivotBtn.dataset.filterType;
+                    var pValue = pivotBtn.dataset.filterValue;
+                    if (this.state.filters[pType] === pValue) {
+                        delete this.state.filters[pType];
+                    } else {
+                        this.state.filters[pType] = pValue;
+                    }
+                    this.state.page = 1;
+                    this.loadContent();
+                    return;
+                }
+
+                // Refine filter buttons
+                var refineFilterBtn = e.target.closest('.ed-refine-menu__button[data-filter-type]');
+                if (refineFilterBtn) {
+                    var refineType = refineFilterBtn.dataset.filterType;
+                    var refineValue = refineFilterBtn.dataset.filterValue;
+                    if (!refineValue || this.state.filters[refineType] === refineValue) {
+                        delete this.state.filters[refineType];
+                    } else {
+                        this.state.filters[refineType] = refineValue;
+                    }
+                    this._refineOpen = false;
+                    this._refineSection = '';
+                    this.state.page = 1;
+                    this.loadContent();
+                    return;
+                }
+
+                // Filter buttons
+                var btn = e.target.closest('.ed-filter-btn');
+                if (btn) {
+                    var type = btn.dataset.filterType;
+                    var value = btn.dataset.filterValue;
+                    if (this.state.filters[type] === value) {
+                        delete this.state.filters[type];
+                    } else {
+                        this.state.filters[type] = value;
+                    }
+                    this.state.page = 1;
+                    this.loadContent();
+                    return;
+                }
+
+                // Filter chip remove
+                var chip = e.target.closest('.ed-chip__remove');
+                if (chip) {
+                    var chipEl = chip.closest('.ed-chip');
+                    if (chipEl) {
+                        var key = chipEl.dataset.filterKey;
+                        if (key === 'search') {
+                            this.state.search = '';
+                            var input = document.querySelector('.ed-search__input');
+                            if (input) input.value = '';
+                        } else {
+                            delete this.state.filters[key];
+                            if (key === 'category') delete this.state.filters.subcategory;
+                        }
+                        this.state.page = 1;
+                        this.loadContent();
+                    }
+                    return;
+                }
+
+                // Load more button
+                var loadMoreBtn = e.target.closest('.ed-load-more__btn');
+                if (loadMoreBtn) {
+                    this.loadMore();
+                    return;
+                }
+
+                // Close reader
+                if (e.target.closest('[data-action="close-reader"]')) {
+                    this.closeReader();
+                    return;
+                }
+
+                // Admin menu toggle
+                if (e.target.closest('[data-action="toggle-admin-menu"]')) {
+                    this.toggleAdminMenu();
+                    return;
+                }
+
+                if (e.target.closest('[data-action="reader-size-down"]')) {
+                    this.stepReaderSize(-1);
+                    return;
+                }
+
+                if (e.target.closest('[data-action="reader-size-up"]')) {
+                    this.stepReaderSize(1);
+                    return;
+                }
+
+                if (e.target.closest('[data-action="set-reader-pref"]')) {
+                    var prefBtn = e.target.closest('[data-action="set-reader-pref"]');
+                    this.setReaderTypographyPref(prefBtn.dataset.pref || '', prefBtn.dataset.value || '');
+                    return;
+                }
+
+                // Admin actions
+                if (e.target.closest('[data-action="admin-delete"]')) {
+                    this.showDeleteConfirm();
+                    return;
+                }
+                if (e.target.closest('[data-action="admin-regenerate"]')) {
+                    this.showRegenerateModal();
+                    return;
+                }
+                if (e.target.closest('[data-action="admin-images"]')) {
+                    this.showImagesModal();
+                    return;
+                }
+
+                // Audio popover toggle
+                if (e.target.closest('[data-action="toggle-audio-popover"]')) {
+                    this.toggleAudioPopover();
+                    return;
+                }
+
+                // TTS: Read aloud
+                if (e.target.closest('[data-action="tts-read-aloud"]')) {
+                    this.toggleTTS();
+                    this.closeAudioPopover();
+                    return;
+                }
+
+                // Audio on-demand: audio_current
+                if (e.target.closest('[data-action="audio-current"]')) {
+                    var acOpts = this._audioOptions || {};
+                    var acCurrent = acOpts.audio_current || {};
+                    if (acCurrent.status === 'ready' && acCurrent.audio_url) {
+                        this.stopTTS();
+                        this.closeAudioPopover();
+                        this.playAudio(acCurrent.audio_url, 'Audio version');
+                    } else if (acCurrent.status === 'missing' || acCurrent.status === 'stale' || acCurrent.status === 'failed') {
+                        this._triggerAudioGenerate('audio_current');
+                    }
+                    return;
+                }
+
+                // Audio on-demand: audio_briefing
+                if (e.target.closest('[data-action="audio-briefing"]')) {
+                    var abOpts = this._audioOptions || {};
+                    var abCurrent = abOpts.audio_briefing || {};
+                    if (abCurrent.status === 'ready' && abCurrent.audio_url) {
+                        this.stopTTS();
+                        this.closeAudioPopover();
+                        this.playAudio(abCurrent.audio_url, 'Full briefing');
+                    } else if (abCurrent.status === 'missing' || abCurrent.status === 'stale' || abCurrent.status === 'failed') {
+                        this._triggerAudioGenerate('audio_briefing');
+                    }
+                    return;
+                }
+
+                // Close admin menu on outside click
+                var adminMenuEl = document.querySelector('.ed-reader__admin-menu--open');
+                if (adminMenuEl) {
+                    var adminToggle = document.querySelector('.ed-reader__admin-toggle');
+                    if (adminToggle && !adminToggle.contains(e.target) && !adminMenuEl.contains(e.target)) {
+                        this.closeAdminMenu();
+                    }
+                }
+
+                // Close audio popover on outside click
+                var audioPopoverEl = document.querySelector('.ed-reader__audio-popover--open');
+                if (audioPopoverEl) {
+                    var audioBtn = document.querySelector('.ed-reader__audio-btn') || document.querySelector('[data-action="toggle-audio-popover"]');
+                    if (!audioPopoverEl.contains(e.target) && !(audioBtn && audioBtn.contains(e.target))) {
+                        this.closeAudioPopover();
+                    }
+                }
+
+                // Modal dismiss (cancel button, or click directly on backdrop element)
+                if (e.target.closest('[data-action="modal-cancel"]')) {
+                    this.closeModal();
+                    return;
+                }
+                if (e.target.classList.contains('ed-modal-backdrop')) {
+                    this.closeModal();
+                    return;
+                }
+
+                // Token save
+                if (e.target.closest('[data-action="save-token"]')) {
+                    this.saveTokenFromModal();
+                    return;
+                }
+
+                // Forget token
+                if (e.target.closest('[data-action="forget-token"]')) {
+                    this.clearAdminToken();
+                    this.closeAdminMenu();
+                    this.showToast('Admin token forgotten');
+                    return;
+                }
+
+                // Proficiency toggle (within regenerate modal)
+                var profBtnEl = e.target.closest('.ed-proficiency-btn');
+                if (profBtnEl) {
+                    e.preventDefault();
+                    var profCard = profBtnEl.closest('[data-regen-card]');
+                    if (profCard) {
+                        var siblings = profCard.querySelectorAll('.ed-proficiency-btn');
+                        for (var pb = 0; pb < siblings.length; pb++) {
+                            siblings[pb].classList.remove('ed-proficiency-btn--active');
+                        }
+                        profBtnEl.classList.add('ed-proficiency-btn--active');
+                    }
+                    return;
+                }
+
+                // Regenerate card interaction → update card state + CTA
+                if (e.target.closest('[data-regen-card]')) {
+                    var self = this;
+                    setTimeout(function () { self._syncRegenSelectionState(); }, 0);
+                    return;
+                }
+
+                // Modal confirm actions
+                if (e.target.closest('[data-action="confirm-delete"]')) {
+                    this.executeDelete();
+                    return;
+                }
+                if (e.target.closest('[data-action="confirm-clear-chat"]')) {
+                    this._executeClearChat();
+                    return;
+                }
+                if (e.target.closest('[data-action="confirm-regenerate"]')) {
+                    this.executeRegenerate();
+                    return;
+                }
+                if (e.target.closest('[data-action="save-image-prompt"]')) {
+                    this.executeSetImagePrompt();
+                    return;
+                }
+                if (e.target.closest('[data-action="confirm-delete-image"]')) {
+                    this.showDeleteImageConfirm(e.target.closest('[data-action="confirm-delete-image"]'));
+                    return;
+                }
+                if (e.target.closest('[data-action="do-delete-image"]')) {
+                    this.executeDeleteImageVariant();
+                    return;
+                }
+                if (e.target.closest('[data-action="confirm-delete-all-images"]')) {
+                    this.showDeleteAllImagesConfirm();
+                    return;
+                }
+                if (e.target.closest('[data-action="do-delete-all-images"]')) {
+                    this.executeDeleteAllImages();
+                    return;
+                }
+                if (e.target.closest('[data-action="select-image-variant"]')) {
+                    this.executeSelectImageVariant(e.target.closest('[data-action="select-image-variant"]'));
+                    return;
+                }
+                if (e.target.closest('[data-action="switch-image-mode"]')) {
+                    this.switchImageMode(e.target.closest('[data-action="switch-image-mode"]'));
+                    return;
+                }
+                if (e.target.closest('[data-action="use-variant-prompt"]')) {
+                    this.useVariantPrompt(e.target.closest('[data-action="use-variant-prompt"]'));
+                    return;
+                }
+                var variantRow = e.target.closest('.ed-img-row[data-variant-url]');
+                if (variantRow && !e.target.closest('button, a, input, textarea, select, label')) {
+                    this._loadVariantPromptByUrl(variantRow.dataset.variantUrl);
+                    return;
+                }
+                if (e.target.closest('[data-action="use-default-prompt"]')) {
+                    this.useDefaultPrompt();
+                    return;
+                }
+
+                // Switch summary variant
+                var variantBtn = e.target.closest('[data-action="switch-variant"]');
+                if (variantBtn) {
+                    var idx = parseInt(variantBtn.dataset.variantIdx, 10);
+                    this.switchReaderVariant(idx);
+                    return;
+                }
+
+                // Transcript tab
+                if (e.target.closest('[data-action="show-transcript"]')) {
+                    this._showTranscript();
+                    return;
+                }
+
+                // Research tab
+                if (e.target.closest('[data-action="show-research"]')) {
+                    this._showResearch();
+                    return;
+                }
+
+                // Research: Start Research button (empty state)
+                if (e.target.closest('[data-action="research-start"]')) {
+                    this._openResearchSuggestions();
+                    return;
+                }
+
+                // Research: Ask button (composer)
+                if (e.target.closest('[data-action="research-ask"]')) {
+                    var composer = document.querySelector('[data-research-composer]');
+                    var question = composer ? composer.value.trim() : '';
+                    if (question) this._sendResearchChat(question);
+                    return;
+                }
+
+                // Research: Run Research inline from composer
+                if (e.target.closest('[data-action="research-run"]')) {
+                    var runComposer = document.querySelector('[data-research-composer]');
+                    var customQuestion = runComposer ? runComposer.value.trim() : '';
+                    if (customQuestion) {
+                        this._executeInlineResearch(customQuestion, null, 'custom');
+                    }
+                    return;
+                }
+
+                // Research: Run suggested research (Dig Deeper card)
+                if (e.target.closest('[data-action="run-suggested-research"]')) {
+                    var card = e.target.closest('[data-action="run-suggested-research"]');
+                    var suggestedQ = card.dataset.question || '';
+                    if (suggestedQ) this._executeInlineResearch(suggestedQ, card);
+                    return;
+                }
+
+                // Dig Deeper: expand collapsed section
+                if (e.target.closest('[data-dig-deeper-collapsed]')) {
+                    var ddBody = document.querySelector('[data-dig-deeper-body]');
+                    var ddHeader = document.querySelector('.ed-research__dig-deeper-header');
+                    var ddCollapsed = document.querySelector('[data-dig-deeper-collapsed]');
+                    if (ddBody) ddBody.style.display = '';
+                    if (ddHeader) ddHeader.style.display = '';
+                    if (ddCollapsed) ddCollapsed.style.display = 'none';
+                    return;
+                }
+
+                // Research: Sign In button (401 state / Dig Deeper inline)
+                if (e.target.closest('[data-action="research-sign-in"]')) {
+                    var self = this;
+                    this.requireAdminToken(function() {
+                        var composer = document.querySelector('.ed-research__composer-input');
+                        if (composer) composer.disabled = false;
+                        self._loadResearchThread();
+                        self._loadDigDeeperSuggestions();
+                    });
+                    return;
+                }
+
+                // Research: Execute research run (modal)
+                if (e.target.closest('[data-action="research-execute"]')) {
+                    this._executeResearchRun();
+                    return;
+                }
+
+                // Chat turn menu toggle
+                if (e.target.closest('[data-action="chat-turn-menu"]')) {
+                    var menuBtn = e.target.closest('[data-action="chat-turn-menu"]');
+                    var dropdown = menuBtn.parentElement.querySelector('.ed-research__turn-menu-dropdown');
+                    if (dropdown) {
+                        // Close all other dropdowns first
+                        var allDropdowns = document.querySelectorAll('.ed-research__turn-menu-dropdown');
+                        for (var dd = 0; dd < allDropdowns.length; dd++) {
+                            if (allDropdowns[dd] !== dropdown) allDropdowns[dd].style.display = 'none';
+                        }
+                        dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+                    }
+                    return;
+                }
+
+                // Chat turn delete
+                if (e.target.closest('[data-action="delete-chat-turn"]')) {
+                    var delBtn = e.target.closest('[data-action="delete-chat-turn"]');
+                    var turnId = delBtn.dataset.turnId;
+                    if (turnId) this._deleteChatTurn(turnId);
+                    return;
+                }
+
+                // Clear all chat
+                if (e.target.closest('[data-action="clear-chat-history"]')) {
+                    this._clearAllChatTurns();
+                    return;
+                }
+
+                // Transcript search
+                var transcriptSearch = e.target.closest('.ed-transcript__search-input');
+                if (transcriptSearch) {
+                    this._filterTranscript(transcriptSearch.value);
+                    return;
+                }
+
+                // Audio toggle
+                if (e.target.closest('[data-action="audio-toggle"]')) {
+                    this.toggleAudioPlayback();
+                    return;
+                }
+
+                // Audio close
+                if (e.target.closest('[data-action="audio-close"]')) {
+                    this.closeAudio();
+                    return;
+                }
+
+                // Audio seek
+                if (e.target.classList.contains('ed-audio-bar__seek')) {
+                    var audio = document.getElementById('ed-audio-element');
+                    if (audio && audio.duration) {
+                        audio.currentTime = parseFloat(e.target.value);
+                    }
+                    return;
+                }
+
+                // Reader play audio button
+                var playBtn = e.target.closest('[data-action="play-audio"]');
+                if (playBtn) {
+                    var audioUrl = playBtn.dataset.audioUrl;
+                    if (audioUrl) {
+                        this.stopTTS();
+                        this.closeAudioPopover();
+                        var readerTitle = document.querySelector('.ed-reader__title');
+                        this.playAudio(audioUrl, readerTitle ? readerTitle.textContent : '');
+                    }
+                    return;
+                }
+
+                // Read button -> open side reader
+                var readLink = e.target.closest('[data-action="read"]');
+                if (readLink) {
+                    var readCard = readLink.closest('.ed-card');
+                    var vid = readCard ? readCard.dataset.videoId : null;
+                    if (vid) {
+                        e.preventDefault();
+                        this.openReader(vid);
+                        return;
+                    }
+                }
+
+                // Listen button on card — open reader and show audio menu
+                var listenBtn = e.target.closest('[data-action="listen"]');
+                if (listenBtn) {
+                    var listenCard = listenBtn.closest('.ed-card');
+                    var listenVid = listenCard ? listenCard.dataset.videoId : null;
+                    if (listenVid) {
+                        e.preventDefault();
+                        this.openReader(listenVid, { showAudioMenu: true });
+                        return;
+                    }
+                }
+
+                // Card click (open side reader instead of navigating)
+                var card = e.target.closest('.ed-card');
+                if (card && !e.target.closest('.ed-btn') && !e.target.closest('a')) {
+                    var videoId = card.dataset.videoId;
+                    if (videoId) {
+                        this.openReader(videoId);
+                        // Re-anchor related mode if active
+                        if (this._relatedMode) {
+                            this._enterRelatedMode();
+                        }
+                    }
+                }
+
+                // Close any open chat turn menus on outside click
+                if (!e.target.closest('[data-action="chat-turn-menu"]') && !e.target.closest('.ed-research__turn-menu-dropdown')) {
+                    var openMenus = document.querySelectorAll('.ed-research__turn-menu-dropdown');
+                    for (var om = 0; om < openMenus.length; om++) openMenus[om].style.display = 'none';
+                }
+            }.bind(this));
+
+            // Browser back/forward
+            window.addEventListener('popstate', function () {
+                this.readStateFromURL();
+                this.state.page = 1;
+                this.loadContent();
+            }.bind(this));
+
+            // Scroll-based progressive load (supplements the button)
+            this._scrollHandler = function () {
+                if (this.state.loading || !this.state.hasMore) return;
+                var sentinel = document.getElementById('ed-load-more');
+                if (!sentinel) return;
+                var rect = sentinel.getBoundingClientRect();
+                if (rect.top < window.innerHeight + 400) {
+                    this.loadMore();
+                }
+            }.bind(this);
+            window.addEventListener('scroll', this._scrollHandler, { passive: true });
+
+            document.addEventListener('touchstart', this._handleReaderTouchStart.bind(this), { passive: true });
+            document.addEventListener('touchmove', this._handleReaderTouchMove.bind(this), { passive: true });
+            document.addEventListener('touchend', this._handleReaderTouchEnd.bind(this), { passive: true });
+            document.addEventListener('touchcancel', this._handleReaderTouchCancel.bind(this), { passive: true });
+
+            // Research composer input — enable/disable Ask button, show/hide Research this
+            document.addEventListener('input', function (e) {
+                if (e.target.matches('[data-research-composer]')) {
+                    var hasText = !!e.target.value.trim();
+                    var askBtn = document.querySelector('[data-action="research-ask"]');
+                    if (askBtn) askBtn.disabled = !hasText;
+                    var runBtn = document.querySelector('[data-action="research-run"]');
+                    if (runBtn) runBtn.style.display = hasText ? '' : 'none';
+                }
+            }.bind(this));
+
+            // Research composer: Enter to send (Shift+Enter for newline)
+            document.addEventListener('keydown', function (e) {
+                if (e.target.matches('[data-research-composer]') && e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    var askBtn = document.querySelector('[data-action="research-ask"]');
+                    if (askBtn && !askBtn.disabled) {
+                        askBtn.click();
+                    }
+                }
+            }.bind(this));
+        }
+
+        debounceSearch(query) {
+            clearTimeout(this._searchTimer);
+            this._searchTimer = setTimeout(function () {
+                this.state.search = query.trim();
+                this.state.page = 1;
+                this.loadContent();
+            }.bind(this), 350);
+        }
+
+        // ---- Side Reader ----
+
+        async openReader(videoId, opts) {
+            if (!videoId) return;
+            opts = opts || {};
+            this._activeReaderId = videoId;
+            this._selectedItemId = videoId;
+            this._readerAutoPlayAudio = !!opts.autoPlayAudio;
+            this._readerShowAudioMenu = !!opts.showAudioMenu;
+            this.showReaderPanel('<div class="ed-loading">Loading...</div>');
+
+            try {
+                var resp = await fetch('/' + videoId + '.json');
+                if (!resp.ok) throw new Error('Failed to load report');
+                var data = await resp.json();
+                this._currentReaderData = data;
+                this.renderReaderContent(data);
+                if (this._readerAutoPlayAudio && this._readerAudioUrl) {
+                    var readerTitle = document.querySelector('.ed-reader__title');
+                    this.playAudio(this._readerAudioUrl, readerTitle ? readerTitle.textContent : '');
+                }
+                if (this._readerShowAudioMenu) {
+                    this.toggleAudioPopover();
+                }
+                this.fetchAudioOptions(videoId, 0);
+            } catch (err) {
+                console.error('[Editorial] Reader failed:', err);
+                this.showReaderPanel('<div class="ed-loading" style="color:#ef4444">Error: ' + escapeHtml(err.message) + '</div>');
+            }
+            this._updateSelectedVisualState();
+            this.renderTopbar();
+        }
+
+        showReaderPanel(contentHtml) {
+            var panel = document.getElementById('ed-reader');
+            if (!panel) {
+                panel = document.createElement('div');
+                panel.id = 'ed-reader';
+                panel.className = 'ed-reader';
+                document.body.appendChild(panel);
+            }
+            panel.innerHTML = contentHtml;
+            panel.classList.add('ed-reader--open');
+            this.applyReaderTypographyPrefs();
+        }
+
+        _swapCardImages() {
+            var articles = document.querySelectorAll('article[data-video-id]');
+            if (!articles.length) return;
+            var items = this.state.allItems || [];
+            var byId = {};
+            for (var i = 0; i < items.length; i++) {
+                var id = items[i].video_id || items[i].id;
+                if (id) byId[id] = items[i];
+            }
+            for (var j = 0; j < articles.length; j++) {
+                var vid = articles[j].dataset.videoId;
+                if (vid && byId[vid]) {
+                    var img = articles[j].querySelector('img');
+                    if (img) img.src = getThumbnail(byId[vid]);
+                }
+            }
+        }
+
+        closeReader() {
+            this._stopResearchPolling();
+            this._stopAudioPolling();
+            this.stopTTS();
+            this.closeAudioPopover();
+            var panel = document.getElementById('ed-reader');
+            if (panel) {
+                panel.classList.remove('ed-reader--open');
+            }
+            this._activeReaderId = null;
+            this._selectedItemId = null;
+            this._updateSelectedVisualState();
+            this.renderTopbar();
+        }
+
+        _readerSwipeTargetIsInteractive(target) {
+            if (!target || !target.closest) return true;
+            return !!target.closest(
+                'button, a, input, textarea, select, label, [contenteditable="true"], ' +
+                '.ed-reader__variants, .ed-transcript__list, .ed-transcript__plain, ' +
+                '.ed-modal, .ed-audio-bar, .ed-reader__admin-menu, ' +
+                '.ed-reader__audio-popover, ' +
+                '.ed-research__turn-menu-dropdown, [data-research-composer]'
+            );
+        }
+
+        _handleReaderTouchStart(e) {
+            if (!this._activeReaderId) return;
+            var panel = document.getElementById('ed-reader');
+            if (!panel || !panel.classList.contains('ed-reader--open') || !panel.contains(e.target)) return;
+            if (this._readerSwipeTargetIsInteractive(e.target)) {
+                this._readerSwipe = null;
+                return;
+            }
+            if (!e.touches || e.touches.length !== 1) return;
+            var touch = e.touches[0];
+            this._readerSwipe = {
+                startX: touch.clientX,
+                startY: touch.clientY,
+                lastX: touch.clientX,
+                lastY: touch.clientY
+            };
+        }
+
+        _handleReaderTouchMove(e) {
+            if (!this._readerSwipe || !e.touches || e.touches.length !== 1) return;
+            var touch = e.touches[0];
+            this._readerSwipe.lastX = touch.clientX;
+            this._readerSwipe.lastY = touch.clientY;
+        }
+
+        _handleReaderTouchEnd(e) {
+            var swipe = this._readerSwipe;
+            this._readerSwipe = null;
+            if (!swipe || !e.changedTouches || !e.changedTouches.length) return;
+
+            var touch = e.changedTouches[0];
+            var dx = touch.clientX - swipe.startX;
+            var dy = touch.clientY - swipe.startY;
+            var absX = Math.abs(dx);
+            var absY = Math.abs(dy);
+
+            if (absX < 70 || absX < absY * 1.35 || absY > 140) return;
+            this._navigateReaderByOffset(dx < 0 ? 1 : -1);
+        }
+
+        _handleReaderTouchCancel() {
+            this._readerSwipe = null;
+        }
+
+        _getReaderOrderedItems() {
+            var items = this.state.items || this.state.allItems || [];
+            return Array.isArray(items) ? items : [];
+        }
+
+        _getReaderItemId(item) {
+            return item ? (item.video_id || item.id || '') : '';
+        }
+
+        _getActiveReaderIndex(items) {
+            var activeId = this._activeReaderId || '';
+            for (var i = 0; i < items.length; i++) {
+                if (this._getReaderItemId(items[i]) === activeId) return i;
+            }
+            return -1;
+        }
+
+        _navigateReaderByOffset(offset) {
+            var items = this._getReaderOrderedItems();
+            var currentIndex = this._getActiveReaderIndex(items);
+            var nextIndex = currentIndex + offset;
+            if (currentIndex < 0 || nextIndex < 0 || nextIndex >= items.length) {
+                this.showToast(offset > 0 ? 'No next story loaded' : 'No previous story loaded');
+                return;
+            }
+
+            var nextId = this._getReaderItemId(items[nextIndex]);
+            if (!nextId || nextId === this._activeReaderId) return;
+            this.showToast(offset > 0 ? 'Next story' : 'Previous story');
+            this.openReader(nextId);
+        }
+
+        switchReaderVariant(idx) {
+            var variants = this._readerVariants;
+            if (!variants || idx < 0 || idx >= variants.length) return;
+            this._readerActiveVariant = idx;
+
+            var v = variants[idx];
+            var summaryEl = document.querySelector('.ed-reader__summary');
+            if (summaryEl) {
+                summaryEl.innerHTML = v.html || v.text || '<p>No summary available.</p>';
+            }
+
+            // Hide transcript and research, show summary
+            this._hideTranscript();
+            this._hideResearch();
+
+            // Update active tab
+            var tabs = document.querySelectorAll('.ed-reader__variant');
+            for (var t = 0; t < tabs.length; t++) {
+                var tabIdx = parseInt(tabs[t].dataset.variantIdx, 10);
+                tabs[t].classList.toggle('ed-reader__variant--active', tabIdx === idx);
+            }
+
+            // Update audio popover play-existing row
+            var audioPlayBtn = document.querySelector('.ed-reader__audio-popover [data-action="play-audio"]');
+            if (audioPlayBtn) {
+                if (v.audio_url) {
+                    audioPlayBtn.dataset.audioUrl = v.audio_url;
+                    audioPlayBtn.disabled = false;
+                    audioPlayBtn.classList.remove('ed-reader__audio-item--disabled');
+                    audioPlayBtn.style.display = '';
+                } else {
+                    audioPlayBtn.dataset.audioUrl = '';
+                    audioPlayBtn.disabled = true;
+                    audioPlayBtn.classList.add('ed-reader__audio-item--disabled');
+                    audioPlayBtn.style.display = 'none';
+                }
+            }
+
+            // Refetch audio options for the new variant
+            if (this._activeReaderId) {
+                this.fetchAudioOptions(this._activeReaderId, idx);
+            }
+        }
+
+        _renderTranscriptPanel(videoId, canonicalUrl) {
+            var segments = this._readerTranscriptSegments || [];
+            var fullText = this._readerTranscriptText || '';
+            var isYouTube = canonicalUrl && canonicalUrl.indexOf('youtube.com') !== -1;
+
+            var html = '<div class="ed-transcript" style="display:none">';
+
+            if (segments.length > 0) {
+                // Segmented transcript (YouTube)
+                html += '<div class="ed-transcript__search">';
+                html += '<input type="text" class="ed-transcript__search-input" placeholder="Search transcript...">';
+                html += '</div>';
+                html += '<div class="ed-transcript__info">' + segments.length + ' segments</div>';
+                html += '<div class="ed-transcript__list">';
+                for (var i = 0; i < segments.length; i++) {
+                    var seg = segments[i];
+                    var start = parseFloat(seg.start) || 0;
+                    var mins = Math.floor(start / 60);
+                    var secs = Math.floor(start % 60);
+                    var ts = mins + ':' + (secs < 10 ? '0' : '') + secs;
+                    var segText = (seg.text || '').replace(/<[^>]*>/g, '');
+                    var ytUrl = isYouTube ? 'https://www.youtube.com/watch?v=' + encodeURIComponent(videoId) + '&t=' + Math.floor(start) + 's' : '';
+                    html += '<div class="ed-transcript__row" data-transcript-search="' + escapeHtml(segText.toLowerCase()) + '">';
+                    if (ytUrl) {
+                        html += '<a class="ed-transcript__ts" href="' + escapeHtml(ytUrl) + '" target="_blank" rel="noopener">' + ts + '</a>';
+                    } else {
+                        html += '<span class="ed-transcript__ts">' + ts + '</span>';
+                    }
+                    html += '<span class="ed-transcript__text">' + escapeHtml(segText) + '</span>';
+                    html += '</div>';
+                }
+                html += '</div>';
+            } else if (fullText.trim()) {
+                // Plain text transcript (web articles)
+                html += '<div class="ed-transcript__search">';
+                html += '<input type="text" class="ed-transcript__search-input" placeholder="Search text...">';
+                html += '</div>';
+                html += '<div class="ed-transcript__plain">' + escapeHtml(fullText) + '</div>';
+            }
+
+            html += '</div>';
+            return html;
+        }
+
+        _showTranscript() {
+            // Hide summary, show transcript
+            var summaryEl = document.querySelector('.ed-reader__summary');
+            var transcriptEl = document.querySelector('.ed-transcript');
+            if (summaryEl) summaryEl.style.display = 'none';
+            if (transcriptEl) transcriptEl.style.display = 'block';
+
+            // Hide research panel
+            this._hideResearch();
+
+            // Update tab active states
+            var tabs = document.querySelectorAll('.ed-reader__variant');
+            for (var t = 0; t < tabs.length; t++) {
+                var isTranscript = tabs[t].dataset.action === 'show-transcript';
+                tabs[t].classList.toggle('ed-reader__variant--active', isTranscript);
+            }
+        }
+
+        _hideTranscript() {
+            var summaryEl = document.querySelector('.ed-reader__summary');
+            var transcriptEl = document.querySelector('.ed-transcript');
+            if (summaryEl) summaryEl.style.display = '';
+            if (transcriptEl) transcriptEl.style.display = 'none';
+        }
+
+        _filterTranscript(query) {
+            var rows = document.querySelectorAll('.ed-transcript__row');
+            var q = (query || '').toLowerCase().trim();
+            var visible = 0;
+            for (var i = 0; i < rows.length; i++) {
+                var text = rows[i].dataset.transcriptSearch || '';
+                if (!q || text.indexOf(q) !== -1) {
+                    rows[i].style.display = '';
+                    visible++;
+                } else {
+                    rows[i].style.display = 'none';
+                }
+            }
+        }
+
+        // ---- Research Mode ----
+
+        _getResearchSourceContext() {
+            var data = this._readerData || {};
+            var videoId = (data.video || {}).video_id || '';
+
+            var variants = data.summary_variants || [];
+            var summaryText = '';
+            for (var i = 0; i < variants.length; i++) {
+                if (variants[i].variant !== 'deep-research' && (variants[i].text || variants[i].html)) {
+                    summaryText = variants[i].text || variants[i].html;
+                    break;
+                }
+            }
+            if (!summaryText) {
+                var summary = data.summary || {};
+                summaryText = summary.text || summary.html || '';
+            }
+
+            var sourceContext = {};
+            var video = data.video || {};
+            if (video.channel) sourceContext.channel = video.channel;
+            if (video.url) sourceContext.source_url = video.url;
+            var sourceUrl = video.url || '';
+            if (sourceUrl.indexOf('youtube.com') !== -1 || sourceUrl.indexOf('youtu.be') !== -1) {
+                sourceContext.content_type = 'youtube';
+            } else {
+                sourceContext.content_type = 'web';
+            }
+
+            return { summaryText: summaryText, sourceContext: sourceContext, videoId: videoId };
+        }
+
+        _renderResearchPanel(data) {
+            var videoId = (data.video || {}).video_id || '';
+            var variants = data.summary_variants || [];
+            var hasResearch = false;
+            var researchHtml = '';
+            for (var i = 0; i < variants.length; i++) {
+                if (variants[i].variant === 'deep-research') {
+                    hasResearch = true;
+                    // Prefer .text rendered client-side (server .html can contain
+                    // duplicate content with broken table formatting)
+                    var variant = variants[i];
+                    if (variant.text) {
+                        researchHtml = renderMarkdown(variant.text);
+                    } else {
+                        researchHtml = variant.html || '';
+                    }
+                    break;
+                }
+            }
+
+            var html = '<div class="ed-research" style="display:none" data-research-panel data-video-id="' + escapeHtml(videoId) + '">';
+
+            // Loading indicator
+            html += '<div class="ed-research__loading" data-research-loading style="display:none">';
+            html += '<div class="ed-research__loading-inner">Loading research...</div>';
+            html += '</div>';
+
+            // Dig Deeper section — suggested questions (collapsible, top of tab)
+            html += '<div class="ed-research__dig-deeper" data-dig-deeper-section>';
+            html += '<div class="ed-research__dig-deeper-header">';
+            html += '<span class="ed-research__dig-deeper-title">DIG DEEPER</span>';
+            html += '</div>';
+            html += '<div class="ed-research__dig-deeper-collapsed" data-dig-deeper-collapsed style="display:none"></div>';
+            html += '<div class="ed-research__dig-deeper-body" data-dig-deeper-body>';
+            html += '<div class="ed-research__dig-deeper-status" data-dig-deeper-status></div>';
+            html += '<div class="ed-research__dig-deeper-cards" data-dig-deeper-cards></div>';
+            html += '</div>';
+            html += '</div>'; // .ed-research__dig-deeper
+
+            // Chat section
+            html += '<div class="ed-research__chat-section">';
+
+            // Research report + turns (hidden until thread loads)
+            html += '<div class="ed-research__thread" data-research-thread' + (!hasResearch ? ' style="display:none"' : '') + '>';
+
+            // Main research report — the variant HTML (rich formatted)
+            if (researchHtml) {
+                html += '<div class="ed-research__report">' + researchHtml + '</div>';
+            }
+
+            // Follow-up Q&A turns (loaded from thread endpoint)
+            html += '<div class="ed-research__followups" data-research-turns></div>';
+
+            html += '</div>'; // .ed-research__thread
+
+            // Lightweight hint when no research exists yet
+            html += '<div class="ed-research__hint" data-research-hint' + (hasResearch ? ' style="display:none"' : '') + '>';
+            html += '<p class="ed-research__hint-text">Ask questions about this report or run deeper research anytime.</p>';
+            html += '</div>';
+
+            // Composer bar — always visible
+            html += '<div class="ed-research__composer">';
+            html += '<textarea class="ed-research__composer-input" data-research-composer placeholder="Ask about this report..." rows="2"></textarea>';
+            html += '<div class="ed-research__composer-actions">';
+            html += '<button class="ed-btn ed-btn--primary ed-btn--sm" data-action="research-ask" disabled title="Ask a grounded question about this report">Ask About Report</button>';
+            html += '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="research-run" style="display:none" title="Run deep web research on this topic">Run Deep Research</button>';
+            html += '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="clear-chat-history" style="display:none">Clear Chat</button>';
+            html += '</div>';
+            html += '</div>';
+            html += '</div>'; // .ed-research__chat-section
+
+            html += '<div class="ed-research__error" data-research-error style="display:none"></div>';
+
+            html += '</div>';
+            return html;
+        }
+
+        _showResearch() {
+            var summaryEl = document.querySelector('.ed-reader__summary');
+            var researchEl = document.querySelector('[data-research-panel]');
+            var transcriptEl = document.querySelector('.ed-transcript');
+            if (summaryEl) summaryEl.style.display = 'none';
+            if (researchEl) researchEl.style.display = 'block';
+            if (transcriptEl) transcriptEl.style.display = 'none';
+
+            // Update tab active states
+            var tabs = document.querySelectorAll('.ed-reader__variant');
+            for (var t = 0; t < tabs.length; t++) {
+                var isResearch = tabs[t].dataset.action === 'show-research';
+                tabs[t].classList.toggle('ed-reader__variant--active', isResearch);
+            }
+
+            // Load thread if research may exist
+            this._loadResearchThread();
+
+            // Load dig deeper suggestions
+            this._loadDigDeeperSuggestions();
+
+            // Resume polling if any turn is still running
+            var threadData = this._researchThreadData;
+            if (threadData && threadData.turns) {
+                var hasRunning = false;
+                for (var r = 0; r < threadData.turns.length; r++) {
+                    if (threadData.turns[r].status === 'running') { hasRunning = true; break; }
+                }
+                if (hasRunning) {
+                    var pollVideoId = (threadData.video_id || (document.querySelector('[data-research-panel]') || {}).dataset || {}).videoId || '';
+                    if (pollVideoId) this._startResearchPolling(pollVideoId);
+                }
+            }
+        }
+
+        _hideResearch() {
+            this._stopResearchPolling();
+            var researchEl = document.querySelector('[data-research-panel]');
+            if (researchEl) researchEl.style.display = 'none';
+        }
+
+        _loadResearchThread() {
+            var self = this;
+            var panel = document.querySelector('[data-research-panel]');
+            if (!panel) return;
+            var videoId = panel.dataset.videoId || '';
+            if (!videoId) return;
+
+            var loadingEl = panel.querySelector('[data-research-loading]');
+            var threadEl = panel.querySelector('[data-research-thread]');
+            var hintEl = panel.querySelector('[data-research-hint]');
+            var reportEl = panel.querySelector('.ed-research__report');
+
+            // If we already have variant HTML, the thread view is visible from the start
+            var hasVariantReport = !!(reportEl && reportEl.innerHTML.trim());
+            if (hasVariantReport) {
+                if (threadEl) threadEl.style.display = 'block';
+                if (hintEl) hintEl.style.display = 'none';
+            }
+
+            if (loadingEl) loadingEl.style.display = 'block';
+
+            var token = this.getAdminToken();
+            var headers = { 'Accept': 'application/json' };
+            if (token) headers['Authorization'] = 'Bearer ' + token;
+
+            var params = new URLSearchParams({ video_id: videoId, preferred_variant: 'deep-research' });
+            fetch('/api/research/follow-up/thread?' + params.toString(), { headers: headers })
+                .then(function (resp) {
+                    if (resp.status === 401) {
+                        self.handleAuthError({ interactive: false });
+                        return null;
+                    }
+                    if (resp.status === 404) return { turns: [], _notFound: true };
+                    return resp.json().then(function (data) {
+                        data._ok = resp.ok;
+                        return data;
+                    });
+                })
+                .then(function (data) {
+                    if (loadingEl) loadingEl.style.display = 'none';
+
+                    // We have content (variant report, thread turns, or chat turns)
+                    var hasTurns = data && Array.isArray(data.turns) && data.turns.length > 0;
+                    var hasChatTurns = data && Array.isArray(data.chat_turns) && data.chat_turns.length > 0;
+                    if (hasTurns || hasChatTurns || hasVariantReport) {
+                        self._researchThreadData = data;
+                        self._researchVideoId = videoId;
+                        if (hasTurns || hasChatTurns) {
+                            self._renderResearchTurns(data);
+                            self._updateClearChatButton();
+                            self._updateDigDeeperCollapse();
+                        }
+                        if (threadEl) threadEl.style.display = 'block';
+                        if (hintEl) hintEl.style.display = 'none';
+                    } else {
+                        // No research yet — show the hint, composer stays visible
+                        if (threadEl) threadEl.style.display = 'none';
+                        if (hintEl) hintEl.style.display = 'block';
+                    }
+                })
+                .catch(function (err) {
+                    console.warn('Research thread load failed:', err);
+                    if (loadingEl) loadingEl.style.display = 'none';
+                });
+        }
+
+        _loadDigDeeperSuggestions() {
+            var self = this;
+            var panel = document.querySelector('[data-research-panel]');
+            if (!panel) return;
+            var videoId = panel.dataset.videoId || '';
+            if (!videoId) return;
+
+            // Use cached suggestions if same video
+            if (this._ponderingsSuggestionsVideoId === videoId && this._ponderingsSuggestions && this._ponderingsSuggestions.length > 0) {
+                this._renderDigDeeperCards(this._ponderingsSuggestions);
+                this._updateDigDeeperCollapse();
+                return;
+            }
+
+            var statusEl = panel.querySelector('[data-dig-deeper-status]');
+            var cardsEl = panel.querySelector('[data-dig-deeper-cards]');
+
+            // Use getAdminToken (non-blocking) — do not force auth prompt on tab open
+            var token = this.getAdminToken();
+            if (!token) {
+                if (statusEl) {
+                    statusEl.innerHTML = 'Sign in to load suggested prompts and run deeper research. <button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="research-sign-in">Sign in</button>';
+                    statusEl.style.display = '';
+                }
+                if (cardsEl) cardsEl.innerHTML = '';
+                return;
+            }
+
+            if (statusEl) statusEl.textContent = 'Loading suggestions...';
+            if (statusEl) statusEl.style.display = '';
+            if (cardsEl) cardsEl.innerHTML = '';
+
+            var ctx = this._getResearchSourceContext();
+
+            fetch('/api/research/follow-up/suggestions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({
+                    video_id: ctx.videoId,
+                    summary: ctx.summaryText,
+                    preferred_variant: 'deep-research',
+                    source_context: ctx.sourceContext,
+                    max_suggestions: 4
+                })
+            })
+            .then(function (resp) {
+                if (resp.status === 401) { self.handleAuthError({ interactive: true, retry: function (t) { self._loadDigDeeperSuggestions(t); } }); return null; }
+                return resp.json().then(function (payload) {
+                    payload._ok = resp.ok;
+                    return payload;
+                });
+            })
+            .then(function (payload) {
+                if (!payload) return;
+                if (!payload._ok) throw new Error(payload.detail || 'Suggestions failed');
+                var suggestions = Array.isArray(payload.suggestions) ? payload.suggestions : [];
+
+                // Cache suggestions
+                self._ponderingsSuggestions = suggestions;
+                self._ponderingsSuggestionsVideoId = videoId;
+
+                if (statusEl) statusEl.style.display = 'none';
+
+                if (suggestions.length > 0) {
+                    self._renderDigDeeperCards(suggestions);
+                } else if (statusEl) {
+                    statusEl.textContent = 'No prompts yet. Ask about this report or start a custom research run.';
+                    statusEl.style.display = '';
+                }
+
+                self._updateDigDeeperCollapse();
+            })
+            .catch(function (err) {
+                console.warn('Dig deeper suggestions failed:', err);
+                if (statusEl) {
+                    statusEl.textContent = 'No prompts yet. Ask about this report or start a custom research run.';
+                    statusEl.style.display = '';
+                }
+                if (cardsEl) cardsEl.innerHTML = '';
+            });
+        }
+
+        _renderDigDeeperCards(suggestions) {
+            var cardsEl = document.querySelector('[data-dig-deeper-cards]');
+            if (!cardsEl) return;
+
+            var html = '';
+            for (var s = 0; s < suggestions.length; s++) {
+                var qText = suggestions[s].question || suggestions[s].label || '';
+                if (!qText) continue;
+                var state = this._getSuggestionState(qText);
+                var cls = 'ed-research__dig-deeper-card';
+                var arrowHtml = '&#x25B8;';
+                var textContent = qText;
+                var disabled = '';
+
+                if (state === 'running') {
+                    cls += ' ed-research__dig-deeper-card--running';
+                    arrowHtml = '<span class="ed-research__dig-deeper-spinner"></span>';
+                    textContent = qText + ' (Researching...)';
+                    disabled = ' disabled';
+                } else if (state === 'done') {
+                    cls += ' ed-research__dig-deeper-card--done';
+                    arrowHtml = '&#x2713;';
+                }
+
+                html += '<button class="' + cls + '" data-action="run-suggested-research" data-question="' + escapeHtml(qText) + '"' + disabled + '>';
+                html += '<span class="ed-research__dig-deeper-arrow">' + arrowHtml + '</span>';
+                html += '<span class="ed-research__dig-deeper-card-text">' + escapeHtml(textContent) + '</span>';
+                html += '</button>';
+            }
+            cardsEl.innerHTML = html;
+        }
+
+        _renderResearchTurns(threadData) {
+            var turns = (threadData && threadData.turns) || [];
+            var chatTurns = (threadData && threadData.chat_turns) || [];
+            var turnsEl = document.querySelector('[data-research-turns]');
+            if (!turnsEl) return;
+
+            // If the variant report HTML is already shown, skip the first turn
+            // (it's the original research run — its answer duplicates the variant HTML)
+            var reportEl = document.querySelector('.ed-research__report');
+            var hasVariantReport = reportEl && reportEl.innerHTML.trim().length > 0;
+            var startIndex = hasVariantReport ? 1 : 0;
+
+            var html = '';
+            for (var i = startIndex; i < turns.length; i++) {
+                var turn = turns[i];
+                var questions = turn.approved_questions || [];
+                var answer = turn.answer || '';
+                var sources = turn.sources || [];
+                var status = turn.status || '';
+
+                if (status === 'running') {
+                    html += '<div class="ed-research__turn ed-research__turn--running">';
+                    html += '<span class="ed-research__dig-deeper-spinner"></span>';
+                    html += '<div class="ed-research__turn-label">Research running</div>';
+                    html += '<div class="ed-research__turn-meta">Last checked ' + new Date().toLocaleTimeString() + '</div>';
+                    html += '</div>';
+                    continue;
+                }
+
+                html += '<div class="ed-research__turn">';
+
+                // Questions as header
+                if (questions.length > 0) {
+                    html += '<div class="ed-research__turn-questions">';
+                    for (var q = 0; q < questions.length; q++) {
+                        html += '<div class="ed-research__turn-question">' + escapeHtml(questions[q]) + '</div>';
+                    }
+                    html += '</div>';
+                }
+
+                // Answer as body
+                if (answer) {
+                    html += '<div class="ed-research__turn-answer">' + renderMarkdown(answer) + '</div>';
+                }
+
+                // Sources
+                if (sources.length > 0) {
+                    html += '<div class="ed-research__turn-sources">';
+                    html += '<span class="ed-research__sources-label">Sources</span>';
+                    for (var s = 0; s < sources.length; s++) {
+                        var src = sources[s];
+                        var srcTitle = src.title || src.url || 'Source';
+                        var srcUrl = src.url || '';
+                        if (srcUrl) {
+                            html += '<a class="ed-research__source-link" href="' + escapeHtml(srcUrl) + '" target="_blank" rel="noopener">' + escapeHtml(srcTitle) + '</a>';
+                        } else {
+                            html += '<span class="ed-research__source-item">' + escapeHtml(srcTitle) + '</span>';
+                        }
+                    }
+                    html += '</div>';
+                }
+
+                html += '</div>';
+            }
+
+            // Render persisted chat turns (user Q + assistant A pairs)
+            for (var c = 0; c < chatTurns.length; c++) {
+                var ct = chatTurns[c];
+                var ctId = ct.id || '';
+                var ctQuestion = ct.question || '';
+                var ctAnswer = ct.answer || '';
+                var ctSources = ct.sources || [];
+
+                // Wrap pair in a container for grouping
+                html += '<div class="ed-research__chat-pair" data-chat-turn-id="' + ctId + '">';
+
+                // User question
+                html += '<div class="ed-research__turn ed-research__turn--user">';
+                html += '<div class="ed-research__turn-question">' + escapeHtml(ctQuestion) + '</div>';
+                html += '</div>';
+
+                // Assistant answer
+                html += '<div class="ed-research__turn ed-research__turn--assistant">';
+                html += '<button class="ed-research__turn-menu" data-action="chat-turn-menu" title="Options">&hellip;</button>';
+                html += '<div class="ed-research__turn-menu-dropdown" style="display:none">';
+                html += '<button class="ed-research__turn-menu-item" data-action="delete-chat-turn" data-turn-id="' + ctId + '">Delete</button>';
+                html += '</div>';
+                if (ctAnswer) {
+                    html += '<div class="ed-research__turn-answer">' + renderMarkdown(ctAnswer) + '</div>';
+                }
+                if (ctSources.length > 0) {
+                    html += '<div class="ed-research__turn-sources">';
+                    html += '<span class="ed-research__sources-label">Sources</span>';
+                    for (var cs = 0; cs < ctSources.length; cs++) {
+                        var ctSrc = ctSources[cs];
+                        var ctSrcTitle = ctSrc.title || ctSrc.url || ctSrc.name || 'Source';
+                        var ctSrcUrl = ctSrc.url || '';
+                        if (ctSrcUrl) {
+                            html += '<a class="ed-research__source-link" href="' + escapeHtml(ctSrcUrl) + '" target="_blank" rel="noopener">' + escapeHtml(ctSrcTitle) + '</a>';
+                        } else {
+                            html += '<span class="ed-research__source-item">' + escapeHtml(ctSrcTitle) + '</span>';
+                        }
+                    }
+                    html += '</div>';
+                }
+                html += '</div>'; // .ed-research__turn--assistant
+
+                html += '</div>'; // .ed-research__chat-pair
+            }
+
+            turnsEl.innerHTML = html;
+            this._updateDigDeeperCollapse();
+        }
+
+        _sendResearchChat(question) {
+            var self = this;
+            if (!question || !question.trim()) return;
+
+            this.requireAdminToken(function (token) {
+                self._sendResearchChatWithToken(question, token);
+            });
+        }
+
+        _sendResearchChatWithToken(question, token) {
+            var self = this;
+            var panel = document.querySelector('[data-research-panel]');
+            if (!panel) return;
+            var videoId = (panel.dataset && panel.dataset.videoId) || this._researchVideoId || '';
+            var threadData = this._researchThreadData || {};
+            var currentRunId = threadData.current_follow_up_run_id || threadData.root_follow_up_run_id || null;
+
+            var askBtn = panel.querySelector('[data-action="research-ask"]');
+            var composer = panel.querySelector('[data-research-composer]');
+            var errorEl = panel.querySelector('[data-research-error]');
+            var turnsEl = panel.querySelector('[data-research-turns]');
+
+            // Disable controls
+            if (askBtn) { askBtn.disabled = true; askBtn.textContent = 'Thinking...'; }
+            if (composer) composer.disabled = true;
+            if (errorEl) errorEl.style.display = 'none';
+
+            // Make sure thread container is visible and hint is hidden
+            var threadContainer = panel.querySelector('[data-research-thread]');
+            if (threadContainer) threadContainer.style.display = 'block';
+            var hintEl = panel.querySelector('[data-research-hint]');
+            if (hintEl) hintEl.style.display = 'none';
+
+            // Show user question immediately
+            if (turnsEl) {
+                var userTurn = document.createElement('div');
+                userTurn.className = 'ed-research__turn ed-research__turn--user';
+                userTurn.innerHTML = '<div class="ed-research__turn-question">' + escapeHtml(question) + '</div>';
+                turnsEl.appendChild(userTurn);
+
+                var loadingTurn = document.createElement('div');
+                loadingTurn.className = 'ed-research__turn ed-research__turn--loading';
+                loadingTurn.innerHTML = '<div class="ed-research__turn-answer"><em>Answering...</em></div>';
+                loadingTurn.setAttribute('data-research-pending', '');
+                turnsEl.appendChild(loadingTurn);
+
+                turnsEl.scrollTop = turnsEl.scrollHeight;
+            }
+
+            // Build history from research turns and persisted chat turns
+            var history = [];
+            var existingTurns = (threadData.turns) || [];
+            for (var h = 0; h < existingTurns.length; h++) {
+                if (existingTurns[h].answer) {
+                    if (existingTurns[h].approved_questions && existingTurns[h].approved_questions.length > 0) {
+                        history.push({ role: 'user', content: existingTurns[h].approved_questions[0] });
+                    }
+                    history.push({ role: 'assistant', content: existingTurns[h].answer });
+                }
+            }
+            // Include persisted chat turns in history
+            var existingChatTurns = (threadData.chat_turns) || [];
+            for (var ct = 0; ct < existingChatTurns.length; ct++) {
+                if (existingChatTurns[ct].question) {
+                    history.push({ role: 'user', content: existingChatTurns[ct].question });
+                }
+                if (existingChatTurns[ct].answer) {
+                    history.push({ role: 'assistant', content: existingChatTurns[ct].answer });
+                }
+            }
+
+            var body = {
+                video_id: videoId,
+                preferred_variant: 'deep-research',
+                question: question,
+                history: history
+            };
+            if (currentRunId) body.follow_up_run_id = currentRunId;
+
+            // Streaming fetch with Mercury 2 diffusing
+            // NOTE: SimpleHTTP proxy buffers SSE, so we use non-streaming endpoint
+            // and render the full answer when it arrives.
+            var streamUrl = '/api/research/follow-up/chat/stream';
+            var useStream = false; // TODO: enable when dashboard moves to ASGI
+
+            var fetchUrl = useStream ? streamUrl : '/api/research/follow-up/chat';
+            var fetchMethod = 'POST';
+
+            fetch(fetchUrl, {
+                method: fetchMethod,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify(body)
+            }).then(function (resp) {
+                if (resp.status === 401) {
+                    self.handleAuthError({ interactive: true, retry: function (t) { self._sendResearchChatWithToken(question, t); } });
+                    return;
+                }
+                if (!resp.ok) {
+                    return resp.text().then(function (text) {
+                        var msg = 'Chat failed';
+                        try { msg = JSON.parse(text).detail || JSON.parse(text).error || msg; } catch (e) {}
+                        throw new Error(msg);
+                    });
+                }
+
+                if (useStream && resp.body && resp.body.getReader) {
+                    // Streaming path — will be enabled with ASGI server
+                    return handleStreamResponse(resp);
+                }
+
+                // Standard JSON response path
+                return resp.json().then(function (data) {
+                    // Remove loading indicator
+                    var pending = panel.querySelector('[data-research-pending]');
+                    if (pending) pending.remove();
+
+                    // Append assistant turn
+                    if (turnsEl) {
+                        var answerTurn = document.createElement('div');
+                        answerTurn.className = 'ed-research__turn ed-research__turn--assistant';
+                        answerTurn.innerHTML = '<div class="ed-research__turn-answer">' + renderMarkdown(data.answer || '') + '</div>';
+                        turnsEl.appendChild(answerTurn);
+                        turnsEl.scrollTop = turnsEl.scrollHeight;
+                    }
+
+                    // Update thread data for future history
+                    if (self._researchThreadData) {
+                        if (!Array.isArray(self._researchThreadData.chat_turns)) {
+                            self._researchThreadData.chat_turns = [];
+                        }
+                        self._researchThreadData.chat_turns.push({
+                            question: question,
+                            answer: data.answer || '',
+                            sources: data.sources || []
+                        });
+                    }
+
+                    self._updateClearChatButton();
+                    self._updateDigDeeperCollapse();
+
+                    if (composer) composer.value = '';
+                    if (askBtn) { askBtn.disabled = false; askBtn.textContent = 'Ask About Report'; }
+                    if (composer) composer.disabled = false;
+                });
+            }).catch(function (err) {
+                var pending = panel.querySelector('[data-research-pending]');
+                if (pending) pending.remove();
+
+                if (errorEl) {
+                    errorEl.textContent = err.message || 'Unable to answer.';
+                    errorEl.style.display = 'block';
+                }
+                if (askBtn) { askBtn.disabled = false; askBtn.textContent = 'Ask About Report'; }
+                if (composer) composer.disabled = false;
+            });
+        }
+
+        _deleteChatTurn(turnId) {
+            var self = this;
+            this.requireAdminToken(function (token) {
+                fetch('/api/research/follow-up/chat-turns/' + turnId, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                })
+                    .then(function (resp) {
+                        if (resp.status === 401) { self.handleAuthError({ interactive: true, retry: function (t) { self._deleteChatTurn(turnId); } }); return null; }
+                        return resp.json();
+                    })
+                    .then(function (resp) { return resp.json(); })
+                    .then(function (data) {
+                        if (data.deleted) {
+                            // Remove from DOM
+                            var pair = document.querySelector('[data-chat-turn-id="' + turnId + '"]');
+                            if (pair) pair.remove();
+
+                            // Remove from local state
+                            if (self._researchThreadData && Array.isArray(self._researchThreadData.chat_turns)) {
+                                self._researchThreadData.chat_turns = self._researchThreadData.chat_turns.filter(function (ct) {
+                                    return String(ct.id) !== String(turnId);
+                                });
+                            }
+
+                            self._updateClearChatButton();
+                        }
+                    })
+                    .catch(function (err) {
+                        console.warn('Failed to delete chat turn:', err);
+                    });
+            });
+        }
+
+        _clearAllChatTurns() {
+            var threadData = this._researchThreadData || {};
+            var runId = threadData.current_follow_up_run_id || threadData.root_follow_up_run_id;
+            var videoId = threadData.video_id || this._currentVideoId;
+            if (!runId && !videoId) return;
+
+            this.showConfirm(
+                'Clear chat history',
+                '<p>Delete all chat history for this thread? This cannot be undone.</p>',
+                'confirm-clear-chat',
+                'Clear All'
+            );
+        }
+
+        _executeClearChat() {
+            var self = this;
+            var threadData = this._researchThreadData || {};
+            var runId = threadData.current_follow_up_run_id || threadData.root_follow_up_run_id;
+            var videoId = threadData.video_id || this._currentVideoId;
+
+            var btn = document.querySelector('[data-action="confirm-clear-chat"]');
+            if (btn) { btn.disabled = true; btn.textContent = 'Clearing...'; }
+
+            this.requireAdminToken(function (token) {
+                var url = '/api/research/follow-up/chat-turns?';
+                if (runId) {
+                    url += 'follow_up_run_id=' + runId;
+                } else {
+                    url += 'video_id=' + videoId;
+                }
+                fetch(url, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                })
+                    .then(function (resp) {
+                        if (resp.status === 401) { self.handleAuthError({ interactive: true, retry: function (t) { self._executeClearChat(videoId, runId); } }); return null; }
+                        return resp.json();
+                    })
+                    .then(function (data) {
+                        if (!data) return;
+                        if (data.deleted) {
+                            self.closeModal();
+
+                            // Clear local state
+                            if (self._researchThreadData) {
+                                self._researchThreadData.chat_turns = [];
+                            }
+
+                            // Re-render from clean state (catches persisted + dynamic turns)
+                            self._renderResearchTurns(self._researchThreadData);
+                            self._updateDigDeeperCollapse();
+                            self._updateClearChatButton();
+                        }
+                    })
+                    .catch(function (err) {
+                        console.warn('Failed to clear chat history:', err);
+                    });
+            });
+        }
+
+        _updateClearChatButton() {
+            var chatTurns = (this._researchThreadData && this._researchThreadData.chat_turns) || [];
+            var btn = document.querySelector('[data-action="clear-chat-history"]');
+            if (btn) btn.style.display = chatTurns.length > 0 ? '' : 'none';
+        }
+
+        _startResearchPolling(videoId) {
+            if (this._researchPollTimer) return; // already polling
+            if (!videoId) return;
+            this._researchPollingVideoId = videoId;
+            this._pollResearchThread(); // immediate first poll
+        }
+
+        _pollResearchThread() {
+            var self = this;
+            var videoId = this._researchPollingVideoId;
+            if (!videoId) return;
+
+            // Guard against overlapping requests
+            if (this._researchPollInFlight) return;
+            this._researchPollInFlight = true;
+
+            var token = this.getAdminToken();
+            var headers = { 'Accept': 'application/json' };
+            if (token) headers['Authorization'] = 'Bearer ' + token;
+
+            var params = new URLSearchParams({ video_id: videoId, preferred_variant: 'deep-research' });
+            fetch('/api/research/follow-up/thread?' + params.toString(), { headers: headers })
+                .then(function (resp) {
+                    if (resp.status === 401) { self.handleAuthError({ interactive: false }); return null; }
+                    if (resp.status === 404) return null;
+                    return resp.json().then(function (data) {
+                        data._ok = resp.ok;
+                        return data;
+                    });
+                })
+                .then(function (data) {
+                    self._researchPollInFlight = false;
+
+                    if (!data) {
+                        // 401 or 404 — don't reschedule if token was just cleared
+                        if (!self.getAdminToken()) return;
+                        self._researchPollTimer = setTimeout(function () { self._pollResearchThread(); }, 10000);
+                        return;
+                    }
+
+                    if (!data._ok) {
+                        self._researchPollTimer = setTimeout(function () { self._pollResearchThread(); }, 10000);
+                        return;
+                    }
+
+                    // Ignore stale responses if video changed
+                    var panel = document.querySelector('[data-research-panel]');
+                    var currentVideoId = panel ? (panel.dataset.videoId || '') : '';
+                    if (currentVideoId !== videoId) {
+                        self._stopResearchPolling();
+                        return;
+                    }
+
+                    // Update state and re-render
+                    self._researchThreadData = data;
+                    self._renderResearchTurns(data);
+                    self._updateClearChatButton();
+                    self._updateDigDeeperCollapse();
+
+                    // Check if any turn is still running
+                    var stillRunning = false;
+                    var turns = data.turns || [];
+                    for (var i = 0; i < turns.length; i++) {
+                        if (turns[i].status === 'running') { stillRunning = true; break; }
+                    }
+
+                    if (stillRunning) {
+                        self._researchPollTimer = setTimeout(function () { self._pollResearchThread(); }, 10000);
+                    } else {
+                        self._stopResearchPolling();
+                        self.showToast('Deep research complete.', 'success');
+                    }
+                })
+                .catch(function (err) {
+                    console.warn('Research poll failed:', err);
+                    self._researchPollInFlight = false;
+                    // Schedule next poll despite error
+                    self._researchPollTimer = setTimeout(function () { self._pollResearchThread(); }, 10000);
+                });
+        }
+
+        _stopResearchPolling() {
+            if (this._researchPollTimer) {
+                clearTimeout(this._researchPollTimer);
+                this._researchPollTimer = null;
+            }
+            this._researchPollInFlight = false;
+            this._researchPollingVideoId = null;
+        }
+
+        _openResearchSuggestions() {
+            return;
+        }
+
+        _openResearchSuggestionsWithToken(token) {
+            return;
+        }
+
+        _executeInlineResearch(question, cardEl, provenance) {
+            var self = this;
+            if (!question) return;
+
+            var ctx = this._getResearchSourceContext();
+            var questionProvenance = Array.isArray(provenance) ? provenance : (provenance === 'custom' ? ['custom'] : ['suggested']);
+
+            // If card element, set to running state and track in state model
+            if (cardEl) {
+                cardEl.classList.add('ed-research__dig-deeper-card--running');
+                cardEl.disabled = true;
+                var arrowEl = cardEl.querySelector('.ed-research__dig-deeper-arrow');
+                if (arrowEl) arrowEl.innerHTML = '<span class="ed-research__dig-deeper-spinner"></span>';
+                var textEl = cardEl.querySelector('.ed-research__dig-deeper-card-text');
+                if (textEl) textEl.textContent = question + ' (Researching...)';
+                this._setSuggestionState(question, 'running');
+            }
+
+            this.requireAdminToken(function (token) {
+                fetch('/api/research/follow-up/run', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify({
+                        video_id: ctx.videoId,
+                        summary: ctx.summaryText,
+                        preferred_variant: 'deep-research',
+                        source_context: ctx.sourceContext,
+                        approved_questions: [question],
+                        question_provenance: questionProvenance,
+                        provider_mode: 'auto',
+                        depth: 'balanced'
+                    })
+                })
+                .then(function (resp) {
+                    if (resp.status === 401) { self.handleAuthError({ interactive: true, retry: function (t) { self._executeInlineResearch(question, cardEl, questionProvenance); } }); return null; }
+                    return resp.json().then(function (data) {
+                        data._ok = resp.ok;
+                        return data;
+                    });
+                })
+                .then(function (data) {
+                    if (!data) return;
+                    if (!data._ok) throw new Error(data.detail || data.error || 'Research failed');
+
+                    // Card → completed state
+                    if (cardEl) {
+                        cardEl.classList.remove('ed-research__dig-deeper-card--running');
+                        cardEl.classList.add('ed-research__dig-deeper-card--done');
+                        var doneArrow = cardEl.querySelector('.ed-research__dig-deeper-arrow');
+                        if (doneArrow) doneArrow.innerHTML = '&#x2713;';
+                        var doneText = cardEl.querySelector('.ed-research__dig-deeper-card-text');
+                        if (doneText) doneText.textContent = question;
+                        self._setSuggestionState(question, 'done');
+                    }
+
+                    // Clear composer only on success (custom research)
+                    if (provenance === 'custom') {
+                        var composer = document.querySelector('[data-research-composer]');
+                        if (composer) composer.value = '';
+                        var askBtn = document.querySelector('[data-action="research-ask"]');
+                        if (askBtn) askBtn.disabled = true;
+                        var runBtn = document.querySelector('[data-action="research-run"]');
+                        if (runBtn) runBtn.style.display = 'none';
+                    }
+
+                    self.showToast('Research started — results will appear below.', 'success');
+
+                    // Show running placeholder in thread area immediately
+                    var threadEl = document.querySelector('[data-research-thread]');
+                    var turnsEl = document.querySelector('[data-research-turns]');
+                    if (threadEl) threadEl.style.display = 'block';
+                    var hintEl = document.querySelector('[data-research-hint]');
+                    if (hintEl) hintEl.style.display = 'none';
+                    if (turnsEl) {
+                        var runningHtml = '<div class="ed-research__turn ed-research__turn--running">';
+                        runningHtml += '<span class="ed-research__dig-deeper-spinner"></span>';
+                        runningHtml += '<div class="ed-research__turn-label">Research running</div>';
+                        runningHtml += '<div class="ed-research__turn-meta">Starting research...</div>';
+                        runningHtml += '</div>';
+                        turnsEl.insertAdjacentHTML('beforeend', runningHtml);
+                    }
+
+                    // Start polling for completion
+                    self._startResearchPolling(ctx.videoId);
+                })
+                .catch(function (err) {
+                    // Card → restore to available state
+                    if (cardEl) {
+                        cardEl.classList.remove('ed-research__dig-deeper-card--running');
+                        cardEl.disabled = false;
+                        var restoreArrow = cardEl.querySelector('.ed-research__dig-deeper-arrow');
+                        if (restoreArrow) restoreArrow.innerHTML = '&#x25B8;';
+                        var restoreText = cardEl.querySelector('.ed-research__dig-deeper-card-text');
+                        if (restoreText) restoreText.textContent = question;
+                        self._setSuggestionState(question, 'failed');
+                    }
+                    self.showToast('Research failed: ' + err.message, 'error');
+                });
+            });
+        }
+
+        _setSuggestionState(question, state) {
+            var videoId = this._ponderingsSuggestionsVideoId || '';
+            if (!this._ponderingsSuggestionStateByQuestion) this._ponderingsSuggestionStateByQuestion = {};
+            var key = videoId + '::' + question;
+            this._ponderingsSuggestionStateByQuestion[key] = state;
+        }
+
+        _getSuggestionState(question) {
+            var videoId = this._ponderingsSuggestionsVideoId || '';
+            var states = this._ponderingsSuggestionStateByQuestion || {};
+            var key = videoId + '::' + question;
+            return states[key] || 'available';
+        }
+
+        _updateDigDeeperCollapse() {
+            var chatTurns = (this._researchThreadData && this._researchThreadData.chat_turns) || [];
+            var suggestions = this._ponderingsSuggestions || [];
+            var bodyEl = document.querySelector('[data-dig-deeper-body]');
+            var headerEl = document.querySelector('.ed-research__dig-deeper-header');
+            var collapsedEl = document.querySelector('[data-dig-deeper-collapsed]');
+
+            if (!bodyEl || !collapsedEl) return;
+
+            if (chatTurns.length >= 2 && suggestions.length > 0) {
+                if (bodyEl) bodyEl.style.display = 'none';
+                if (headerEl) headerEl.style.display = 'none';
+                collapsedEl.textContent = '\u25B8 Dig Deeper: ' + suggestions.length + ' prompt' + (suggestions.length !== 1 ? 's' : '');
+                collapsedEl.style.display = '';
+            } else {
+                if (bodyEl) bodyEl.style.display = '';
+                if (headerEl) headerEl.style.display = '';
+                collapsedEl.style.display = 'none';
+            }
+        }
+
+        _executeResearchRun() {
+            return;
+        }
+
+        renderReaderContent(data) {
+            this._readerData = data;
+            var video = data.video || {};
+            var summary = data.summary || {};
+            var analysis = data.analysis || {};
+            var title = video.title || '';
+            var channel = video.channel || '';
+            var publishedAt = video.published_at || '';
+            var indexedAt = data.indexed_at || '';
+            var thumb = getThumbnail(data);
+            var canonicalUrl = video.url || '';
+            var duration = formatDuration(video.duration_seconds);
+            var summaryHtml = summary.html || summary.text || '<p>No summary available.</p>';
+            var hasAudio = !!data.has_audio;
+            var audioUrl = null;
+            var variants = data.summary_variants || [];
+
+            // Store variants for switching
+            this._readerVariants = variants.length > 0 ? variants : [{ variant: 'default', html: summaryHtml, text: summary.text || '' }];
+            this._readerActiveVariant = 0;
+
+            // Store transcript data for the transcript tab
+            this._readerTranscriptText = data.transcript || '';
+            this._readerTranscriptSegments = data.transcript_segments || [];
+            this._readerHasTranscript = !!(this._readerTranscriptText.trim() || this._readerTranscriptSegments.length);
+
+            for (var vi = 0; vi < variants.length; vi++) {
+                if (variants[vi].audio_url) {
+                    audioUrl = variants[vi].audio_url;
+                    break;
+                }
+            }
+
+            // Use first variant's html if available
+            if (variants.length > 0 && variants[0].html) {
+                summaryHtml = variants[0].html;
+            }
+
+            // Humanize variant names
+            var variantLabels = {
+                'key-insights': 'Key Insights',
+                'bullet-points': 'Key Points',
+                'comprehensive': 'Full Summary',
+                'deep-research': 'Research'
+            };
+
+            function humanizeVariant(slug) {
+                if (variantLabels[slug]) return variantLabels[slug];
+                return slug.replace(/-/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+            }
+
+            function getHostLabel(url) {
+                if (!url) return '';
+                try {
+                    return new URL(url, window.location.origin).hostname.replace(/^www\./, '');
+                } catch (_) {
+                    return '';
+                }
+            }
+
+            // Categories
+            var categories = [];
+            if (Array.isArray(analysis.categories)) {
+                for (var i = 0; i < analysis.categories.length; i++) {
+                    categories.push(analysis.categories[i].category);
+                }
+            }
+
+            // Filter out deep-research variant — it gets its own dedicated Ponderings tab
+            var displayVariants = [];
+            for (var fi = 0; fi < this._readerVariants.length; fi++) {
+                if (this._readerVariants[fi].variant !== 'deep-research') {
+                    displayVariants.push(this._readerVariants[fi]);
+                }
+            }
+            var showTabs = displayVariants.length > 0;
+            var sourceHost = getHostLabel(canonicalUrl);
+            var publicationLabel = channel || sourceHost || 'YTV2 Source';
+            var kickerLabel = categories.length ? categories[0] : '';
+            var readerPrefs = this.getReaderTypographyPrefs();
+
+            var html = '';
+
+            html += '<div class="ed-reader__chrome">';
+            html += '<div class="ed-reader__masthead">';
+            html += '<div class="ed-reader__publication">';
+            html += '<span class="ed-reader__publication-mark">YTV2</span>';
+            html += '<span class="ed-reader__publication-name">Editorial</span>';
+            html += '</div>';
+            html += '<div class="ed-reader__masthead-actions">';
+            if (canonicalUrl) {
+                html += '<a class="ed-reader__source-btn" href="' + escapeHtml(canonicalUrl) + '" target="_blank" rel="noopener" aria-label="Open original article">&#8599;</a>';
+            }
+            html += '<div class="ed-reader__action-group">';
+            html += '<button class="ed-reader__audio-btn" data-action="toggle-audio-popover" aria-label="Listen options">&#9835;</button>';
+            html += '<div class="ed-reader__audio-popover">';
+            html += '<button class="ed-reader__audio-item" data-action="tts-read-aloud">';
+            html += '<span class="ed-reader__audio-item__icon">&#x1F5E3;</span>';
+            html += '<span class="ed-reader__audio-item__text">';
+            html += '<span class="ed-reader__audio-item__label">Read this aloud</span>';
+            html += '<span class="ed-reader__audio-item__sub">Device voice</span>';
+            html += '</span>';
+            html += '</button>';
+            if (hasAudio && audioUrl) {
+                html += '<button class="ed-reader__audio-item" data-action="play-audio" data-audio-url="' + escapeHtml(audioUrl) + '">';
+                html += '<span class="ed-reader__audio-item__icon">&#9654;</span>';
+                html += '<span class="ed-reader__audio-item__text">';
+                html += '<span class="ed-reader__audio-item__label">Play existing audio</span>';
+                html += '<span class="ed-reader__audio-item__sub">Saved audio</span>';
+                html += '</span>';
+                html += '</button>';
+            }
+            html += '<button class="ed-reader__audio-item ed-reader__audio-item--disabled" data-action="audio-current">';
+            html += '<span class="ed-reader__audio-item__icon">&#x2728;</span>';
+            html += '<span class="ed-reader__audio-item__text">';
+            html += '<span class="ed-reader__audio-item__label">Create audio version</span>';
+            html += '<span class="ed-reader__audio-item__sub">Checking...</span>';
+            html += '</span>';
+            html += '</button>';
+            html += '<button class="ed-reader__audio-item ed-reader__audio-item--disabled" data-action="audio-briefing">';
+            html += '<span class="ed-reader__audio-item__icon">&#x1F4E2;</span>';
+            html += '<span class="ed-reader__audio-item__text">';
+            html += '<span class="ed-reader__audio-item__label">Create full briefing</span>';
+            html += '<span class="ed-reader__audio-item__sub">Checking...</span>';
+            html += '</span>';
+            html += '</button>';
+            html += '</div>';
+            html += '</div>';
+            html += '<div class="ed-reader__action-group">';
+            html += '<button class="ed-reader__admin-toggle" data-action="toggle-admin-menu" aria-label="More actions">&#8230;</button>';
+            html += '<div class="ed-reader__admin-menu">';
+            if (publicationLabel || kickerLabel || sourceHost || publishedAt || indexedAt) {
+                html += '<div class="ed-reader__admin-section ed-reader__admin-section--about">';
+                html += '<div class="ed-reader__admin-label">About this article</div>';
+                html += '<div class="ed-reader__admin-meta">';
+                if (publicationLabel) {
+                    html += '<div class="ed-reader__admin-meta-item"><span class="ed-reader__admin-meta-key">Publisher</span><span class="ed-reader__admin-meta-value">' + escapeHtml(publicationLabel) + '</span></div>';
+                }
+                if (kickerLabel) {
+                    html += '<div class="ed-reader__admin-meta-item"><span class="ed-reader__admin-meta-key">Category</span><span class="ed-reader__admin-meta-value">' + escapeHtml(kickerLabel) + '</span></div>';
+                }
+                if (sourceHost && sourceHost !== publicationLabel) {
+                    html += '<div class="ed-reader__admin-meta-item"><span class="ed-reader__admin-meta-key">Source</span><span class="ed-reader__admin-meta-value">' + escapeHtml(sourceHost) + '</span></div>';
+                }
+                if (publishedAt) {
+                    html += '<div class="ed-reader__admin-meta-item"><span class="ed-reader__admin-meta-key">Published</span><span class="ed-reader__admin-meta-value">' + formatDate(publishedAt) + '</span></div>';
+                }
+                if (indexedAt) {
+                    html += '<div class="ed-reader__admin-meta-item"><span class="ed-reader__admin-meta-key">Added</span><span class="ed-reader__admin-meta-value">' + formatDate(indexedAt) + '</span></div>';
+                }
+                html += '</div>';
+                if (canonicalUrl) {
+                    html += '<a class="ed-reader__admin-link" href="' + escapeHtml(canonicalUrl) + '" target="_blank" rel="noopener">Open original article</a>';
+                }
+                html += '</div>';
+            }
+            html += '<div class="ed-reader__admin-section">';
+            html += '<div class="ed-reader__admin-label">Text size</div>';
+            html += '<div class="ed-reader__admin-stepper">';
+            html += '<button class="ed-reader__admin-stepper-btn" data-action="reader-size-down"' + (readerPrefs.sizeStep <= 0 ? ' disabled' : '') + ' aria-label="Decrease text size">A</button>';
+            html += '<span class="ed-reader__admin-stepper-indicator"></span>';
+            html += '<button class="ed-reader__admin-stepper-btn ed-reader__admin-stepper-btn--up" data-action="reader-size-up"' + (readerPrefs.sizeStep >= 4 ? ' disabled' : '') + ' aria-label="Increase text size">A</button>';
+            html += '</div>';
+            html += '</div>';
+            html += '<div class="ed-reader__admin-section">';
+            html += '<div class="ed-reader__admin-label">Line spacing</div>';
+            html += '<div class="ed-reader__admin-segment">';
+            html += '<button class="ed-reader__admin-option' + (readerPrefs.spacing === 'compact' ? ' ed-reader__admin-option--active' : '') + '" data-action="set-reader-pref" data-pref="spacing" data-value="compact" aria-pressed="' + (readerPrefs.spacing === 'compact' ? 'true' : 'false') + '">Compact</button>';
+            html += '<button class="ed-reader__admin-option' + (readerPrefs.spacing === 'comfortable' ? ' ed-reader__admin-option--active' : '') + '" data-action="set-reader-pref" data-pref="spacing" data-value="comfortable" aria-pressed="' + (readerPrefs.spacing === 'comfortable' ? 'true' : 'false') + '">Comfortable</button>';
+            html += '</div>';
+            html += '</div>';
+            html += '<button class="ed-reader__admin-item" data-action="admin-regenerate">Regenerate...</button>';
+            html += '<button class="ed-reader__admin-item" data-action="admin-images">Manage Images...</button>';
+            html += '<button class="ed-reader__admin-item ed-reader__admin-item--danger" data-action="admin-delete">Delete...</button>';
+            if (this.getAdminToken()) {
+                html += '<div class="ed-reader__admin-divider"></div>';
+                html += '<button class="ed-reader__admin-item" data-action="forget-token">Forget admin token</button>';
+            }
+            html += '</div>';
+            html += '</div>';
+            html += '<button class="ed-reader__close" data-action="close-reader" aria-label="Close article">&times;</button>';
+            html += '</div>';
+            html += '</div>';
+            html += '</div>';
+
+            html += '<div class="ed-reader__body">';
+            html += '<article class="ed-reader__article" data-reader-size="' + readerPrefs.sizeStep + '" data-reader-spacing="' + escapeHtml(readerPrefs.spacing) + '">';
+
+            if (kickerLabel) {
+                html += '<div class="ed-reader__kicker">' + escapeHtml(kickerLabel) + '</div>';
+            }
+
+            // Title
+            html += '<h1 class="ed-reader__title">' + escapeHtml(title) + '</h1>';
+
+            if (thumb) {
+                html += '<figure class="ed-reader__thumb">';
+                html += '<img src="' + escapeHtml(thumb) + '" alt="">';
+                if (publicationLabel || sourceHost) {
+                    html += '<figcaption class="ed-reader__caption">' + escapeHtml(publicationLabel || sourceHost) + '</figcaption>';
+                }
+                html += '</figure>';
+            }
+
+            if (showTabs) {
+                html += '<div class="ed-reader__variants' + (thumb ? ' ed-reader__variants--after-image' : ' ed-reader__variants--after-title') + '">';
+                var displayIdx = 0;
+                for (var ti = 0; ti < this._readerVariants.length; ti++) {
+                    if (this._readerVariants[ti].variant === 'deep-research') continue;
+                    var vSlug = this._readerVariants[ti].variant || '';
+                    var vLabel = humanizeVariant(vSlug);
+                    html += '<button class="ed-reader__variant' + (displayIdx === 0 ? ' ed-reader__variant--active' : '') +
+                        '" data-action="switch-variant" data-variant-idx="' + ti + '">' + escapeHtml(vLabel) + '</button>';
+                    displayIdx++;
+                }
+                html += '<button class="ed-reader__variant" data-action="show-research">Ponderings</button>';
+                if (this._readerHasTranscript) {
+                    html += '<button class="ed-reader__variant" data-action="show-transcript">Transcript</button>';
+                }
+                html += '</div>';
+            }
+
+            // Summary content
+            html += '<div class="ed-reader__summary">' + summaryHtml + '</div>';
+
+            // Research panel (hidden by default, shown when Research tab clicked)
+            html += this._renderResearchPanel(data);
+
+            // Transcript content (hidden by default, shown when tab clicked)
+            if (this._readerHasTranscript) {
+                html += this._renderTranscriptPanel(video.video_id || '', canonicalUrl);
+            }
+
+            html += '</article>';
+            html += '</div>'; // ed-reader__body
+
+            // Store audio URL for auto-play
+            this._readerAudioUrl = audioUrl;
+
+            this.showReaderPanel(html);
+        }
+
+        // ---- Audio Player ----
+
+        playAudio(url, title) {
+            this.stopTTS();
+            var player = this.mounts.player;
+            if (!player) return;
+
+            var audio = player.querySelector('audio');
+            if (!audio) {
+                audio = document.createElement('audio');
+                audio.id = 'ed-audio-element';
+            }
+
+            // If same URL and paused, resume
+            var resolvedUrl = new URL(url, window.location.origin).href;
+            if (audio.src && audio.src === resolvedUrl && audio.paused) {
+                audio.play();
+                player.classList.add('active');
+                return;
+            }
+
+            audio.src = url;
+            audio.preload = 'metadata';
+            player.innerHTML = '';
+            player.appendChild(audio);
+
+            var bar = document.createElement('div');
+            bar.className = 'ed-audio-bar';
+            bar.innerHTML =
+                '<button class="ed-audio-bar__play" data-action="audio-toggle">&#9654;</button>' +
+                '<span class="ed-audio-bar__title">' + escapeHtml(title || 'Playing') + '</span>' +
+                '<span class="ed-audio-bar__time">0:00</span>' +
+                '<input type="range" class="ed-audio-bar__seek" min="0" max="100" value="0" step="0.1">' +
+                '<span class="ed-audio-bar__duration">--:--</span>' +
+                '<button class="ed-audio-bar__close" data-action="audio-close">&times;</button>';
+            player.appendChild(bar);
+
+            var self = this;
+            audio.addEventListener('loadedmetadata', function () {
+                var durSpan = bar.querySelector('.ed-audio-bar__duration');
+                if (durSpan) durSpan.textContent = formatDuration(audio.duration);
+                var seek = bar.querySelector('.ed-audio-bar__seek');
+                if (seek) seek.max = Math.floor(audio.duration);
+            });
+
+            audio.addEventListener('timeupdate', function () {
+                var timeSpan = bar.querySelector('.ed-audio-bar__time');
+                if (timeSpan) timeSpan.textContent = formatDuration(audio.currentTime);
+                var seek = bar.querySelector('.ed-audio-bar__seek');
+                if (seek && audio.duration) seek.value = audio.currentTime;
+            });
+
+            audio.addEventListener('ended', function () {
+                var playBtn = bar.querySelector('.ed-audio-bar__play');
+                if (playBtn) playBtn.innerHTML = '&#9654;';
+            });
+
+            player.classList.add('active');
+            audio.play().catch(function () {});
+            var playBtn = bar.querySelector('.ed-audio-bar__play');
+            if (playBtn) playBtn.innerHTML = '&#10074;&#10074;';
+        }
+
+        toggleAudioPlayback() {
+            var audio = document.getElementById('ed-audio-element');
+            if (!audio) return;
+            var playBtn = document.querySelector('.ed-audio-bar__play');
+            if (audio.paused) {
+                audio.play();
+                if (playBtn) playBtn.innerHTML = '&#10074;&#10074;';
+            } else {
+                audio.pause();
+                if (playBtn) playBtn.innerHTML = '&#9654;';
+            }
+        }
+
+        closeAudio() {
+            var audio = document.getElementById('ed-audio-element');
+            if (audio) { audio.pause(); audio.src = ''; }
+            if (this.mounts.player) {
+                this.mounts.player.classList.remove('active');
+                this.mounts.player.innerHTML = '';
+            }
+        }
+
+        // ---- SSE Live Updates ----
+
+        connectEventSource() {
+            if (this._eventSource) return; // already connected
+            try {
+                this._eventSource = new EventSource('/api/report-events');
+                var self = this;
+
+                this._eventSource.addEventListener('report-synced', function (e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        console.log('[Editorial SSE] report-synced:', data.video_id);
+                        self._handleReportSynced(data);
+                    } catch (err) {
+                        console.warn('[Editorial SSE] report-synced parse error:', err);
+                    }
+                });
+
+                this._eventSource.addEventListener('reprocess-scheduled', function (e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        console.log('[Editorial SSE] reprocess-scheduled:', data.video_id);
+                        self.showToast('Regeneration scheduled for ' + (data.video_id || 'report'));
+                    } catch (err) {
+                        console.warn('[Editorial SSE] reprocess-scheduled parse error:', err);
+                    }
+                });
+
+                this._eventSource.addEventListener('reprocess-complete', function (e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        console.log('[Editorial SSE] reprocess-complete:', data.video_id, data.summary_type, data.status);
+                        if (data.status === 'error') {
+                            self.showToast('Regeneration failed for ' + (data.summary_type || 'report'));
+                        } else {
+                            self.showToast('Regeneration complete — ' + (data.summary_type || 'report'));
+                            // Refresh reader if open for this video
+                            if (self._activeReaderId === data.video_id) {
+                                self.openReader(data.video_id);
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('[Editorial SSE] reprocess-complete parse error:', err);
+                    }
+                });
+
+                this._eventSource.addEventListener('reprocess-error', function (e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        console.warn('[Editorial SSE] reprocess-error:', data.video_id, data.error);
+                        var msg = 'Regeneration failed';
+                        if (data.error === 'no-summary-types') {
+                            msg = 'No summary types found for this report';
+                        } else if (data.error === 'missing-url') {
+                            msg = 'Could not resolve video URL';
+                        } else if (data.error) {
+                            msg = 'Regeneration failed: ' + data.error.substring(0, 80);
+                        }
+                        self.showToast(msg);
+                    } catch (err) {
+                        console.warn('[Editorial SSE] reprocess-error parse error:', err);
+                    }
+                });
+
+                this._eventSource.addEventListener('audio-synced', function (e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        console.log('[Editorial SSE] audio-synced:', data.video_id);
+                        if (self._activeReaderId === data.video_id) {
+                            self.showToast('Audio generation complete');
+                            // Re-open reader to pick up new audio
+                            self.openReader(data.video_id);
+                        }
+                    } catch (err) {
+                        console.warn('[Editorial SSE] audio-synced parse error:', err);
+                    }
+                });
+
+                this._eventSource.addEventListener('report-added', function (e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        console.log('[Editorial SSE] report-added:', data.video_id);
+                        self.showToast('New report available');
+                        // Reload content to show the new report
+                        self.state.page = 1;
+                        self.loadContent();
+                    } catch (err) {
+                        console.warn('[Editorial SSE] report-added parse error:', err);
+                    }
+                });
+
+                this._eventSource.addEventListener('image-prompt-set', function (e) {
+                    try {
+                        var data = JSON.parse(e.data);
+                        console.log('[Editorial SSE] image-prompt-set:', data.video_id);
+                        if (self._pendingImageGeneration && self._pendingImageGeneration.mode === (data.mode || 'ai1')) {
+                            // Generation started, pending row will resolve via report-synced
+                        }
+                    } catch (err) {
+                        console.warn('[Editorial SSE] image-prompt-set parse error:', err);
+                    }
+                });
+
+                this._eventSource.addEventListener('error', function () {
+                    console.warn('[Editorial SSE] Connection error — will auto-reconnect');
+                });
+
+                console.log('[Editorial] SSE connected to /api/report-events');
+            } catch (err) {
+                console.warn('[Editorial] Failed to connect SSE:', err);
+            }
+        }
+
+        _handleReportSynced(data) {
+            var videoId = data.video_id;
+            if (!videoId) return;
+
+            // If the user is viewing this report in the reader, refresh it
+            if (this._activeReaderId === videoId) {
+                console.log('[Editorial] Refreshing reader for synced report:', videoId);
+                this.showToast('Report updated — refreshing');
+                this.openReader(videoId);
+            }
+
+            // Check if this report exists in the current feed — refresh if on page 1
+            if (this.state.page === 1) {
+                var existsInFeed = false;
+                for (var i = 0; i < this.state.items.length; i++) {
+                    if (this.state.items[i].video_id === videoId || this.state.items[i].id === videoId) {
+                        existsInFeed = true;
+                        break;
+                    }
+                }
+                if (existsInFeed) {
+                    // Silently reload to pick up updated data
+                    this.loadContent();
+                }
+            }
+        }
+
+        // ---- Admin Actions ----
+
+        // Token management — shows editorial modal, never browser prompt()
+        getAdminToken() {
+            return localStorage.getItem('ytv2.reprocessToken') || '';
+        }
+
+        clearAdminToken() {
+            localStorage.removeItem('ytv2.reprocessToken');
+        }
+
+        handleAuthError(opts) {
+            this.clearAdminToken();
+            if (opts && opts.interactive) {
+                this.closeModal();
+                var retryFn = opts.retry || null;
+                this.showTokenPrompt(retryFn, 'That token didn\u2019t match. Try again.');
+            } else {
+                if (this._researchPollTimer) {
+                    clearTimeout(this._researchPollTimer);
+                    this._researchPollTimer = null;
+                }
+                var composer = document.querySelector('.ed-research__composer-input');
+                if (composer) composer.disabled = true;
+            }
+        }
+
+        requireAdminToken(callback) {
+            var token = this.getAdminToken();
+            if (token) { callback(token); return; }
+            this.showTokenPrompt(callback);
+        }
+
+        showTokenPrompt(callback, errorMessage) {
+            var errorHtml = errorMessage ? '<p class="ed-token-error">' + escapeHtml(errorMessage) + '</p>' : '';
+            this.showModal(
+                '<div class="ed-modal__header">' +
+                    '<h2 class="ed-modal__title">Admin token required</h2>' +
+                    '<p class="ed-modal__subtitle">Enter your admin token to perform this action.</p>' +
+                '</div>' +
+                '<div class="ed-modal__body">' +
+                    errorHtml +
+                    '<input type="password" class="ed-token-input" placeholder="Token" autocomplete="off">' +
+                    '<p class="ed-token-helper">Matches the <code>DEBUG_TOKEN</code> value in your <code>.env</code>. Stored locally for future actions.</p>' +
+                '</div>' +
+                '<div class="ed-modal__footer">' +
+                    '<button class="ed-btn ed-btn--ghost" data-action="modal-cancel">Cancel</button>' +
+                    '<button class="ed-btn ed-btn--primary" data-action="save-token">Save token</button>' +
+                '</div>',
+                'ed-modal--admin'
+            );
+            this._tokenCallback = callback;
+        }
+
+        saveTokenFromModal() {
+            var input = document.querySelector('.ed-token-input');
+            var token = input ? input.value.trim() : '';
+            if (!token) return;
+            localStorage.setItem('ytv2.reprocessToken', token);
+            this.closeModal();
+            if (this._tokenCallback) {
+                this._tokenCallback(token);
+                this._tokenCallback = null;
+            }
+        }
+
+        toggleAdminMenu() {
+            var menu = document.querySelector('.ed-reader__admin-menu');
+            var toggle = document.querySelector('.ed-reader__admin-toggle');
+            if (!menu) return;
+            var willOpen = !menu.classList.contains('ed-reader__admin-menu--open');
+            this.closeAudioPopover();
+            menu.classList.toggle('ed-reader__admin-menu--open', willOpen);
+            if (toggle) toggle.classList.toggle('ed-reader__admin-toggle--open', willOpen);
+        }
+
+        closeAdminMenu() {
+            var menu = document.querySelector('.ed-reader__admin-menu');
+            var toggle = document.querySelector('.ed-reader__admin-toggle');
+            if (menu) menu.classList.remove('ed-reader__admin-menu--open');
+            if (toggle) toggle.classList.remove('ed-reader__admin-toggle--open');
+        }
+
+        getReaderTypographyPrefs() {
+            if (!this._readerTypographyPrefs) this._readerTypographyPrefs = getStoredReaderTypographyPrefs();
+            return this._readerTypographyPrefs;
+        }
+
+        setReaderTypographyPref(pref, value) {
+            var prefs = this.getReaderTypographyPrefs();
+            if (pref === 'spacing') {
+                if (['compact', 'comfortable'].indexOf(value) === -1) return;
+                prefs.spacing = value;
+            } else {
+                return;
+            }
+            this._readerTypographyPrefs = prefs;
+            localStorage.setItem('ytv2.readerTypography', JSON.stringify(prefs));
+            this.applyReaderTypographyPrefs();
+        }
+
+        stepReaderSize(direction) {
+            var prefs = this.getReaderTypographyPrefs();
+            var next = prefs.sizeStep + direction;
+            if (next < 0 || next >= READER_SIZE_STEPS.length) return;
+            prefs.sizeStep = next;
+            this._readerTypographyPrefs = prefs;
+            localStorage.setItem('ytv2.readerTypography', JSON.stringify(prefs));
+            this.applyReaderTypographyPrefs();
+        }
+
+        applyReaderTypographyPrefs() {
+            var prefs = this.getReaderTypographyPrefs();
+            var article = document.querySelector('.ed-reader__article');
+            if (article) {
+                article.dataset.readerSize = prefs.sizeStep;
+                article.dataset.readerSpacing = prefs.spacing;
+            }
+            var downBtn = document.querySelector('[data-action="reader-size-down"]');
+            var upBtn = document.querySelector('[data-action="reader-size-up"]');
+            if (downBtn) downBtn.disabled = (prefs.sizeStep <= 0);
+            if (upBtn) upBtn.disabled = (prefs.sizeStep >= READER_SIZE_STEPS.length - 1);
+            var buttons = document.querySelectorAll('[data-action="set-reader-pref"]');
+            for (var i = 0; i < buttons.length; i++) {
+                var btn = buttons[i];
+                var isActive = btn.dataset.value === prefs.spacing;
+                btn.classList.toggle('ed-reader__admin-option--active', isActive);
+                btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            }
+        }
+
+        showModal(html, cssClass) {
+            this.closeModal();
+            var backdrop = document.createElement('div');
+            backdrop.className = 'ed-modal-backdrop';
+            var modal = document.createElement('div');
+            modal.className = 'ed-modal' + (cssClass ? ' ' + cssClass : '');
+            modal.innerHTML = html;
+            backdrop.appendChild(modal);
+            document.body.appendChild(backdrop);
+        }
+
+        closeModal() {
+            var existing = document.querySelector('.ed-modal-backdrop');
+            if (existing) existing.remove();
+        }
+
+        showToast(message, type) {
+            var toast = document.createElement('div');
+            toast.className = 'ed-toast' + (type === 'error' ? ' ed-toast--error' : '');
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(function () { toast.classList.add('ed-toast--fade'); }, 2500);
+            setTimeout(function () { toast.remove(); }, 3000);
+        }
+
+        // Editorial confirmation dialog — replaces browser confirm()
+        showConfirm(title, body, action, dangerLabel) {
+            this.showModal(
+                '<div class="ed-modal__header">' +
+                    '<h2 class="ed-modal__title">' + escapeHtml(title) + '</h2>' +
+                '</div>' +
+                '<div class="ed-modal__body">' +
+                    '<div class="ed-confirm-body">' + body + '</div>' +
+                '</div>' +
+                '<div class="ed-modal__footer">' +
+                    '<button class="ed-btn ed-btn--ghost" data-action="modal-cancel">Cancel</button>' +
+                    '<button class="ed-btn ed-btn--danger" data-action="' + escapeHtml(action) + '">' + escapeHtml(dangerLabel || 'Confirm') + '</button>' +
+                '</div>',
+                'ed-modal--admin'
+            );
+        }
+
+        // ---- Delete ----
+
+        showDeleteConfirm() {
+            this.closeAdminMenu();
+            var title = document.querySelector('.ed-reader__title');
+            var titleText = title ? title.textContent : 'this report';
+            this.showConfirm(
+                'Delete report',
+                '<p>This will permanently delete <strong>"' + escapeHtml(titleText) + '"</strong> and all associated files (summary, images, audio). This cannot be undone.</p>',
+                'confirm-delete',
+                'Delete'
+            );
+        }
+
+        async executeDelete() {
+            var videoId = this._activeReaderId;
+            if (!videoId) return;
+            var btn = document.querySelector('[data-action="confirm-delete"]');
+            if (btn) { btn.disabled = true; btn.textContent = 'Deleting...'; }
+            try {
+                var resp = await fetch('/api/delete/' + encodeURIComponent(videoId), { method: 'DELETE' });
+                if (!resp.ok) throw new Error('Delete failed (' + resp.status + ')');
+                this.closeModal();
+                this.closeReader();
+                this.showToast('Report deleted');
+                var card = document.querySelector('[data-video-id="' + videoId + '"]');
+                if (card) {
+                    card.style.transition = 'opacity 0.3s ease';
+                    card.style.opacity = '0';
+                    setTimeout(function () { card.remove(); }, 300);
+                }
+            } catch (err) {
+                this.showToast('Delete failed: ' + err.message, 'error');
+                this.closeModal();
+            }
+        }
+
+        // ---- Regenerate ----
+
+        showRegenerateModal() {
+            this.closeAdminMenu();
+
+            var existingSlugs = {};
+            if (this._readerVariants) {
+                for (var i = 0; i < this._readerVariants.length; i++) {
+                    existingSlugs[this._readerVariants[i].variant] = true;
+                }
+            }
+
+            // Separate text and audio variants
+            var textVariants = [];
+            var audioVariants = [];
+            for (var v = 0; v < REPROCESS_VARIANTS.length; v++) {
+                if (REPROCESS_VARIANTS[v].kind === 'audio') {
+                    audioVariants.push(REPROCESS_VARIANTS[v]);
+                } else {
+                    textVariants.push(REPROCESS_VARIANTS[v]);
+                }
+            }
+            var generatedCount = 0;
+            for (var slug in existingSlugs) {
+                if (Object.prototype.hasOwnProperty.call(existingSlugs, slug)) generatedCount++;
+            }
+            var missingCount = REPROCESS_VARIANTS.length - generatedCount;
+
+            var title = '';
+            var titleEl = document.querySelector('.ed-reader__title');
+            if (titleEl) title = titleEl.textContent || '';
+
+            var html = '<div class="ed-modal__header ed-modal__header--spread">' +
+                '<div>' +
+                    '<div class="ed-modal__eyebrow">Admin action</div>' +
+                    '<h2 class="ed-modal__title">Regenerate Summary</h2>' +
+                    '<p class="ed-modal__subtitle">Click the outputs you want to refresh for <strong>' + escapeHtml(title || 'this report') + '</strong>. Existing versions can be regenerated in place.</p>' +
+                '</div>' +
+                '<button class="ed-modal__close" data-action="modal-cancel" aria-label="Close">&times;</button>' +
+            '</div>' +
+            '<div class="ed-modal__body">';
+            html += '<div class="ed-regen-summary">' +
+                '<div class="ed-regen-summary__pill">' + generatedCount + ' generated</div>' +
+                '<div class="ed-regen-summary__pill ed-regen-summary__pill--muted">' + missingCount + ' missing</div>' +
+            '</div>';
+            html += '<div class="ed-regen-direct">';
+            html += '<div class="ed-regen-group">';
+            html += '<div class="ed-regen-group__label">Text summaries</div>';
+            html += '<div class="ed-regen-grid">';
+            for (var tt = 0; tt < textVariants.length; tt++) {
+                html += this._renderRegenCard(textVariants[tt], !!existingSlugs[textVariants[tt].id]);
+            }
+            html += '</div></div>';
+
+            html += '<div class="ed-regen-group">';
+            html += '<div class="ed-regen-group__label">Audio outputs</div>';
+            html += '<div class="ed-regen-grid">';
+            for (var aa = 0; aa < audioVariants.length; aa++) {
+                html += this._renderRegenCard(audioVariants[aa], !!existingSlugs[audioVariants[aa].id]);
+            }
+            html += '</div></div></div>';
+
+            html += '</div>' +
+                '<div class="ed-modal__footer">' +
+                    '<div class="ed-modal__footer-note">Existing outputs can be regenerated without deleting the current version first.</div>' +
+                    '<button class="ed-btn ed-btn--ghost" data-action="modal-cancel">Cancel</button>' +
+                    '<button class="ed-btn ed-btn--primary" data-action="confirm-regenerate">Generate selected outputs</button>' +
+                '</div>';
+
+            this.showModal(html, 'ed-modal--compact ed-modal--admin');
+            this._syncRegenSelectionState();
+        }
+
+        _renderRegenCard(variant, exists) {
+            var cls = 'ed-regen-card' + (exists ? ' ed-regen-card--exists' : '');
+            var html = '<label class="' + cls + '" data-regen-card>' +
+                '<input type="checkbox" class="ed-regen-card__check" value="' + escapeHtml(variant.id) + '" data-kind="' + variant.kind + '">' +
+                '<div class="ed-regen-card__surface">' +
+                    '<div class="ed-regen-card__top">' +
+                        '<div class="ed-regen-card__info">' +
+                            '<span class="ed-regen-card__label">' + escapeHtml(variant.label) + '</span>' +
+                            '<span class="ed-regen-card__hint">' + escapeHtml(variant.hint || '') + '</span>' +
+                        '</div>' +
+                        '<span class="ed-regen-card__marker">&#10003;</span>' +
+                    '</div>' +
+                    '<div class="ed-regen-card__meta">' +
+                        (exists ? '<span class="ed-regen-card__badge">Already generated</span>' : '<span class="ed-regen-card__subtle">Not yet generated</span>') +
+                    '</div>';
+
+            if (variant.proficiency) {
+                html += '<div class="ed-regen-card__proficiency" hidden>' +
+                    '<button type="button" class="ed-proficiency-btn ed-proficiency-btn--active" data-proficiency="intermediate">Intermediate</button>' +
+                    '<button type="button" class="ed-proficiency-btn" data-proficiency="beginner">Beginner</button>' +
+                    '<button type="button" class="ed-proficiency-btn" data-proficiency="advanced">Advanced</button>' +
+                '</div>';
+            }
+
+            html += '</div></label>';
+            return html;
+        }
+
+        _syncRegenSelectionState() {
+            var cards = document.querySelectorAll('[data-regen-card]');
+            for (var i = 0; i < cards.length; i++) {
+                var check = cards[i].querySelector('.ed-regen-card__check');
+                var selected = !!(check && check.checked);
+                cards[i].classList.toggle('ed-regen-card--selected', selected);
+                var prof = cards[i].querySelector('.ed-regen-card__proficiency');
+                if (prof) prof.hidden = !selected;
+            }
+            this._updateRegenCta();
+        }
+
+        _updateRegenCta() {
+            var checked = document.querySelectorAll('.ed-regen-card__check:checked');
+            var cta = document.querySelector('[data-action="confirm-regenerate"]');
+            if (cta) {
+                cta.textContent = checked.length ? this._getRegenActionLabel(checked) : 'Generate selected outputs';
+                cta.disabled = !checked.length;
+            }
+        }
+
+        _getRegenActionLabel(checkedNodes) {
+            var existing = 0;
+            for (var i = 0; i < checkedNodes.length; i++) {
+                var card = checkedNodes[i].closest('[data-regen-card]');
+                if (card && card.classList.contains('ed-regen-card--exists')) existing++;
+            }
+            var count = checkedNodes.length;
+            if (existing === 0) return 'Generate ' + count + ' output' + (count === 1 ? '' : 's');
+            if (existing === count) return 'Regenerate ' + count + ' output' + (count === 1 ? '' : 's');
+            return 'Update ' + count + ' output' + (count === 1 ? '' : 's');
+        }
+
+
+        async executeRegenerate() {
+            var videoId = this._activeReaderId;
+            if (!videoId) return;
+
+            var self = this;
+            this.requireAdminToken(function (token) { self._doRegenerate(token); });
+        }
+
+        async _doRegenerate(token) {
+            var self = this;
+            var checkboxes = document.querySelectorAll('.ed-regen-card__check:checked');
+            if (!checkboxes.length) { this.showToast('Select at least one variant', 'error'); return; }
+
+            var summaryTypes = [];
+            var regenerateAudio = false;
+            for (var i = 0; i < checkboxes.length; i++) {
+                var kind = checkboxes[i].dataset.kind;
+                var val = checkboxes[i].value;
+                if (kind === 'audio') {
+                    regenerateAudio = true;
+                    var card = checkboxes[i].closest('[data-regen-card]');
+                    var profBtn = card ? card.querySelector('.ed-proficiency-btn--active') : null;
+                    if (profBtn && (val === 'audio-fr' || val === 'audio-es')) {
+                        summaryTypes.push(val + ':' + profBtn.dataset.proficiency);
+                    } else {
+                        summaryTypes.push(val);
+                    }
+                } else {
+                    summaryTypes.push(val);
+                }
+            }
+
+            var btn = document.querySelector('[data-action="confirm-regenerate"]');
+            if (btn) { btn.disabled = true; btn.textContent = 'Regenerating...'; }
+
+            try {
+                var resp = await fetch('/api/reprocess', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Reprocess-Token': token
+                    },
+                    body: JSON.stringify({
+                        video_id: this._activeReaderId,
+                        regenerate_audio: regenerateAudio,
+                        summary_types: summaryTypes
+                    })
+                });
+                if (resp.status === 401) { this.handleAuthError({ interactive: true, retry: function (t) { self._doRegenerate(t); } }); return; }
+                if (!resp.ok) throw new Error('Regenerate failed (' + resp.status + ')');
+                this.closeModal();
+                this.showToast('Regeneration started');
+            } catch (err) {
+                this.showToast('Regenerate failed: ' + err.message, 'error');
+                this.closeModal();
+            }
+        }
+
+        // ---- Manage Images ----
+
+        showImagesModal() {
+            this.closeAdminMenu();
+            if (!this._readerData) {
+                this.showToast('No report data loaded', 'error');
+                return;
+            }
+            this._imageMode = 'ai1';
+            this._renderImagesModal();
+        }
+
+        _getImageAnalysis() {
+            var analysis = (this._readerData && this._readerData.analysis) || {};
+            var allVars = Array.isArray(analysis.summary_image_variants) ? analysis.summary_image_variants : [];
+            var mode = this._imageMode || 'ai1';
+
+            // Derive AI1 variants (non-AI2 entries)
+            var a1Variants = allVars.filter(function (v) { return !isAi2Variant(v); })
+                .sort(function (a, b) {
+                    var ca = (a.created_at || '') + '';
+                    var cb = (b.created_at || '') + '';
+                    return ca < cb ? 1 : ca > cb ? -1 : 0;
+                });
+
+            // Derive AI2 variants from shared array
+            var ai2Urls = getAi2VariantUrls(analysis);
+            var urlToPrompt = {};
+            var urlToCreated = {};
+            allVars.forEach(function (v) {
+                if (v.url) {
+                    var nu = normalizeAssetUrl(v.url);
+                    urlToPrompt[nu] = v.prompt || '';
+                    if (v.created_at) urlToCreated[nu] = String(v.created_at);
+                }
+            });
+            var a2Variants = ai2Urls
+                .map(function (u) {
+                    return { url: u, image_mode: 'ai2', prompt: urlToPrompt[normalizeAssetUrl(u)] || '', created_at: urlToCreated[normalizeAssetUrl(u)] || '' };
+                })
+                .sort(function (a, b) {
+                    var ca = (a.created_at || '') + '';
+                    var cb = (b.created_at || '') + '';
+                    return ca < cb ? 1 : ca > cb ? -1 : 0;
+                });
+
+            // Selected URLs (normalized for comparison)
+            var a1Selected = normalizeAssetUrl(analysis.summary_image_selected_url || this._readerData.summary_image_url || '');
+            var a2Selected = normalizeAssetUrl(analysis.summary_image_ai2_url || '');
+
+            // Prompt defaults
+            var a1Default = analysis.summary_image_prompt || '';
+            if (!a1Default) {
+                for (var i = allVars.length - 1; i >= 0; i--) {
+                    if (!isAi2Variant(allVars[i]) && allVars[i].prompt) { a1Default = allVars[i].prompt; break; }
+                }
+                if (!a1Default) a1Default = analysis.summary_image_prompt_last_used || '';
+            }
+            var a2Default = analysis.summary_image_ai2_prompt || analysis.summary_image_ai2_prompt_last_used || '';
+            if (!a2Default) {
+                for (var j = allVars.length - 1; j >= 0; j--) {
+                    if (isAi2Variant(allVars[j]) && allVars[j].prompt) { a2Default = allVars[j].prompt; break; }
+                }
+            }
+
+            // Original prompts
+            var a1Original = analysis.summary_image_prompt_original || '';
+            var a2Original = analysis.summary_image_ai2_prompt_original || '';
+
+            // Has AI2 data?
+            var hasAi2 = !!(analysis.summary_image_ai2_url || analysis.summary_image_ai2_prompt || a2Variants.length);
+
+            return {
+                analysis: analysis,
+                allVars: allVars,
+                mode: mode,
+                hasAi2: hasAi2,
+                a1Variants: a1Variants,
+                a2Variants: a2Variants,
+                a1Selected: a1Selected,
+                a2Selected: a2Selected,
+                a1Default: a1Default,
+                a2Default: a2Default,
+                a1Original: a1Original,
+                a2Original: a2Original
+            };
+        }
+
+        _renderImageVariantRow(variant, selectedUrl, mode) {
+            var vUrl = normalizeAssetUrl(variant.url || '');
+            var isSel = vUrl && urlPath(vUrl) === urlPath(selectedUrl);
+            var when = timeAgo(variant.created_at);
+            var preview = (variant.prompt || '').trim();
+            if (preview.length > 150) preview = preview.slice(0, 147) + '...';
+            var thumbHtml = isSel
+                ? '<div class="ed-img-row__thumb ed-img-row__thumb--current">' +
+                    '<img src="' + escapeHtml(vUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' +
+                    '<span class="ed-img-row__thumb-badge">Current</span>' +
+                '</div>'
+                : '<button class="ed-img-row__thumb ed-img-row__thumb-btn" type="button" data-action="select-image-variant" data-url="' + escapeHtml(vUrl) + '" aria-label="Make this the current image">' +
+                    '<img src="' + escapeHtml(vUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' +
+                    '<span class="ed-img-row__thumb-badge">Make current</span>' +
+                '</button>';
+
+            return '<article class="ed-img-row' + (isSel ? ' ed-img-row--selected' : '') + '" data-variant-url="' + escapeHtml(vUrl) + '">' +
+                thumbHtml +
+                '<div class="ed-img-row__body">' +
+                    '<div class="ed-img-row__top">' +
+                        '<div class="ed-img-row__meta">' +
+                            '<span class="ed-img-row__time">' + escapeHtml(when || 'Recently generated') + '</span>' +
+                            (isSel ? '<span class="ed-img-row__selected-badge">Selected</span>' : '') +
+                        '</div>' +
+                        '<div class="ed-img-row__prompt">' + escapeHtml(preview || 'Saved without a custom prompt.') + '</div>' +
+                    '</div>' +
+                    '<div class="ed-img-row__actions">' +
+                        '<button class="ed-btn ed-btn--ghost ed-btn--sm" data-action="use-variant-prompt" data-url="' + escapeHtml(vUrl) + '">Use this prompt</button>' +
+                        (isSel ? '<span class="ed-img-row__current">Current image</span>' : '<button class="ed-btn ed-btn--secondary ed-btn--sm" data-action="select-image-variant" data-url="' + escapeHtml(vUrl) + '">Select image</button>') +
+                        '<button class="ed-btn ed-btn--ghost ed-btn--sm ed-btn--danger-ghost" data-action="confirm-delete-image" data-url="' + escapeHtml(vUrl) + '">Delete</button>' +
+                    '</div>' +
+                '</div>' +
+            '</article>';
+        }
+
+        _renderPendingImageRow(pending) {
+            var preview = (pending && pending.prompt ? pending.prompt.trim() : '');
+            if (preview.length > 150) preview = preview.slice(0, 147) + '...';
+
+            return '<article class="ed-img-row ed-img-row--pending">' +
+                '<div class="ed-img-row__thumb ed-img-row__thumb--pending">' +
+                    '<div class="ed-img-row__thumb-skeleton"></div>' +
+                '</div>' +
+                '<div class="ed-img-row__body">' +
+                    '<div class="ed-img-row__top">' +
+                        '<div class="ed-img-row__meta">' +
+                            '<span class="ed-img-row__time">Generating now</span>' +
+                            '<span class="ed-img-row__selected-badge ed-img-row__selected-badge--pending">Pending</span>' +
+                        '</div>' +
+                        '<div class="ed-img-row__prompt">' + escapeHtml(preview || 'Generating a new image variant from the current prompt.') + '</div>' +
+                    '</div>' +
+                    '<div class="ed-img-row__actions">' +
+                        '<span class="ed-img-row__current">Waiting for new variant</span>' +
+                    '</div>' +
+                '</div>' +
+            '</article>';
+        }
+
+        _renderImagesModal() {
+            var data = this._getImageAnalysis();
+            var mode = data.mode;
+            var variants = mode === 'ai2' ? data.a2Variants : data.a1Variants;
+            var selectedUrl = mode === 'ai2' ? data.a2Selected : data.a1Selected;
+            var defaultPrompt = mode === 'ai2' ? data.a2Default : data.a1Default;
+            var originalPrompt = mode === 'ai2' ? data.a2Original : data.a1Original;
+            var modeLabel = mode === 'ai2' ? 'AI2' : 'AI1';
+            var pending = this._pendingImageGeneration && this._pendingImageGeneration.mode === mode ? this._pendingImageGeneration : null;
+            if (pending) {
+                var resolved = variants.some(function (variant) {
+                    if (!variant || !variant.created_at) return false;
+                    var created = Date.parse(variant.created_at);
+                    return !Number.isNaN(created) && created >= (pending.startedAt - 2000);
+                });
+                if (resolved) {
+                    this._pendingImageGeneration = null;
+                    pending = null;
+                }
+            }
+            var pendingCount = pending ? 1 : 0;
+            var countLabel = (variants.length + pendingCount) ? (variants.length + pendingCount) + ' saved variant' + ((variants.length + pendingCount) === 1 ? '' : 's') : 'No saved variants';
+
+            var html = '<div class="ed-modal__header ed-modal__header--spread">' +
+                '<div>' +
+                    '<div class="ed-modal__eyebrow">Admin action</div>' +
+                    '<h2 class="ed-modal__title">Manage Images</h2>' +
+                    '<p class="ed-modal__subtitle">Refine prompts, choose the active image, and clean up older variants without leaving the reader.</p>' +
+                '</div>' +
+                '<button class="ed-modal__close" data-action="modal-cancel" aria-label="Close">&times;</button>' +
+            '</div>' +
+            '<div class="ed-modal__body ed-images-modal">';
+
+            html += '<div class="ed-images-toolbar">';
+            if (data.hasAi2) {
+                html += '<div class="ed-images-mode-switch">' +
+                    '<button class="ed-images-mode-btn' + (mode === 'ai1' ? ' ed-images-mode-btn--active' : '') +
+                    '" data-action="switch-image-mode" data-mode="ai1">AI1</button>' +
+                    '<button class="ed-images-mode-btn' + (mode === 'ai2' ? ' ed-images-mode-btn--active' : '') +
+                    '" data-action="switch-image-mode" data-mode="ai2">AI2</button>' +
+                '</div>';
+            } else {
+                html += '<div class="ed-images-mode-pill">' + modeLabel + ' workspace</div>';
+            }
+            html += '<button class="ed-btn ed-btn--ghost ed-btn--sm ed-btn--danger-ghost" data-action="confirm-delete-all-images">Delete all AI images...</button>' +
+            '</div>';
+
+            html += '<div class="ed-images-layout' + (variants.length <= 1 ? ' ed-images-layout--sparse' : '') + '">';
+            html += '<section class="ed-images-compose">' +
+                '<div class="ed-images-panel__header">' +
+                    '<div>' +
+                        '<div class="ed-images-panel__eyebrow">' + modeLabel + ' prompt</div>' +
+                        '<h3 class="ed-images-panel__title">Create a new variant</h3>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="ed-images-flow-note">Edit the prompt, generate a fresh variant, then choose the image you want to keep.</div>' +
+                '<textarea class="ed-images-prompt__textarea" rows="5" data-prompt-input>' + escapeHtml(defaultPrompt) + '</textarea>';
+
+            if (originalPrompt) {
+                html += '<div class="ed-images-prompt__default">Default: ' + escapeHtml(originalPrompt) + '</div>';
+            }
+
+            html += '<div class="ed-images-prompt__hint">Use a saved prompt as a starting point, or restore the original baseline before generating a new variant.</div>';
+            html += '<div class="ed-images-prompt__hint">Click a library row to reuse its prompt. Click the image itself to make that variant current.</div>';
+            html += '<div class="ed-images-prompt__actions">' +
+                '<button class="ed-btn ed-btn--primary" data-action="save-image-prompt">' + (pending ? 'Generating...' : 'Generate new variant') + '</button>' +
+                '<button class="ed-btn ed-btn--secondary" data-action="use-default-prompt">Reset to default</button>' +
+            '</div>' +
+            (selectedUrl ? '<div class="ed-images-prompt__hint">The library highlights the image currently shown in the reader.</div>' : '') +
+            '</section>';
+
+            html += '<section class="ed-images-library">' +
+                '<div class="ed-images-panel__header">' +
+                    '<div>' +
+                        '<div class="ed-images-panel__eyebrow">' + modeLabel + ' library</div>' +
+                        '<h3 class="ed-images-panel__title">' + countLabel + '</h3>' +
+                    '</div>' +
+                '</div>';
+
+            if (pending) {
+                html += '<div class="ed-images-status">' +
+                    '<div class="ed-images-status__title">Generation requested</div>' +
+                    '<div class="ed-images-status__text">A new ' + modeLabel + ' variant is on the way. The pending row below will resolve into a real image once generation finishes.</div>' +
+                '</div>';
+            }
+
+            if (variants.length > 0 || pending) {
+                html += '<div class="ed-images-rows">';
+                if (pending) {
+                    html += this._renderPendingImageRow(pending);
+                }
+                for (var i = 0; i < variants.length; i++) {
+                    html += this._renderImageVariantRow(variants[i], selectedUrl, mode);
+                }
+                html += '</div>';
+            } else {
+                html += '<div class="ed-images-empty">' +
+                    '<div class="ed-images-empty__title">No ' + modeLabel + ' variants yet</div>' +
+                    '<div class="ed-images-empty__text">Save a prompt above to generate the first image for this mode.</div>' +
+                '</div>';
+            }
+
+            html += '</section></div></div>' +
+                '<div class="ed-modal__footer">' +
+                    '<button class="ed-btn ed-btn--ghost" data-action="modal-cancel">Close</button>' +
+                '</div>';
+
+            this.showModal(html, 'ed-modal--wide ed-modal--images ed-modal--admin');
+        }
+
+        _loadVariantPromptByUrl(url) {
+            if (!url) return false;
+            var data = this._getImageAnalysis();
+            var variants = data.mode === 'ai2' ? data.a2Variants : data.a1Variants;
+            var normalizedTarget = normalizeAssetUrl(url);
+            var match = null;
+            for (var i = 0; i < variants.length; i++) {
+                if (normalizeAssetUrl(variants[i].url) === normalizedTarget) { match = variants[i]; break; }
+            }
+            if (match && match.prompt) {
+                var textarea = document.querySelector('[data-prompt-input]');
+                if (textarea) {
+                    textarea.value = match.prompt;
+                    textarea.focus();
+                    textarea.setSelectionRange(0, textarea.value.length);
+                }
+                return true;
+            }
+            return false;
+        }
+
+        switchImageMode(btn) {
+            this._imageMode = btn.dataset.mode || 'ai1';
+            this._renderImagesModal();
+        }
+
+        useVariantPrompt(btn) {
+            var url = btn ? btn.dataset.url : '';
+            this._loadVariantPromptByUrl(url);
+        }
+
+        useDefaultPrompt() {
+            var data = this._getImageAnalysis();
+            var original = data.mode === 'ai2' ? (data.a2Original || data.a2Default) : (data.a1Original || data.a1Default);
+            if (original) {
+                var textarea = document.querySelector('[data-prompt-input]');
+                if (textarea) textarea.value = original;
+            }
+        }
+
+        async executeSetImagePrompt() {
+            var videoId = this._activeReaderId;
+            if (!videoId) return;
+
+            var textarea = document.querySelector('[data-prompt-input]');
+            var newPrompt = textarea ? textarea.value.trim() : '';
+            if (!newPrompt) { this.showToast('Enter a prompt', 'error'); return; }
+
+            var mode = this._imageMode || 'ai1';
+            var self = this;
+            this.requireAdminToken(function (token) { self._doSetImagePrompt(token, newPrompt, mode); });
+        }
+
+        async _doSetImagePrompt(token, newPrompt, mode) {
+            var self = this;
+            var btn = document.querySelector('[data-action="save-image-prompt"]');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Generating...';
+            }
+            try {
+                var resp = await fetch('/api/set-image-prompt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ video_id: this._activeReaderId, prompt: newPrompt, mode: mode })
+                });
+                if (resp.status === 401) { this.handleAuthError({ interactive: true, retry: function (t) { self._doSetImagePrompt(t, newPrompt, mode); } }); return; }
+                if (!resp.ok) throw new Error('Failed (' + resp.status + ')');
+                this._pendingImageGeneration = { mode: mode, prompt: newPrompt, startedAt: Date.now() };
+                this.showToast('Image generation started');
+                this._renderImagesModal();
+            } catch (err) {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Generate new variant';
+                }
+                this.showToast('Failed: ' + err.message, 'error');
+            }
+        }
+
+        async executeSelectImageVariant(btn) {
+            var videoId = this._activeReaderId;
+            var url = btn ? btn.dataset.url : '';
+            if (!videoId || !url) return;
+
+            var self = this;
+            this.requireAdminToken(function (token) { self._doSelectImage(token, url); });
+        }
+
+        async _doSelectImage(token, url) {
+            var mode = this._imageMode || 'ai1';
+            try {
+                var resp = await fetch('/api/select-image-variant', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ video_id: this._activeReaderId, url: url, mode: mode })
+                });
+                if (resp.status === 401) { this.handleAuthError({ interactive: true, retry: function (t) { self._doSelectImage(t, url); } }); return; }
+                if (!resp.ok) throw new Error('Failed (' + resp.status + ')');
+                this.showToast('Image selected');
+                // Update local data — AI1 must update BOTH fields
+                if (this._readerData && this._readerData.analysis) {
+                    if (mode === 'ai2') {
+                        this._readerData.analysis.summary_image_ai2_url = url;
+                    } else {
+                        this._readerData.analysis.summary_image_selected_url = url;
+                        this._readerData.summary_image_url = url;
+                    }
+                }
+                if (this._pendingImageGeneration && this._pendingImageGeneration.mode === mode) {
+                    this._pendingImageGeneration = null;
+                }
+                this._renderImagesModal();
+            } catch (err) {
+                this.showToast('Failed: ' + err.message, 'error');
+            }
+        }
+
+        showDeleteImageConfirm(btn) {
+            var url = btn ? btn.dataset.url : '';
+            if (!url) return;
+            this._pendingDeleteUrl = url;
+            this.showConfirm(
+                'Delete image variant',
+                '<p>Permanently delete this image variant?</p>',
+                'do-delete-image',
+                'Delete'
+            );
+        }
+
+        async executeDeleteImageVariant() {
+            var videoId = this._activeReaderId;
+            var url = this._pendingDeleteUrl;
+            if (!videoId || !url) return;
+
+            var self = this;
+            this.requireAdminToken(function (token) { self._doDeleteImage(token, url); });
+        }
+
+        async _doDeleteImage(token, url) {
+            var self = this;
+            try {
+                var resp = await fetch('/api/delete-image-variant', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ video_id: this._activeReaderId, url: url })
+                });
+                if (resp.status === 401) { this.handleAuthError({ interactive: true, retry: function (t) { self._doDeleteImage(t, url); } }); return; }
+                if (!resp.ok) throw new Error('Failed (' + resp.status + ')');
+                this.showToast('Variant deleted');
+
+                // Clear selected pointer if deleting the selected image
+                var mode = this._imageMode || 'ai1';
+                if (this._readerData && this._readerData.analysis) {
+                    var a = this._readerData.analysis;
+                    var normalizedTarget = urlPath(normalizeAssetUrl(url));
+                    a.summary_image_variants = (a.summary_image_variants || []).filter(function (variant) {
+                        return urlPath(normalizeAssetUrl(variant && variant.url)) !== normalizedTarget;
+                    });
+                    if (mode === 'ai1' && urlPath(normalizeAssetUrl(a.summary_image_selected_url)) === urlPath(normalizeAssetUrl(url))) {
+                        a.summary_image_selected_url = '';
+                    }
+                    if (mode === 'ai1' && urlPath(normalizeAssetUrl(this._readerData.summary_image_url)) === urlPath(normalizeAssetUrl(url))) {
+                        this._readerData.summary_image_url = '';
+                    }
+                    if (mode === 'ai2' && urlPath(normalizeAssetUrl(a.summary_image_ai2_url)) === urlPath(normalizeAssetUrl(url))) {
+                        a.summary_image_ai2_url = '';
+                    }
+                }
+
+                this.closeModal();
+                this._renderImagesModal();
+            } catch (err) {
+                this.showToast('Failed: ' + err.message, 'error');
+                this.closeModal();
+            }
+        }
+
+        showDeleteAllImagesConfirm() {
+            this.showConfirm(
+                'Delete all AI images',
+                '<p>This will permanently delete all AI-generated images (AI1 and AI2) for this report. This cannot be undone.</p>',
+                'do-delete-all-images',
+                'Delete all'
+            );
+        }
+
+        async executeDeleteAllImages() {
+            var videoId = this._activeReaderId;
+            if (!videoId) return;
+
+            var self = this;
+            this.requireAdminToken(function (token) { self._doDeleteAllImages(token); });
+        }
+
+        async _doDeleteAllImages(token) {
+            var self = this;
+            try {
+                var resp = await fetch('/api/delete-all-ai-images', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ video_id: this._activeReaderId, modes: ['ai1', 'ai2'] })
+                });
+                if (resp.status === 401) { this.handleAuthError({ interactive: true, retry: function (t) { self._doDeleteAllImages(t); } }); return; }
+                if (!resp.ok) throw new Error('Failed (' + resp.status + ')');
+                this.showToast('All AI images deleted');
+                if (this._readerData && this._readerData.analysis) {
+                    this._readerData.analysis.summary_image_variants = [];
+                    this._readerData.analysis.summary_image_ai2_url = '';
+                    this._readerData.analysis.summary_image_selected_url = '';
+                    this._readerData.summary_image_url = '';
+                }
+                this._pendingImageGeneration = null;
+                this.closeModal();
+                this._renderImagesModal();
+            } catch (err) {
+                this.showToast('Failed: ' + err.message, 'error');
+                this.closeModal();
+            }
+        }
+
+        // ---- Audio On-Demand ----
+
+        toggleAudioPopover() {
+            var popover = document.querySelector('.ed-reader__audio-popover');
+            var button = document.querySelector('.ed-reader__audio-btn, .ed-reader__inline-action');
+            if (!popover) return;
+            var willOpen = !popover.classList.contains('ed-reader__audio-popover--open');
+            this.closeAdminMenu();
+            popover.classList.toggle('ed-reader__audio-popover--open', willOpen);
+            if (button && button.classList.contains('ed-reader__audio-btn')) {
+                button.classList.toggle('ed-reader__audio-btn--active', willOpen);
+            }
+        }
+
+        closeAudioPopover() {
+            var popover = document.querySelector('.ed-reader__audio-popover');
+            var button = document.querySelector('.ed-reader__audio-btn');
+            if (popover) popover.classList.remove('ed-reader__audio-popover--open');
+            if (button) button.classList.remove('ed-reader__audio-btn--active');
+        }
+
+        async fetchAudioOptions(videoId, variantIdx) {
+            try {
+                var params = 'video_id=' + encodeURIComponent(videoId);
+                // Resolve stable variant slug from index
+                var variants = this._readerVariants || [];
+                if (typeof variantIdx === 'number' && variants[variantIdx] && variants[variantIdx].variant) {
+                    params += '&variant_slug=' + encodeURIComponent(variants[variantIdx].variant);
+                }
+                var resp = await fetch('/api/audio/options?' + params);
+                if (!resp.ok) return;
+                this._audioOptions = await resp.json();
+                this._updateAudioPopover();
+            } catch (err) {
+                // Silently fail — popover just stays in "Checking..." state
+            }
+        }
+
+        _updateAudioPopover() {
+            var opts = this._audioOptions;
+            if (!opts) return;
+
+            // Update audio_current row
+            var acBtn = document.querySelector('[data-action="audio-current"]');
+            if (acBtn) {
+                var ac = opts.audio_current || {};
+                var acLabel = acBtn.querySelector('.ed-reader__audio-item__label');
+                var acSub = acBtn.querySelector('.ed-reader__audio-item__sub');
+
+                // Clear all state classes
+                acBtn.classList.remove('ed-reader__audio-item--disabled', 'ed-reader__audio-item--generating', 'ed-reader__audio-item--stale', 'ed-reader__audio-item--failed');
+
+                if (ac.status === 'ready' && ac.audio_url) {
+                    if (acLabel) acLabel.textContent = 'Play audio version';
+                    if (acSub) acSub.textContent = ac.source_label || ('Ready' + (ac.duration_seconds ? ' \u00B7 ' + Math.round(ac.duration_seconds / 60) + ' min' : ''));
+                    acBtn.classList.remove('ed-reader__audio-item--disabled');
+                } else if (ac.status === 'queued' || ac.status === 'generating') {
+                    if (acLabel) acLabel.textContent = 'Generating audio...';
+                    if (acSub) acSub.textContent = ac.status === 'queued' ? 'Queued' : 'In progress';
+                    acBtn.classList.add('ed-reader__audio-item--generating');
+                } else if (ac.status === 'stale') {
+                    if (acLabel) acLabel.textContent = 'Create audio version';
+                    if (acSub) acSub.textContent = 'Source changed';
+                    acBtn.classList.remove('ed-reader__audio-item--disabled');
+                    acBtn.classList.add('ed-reader__audio-item--stale');
+                } else if (ac.status === 'failed') {
+                    if (acLabel) acLabel.textContent = 'Create audio version';
+                    if (acSub) acSub.textContent = 'Generation failed';
+                    acBtn.classList.remove('ed-reader__audio-item--disabled');
+                    acBtn.classList.add('ed-reader__audio-item--failed');
+                } else {
+                    if (acLabel) acLabel.textContent = 'Create audio version';
+                    if (acSub) acSub.textContent = 'Not yet generated';
+                    acBtn.classList.remove('ed-reader__audio-item--disabled');
+                }
+            }
+
+            // Update audio_briefing row
+            var abBtn = document.querySelector('[data-action="audio-briefing"]');
+            if (abBtn) {
+                var ab = opts.audio_briefing || {};
+                var abLabel = abBtn.querySelector('.ed-reader__audio-item__label');
+                var abSub = abBtn.querySelector('.ed-reader__audio-item__sub');
+
+                abBtn.classList.remove('ed-reader__audio-item--disabled', 'ed-reader__audio-item--generating', 'ed-reader__audio-item--stale', 'ed-reader__audio-item--failed');
+
+                if (ab.status === 'ready' && ab.audio_url) {
+                    if (abLabel) abLabel.textContent = 'Play full briefing';
+                    if (abSub) abSub.textContent = 'Ready' + (ab.duration_seconds ? ' \u00B7 ' + Math.round(ab.duration_seconds / 60) + ' min' : '');
+                    abBtn.classList.remove('ed-reader__audio-item--disabled');
+                } else if (ab.status === 'queued' || ab.status === 'generating') {
+                    if (abLabel) abLabel.textContent = 'Generating briefing...';
+                    if (abSub) abSub.textContent = ab.status === 'queued' ? 'Queued' : 'In progress';
+                    abBtn.classList.add('ed-reader__audio-item--generating');
+                } else if (ab.status === 'stale') {
+                    if (abLabel) abLabel.textContent = 'Create full briefing';
+                    if (abSub) abSub.textContent = 'Source changed';
+                    abBtn.classList.remove('ed-reader__audio-item--disabled');
+                    abBtn.classList.add('ed-reader__audio-item--stale');
+                } else if (ab.status === 'failed') {
+                    if (abLabel) abLabel.textContent = 'Create full briefing';
+                    if (abSub) abSub.textContent = 'Generation failed';
+                    abBtn.classList.remove('ed-reader__audio-item--disabled');
+                    abBtn.classList.add('ed-reader__audio-item--failed');
+                } else {
+                    if (abLabel) abLabel.textContent = 'Create full briefing';
+                    if (abSub) abSub.textContent = 'Summary + research';
+                    abBtn.classList.remove('ed-reader__audio-item--disabled');
+                }
+            }
+        }
+
+        _triggerAudioGenerate(mode) {
+            var self = this;
+            var videoId = this._activeReaderId;
+            if (!videoId) return;
+
+            this.requireAdminToken(function (token) { self._doAudioGenerate(token, mode); });
+        }
+
+        async _doAudioGenerate(token, mode) {
+            var self = this;
+            var videoId = this._activeReaderId;
+            if (!videoId) return;
+
+            var scope = 'summary_active';
+            var variantSlug = '';
+            var variants = this._readerVariants || [];
+            var activeIdx = this._readerActiveVariant || 0;
+            if (variants[activeIdx] && variants[activeIdx].variant) {
+                variantSlug = variants[activeIdx].variant;
+            }
+
+            // Optimistically update UI to generating
+            this._audioOptions = this._audioOptions || {};
+            this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'queued'};
+            this._updateAudioPopover();
+
+            try {
+                var resp = await fetch('/api/audio/generate/stream', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
+                    body: JSON.stringify({video_id: videoId, mode: mode, scope: scope, variant_slug: variantSlug || undefined})
+                });
+
+                var contentType = resp.headers.get('Content-Type') || '';
+
+                if (resp.ok && contentType.indexOf('application/json') !== -1) {
+                    // Cached result — JSON response with audio_url
+                    var data = await resp.json();
+                    if (data.status === 'ready') {
+                        this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {
+                            status: 'ready',
+                            audio_url: data.audio_url,
+                            duration_seconds: data.duration_seconds,
+                            cached: true,
+                            source_label: data.source_label
+                        };
+                        this._updateAudioPopover();
+                        this.showToast('Audio ready (cached)');
+                    } else {
+                        this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'failed'};
+                        this._updateAudioPopover();
+                        this.showToast('Generation failed: ' + (data.error || 'Unknown error'), 'error');
+                    }
+                } else if (resp.ok && contentType.indexOf('text/event-stream') !== -1) {
+                    // Streaming — process SSE events
+                    this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'generating'};
+                    this._updateAudioPopover();
+                    this._handleAudioSSE(resp, mode);
+                } else if (resp.status === 401) {
+                    this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'failed'};
+                    this._updateAudioPopover();
+                    this.handleAuthError({ interactive: true, retry: function (t) { self._doAudioGenerate(t, mode); } });
+                } else if (!resp.ok) {
+                    var errData = await resp.json().catch(function() { return {error: 'Unknown error'}; });
+                    this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'failed'};
+                    this._updateAudioPopover();
+                    this.showToast('Generation failed: ' + (errData.error || resp.status), 'error');
+                }
+            } catch (err) {
+                this._audioOptions[mode === 'audio_current' ? 'audio_current' : 'audio_briefing'] = {status: 'failed'};
+                this._updateAudioPopover();
+                this.showToast('Generation failed', 'error');
+            }
+        }
+
+        async _handleAudioSSE(resp, mode) {
+            var self = this;
+            var key = mode === 'audio_current' ? 'audio_current' : 'audio_briefing';
+            var reader = resp.body.getReader();
+            var decoder = new TextDecoder();
+            var buffer = '';
+
+            try {
+                while (true) {
+                    var result = await reader.read();
+                    if (result.done) break;
+                    buffer += decoder.decode(result.value, {stream: true});
+
+                    var lines = buffer.split('\n');
+                    buffer = lines.pop(); // keep incomplete line
+
+                    for (var i = 0; i < lines.length; i++) {
+                        var line = lines[i].trim();
+                        if (!line.startsWith('data: ')) continue;
+                        try {
+                            var evt = JSON.parse(line.substring(6));
+                            if (evt.type === 'done') {
+                                self._audioOptions[key] = {
+                                    status: 'ready',
+                                    audio_url: evt.audio_url,
+                                    duration_seconds: evt.duration_seconds,
+                                    cached: false,
+                                    source_label: evt.source_label
+                                };
+                                self._updateAudioPopover();
+                                self.showToast('Audio ready');
+                            } else if (evt.type === 'error') {
+                                self._audioOptions[key] = {status: 'failed'};
+                                self._updateAudioPopover();
+                                self.showToast('Generation failed: ' + (evt.message || ''), 'error');
+                            }
+                            // audio_chunk events are collected server-side; no client action needed
+                        } catch (parseErr) {
+                            // ignore malformed SSE lines
+                        }
+                    }
+                }
+            } catch (err) {
+                self._audioOptions[key] = {status: 'failed'};
+                self._updateAudioPopover();
+                self.showToast('Streaming failed', 'error');
+            }
+        }
+
+        _startAudioPolling(videoId) {
+            this._stopAudioPolling();
+            this._audioPollVideoId = videoId;
+            this._audioPollInFlight = false;
+            var self = this;
+            this._audioPollTimer = setTimeout(function () { self._pollAudioStatus(); }, 5000);
+        }
+
+        _pollAudioStatus() {
+            if (this._audioPollInFlight) return;
+            var videoId = this._audioPollVideoId;
+            if (!videoId) { this._stopAudioPolling(); return; }
+
+            this._audioPollInFlight = true;
+            var self = this;
+            this.fetchAudioOptions(videoId, this._readerActiveVariant || 0).then(function () {
+                self._audioPollInFlight = false;
+                var opts = self._audioOptions || {};
+                var ac = opts.audio_current || {};
+                var ab = opts.audio_briefing || {};
+                var stillRunning = (ac.status === 'queued' || ac.status === 'generating' ||
+                                    ab.status === 'queued' || ab.status === 'generating');
+                if (stillRunning) {
+                    self._audioPollTimer = setTimeout(function () { self._pollAudioStatus(); }, 5000);
+                } else {
+                    self._stopAudioPolling();
+                    if (ac.status === 'ready' || ab.status === 'ready') {
+                        self.showToast('Audio ready');
+                    }
+                }
+            }).catch(function () {
+                self._audioPollInFlight = false;
+                self._audioPollTimer = setTimeout(function () { self._pollAudioStatus(); }, 5000);
+            });
+        }
+
+        _stopAudioPolling() {
+            if (this._audioPollTimer) {
+                clearTimeout(this._audioPollTimer);
+            }
+            this._audioPollTimer = null;
+            this._audioPollVideoId = null;
+            this._audioPollInFlight = false;
+        }
+
+        _getVisibleReaderText() {
+            var transcriptEl = document.querySelector('.ed-transcript');
+            var isTranscriptVisible = transcriptEl && transcriptEl.style.display !== 'none';
+
+            var researchEl = document.querySelector('[data-research-panel]');
+            var isResearchVisible = researchEl && researchEl.style.display !== 'none';
+
+            var text = '';
+
+            if (isTranscriptVisible) {
+                text = this._readerTranscriptText || '';
+                if (!text) {
+                    var rows = document.querySelectorAll('.ed-transcript__row');
+                    for (var i = 0; i < rows.length; i++) {
+                        text += (rows[i].textContent || '') + ' ';
+                    }
+                }
+            } else if (isResearchVisible) {
+                var researchBody = document.querySelector('.ed-research__thread');
+                if (researchBody) {
+                    text = researchBody.textContent || '';
+                } else {
+                    text = researchEl ? researchEl.textContent : '';
+                }
+            } else {
+                var variantIdx = this._readerActiveVariant || 0;
+                var variants = this._readerVariants || [];
+                if (variants[variantIdx] && variants[variantIdx].text) {
+                    text = variants[variantIdx].text;
+                } else {
+                    var summaryEl = document.querySelector('.ed-reader__summary');
+                    text = summaryEl ? summaryEl.textContent : '';
+                }
+            }
+
+            return (text || '').trim();
+        }
+
+        toggleTTS() {
+            if (!window.speechSynthesis) {
+                this.showToast('Text-to-speech not supported in this browser', 'error');
+                return;
+            }
+
+            if (this._ttsSpeaking) {
+                this.stopTTS();
+                return;
+            }
+
+            // Pause MP3 if playing (mutual exclusion)
+            var audio = document.getElementById('ed-audio-element');
+            if (audio && !audio.paused) {
+                audio.pause();
+            }
+
+            var text = this._getVisibleReaderText();
+            if (!text) {
+                this.showToast('No text to read', 'error');
+                return;
+            }
+
+            // Cap length for browser TTS safety
+            var maxLen = 5000;
+            if (text.length > maxLen) {
+                var originalLen = text.length;
+                text = text.substring(0, maxLen);
+                this.showToast('Reading excerpt (' + Math.round(maxLen / originalLen * 100) + '% of content)');
+            }
+
+            var utterance = new SpeechSynthesisUtterance(text);
+            var self = this;
+
+            utterance.onstart = function () {
+                self._ttsSpeaking = true;
+                self._updateTTSUI();
+            };
+
+            utterance.onend = function () {
+                self._ttsSpeaking = false;
+                self._updateTTSUI();
+            };
+
+            utterance.onerror = function () {
+                self._ttsSpeaking = false;
+                self._updateTTSUI();
+            };
+
+            this._ttsUtterance = utterance;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        stopTTS() {
+            if (window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+            }
+            this._ttsSpeaking = false;
+            this._updateTTSUI();
+        }
+
+        _updateTTSUI() {
+            var audioBtn = document.querySelector('.ed-reader__audio-btn');
+            if (audioBtn) {
+                if (this._ttsSpeaking) {
+                    audioBtn.classList.add('ed-reader__audio-btn--active');
+                    audioBtn.title = 'Stop reading';
+                } else {
+                    audioBtn.classList.remove('ed-reader__audio-btn--active');
+                    audioBtn.title = 'Audio';
+                }
+            }
+
+            var ttsBtn = document.querySelector('[data-action="tts-read-aloud"]');
+            if (ttsBtn) {
+                var label = ttsBtn.querySelector('.ed-reader__audio-item__label');
+                if (label) {
+                    label.textContent = this._ttsSpeaking ? 'Stop reading' : 'Read this aloud';
+                }
+                if (this._ttsSpeaking) {
+                    ttsBtn.classList.add('ed-reader__audio-item--speaking');
+                } else {
+                    ttsBtn.classList.remove('ed-reader__audio-item--speaking');
+                }
+            }
+        }
+    }
+
+    // ---- Bootstrap ----
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    async function init() {
+        console.log('[Editorial] Initializing...');
+        // Apply saved theme
+        if (_theme !== 'default') {
+            document.documentElement.setAttribute('data-ed-theme', _theme);
+        }
+        var app = new EditorialDashboard();
+        app.readStateFromURL();
+        app.bindEvents();
+        app.renderTopbar();
+        await app.loadFilters();
+        app.renderTopbar();
+        await app.loadContent();
+        app.connectEventSource();
+        window.__editorialApp = app;
+    }
+})();

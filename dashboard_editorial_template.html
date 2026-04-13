@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YTV2 Editorial</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231a1a2e'/%3E%3Cpath d='M11 7l16 9-16 9z' fill='%234f8cff'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="/static/editorial_dashboard.css?v=__EDITORIAL_ASSET_VERSION__">
+</head>
+<body>
+    <!-- Bootstrap config -->
+    <script>
+        window.NAS_CONFIG = { nas_config };
+        window.DASHBOARD_CONFIG = { dashboard_config };
+        window.EDITORIAL_CONFIG = { editorial_config };
+    </script>
+
+    <!-- Editorial layout shell -->
+    <div id="ed-topbar">
+        <div class="ed-topbar__brand">YTV2</div>
+        <div class="ed-topbar__search"></div>
+        <div class="ed-topbar__nav"></div>
+    </div>
+
+    <div id="ed-context-bar"></div>
+
+    <div id="ed-layout">
+        <main id="ed-main">
+            <div id="ed-hero"></div>
+            <div id="ed-sections"></div>
+        </main>
+        <aside id="ed-rail"></aside>
+    </div>
+
+    <div id="ed-player"></div>
+
+    <script src="/static/vendor/markdown-it.min.js"></script>
+    <script src="/static/editorial_dashboard.js?v=__EDITORIAL_ASSET_VERSION__"></script>
+</body>
+</html>

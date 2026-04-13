@@ -1230,6 +1230,37 @@ class PostgreSQLContentIndex:
                     if cat_conditions:
                         where_conditions.append(f"({' OR '.join(cat_conditions)})")
 
+                # Subcategory filter — narrow within selected category
+                if 'subcategory' in filters and filters['subcategory']:
+                    subcats = filters['subcategory'] if isinstance(filters['subcategory'], list) else [filters['subcategory']]
+                    parent_categories = []
+                    if 'category' in filters and filters['category']:
+                        parent_categories = filters['category'] if isinstance(filters['category'], list) else [filters['category']]
+                    sub_conditions = []
+                    for subcat in subcats:
+                        if parent_categories:
+                            for parent in parent_categories:
+                                sub_json = json.dumps([{"category": parent, "subcategories": [subcat]}])
+                                sub_conditions.append("""(
+                                    (c.subcategories_json IS NOT NULL AND
+                                     c.subcategories_json->'categories' @> %s::jsonb) OR
+                                    (c.analysis_json->'categories' IS NOT NULL AND
+                                     c.analysis_json->'categories' @> %s::jsonb)
+                                )""")
+                                params.extend([sub_json, sub_json])
+                        else:
+                            sub_conditions.append("""(
+                                EXISTS (
+                                    SELECT 1 FROM jsonb_array_elements(
+                                        COALESCE(c.subcategories_json->'categories', c.analysis_json->'categories', '[]'::jsonb)
+                                    ) AS cat_obj
+                                    WHERE cat_obj->'subcategories' @> %s::jsonb
+                                )
+                            )""")
+                            params.append(json.dumps([subcat]))
+                    if sub_conditions:
+                        where_conditions.append(f"({' OR '.join(sub_conditions)})")
+
                 # Source filters
                 if 'source' in filters and filters['source']:
                     sources = filters['source'] if isinstance(filters['source'], list) else [filters['source']]
@@ -1360,8 +1391,12 @@ class PostgreSQLContentIndex:
             total_count = cursor.fetchone()['total']
 
             sort_clause = " ORDER BY c.indexed_at DESC"
-            if sort == "video_newest":
-                sort_clause = " ORDER BY c.published_at DESC"
+            if sort == "oldest":
+                sort_clause = " ORDER BY c.indexed_at ASC"
+            elif sort == "video_newest":
+                sort_clause = " ORDER BY c.published_at DESC NULLS LAST"
+            elif sort == "video_oldest":
+                sort_clause = " ORDER BY c.published_at ASC NULLS LAST"
             elif sort == "title_az":
                 sort_clause = " ORDER BY c.title ASC"
             elif sort == "title_za":
@@ -2329,6 +2364,99 @@ class PostgreSQLContentIndex:
 
         except Exception as e:
             logger.error(f"Error updating audio URL for {video_id}: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+    # ---- Audio Artifacts (On-Demand) ----
+
+    def _has_audio_artifacts_table(self, conn=None) -> bool:
+        """Detect whether audio_artifacts table exists in this database."""
+        return self._table_exists('audio_artifacts', conn=conn)
+
+    def get_audio_artifacts_for_video(self, video_id: str) -> list:
+        """Return all audio artifacts for a given video_id."""
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """SELECT mode, scope, source_hash, status, audio_url,
+                          duration_seconds, provider, source_label, error_message,
+                          metadata, created_at, updated_at
+                   FROM audio_artifacts
+                   WHERE video_id = %s""",
+                [video_id],
+            )
+            return [dict(r) for r in cur.fetchall()]
+        except Exception as e:
+            logger.error(f"Error fetching audio artifacts for {video_id}: {e}")
+            return []
+        finally:
+            if conn:
+                conn.close()
+
+    def get_audio_artifact(self, video_id: str, mode: str, scope: str) -> dict:
+        """Return a single audio artifact or None."""
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """SELECT id, video_id, mode, scope, source_hash, status,
+                          audio_url, duration_seconds, provider, source_label,
+                          error_message, metadata, created_at, updated_at
+                   FROM audio_artifacts
+                   WHERE video_id = %s AND mode = %s AND scope = %s""",
+                [video_id, mode, scope],
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error fetching audio artifact {video_id}/{mode}/{scope}: {e}")
+            return None
+        finally:
+            if conn:
+                conn.close()
+
+    def upsert_audio_artifact(self, video_id: str, mode: str, scope: str,
+                              source_hash: str, status: str = 'queued',
+                              audio_url: str = None, duration_seconds: int = None,
+                              provider: str = None, source_label: str = None,
+                              error_message: str = None, metadata: dict = None) -> int:
+        """Insert or update an audio artifact. Returns the row id."""
+        import json as _json
+        conn = None
+        try:
+            conn = self._get_connection()
+            cur = conn.cursor()
+            cur.execute(
+                """INSERT INTO audio_artifacts
+                       (video_id, mode, scope, source_hash, status, audio_url,
+                        duration_seconds, provider, source_label, error_message, metadata)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (video_id, mode, scope)
+                   DO UPDATE SET
+                       source_hash = EXCLUDED.source_hash,
+                       status = EXCLUDED.status,
+                       audio_url = EXCLUDED.audio_url,
+                       duration_seconds = EXCLUDED.duration_seconds,
+                       provider = EXCLUDED.provider,
+                       source_label = EXCLUDED.source_label,
+                       error_message = EXCLUDED.error_message,
+                       metadata = EXCLUDED.metadata,
+                       updated_at = NOW()
+                   RETURNING id""",
+                [video_id, mode, scope, source_hash, status, audio_url,
+                 duration_seconds, provider, source_label, error_message,
+                 _json.dumps(metadata) if metadata else None],
+            )
+            row = cur.fetchone()
+            conn.commit()
+            return row['id'] if row else None
+        except Exception as e:
+            logger.error(f"Error upserting audio artifact {video_id}/{mode}/{scope}: {e}")
+            return None
         finally:
             if conn:
                 conn.close()
