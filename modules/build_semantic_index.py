@@ -74,14 +74,17 @@ def get_postgres_content() -> List[Dict[str, Any]]:
                 SELECT s.text
                 FROM v_latest_summaries s
                 WHERE s.video_id = c.video_id
+                  AND s.text IS NOT NULL
                   AND s.variant IN (
                     'comprehensive', 'key-points', 'bullet-points',
-                    'executive', 'key-insights'
+                    'executive', 'key-insights', 'audio',
+                    'reddit-discussion', 'audio-fr'
                   )
                 ORDER BY array_position(
                   ARRAY[
                     'comprehensive', 'key-points', 'bullet-points',
-                    'executive', 'key-insights'
+                    'executive', 'key-insights', 'audio',
+                    'reddit-discussion', 'audio-fr'
                   ]::text[],
                   s.variant
                 )
@@ -89,7 +92,7 @@ def get_postgres_content() -> List[Dict[str, Any]]:
             ) ls ON true
             WHERE c.embedding IS NULL
               AND ls.text IS NOT NULL
-              AND LENGTH(TRIM(ls.text)) > 50
+              AND LENGTH(TRIM(ls.text)) > 10
             ORDER BY c.indexed_at DESC NULLS LAST
         """
 

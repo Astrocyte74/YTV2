@@ -268,9 +268,13 @@ def search(
                 SELECT s.text
                 FROM v_latest_summaries s
                 WHERE s.video_id = c.video_id
-                  AND s.variant IN ('key-insights', 'comprehensive', 'bullet-points')
+                  AND s.variant IN ('key-insights', 'comprehensive', 'bullet-points',
+                                    'executive', 'key-points', 'audio',
+                                    'reddit-discussion', 'audio-fr')
                 ORDER BY array_position(
-                    ARRAY['key-insights', 'comprehensive', 'bullet-points']::text[],
+                    ARRAY['key-insights', 'comprehensive', 'bullet-points',
+                          'executive', 'key-points', 'audio',
+                          'reddit-discussion', 'audio-fr']::text[],
                     s.variant
                 )
                 LIMIT 1
@@ -522,9 +526,13 @@ def keyword_search(
                 SELECT s.text
                 FROM v_latest_summaries s
                 WHERE s.video_id = c.video_id
-                  AND s.variant IN ('key-insights', 'comprehensive', 'bullet-points')
+                  AND s.variant IN ('key-insights', 'comprehensive', 'bullet-points',
+                                    'executive', 'key-points', 'audio',
+                                    'reddit-discussion', 'audio-fr')
                 ORDER BY array_position(
-                    ARRAY['key-insights', 'comprehensive', 'bullet-points']::text[],
+                    ARRAY['key-insights', 'comprehensive', 'bullet-points',
+                          'executive', 'key-points', 'audio',
+                          'reddit-discussion', 'audio-fr']::text[],
                     s.variant
                 )
                 LIMIT 1
