@@ -1,85 +1,199 @@
 """
 Semantic Search Module for YTV2 Dashboard
 
-Integrates ChromaDB vector search with the dashboard for semantic
-similarity search across content summaries.
+Uses pgvector + OpenAI embeddings for semantic similarity search
+across content summaries. Replaces the previous ChromaDB implementation.
+
+Embeddings live in the same PostgreSQL `content` table — no separate
+vector store, no sync drift, no rebuild mechanism needed.
 """
 
 import os
-import sys
+import hashlib
 import logging
-from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-# ChromaDB configuration
-# Store index in dashboard16/data/chromadb/ - same data source as dashboard UI
-# In Docker container: /app/data/chromadb (volume mounted from dashboard16/data/)
-# In local dev: dashboard16/data/chromadb (relative to this module)
-CHROMA_DIR = Path(__file__).parent.parent / "data" / "chromadb"
-if not CHROMA_DIR.exists():
-    # Fallback for Docker container where data is mounted at /app/data
-    CHROMA_DIR = Path("/app/data/chromadb")
-COLLECTION_NAME = "ytv2_summaries"
+# Configuration from environment
+EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-large')
+EMBEDDING_VERSION = os.getenv('EMBEDDING_VERSION', 'v1')
+EMBEDDING_DIM = 3072  # text-embedding-3-large dimension
 
-# Lazy-loaded client and collection
-_chroma_client = None
-_collection = None
+# Lazy-loaded OpenAI client
+_openai_client = None
 
 
-def _get_chroma_client():
-    """Get or create ChromaDB client (lazy loading)."""
-    global _chroma_client
+def _get_openai_client():
+    """Get or create OpenAI client (lazy loading)."""
+    global _openai_client
 
-    if _chroma_client is not None:
-        return _chroma_client
+    if _openai_client is not None:
+        return _openai_client
 
     try:
-        import chromadb
-        from chromadb.config import Settings
+        from openai import OpenAI
     except ImportError:
-        logger.error("chromadb not installed. Run: pip install chromadb")
+        logger.error("openai not installed. Run: pip install openai")
         return None
 
-    if not CHROMA_DIR.exists():
-        logger.warning(f"ChromaDB directory not found: {CHROMA_DIR}")
+    api_key = os.getenv('OPENAI_API_KEY')
+    if not api_key:
+        logger.warning("OPENAI_API_KEY not set — semantic search unavailable")
         return None
 
-    _chroma_client = chromadb.PersistentClient(path=str(CHROMA_DIR))
-    return _chroma_client
+    _openai_client = OpenAI(api_key=api_key)
+    return _openai_client
 
 
-def _get_collection():
-    """Get or create the collection (lazy loading)."""
-    global _collection
+def _get_pg_connection():
+    """Get a PostgreSQL connection using the dashboard's DATABASE_URL."""
+    try:
+        import psycopg2
+    except ImportError:
+        logger.error("psycopg2 not available")
+        return None
 
-    if _collection is not None:
-        return _collection
+    postgres_url = os.getenv('DATABASE_URL_POSTGRES_NEW')
+    if not postgres_url:
+        logger.error("DATABASE_URL_POSTGRES_NEW not set")
+        return None
 
-    client = _get_chroma_client()
+    try:
+        conn = psycopg2.connect(postgres_url)
+        return conn
+    except Exception as e:
+        logger.error(f"Failed to connect to PostgreSQL: {e}")
+        return None
+
+
+def _build_canonical_text(title: str, summary: str,
+                          channel: str = "", source: str = "") -> str:
+    """Build canonical embedding input string.
+
+    Same structure used for backfill and incremental upsert.
+    Keep labels stable — changes here require re-embedding.
+    """
+    parts = []
+    if title:
+        parts.append(f"Title: {title}")
+    if channel:
+        parts.append(f"Channel: {channel}")
+    if source:
+        parts.append(f"Source: {source}")
+    if summary:
+        parts.append(f"Summary:\n{summary}")
+
+    return "\n\n".join(parts)
+
+
+def _compute_source_hash(text: str) -> str:
+    """SHA-256 hash of canonical text for staleness detection."""
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+
+def _generate_embedding(text: str) -> Optional[List[float]]:
+    """Generate a single embedding via OpenAI API."""
+    client = _get_openai_client()
     if client is None:
         return None
 
     try:
-        _collection = client.get_collection(name=COLLECTION_NAME)
-        return _collection
+        response = client.embeddings.create(
+            model=EMBEDDING_MODEL,
+            input=text,
+        )
+        return response.data[0].embedding
     except Exception as e:
-        logger.error(f"Failed to get ChromaDB collection: {e}")
+        logger.error(f"Failed to generate embedding: {e}")
         return None
 
 
+def _generate_embeddings_batch(texts: List[str]) -> List[Optional[List[float]]]:
+    """Generate embeddings for a batch of texts via OpenAI API.
+
+    Token-budgeted: callers should batch 25-50 texts to stay under
+    OpenAI's 300K token/request limit.
+    """
+    client = _get_openai_client()
+    if client is None:
+        return [None] * len(texts)
+
+    try:
+        response = client.embeddings.create(
+            model=EMBEDDING_MODEL,
+            input=texts,
+        )
+        # Results come back in same order as input
+        indexed = {d.index: d.embedding for d in response.data}
+        return [indexed.get(i) for i in range(len(texts))]
+    except Exception as e:
+        logger.error(f"Failed to generate batch embeddings: {e}")
+        return [None] * len(texts)
+
+
+def _source_case_sql(alias: str = 'c') -> str:
+    """SQL CASE expression for source normalization.
+
+    Matches the logic in PostgreSQLContentIndex._source_case_expression()
+    so semantic search returns the same source values as the dashboard UI.
+    """
+    canonical = f"LOWER(COALESCE({alias}.canonical_url::text, ''))"
+    video_id = f"LOWER(COALESCE({alias}.video_id::text, ''))"
+    record_id = f"LOWER(COALESCE({alias}.id::text, ''))"
+
+    return f"""CASE
+        WHEN {canonical} LIKE '%%wikipedia.org%%' THEN 'wikipedia'
+        WHEN {canonical} LIKE '%%churchofjesuschrist.org%%'
+            OR {canonical} LIKE '%%lds.org%%' THEN 'lds'
+        WHEN {canonical} LIKE '%%youtube.com%%'
+            OR {canonical} LIKE '%%youtu.be%%' THEN 'youtube'
+        WHEN {canonical} LIKE '%%reddit.com%%'
+            OR {video_id} LIKE 'reddit:%%' THEN 'reddit'
+        WHEN {record_id} LIKE '%%-web-%%' THEN 'web'
+        ELSE 'web'
+    END"""
+
+
 def is_available() -> bool:
-    """Check if semantic search is available."""
-    return _get_collection() is not None
+    """Check if semantic search is available (pgvector + OpenAI key)."""
+    if not os.getenv('OPENAI_API_KEY'):
+        return False
+
+    conn = _get_pg_connection()
+    if conn is None:
+        return False
+
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) FROM content
+            WHERE embedding IS NOT NULL
+        """)
+        count = cur.fetchone()[0]
+        return count > 0
+    except Exception as e:
+        logger.error(f"Semantic search availability check failed: {e}")
+        return False
+    finally:
+        conn.close()
 
 
 def get_indexed_count() -> int:
-    """Get the number of indexed documents."""
-    collection = _get_collection()
-    if collection is None:
+    """Get the number of content rows with embeddings."""
+    conn = _get_pg_connection()
+    if conn is None:
         return 0
-    return collection.count()
+
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM content WHERE embedding IS NOT NULL")
+        return cur.fetchone()[0]
+    except Exception as e:
+        logger.error(f"Failed to get indexed count: {e}")
+        return 0
+    finally:
+        conn.close()
 
 
 def search(
@@ -88,7 +202,7 @@ def search(
     filters: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """
-    Perform semantic search across indexed summaries.
+    Perform semantic search using pgvector cosine similarity.
 
     Args:
         query: The search query text
@@ -96,57 +210,99 @@ def search(
         filters: Optional metadata filters (e.g., {"source": "youtube"})
 
     Returns:
-        List of search results with id, score, title, source, channel, text
+        List of search results with id, score, title, source, channel, snippet
     """
-    collection = _get_collection()
-    if collection is None:
-        logger.warning("Semantic search not available - collection not found")
-        return []
-
     if not query or not query.strip():
         return []
 
+    # Generate query embedding
+    query_embedding = _generate_embedding(query.strip())
+    if query_embedding is None:
+        logger.warning("Semantic search unavailable — could not generate query embedding")
+        return []
+
+    conn = _get_pg_connection()
+    if conn is None:
+        return []
+
     try:
-        # Build where clause for filters
-        where = None
+        import psycopg2.extras
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+        source_case = _source_case_sql('c')
+
+        # Build WHERE conditions
+        where_clauses = ["c.embedding IS NOT NULL"]
+        params: list = [str(query_embedding)]
+
         if filters:
-            conditions = []
-            for key, value in filters.items():
-                if value and key in ["source", "channel"]:
-                    conditions.append({key: value})
-            if conditions:
-                if len(conditions) == 1:
-                    where = conditions[0]
+            if filters.get('source'):
+                if filters['source'] == 'youtube':
+                    where_clauses.append(
+                        "(c.canonical_url ILIKE '%%youtube%%' OR c.canonical_url ILIKE '%%youtu.be%%')"
+                    )
+                elif filters['source'] == 'reddit':
+                    where_clauses.append("c.canonical_url ILIKE '%%reddit%%'")
+                elif filters['source'] == 'wikipedia':
+                    where_clauses.append("c.canonical_url ILIKE '%%wikipedia%%'")
                 else:
-                    where = {"$and": conditions}
+                    where_clauses.append(f"{source_case} = %s")
+                    params.append(filters['source'])
 
-        # Query ChromaDB
-        results = collection.query(
-            query_texts=[query],
-            n_results=topk,
-            where=where,
-            include=["documents", "metadatas", "distances"]
-        )
+            if filters.get('channel'):
+                where_clauses.append("c.channel_name = %s")
+                params.append(filters['channel'])
 
-        # Format results
+        where_sql = " AND ".join(where_clauses)
+        params.append(topk)
+
+        sql = f"""
+            SELECT
+                c.video_id,
+                c.title,
+                c.channel_name,
+                {source_case} AS normalized_source,
+                1 - (c.embedding <=> %s::vector) AS score,
+                ls.text AS summary_text
+            FROM content c
+            LEFT JOIN LATERAL (
+                SELECT s.text
+                FROM v_latest_summaries s
+                WHERE s.video_id = c.video_id
+                  AND s.variant IN ('key-insights', 'comprehensive', 'bullet-points')
+                ORDER BY array_position(
+                    ARRAY['key-insights', 'comprehensive', 'bullet-points']::text[],
+                    s.variant
+                )
+                LIMIT 1
+            ) ls ON true
+            WHERE {where_sql}
+            ORDER BY c.embedding <=> %s::vector
+            LIMIT %s
+        """
+
+        # Need the embedding vector twice (WHERE distance + ORDER BY)
+        # Insert it again after the first %s placeholder for ORDER BY
+        params_with_embedding = [str(query_embedding)] + params[1:]
+
+        cur.execute(sql, params_with_embedding)
+        rows = cur.fetchall()
+
         formatted_results = []
-        if results and results['ids'] and results['ids'][0]:
-            for i, doc_id in enumerate(results['ids'][0]):
-                distance = results['distances'][0][i]
-                metadata = results['metadatas'][0][i]
-                document = results['documents'][0][i]
+        for row in rows:
+            snippet = ""
+            if row.get('summary_text'):
+                text = row['summary_text']
+                snippet = text[:300] + "..." if len(text) > 300 else text
 
-                # Convert L2 distance to similarity score (0-1 range)
-                score = 1 / (1 + distance)
-
-                formatted_results.append({
-                    "id": doc_id,
-                    "score": round(score, 4),
-                    "title": metadata.get("title", ""),
-                    "source": metadata.get("source", ""),
-                    "channel": metadata.get("channel", ""),
-                    "snippet": document[:300] + "..." if len(document) > 300 else document,
-                })
+            formatted_results.append({
+                "id": row['video_id'],
+                "score": round(float(row['score']), 4),
+                "title": row.get('title', '') or "",
+                "source": row.get('normalized_source', '') or "",
+                "channel": row.get('channel_name', '') or "",
+                "snippet": snippet,
+            })
 
         logger.info(f"Semantic search for '{query}' returned {len(formatted_results)} results")
         return formatted_results
@@ -154,70 +310,73 @@ def search(
     except Exception as e:
         logger.exception(f"Semantic search error: {e}")
         return []
+    finally:
+        conn.close()
 
 
 def find_similar(content_id: str, topk: int = 5) -> List[Dict[str, Any]]:
     """
     Find content similar to a specific document by ID.
 
+    Uses the target document's stored embedding to find nearest neighbors.
+
     Args:
-        content_id: The ID of the document to find similar content for
+        content_id: The video_id of the document to find similar content for
         topk: Maximum number of similar items to return
 
     Returns:
-        List of similar items with id, score, title, source
+        List of similar items with id, score, title, source, channel
     """
-    collection = _get_collection()
-    if collection is None:
+    conn = _get_pg_connection()
+    if conn is None:
         return []
 
     try:
-        # Get the source document
-        doc = collection.get(
-            ids=[content_id],
-            include=["documents", "metadatas"]
-        )
+        import psycopg2.extras
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        if not doc['ids']:
-            logger.warning(f"Document not found: {content_id}")
-            return []
+        source_case = _source_case_sql('c')
 
-        text = doc['documents'][0]
+        # Use subquery to get the source embedding and search in one query
+        sql = f"""
+            SELECT
+                c.video_id,
+                c.title,
+                c.channel_name,
+                {source_case} AS normalized_source,
+                1 - (c.embedding <=> (
+                    SELECT embedding FROM content WHERE video_id = %s
+                )) AS score
+            FROM content c
+            WHERE c.embedding IS NOT NULL
+              AND c.video_id != %s
+              AND (SELECT embedding FROM content WHERE video_id = %s) IS NOT NULL
+            ORDER BY c.embedding <=> (
+                SELECT embedding FROM content WHERE video_id = %s
+            )
+            LIMIT %s
+        """
 
-        # Search for similar (get extra to exclude self)
-        results = collection.query(
-            query_texts=[text],
-            n_results=topk + 1,
-            include=["metadatas", "distances"]
-        )
+        cur.execute(sql, [content_id, content_id, content_id, content_id, topk])
+        rows = cur.fetchall()
 
-        # Format results, excluding the source document
         formatted_results = []
-        if results and results['ids'] and results['ids'][0]:
-            for i, doc_id in enumerate(results['ids'][0]):
-                if doc_id == content_id:
-                    continue  # Skip self
-
-                distance = results['distances'][0][i]
-                metadata = results['metadatas'][0][i]
-                score = 1 / (1 + distance)
-
-                formatted_results.append({
-                    "id": doc_id,
-                    "score": round(score, 4),
-                    "title": metadata.get("title", ""),
-                    "source": metadata.get("source", ""),
-                    "channel": metadata.get("channel", ""),
-                })
-
-                if len(formatted_results) >= topk:
-                    break
+        for row in rows:
+            formatted_results.append({
+                "id": row['video_id'],
+                "score": round(float(row['score']), 4),
+                "title": row.get('title', '') or "",
+                "source": row.get('normalized_source', '') or "",
+                "channel": row.get('channel_name', '') or "",
+            })
 
         return formatted_results
 
     except Exception as e:
         logger.exception(f"Find similar error: {e}")
         return []
+    finally:
+        conn.close()
 
 
 def upsert_document(
@@ -229,18 +388,17 @@ def upsert_document(
     variant: str = ""
 ) -> bool:
     """
-    Add or update a single document in ChromaDB.
+    Generate and store an embedding for a content row.
 
-    Called incrementally when new content is ingested via /api/ingest,
-    ensuring semantic search stays in sync with PostgreSQL.
+    Called incrementally when new content is ingested via /api/ingest.
 
     Args:
         video_id: Unique identifier for the content
         title: Content title
-        summary: Summary text to be embedded (used for semantic search)
+        summary: Summary text to be embedded
         channel: Channel or author name
         source: Content source (youtube, reddit, web, etc.)
-        variant: Summary variant type (key-insights, bullet-points, etc.)
+        variant: Summary variant type (unused, kept for API compat)
 
     Returns:
         True if successful, False otherwise
@@ -249,65 +407,70 @@ def upsert_document(
         logger.warning("upsert_document called with missing video_id or summary")
         return False
 
-    # Need to get or create collection (not just get, in case index doesn't exist)
-    client = _get_chroma_client()
-    if client is None:
-        logger.warning("ChromaDB not available for upsert")
+    # Build canonical text and check if re-embedding is needed
+    canonical_text = _build_canonical_text(title, summary, channel, source)
+    source_hash = _compute_source_hash(canonical_text)
+
+    # Check if embedding is already up to date
+    conn = _get_pg_connection()
+    if conn is None:
         return False
 
     try:
-        # Get or create collection (creates if doesn't exist)
-        collection = client.get_or_create_collection(
-            name=COLLECTION_NAME,
-            metadata={"hnsw:space": "l2"}
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT embedding_source_hash FROM content WHERE video_id = %s",
+            [video_id]
         )
+        row = cur.fetchone()
+        if row and row[0] == source_hash:
+            logger.debug(f"Embedding for {video_id} is up to date (hash match)")
+            return True
 
-        # Create document text for embedding (title + summary)
-        doc_text = f"{title}\n\n{summary}" if title else summary
+        # Generate new embedding
+        embedding = _generate_embedding(canonical_text)
+        if embedding is None:
+            logger.warning(f"Failed to generate embedding for {video_id}")
+            return False
 
-        # Upsert into collection
-        collection.upsert(
-            ids=[video_id],
-            documents=[doc_text],
-            metadatas=[{
-                'title': (title or "")[:500],  # Truncate for metadata limits
-                'channel': channel or "",
-                'source': source or "unknown",
-                'variant': variant or ""
-            }]
-        )
+        # Update the content row
+        cur.execute("""
+            UPDATE content
+            SET embedding = %s::vector,
+                embedding_model = %s,
+                embedding_version = %s,
+                embedding_source_hash = %s,
+                embedding_updated_at = NOW()
+            WHERE video_id = %s
+        """, [str(embedding), EMBEDDING_MODEL, EMBEDDING_VERSION,
+              source_hash, video_id])
 
-        logger.info(f"Upserted document {video_id} into ChromaDB")
+        conn.commit()
+        logger.info(f"Upserted embedding for {video_id}")
         return True
 
     except Exception as e:
-        logger.exception(f"Failed to upsert document {video_id}: {e}")
+        conn.rollback()
+        logger.exception(f"Failed to upsert embedding for {video_id}: {e}")
         return False
+    finally:
+        conn.close()
 
 
 def delete_document(video_id: str) -> bool:
     """
-    Remove a document from ChromaDB.
+    No-op: deleting the content row automatically removes the embedding.
 
-    Should be called when content is deleted from PostgreSQL.
+    Kept for API compatibility with server.py delete hook.
 
     Args:
         video_id: Unique identifier for the content to remove
 
     Returns:
-        True if successful, False otherwise
+        True (always — the row deletion handles cleanup)
     """
-    collection = _get_collection()
-    if collection is None:
-        return False
-
-    try:
-        collection.delete(ids=[video_id])
-        logger.info(f"Deleted document {video_id} from ChromaDB")
-        return True
-    except Exception as e:
-        logger.exception(f"Failed to delete document {video_id}: {e}")
-        return False
+    logger.debug(f"delete_document called for {video_id} — no-op (row deletion handles it)")
+    return True
 
 
 # =============================================================================
@@ -351,10 +514,12 @@ def keyword_search(
         conn = psycopg2.connect(postgres_url)
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+        source_case = _source_case_sql('c')
         search_term = f"%{query.strip()}%"
 
-        sql = """
-            SELECT DISTINCT c.video_id, c.title, c.channel_name, c.indexed_at,
+        sql = f"""
+            SELECT DISTINCT c.video_id, c.title, c.channel_name,
+                   {source_case} AS normalized_source,
                    ls.text as summary_text
             FROM content c
             LEFT JOIN LATERAL (
@@ -376,21 +541,18 @@ def keyword_search(
         # Add filter conditions
         if filters:
             if filters.get('source'):
-                cur.execute("""
-                    SELECT LOWER(TRIM(COALESCE(canonical_url::text, '')))
-                    FROM content LIMIT 1
-                """)
-                # Simplified source filtering
                 if filters['source'] == 'youtube':
-                    sql += " AND (c.canonical_url ILIKE '%youtube%' OR c.canonical_url ILIKE '%youtu.be%')"
+                    sql += " AND (c.canonical_url ILIKE '%%youtube%%' OR c.canonical_url ILIKE '%%youtu.be%%')"
                 elif filters['source'] == 'reddit':
-                    sql += " AND c.canonical_url ILIKE '%reddit%'"
+                    sql += " AND c.canonical_url ILIKE '%%reddit%%'"
+                elif filters['source'] == 'wikipedia':
+                    sql += " AND c.canonical_url ILIKE '%%wikipedia%%'"
 
             if filters.get('channel'):
                 sql += " AND c.channel_name = %s"
                 params.append(filters['channel'])
 
-        sql += " ORDER BY c.indexed_at DESC LIMIT %s"
+        sql += " ORDER BY c.indexed_at DESC NULLS LAST LIMIT %s"
         params.append(topk)
 
         cur.execute(sql, params)
@@ -404,9 +566,9 @@ def keyword_search(
                 "id": row['video_id'],
                 "score": round(score, 4),
                 "title": row['title'] or "",
-                "source": "youtube",  # Simplified
+                "source": row['normalized_source'] or "",
                 "channel": row['channel_name'] or "",
-                "snippet": (row['summary_text'] or "")[:300] + "..." if row['summary_text'] else "",
+                "snippet": (row['summary_text'] or "")[:300] + "..." if row.get('summary_text') else "",
             })
 
         conn.close()
@@ -519,7 +681,7 @@ def hybrid_search(
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
-    print(f"ChromaDB dir: {CHROMA_DIR}")
+    print(f"Embedding model: {EMBEDDING_MODEL}")
     print(f"Available: {is_available()}")
     print(f"Indexed count: {get_indexed_count()}")
 

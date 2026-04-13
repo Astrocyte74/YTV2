@@ -1,218 +1,277 @@
 #!/usr/bin/env python3
 """
-Build ChromaDB Index from PostgreSQL
+Build pgvector Embedding Index from PostgreSQL
 
-Indexes content from the dashboard's PostgreSQL database into ChromaDB
-for semantic search. This ensures the semantic search uses the same
-data source as the dashboard UI.
+Generates OpenAI embeddings for content rows that don't have one yet.
+Resumable — can be run multiple times; only embeds rows where
+embedding IS NULL.
 
 Usage:
-    python -m modules.build_semantic_index [--batch-size 100]
+    python -m modules.build_semantic_index [--batch-size 50]
 
 Run inside Docker container:
-    docker exec ytv2-dashboard python -m modules.build_semantic_index
+    docker exec -e OPENAI_API_KEY=$OPENAI_API_KEY ytv2-dashboard python -m modules.build_semantic_index
 """
 
 import os
 import sys
 import logging
 import argparse
+import time
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 # Setup path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 logger = logging.getLogger(__name__)
 
-# ChromaDB directory - store in dashboard16/data/chromadb/
-# In Docker: /app/data/chromadb
-# Local dev: dashboard16/data/chromadb
-CHROMA_DIR = Path(__file__).parent.parent / "data" / "chromadb"
-COLLECTION_NAME = "ytv2_summaries"
+BATCH_SIZE_DEFAULT = 50
+MAX_RETRIES = 3
+RETRY_DELAY_SECONDS = 5
 
 
-def get_chroma_client():
-    """Get or create ChromaDB client."""
+def get_postgres_content() -> List[Dict[str, Any]]:
+    """Fetch content rows that need embeddings, with their best summary text."""
     try:
-        import chromadb
-        from chromadb.config import Settings
+        import psycopg2
+        import psycopg2.extras
     except ImportError:
-        logger.error("chromadb not installed. Run: pip install chromadb")
-        return None
+        logger.error("psycopg2 not installed")
+        return []
 
-    # Ensure directory exists
-    CHROMA_DIR.mkdir(parents=True, exist_ok=True)
-
-    client = chromadb.PersistentClient(path=str(CHROMA_DIR))
-    return client
-
-
-def get_postgres_content():
-    """Fetch all content with summaries from PostgreSQL."""
-    try:
-        from postgres_content_index import PostgreSQLContentIndex
-    except ImportError:
-        from modules.postgres_content_index import PostgreSQLContentIndex
-
-    # Get PostgreSQL URL from environment
     postgres_url = os.getenv('DATABASE_URL_POSTGRES_NEW')
     if not postgres_url:
         logger.error("DATABASE_URL_POSTGRES_NEW not set")
         return []
 
-    index = PostgreSQLContentIndex(postgres_url)
-    conn = index._get_connection()
-
     try:
-        source_case = index._source_case_expression('c', conn)
+        conn = psycopg2.connect(postgres_url)
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-        # Query all content with summaries
+        # Source normalization matching the dashboard's logic
+        source_case = """CASE
+            WHEN LOWER(COALESCE(c.canonical_url::text, '')) LIKE '%%wikipedia.org%%' THEN 'wikipedia'
+            WHEN LOWER(COALESCE(c.canonical_url::text, '')) LIKE '%%churchofjesuschrist.org%%'
+                OR LOWER(COALESCE(c.canonical_url::text, '')) LIKE '%%lds.org%%' THEN 'lds'
+            WHEN LOWER(COALESCE(c.canonical_url::text, '')) LIKE '%%youtube.com%%'
+                OR LOWER(COALESCE(c.canonical_url::text, '')) LIKE '%%youtu.be%%' THEN 'youtube'
+            WHEN LOWER(COALESCE(c.canonical_url::text, '')) LIKE '%%reddit.com%%'
+                OR LOWER(COALESCE(c.video_id::text, '')) LIKE 'reddit:%%' THEN 'reddit'
+            WHEN LOWER(COALESCE(c.id::text, '')) LIKE '%%-web-%%' THEN 'web'
+            ELSE 'web'
+        END"""
+
         query = f"""
             SELECT
                 c.video_id,
                 c.title,
                 c.channel_name,
                 {source_case} AS normalized_source,
-                ls.text as summary_text,
-                ls.variant as summary_variant
+                ls.text AS summary_text
             FROM content c
             LEFT JOIN LATERAL (
-                SELECT s.text, s.variant
+                SELECT s.text
                 FROM v_latest_summaries s
                 WHERE s.video_id = c.video_id
                   AND s.variant IN (
-                    'comprehensive','key-points','bullet-points',
-                    'executive','key-insights','audio','audio-fr','audio-es'
+                    'comprehensive', 'key-points', 'bullet-points',
+                    'executive', 'key-insights'
                   )
                 ORDER BY array_position(
                   ARRAY[
-                    'comprehensive','key-points','bullet-points',
-                    'executive','key-insights','audio','audio-fr','audio-es'
+                    'comprehensive', 'key-points', 'bullet-points',
+                    'executive', 'key-insights'
                   ]::text[],
                   s.variant
                 )
                 LIMIT 1
             ) ls ON true
-            WHERE ls.text IS NOT NULL
+            WHERE c.embedding IS NULL
+              AND ls.text IS NOT NULL
               AND LENGTH(TRIM(ls.text)) > 50
-            ORDER BY c.indexed_at DESC
+            ORDER BY c.indexed_at DESC NULLS LAST
         """
 
-        cur = conn.cursor()
         cur.execute(query)
         rows = cur.fetchall()
-
-        logger.info(f"Fetched {len(rows)} content items with summaries from PostgreSQL")
-        return rows
-
-    finally:
         conn.close()
 
+        logger.info(f"Found {len(rows)} content items needing embeddings")
+        return rows
 
-def build_index(batch_size: int = 100, clear_existing: bool = True):
+    except Exception as e:
+        logger.error(f"Failed to fetch content: {e}")
+        return []
+
+
+def build_index(batch_size: int = BATCH_SIZE_DEFAULT):
     """
-    Build ChromaDB index from PostgreSQL content.
+    Generate embeddings for all content rows that need them.
 
-    Args:
-        batch_size: Number of documents to index per batch
-        clear_existing: If True, delete existing collection before indexing
+    Resumable: only processes rows where embedding IS NULL.
+    Token-budgeted: uses modest batch sizes to stay under OpenAI limits.
     """
-    client = get_chroma_client()
-    if client is None:
-        return False
-
-    # Get or create collection
-    if clear_existing:
-        try:
-            client.delete_collection(COLLECTION_NAME)
-            logger.info(f"Deleted existing collection: {COLLECTION_NAME}")
-        except Exception:
-            pass  # Collection may not exist
-
-    collection = client.get_or_create_collection(
-        name=COLLECTION_NAME,
-        metadata={"hnsw:space": "l2"}
+    from modules.semantic_search import (
+        _build_canonical_text,
+        _compute_source_hash,
+        _generate_embeddings_batch,
+        EMBEDDING_MODEL,
+        EMBEDDING_VERSION,
     )
 
-    # Fetch content from PostgreSQL
-    content_items = get_postgres_content()
-    if not content_items:
-        logger.warning("No content found to index")
+    # Verify OpenAI key is set
+    if not os.getenv('OPENAI_API_KEY'):
+        logger.error("OPENAI_API_KEY not set — cannot generate embeddings")
         return False
 
-    # Prepare batches
-    ids = []
-    documents = []
-    metadatas = []
+    # Fetch rows needing embeddings
+    content_items = get_postgres_content()
+    if not content_items:
+        logger.info("No content items need embeddings — all caught up!")
+        return True
 
-    for row in content_items:
-        video_id = row.get('video_id', '')
-        title = row.get('title', '')
-        channel = row.get('channel_name', '')
-        source = row.get('normalized_source', 'unknown')
-        summary = row.get('summary_text', '')
+    # Connect to PG for updates
+    import psycopg2
 
-        if not video_id or not summary:
+    postgres_url = os.getenv('DATABASE_URL_POSTGRES_NEW')
+    if not postgres_url:
+        logger.error("DATABASE_URL_POSTGRES_NEW not set")
+        return False
+
+    total_embedded = 0
+    total_failed = 0
+
+    for batch_start in range(0, len(content_items), batch_size):
+        batch = content_items[batch_start:batch_start + batch_size]
+
+        # Build canonical texts
+        texts = []
+        for row in batch:
+            canonical = _build_canonical_text(
+                title=row.get('title', ''),
+                summary=row.get('summary_text', ''),
+                channel=row.get('channel_name', ''),
+                source=row.get('normalized_source', 'web'),
+            )
+            texts.append(canonical)
+
+        # Generate embeddings with retries
+        embeddings = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                embeddings = _generate_embeddings_batch(texts)
+                break
+            except Exception as e:
+                logger.warning(f"Batch embedding attempt {attempt + 1} failed: {e}")
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_DELAY_SECONDS * (attempt + 1))
+
+        if embeddings is None:
+            logger.error(f"Failed to generate embeddings for batch starting at {batch_start}")
+            total_failed += len(batch)
             continue
 
-        # Create document text for embedding (title + summary)
-        doc_text = f"{title}\n\n{summary}"
+        # Write embeddings to PostgreSQL
+        conn = psycopg2.connect(postgres_url)
+        try:
+            cur = conn.cursor()
+            batch_success = 0
 
-        ids.append(video_id)
-        documents.append(doc_text)
-        metadatas.append({
-            'title': title[:500],  # Truncate for metadata limits
-            'channel': channel or '',
-            'source': source or 'unknown',
-            'variant': row.get('summary_variant', '')
-        })
+            for i, (row, embedding) in enumerate(zip(batch, embeddings)):
+                if embedding is None:
+                    logger.warning(f"No embedding generated for {row['video_id']}")
+                    total_failed += 1
+                    continue
 
-    # Index in batches
-    total_indexed = 0
-    for i in range(0, len(ids), batch_size):
-        batch_ids = ids[i:i + batch_size]
-        batch_docs = documents[i:i + batch_size]
-        batch_meta = metadatas[i:i + batch_size]
+                source_hash = _compute_source_hash(texts[i])
 
-        collection.add(
-            ids=batch_ids,
-            documents=batch_docs,
-            metadatas=batch_meta
-        )
+                try:
+                    cur.execute("""
+                        UPDATE content
+                        SET embedding = %s::vector,
+                            embedding_model = %s,
+                            embedding_version = %s,
+                            embedding_source_hash = %s,
+                            embedding_updated_at = NOW()
+                        WHERE video_id = %s
+                    """, [
+                        str(embedding),
+                        EMBEDDING_MODEL,
+                        EMBEDDING_VERSION,
+                        source_hash,
+                        row['video_id'],
+                    ])
+                    batch_success += 1
+                except Exception as e:
+                    logger.error(f"Failed to update {row['video_id']}: {e}")
+                    total_failed += 1
 
-        total_indexed += len(batch_ids)
-        logger.info(f"Indexed batch {i // batch_size + 1}: {total_indexed}/{len(ids)} documents")
+            conn.commit()
+            total_embedded += batch_success
+            logger.info(
+                f"Batch {batch_start // batch_size + 1}: "
+                f"{batch_success}/{len(batch)} embedded "
+                f"(total: {total_embedded}/{len(content_items)})"
+            )
 
-    logger.info(f"Indexing complete: {total_indexed} documents in collection '{COLLECTION_NAME}'")
-    logger.info(f"ChromaDB stored at: {CHROMA_DIR}")
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Batch commit failed: {e}")
+            total_failed += len(batch)
+        finally:
+            conn.close()
 
-    return True
+    logger.info(f"Backfill complete: {total_embedded} embedded, {total_failed} failed")
+    return total_failed == 0
 
 
 def verify_index():
     """Verify the index was built correctly."""
-    client = get_chroma_client()
-    if client is None:
+    try:
+        import psycopg2
+    except ImportError:
+        logger.error("psycopg2 not installed")
+        return False
+
+    postgres_url = os.getenv('DATABASE_URL_POSTGRES_NEW')
+    if not postgres_url:
+        logger.error("DATABASE_URL_POSTGRES_NEW not set")
         return False
 
     try:
-        collection = client.get_collection(COLLECTION_NAME)
-        count = collection.count()
-        logger.info(f"Collection '{COLLECTION_NAME}' has {count} documents")
+        conn = psycopg2.connect(postgres_url)
+        cur = conn.cursor()
 
-        # Test a simple search
-        results = collection.query(
-            query_texts=["test search"],
-            n_results=3
-        )
+        cur.execute("SELECT COUNT(*) FROM content")
+        total = cur.fetchone()[0]
 
-        if results and results['ids'] and results['ids'][0]:
-            logger.info(f"Test search returned {len(results['ids'][0])} results")
-            return True
-        else:
-            logger.warning("Test search returned no results")
-            return False
+        cur.execute("SELECT COUNT(*) FROM content WHERE embedding IS NOT NULL")
+        embedded = cur.fetchone()[0]
+
+        cur.execute("SELECT COUNT(*) FROM content WHERE embedding IS NULL")
+        missing = cur.fetchone()[0]
+
+        logger.info(f"Content rows: {total} total, {embedded} with embeddings, {missing} without")
+
+        if missing > 0:
+            # Check how many missing have summary text
+            cur.execute("""
+                SELECT COUNT(*) FROM content c
+                LEFT JOIN LATERAL (
+                    SELECT 1 FROM v_latest_summaries s
+                    WHERE s.video_id = c.video_id
+                      AND s.text IS NOT NULL
+                    LIMIT 1
+                ) ls ON true
+                WHERE c.embedding IS NULL AND ls IS NOT NULL
+            """)
+            missing_with_summary = cur.fetchone()[0]
+            logger.info(f"  {missing_with_summary} missing rows have summary text (can be embedded)")
+            logger.info(f"  {missing - missing_with_summary} missing rows have no summary text")
+
+        conn.close()
+        return embedded > 0
 
     except Exception as e:
         logger.error(f"Failed to verify index: {e}")
@@ -220,10 +279,11 @@ def verify_index():
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Build ChromaDB index from PostgreSQL')
-    parser.add_argument('--batch-size', type=int, default=100, help='Documents per batch')
-    parser.add_argument('--no-clear', action='store_true', help='Keep existing collection')
-    parser.add_argument('--verify-only', action='store_true', help='Only verify existing index')
+    parser = argparse.ArgumentParser(description='Build pgvector embedding index from PostgreSQL')
+    parser.add_argument('--batch-size', type=int, default=BATCH_SIZE_DEFAULT,
+                        help='Rows per embedding API batch (default: 50)')
+    parser.add_argument('--verify-only', action='store_true',
+                        help='Only verify existing index')
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -235,12 +295,9 @@ def main():
         success = verify_index()
         sys.exit(0 if success else 1)
 
-    logger.info(f"Building ChromaDB index at: {CHROMA_DIR}")
+    logger.info("Building pgvector embedding index...")
 
-    success = build_index(
-        batch_size=args.batch_size,
-        clear_existing=not args.no_clear
-    )
+    success = build_index(batch_size=args.batch_size)
 
     if success:
         verify_index()

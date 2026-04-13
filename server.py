@@ -3639,7 +3639,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
     def serve_api_semantic_search(self, query_params):
         """
-        AI-powered search using ChromaDB vector embeddings.
+        AI-powered semantic search using pgvector embeddings.
 
         Supports three modes:
         - semantic: Pure vector similarity search
@@ -3680,14 +3680,14 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         "results": [],
                         "indexed_count": 0,
                         "available": False,
-                        "error": "ChromaDB not initialized"
+                        "error": "semantic search unavailable"
                     }).encode())
                     return
                 results = search(query, topk=topk)
                 search_type = 'semantic'
             else:  # hybrid (default)
                 if not semantic_available:
-                    # Fall back to keyword if ChromaDB not available
+                    # Fall back to keyword if semantic search not available
                     results = keyword_search(query, topk=topk)
                     search_type = 'keyword (fallback)'
                 else:
@@ -3715,7 +3715,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "results": [],
                 "indexed_count": 0,
                 "available": False,
-                "error": "chromadb not installed"
+                "error": "semantic search module not available"
             }).encode())
         except Exception as e:
             logger.error(f"Semantic search error: {e}")
@@ -3746,7 +3746,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({
                     "results": [],
                     "available": False,
-                    "error": "ChromaDB not initialized"
+                    "error": "semantic search unavailable"
                 }).encode())
                 return
 
@@ -3769,7 +3769,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({
                 "results": [],
                 "available": False,
-                "error": "chromadb not installed"
+                "error": "semantic search module not available"
             }).encode())
         except Exception as e:
             logger.error(f"Semantic similar error: {e}")
@@ -4662,12 +4662,12 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 errors.append(f"Failed to delete in PostgreSQL: {exc}")
 
         try:
-            from modules.semantic_search import delete_document as chroma_delete
+            from modules.semantic_search import delete_document as semantic_delete
 
-            if chroma_delete(video_id):
-                deleted_files.append(f"ChromaDB: {video_id}")
+            if semantic_delete(video_id):
+                deleted_files.append(f"Embedding cleanup: {video_id}")
         except Exception as exc:
-            errors.append(f"Semantic index cleanup error: {exc}")
+            errors.append(f"Embedding cleanup error: {exc}")
 
         return {
             'report_id': report_id,
@@ -5585,10 +5585,10 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 if summaries and hasattr(content_index, 'upsert_summaries'):
                     summaries_upserted = content_index.upsert_summaries(video_id, summaries)
 
-                # Update ChromaDB index for semantic search (incremental update)
-                chroma_updated = False
+                # Update pgvector embedding for semantic search (incremental update)
+                embedding_updated = False
                 try:
-                    from modules.semantic_search import upsert_document as chroma_upsert
+                    from modules.semantic_search import upsert_document as semantic_upsert
 
                     # Extract summary text - try multiple sources
                     summary_text = ""
@@ -5618,18 +5618,18 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                         else:
                             content_source = payload.get("content_source") or "web"
 
-                        chroma_updated = chroma_upsert(
+                        embedding_updated = semantic_upsert(
                             video_id=video_id,
                             title=payload.get("title", ""),
                             summary=summary_text,
                             channel=payload.get("channel_name", ""),
                             source=content_source
                         )
-                        if chroma_updated:
-                            logger.info(f"Updated ChromaDB index for {video_id}")
-                except Exception as chroma_err:
-                    # Don't fail the ingest if ChromaDB update fails
-                    logger.warning(f"ChromaDB update failed for {video_id}: {chroma_err}")
+                        if embedding_updated:
+                            logger.info(f"Updated embedding for {video_id}")
+                except Exception as semantic_err:
+                    # Don't fail the ingest if embedding update fails
+                    logger.warning(f"Embedding update failed for {video_id}: {semantic_err}")
 
                 # Prepare realtime event broadcast before responding
                 summary_types: List[str] = []
@@ -5664,7 +5664,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 response = {
                     "upserted": int(bool(upserted)),
                     "summaries_upserted": summaries_upserted,
-                    "chroma_updated": chroma_updated,
+                    "embedding_updated": embedding_updated,
                     "verify_row": verify_row  # TEMP: remove once stable
                 }
                 self.wfile.write(json.dumps(response).encode())
