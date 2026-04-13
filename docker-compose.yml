@@ -19,6 +19,7 @@ services:
       - PORT=10000
       # PostgreSQL connection (MUST be set in .env)
       - DATABASE_URL_POSTGRES_NEW
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
 
     # Port mapping for dashboard access
     ports:
