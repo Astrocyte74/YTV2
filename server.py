@@ -3277,7 +3277,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
 
             # audio_briefing is a combined mode — check it BEFORE scope-specific branches
             if mode == 'audio_briefing':
-                parts = []
+                combined_parts = []
                 cur.execute(
                     """SELECT text FROM v_latest_summaries
                        WHERE video_id = %s AND variant NOT LIKE 'audio%%'
@@ -3286,8 +3286,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     [video_id],
                 )
                 row = cur.fetchone()
-                if row and row.get('text'):
-                    parts.append(row['text'][:2000])
+                summary_text = (row.get('text') or '')[:4000] if row else ''
 
                 cur.execute(
                     """SELECT research_response FROM follow_up_research_runs
@@ -3296,10 +3295,13 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                     [video_id],
                 )
                 row = cur.fetchone()
-                if row and row.get('research_response'):
-                    parts.append(row['research_response'][:2000])
+                research_text = (row.get('research_response') or '')[:4000] if row else ''
 
-                source_text = '|BRIEFING|'.join(parts)
+                if summary_text:
+                    combined_parts.append(f"Summary:\n{summary_text}")
+                if research_text:
+                    combined_parts.append(f"Research:\n{research_text}")
+                source_text = '\n\n'.join(combined_parts)
 
             elif scope == 'summary_active':
                 # Get variant text using stable slug, not integer offset
@@ -3342,7 +3344,7 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
                 if row and row.get('research_response'):
                     source_text = row['research_response']
 
-            canonical = (mode + ':' + scope + ':' + (source_text or '')).encode('utf-8')
+            canonical = (mode + ':' + scope + ':' + self._build_tts_config_tag() + ':' + (source_text or '')).encode('utf-8')
             return hashlib.sha256(canonical).hexdigest()
 
         except Exception as e:
@@ -3351,6 +3353,22 @@ class ModernDashboardHTTPRequestHandler(SimpleHTTPRequestHandler):
         finally:
             if conn:
                 conn.close()
+
+    @staticmethod
+    def _build_tts_config_tag():
+        """Build TTS config tag for cache key hashing.
+
+        MUST stay in sync with backend build_tts_config_tag() in
+        ytv2_api/audio_store.py — same env vars, same defaults, same order.
+        """
+        parts = [
+            os.getenv("TTS_PROVIDER", "openai"),
+            os.getenv("FISH_TTS_MODEL", ""),
+            os.getenv("FISH_VOICE_MODEL", ""),
+            os.getenv("OPENAI_TTS_VOICE", ""),
+            os.getenv("AUDIO_LLM_REASONING_EFFORT", "low"),
+        ]
+        return "|".join(p for p in parts if p)
 
     def serve_audio_options(self, query_params):
         """GET /api/audio/options — returns audio availability for a video (public read-only)."""
